@@ -13,6 +13,18 @@
 - Use hooks for state and side effects
 - Keep components focused - one job per component
 - Extract reusable logic into custom hooks
+- Always define an explicit named interface for component props — never inline prop types
+
+```tsx
+// ✅ correct
+interface SidebarProps {
+  onClose?: () => void
+}
+export function Sidebar({ onClose }: SidebarProps) { ... }
+
+// ❌ wrong
+export function Sidebar({ onClose }: { onClose?: () => void }) { ... }
+```
 
 ## Next.js
 
