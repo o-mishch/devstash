@@ -1,3 +1,5 @@
+import type { Item, Collection, ItemType, ItemCollection } from '@/types/item'
+
 export const mockUser = {
     id: 'user_1',
     email: 'demo@devstash.io',
@@ -7,7 +9,7 @@ export const mockUser = {
     updatedAt: new Date('2024-01-15'),
 };
 
-export const mockItemTypes = [
+export const mockItemTypes: ItemType[] = [
     {
         id: 'type_1',
         name: 'snippet',
@@ -59,7 +61,7 @@ export const mockItemTypes = [
     },
 ];
 
-export const mockCollections = [
+export const mockCollections: Collection[] = [
     {
         id: 'coll_1',
         name: 'React Patterns',
@@ -116,7 +118,7 @@ export const mockCollections = [
     },
 ];
 
-export const mockItems = [
+export const mockItems: Item[] = [
     {
         id: 'item_1',
         title: 'useAuth Hook',
@@ -286,6 +288,27 @@ export const mockItems = [
         createdAt: new Date('2024-01-04'),
         updatedAt: new Date('2024-01-04'),
     },
+];
+
+// Maps itemId -> collectionId memberships
+export const mockItemCollections: ItemCollection[] = [
+    { itemId: 'item_1', collectionId: 'coll_1' },
+    { itemId: 'item_2', collectionId: 'coll_1' },
+    { itemId: 'item_5', collectionId: 'coll_1' },
+    { itemId: 'item_10', collectionId: 'coll_1' },
+    { itemId: 'item_5', collectionId: 'coll_2' },
+    { itemId: 'item_10', collectionId: 'coll_2' },
+    { itemId: 'item_9', collectionId: 'coll_2' },
+    { itemId: 'item_7', collectionId: 'coll_3' },
+    { itemId: 'item_3', collectionId: 'coll_3' },
+    { itemId: 'item_1', collectionId: 'coll_4' },
+    { itemId: 'item_3', collectionId: 'coll_4' },
+    { itemId: 'item_8', collectionId: 'coll_4' },
+    { itemId: 'item_12', collectionId: 'coll_4' },
+    { itemId: 'item_4', collectionId: 'coll_5' },
+    { itemId: 'item_9', collectionId: 'coll_5' },
+    { itemId: 'item_3', collectionId: 'coll_6' },
+    { itemId: 'item_7', collectionId: 'coll_6' },
 ];
 
 export const mockItemTypeCounts = {

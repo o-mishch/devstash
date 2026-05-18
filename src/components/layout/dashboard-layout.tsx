@@ -1,33 +1,18 @@
-'use client'
-
-import { useState } from 'react'
-import { Archive, Menu, FolderPlus, Plus, Search } from 'lucide-react'
+import { Archive, FolderPlus, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
-import { SidebarContent } from './sidebar-content'
+import { CollapsibleSidebar } from './collapsible-sidebar'
+import { MobileDrawer } from './mobile-drawer'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
-
   return (
     <div className="flex h-screen flex-col bg-background">
-      {/* Header */}
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
-        {/* Mobile only: opens sheet */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0 lg:hidden"
-          onClick={() => setMobileOpen(true)}
-        >
-          <Menu className="size-4" />
-        </Button>
+        <MobileDrawer />
 
         <Archive className="size-4 shrink-0 text-primary" />
         <span className="shrink-0 text-base font-semibold tracking-tight">DevStash</span>
@@ -52,27 +37,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </header>
 
-      {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Desktop sidebar — always visible, collapses to icon-only */}
-        <aside
-          className={`hidden flex-col border-r border-border bg-muted/30 transition-all duration-200 lg:flex ${collapsed ? 'w-14' : 'w-56'}`}
-        >
-          <SidebarContent
-            collapsed={collapsed}
-            onToggle={() => setCollapsed((prev) => !prev)}
-          />
-        </aside>
+        <CollapsibleSidebar />
 
-        {/* Mobile sheet */}
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetContent side="left" className="w-64 p-0" showCloseButton={false}>
-            <SheetTitle className="sr-only">Navigation</SheetTitle>
-            <SidebarContent onClose={() => setMobileOpen(false)} />
-          </SheetContent>
-        </Sheet>
-
-        {/* Main */}
         <main className="flex flex-1 flex-col overflow-auto">
           {children}
         </main>
