@@ -2,32 +2,26 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { StatsCards } from '@/components/dashboard/stats-cards'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { ItemList } from '@/components/dashboard/item-list'
-import { mockItems, mockCollections } from '@/lib/mock-data'
+import { mockItems as items } from '@/lib/mock-data'
+import { getRecentCollections, getCurrentUserId } from '@/lib/db/collections'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 const RECENT_ITEMS_LIMIT = 10
 
-function getDashboardStats() {
-  return {
-    totalItems: mockItems.length,
-    totalCollections: mockCollections.length,
-    favoriteItems: mockItems.filter((i) => i.isFavorite).length,
-    favoriteCollections: mockCollections.filter((c) => c.isFavorite).length,
-  }
-}
-
 function getPinnedItems() {
-  return mockItems.filter((item) => item.isPinned)
+  return items.filter((item) => item.isPinned)
 }
 
 function getRecentItems() {
-  return [...mockItems]
+  return [...items]
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, RECENT_ITEMS_LIMIT)
 }
 
-export default function DashboardPage() {
-  const stats = getDashboardStats()
+export default async function DashboardPage() {
+  const userId = await getCurrentUserId()
+  const collections = userId ? await getRecentCollections(userId) : []
+
   const pinned = getPinnedItems()
   const recent = getRecentItems()
 
@@ -39,7 +33,12 @@ export default function DashboardPage() {
           <p className="text-sm text-muted-foreground">Your developer knowledge hub</p>
         </div>
 
-        <StatsCards {...stats} />
+        <StatsCards
+          totalItems={items.length}
+          totalCollections={collections.length}
+          favoriteItems={items.filter((i) => i.isFavorite).length}
+          favoriteCollections={collections.filter((c) => c.isFavorite).length}
+        />
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -49,7 +48,7 @@ export default function DashboardPage() {
             </a>
           </CardHeader>
           <CardContent>
-            <CollectionsGrid />
+            <CollectionsGrid collections={collections} />
           </CardContent>
         </Card>
 
