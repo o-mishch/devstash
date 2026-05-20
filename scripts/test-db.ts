@@ -9,7 +9,6 @@ const prisma = new PrismaClient({
 async function main() {
   console.log('Testing database connection...\n')
 
-  // Connection check
   await prisma.$queryRaw`SELECT 1`
   console.log('✓ Connected to Neon PostgreSQL')
 
@@ -31,6 +30,53 @@ async function main() {
   console.log(`  items:       ${items}`)
   console.log(`  collections: ${collections}`)
   console.log(`  tags:        ${tags}`)
+
+  // Demo user
+  console.log('\nDemo user:')
+  const demoUser = await prisma.user.findUnique({
+    where: { email: 'demo@devstash.io' },
+    select: { id: true, email: true, name: true, isPro: true, emailVerified: true },
+  })
+
+  if (!demoUser) {
+    console.log('  ✗ demo@devstash.io not found — run npm run db:seed')
+  } else {
+    console.log(`  ✓ ${demoUser.email} (${demoUser.name})`)
+    console.log(`    isPro: ${demoUser.isPro}  emailVerified: ${demoUser.emailVerified?.toISOString() ?? 'null'}`)
+
+    // Collections with item counts
+    const userCollections = await prisma.collection.findMany({
+      where: { userId: demoUser.id },
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { items: true } } },
+    })
+
+    console.log(`\nCollections (${userCollections.length}):`)
+    userCollections.forEach((c) => {
+      console.log(`  ✓ ${c.name} — ${c._count.items} item(s)`)
+    })
+
+    // Items grouped by type
+    const userItems = await prisma.item.findMany({
+      where: { userId: demoUser.id },
+      include: { itemType: true },
+      orderBy: [{ itemType: { name: 'asc' } }, { title: 'asc' }],
+    })
+
+    console.log(`\nItems (${userItems.length}):`)
+    let lastType = ''
+    userItems.forEach((item) => {
+      if (item.itemType.name !== lastType) {
+        lastType = item.itemType.name
+        console.log(`  [${item.itemType.name}]`)
+      }
+      const preview =
+        item.contentType === 'URL'
+          ? item.url ?? ''
+          : (item.content ?? '').split('\n')[0].slice(0, 60)
+      console.log(`    • ${item.title}${preview ? `  →  ${preview}` : ''}`)
+    })
+  }
 
   console.log('\n✓ All checks passed')
 }
