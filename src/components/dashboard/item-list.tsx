@@ -1,18 +1,16 @@
-import { mockItemTypes } from '@/lib/mock-data'
 import { ItemRow } from './item-row'
-import type { Item } from '@/types/item'
+import type { DashboardItem } from '@/lib/db/items'
 
 interface ItemListProps {
-  items: Item[]
+  items: DashboardItem[]
 }
 
 export function ItemList({ items }: ItemListProps) {
   return (
     <div className="flex flex-col gap-3">
-      {items.map((item) => {
-        const itemType = mockItemTypes.find((t) => t.id === item.itemTypeId)
-        return <ItemRow key={item.id} item={item} itemType={itemType} />
-      })}
+      {items.map((item) => (
+        <ItemRow key={item.id} item={item} />
+      ))}
     </div>
   )
 }

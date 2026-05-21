@@ -1,6 +1,6 @@
 import { Star } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ITEM_TYPE_ICONS } from '@/lib/constants/item-types'
+import { getItemIcon } from '@/lib/db/items'
 import type { CollectionWithTypes } from '@/lib/db/collections'
 
 interface CollectionsGridProps {
@@ -31,7 +31,7 @@ export function CollectionsGrid({ collections }: CollectionsGridProps) {
             )}
             <div className="mt-3 flex gap-1.5">
               {col.types.map((type) => {
-                const Icon = ITEM_TYPE_ICONS[type.icon]
+                const Icon = getItemIcon(type.icon)
                 return Icon ? (
                   <Icon key={type.id} className="size-3.5" style={{ color: type.color }} />
                 ) : null

@@ -16,8 +16,21 @@ const systemItemTypes = [
   { name: 'link', icon: 'Link', color: '#10b981', isSystem: true },
 ]
 
+interface SeedItem {
+  title: string
+  contentType: ContentType
+  content?: string
+  url?: string
+  description?: string
+  language?: string
+  isPinned?: boolean
+  isFavorite?: boolean
+  itemTypeId: string
+  userId: string
+}
+
 async function seedItems(
-  items: { title: string; contentType: ContentType; content?: string; url?: string; description?: string; language?: string; itemTypeId: string; userId: string }[],
+  items: SeedItem[],
   collectionId: string,
 ) {
   await Promise.all(
@@ -61,6 +74,7 @@ async function main() {
         title: 'useDebounce Hook',
         contentType: ContentType.TEXT,
         language: 'typescript',
+        isPinned: true,
         itemTypeId: t['snippet'],
         userId: user.id,
         content: `import { useState, useEffect } from 'react'
@@ -297,6 +311,7 @@ docker run -d --name app --restart unless-stopped \\
         contentType: ContentType.TEXT,
         itemTypeId: t['command'],
         userId: user.id,
+        isPinned: true,
         content: 'lsof -ti tcp:{{port}} | xargs kill -9',
         description: 'Useful when a dev server fails to release its port',
       },
