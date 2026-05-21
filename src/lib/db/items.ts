@@ -6,11 +6,14 @@ import type { Prisma } from '@/generated/prisma/client'
 export interface DashboardItem {
   id: string
   title: string
+  contentType: string
   description: string | null
+  language: string | null
   isFavorite: boolean
   isPinned: boolean
   createdAt: Date
-  itemType: { id: string; name: string; icon: string; color: string }
+  updatedAt: Date
+  itemType: { id: string; name: string; icon: string; color: string; isSystem: boolean }
   tags: string[]
 }
 
@@ -49,6 +52,18 @@ export async function getRecentItems(userId: string, limit = 10): Promise<Dashbo
   return items.map(toDBItem)
 }
 
+export async function getItemTypeCounts(userId: string): Promise<Record<string, number>> {
+  const types = await prisma.itemType.findMany({
+    where: { isSystem: true },
+    include: {
+      _count: {
+        select: { items: { where: { userId } } },
+      },
+    },
+  })
+  return Object.fromEntries(types.map((t) => [t.name, t._count.items]))
+}
+
 export async function getItemStats(userId: string): Promise<ItemStats> {
   const [totalItems, favoriteItems] = await Promise.all([
     prisma.item.count({ where: { userId } }),
@@ -61,10 +76,13 @@ function toDBItem(item: ItemWithRelations): DashboardItem {
   return {
     id: item.id,
     title: item.title,
+    contentType: item.contentType,
     description: item.description,
+    language: item.language,
     isFavorite: item.isFavorite,
     isPinned: item.isPinned,
     createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
     itemType: item.itemType,
     tags: item.tags.map((t) => t.name),
   }

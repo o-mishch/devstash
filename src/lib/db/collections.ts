@@ -5,9 +5,12 @@ export interface CollectionWithTypes {
   name: string
   description: string | null
   isFavorite: boolean
+  defaultTypeId: string | null
+  createdAt: Date
+  updatedAt: Date
   itemCount: number
   dominantColor: string | null
-  types: Array<{ id: string; name: string; icon: string; color: string }>
+  types: Array<{ id: string; name: string; icon: string; color: string; isSystem: boolean }>
 }
 
 export async function getRecentCollections(userId: string, limit = 6): Promise<CollectionWithTypes[]> {
@@ -27,7 +30,7 @@ export async function getRecentCollections(userId: string, limit = 6): Promise<C
   })
 
   return collections.map((col) => {
-    const typeCounts = new Map<string, { count: number; type: { id: string; name: string; icon: string; color: string } }>()
+    const typeCounts = new Map<string, { count: number; type: { id: string; name: string; icon: string; color: string; isSystem: boolean } }>()
 
     for (const ic of col.items) {
       const { itemType } = ic.item
@@ -37,7 +40,7 @@ export async function getRecentCollections(userId: string, limit = 6): Promise<C
       } else {
         typeCounts.set(itemType.id, {
           count: 1,
-          type: { id: itemType.id, name: itemType.name, icon: itemType.icon, color: itemType.color },
+          type: { id: itemType.id, name: itemType.name, icon: itemType.icon, color: itemType.color, isSystem: itemType.isSystem },
         })
       }
     }
@@ -49,6 +52,9 @@ export async function getRecentCollections(userId: string, limit = 6): Promise<C
       name: col.name,
       description: col.description,
       isFavorite: col.isFavorite,
+      defaultTypeId: col.defaultTypeId,
+      createdAt: col.createdAt,
+      updatedAt: col.updatedAt,
       itemCount: col.items.length,
       dominantColor: sortedTypes[0]?.type.color ?? null,
       types: sortedTypes.slice(0, 4).map(({ type }) => type),

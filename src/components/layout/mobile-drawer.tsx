@@ -1,12 +1,17 @@
-'use client'
+'use client' // required: controls Sheet open state with useState
 
 import { useState } from 'react'
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { SidebarContent } from './sidebar-content'
+import type { SidebarData } from './dashboard-layout'
 
-export function MobileDrawer() {
+interface MobileDrawerProps {
+  sidebarData: SidebarData
+}
+
+export function MobileDrawer({ sidebarData }: MobileDrawerProps) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -23,7 +28,7 @@ export function MobileDrawer() {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="w-64 p-0" showCloseButton={false}>
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <SidebarContent onClose={() => setOpen(false)} />
+          <SidebarContent sidebarData={sidebarData} onClose={() => setOpen(false)} />
         </SheetContent>
       </Sheet>
     </>

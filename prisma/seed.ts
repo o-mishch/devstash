@@ -65,7 +65,7 @@ async function main() {
   // ── React Patterns ────────────────────────────────────────────────
   console.log('Seeding React Patterns...')
   const reactPatterns = await prisma.collection.create({
-    data: { name: 'React Patterns', description: 'Reusable React patterns and hooks', userId: user.id },
+    data: { name: 'React Patterns', description: 'Reusable React patterns and hooks', userId: user.id, isFavorite: true },
   })
 
   await seedItems(
@@ -141,7 +141,7 @@ export function cn(...inputs: ClassValue[]) {
   // ── AI Workflows ──────────────────────────────────────────────────
   console.log('Seeding AI Workflows...')
   const aiWorkflows = await prisma.collection.create({
-    data: { name: 'AI Workflows', description: 'AI prompts and workflow automations', userId: user.id },
+    data: { name: 'AI Workflows', description: 'AI prompts and workflow automations', userId: user.id, isFavorite: true },
   })
 
   await seedItems(

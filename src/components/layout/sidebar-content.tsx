@@ -1,4 +1,4 @@
-'use client'
+'use client' // required: collapsible sections and sidebar toggle use useState
 
 import { useState } from 'react'
 import Link from 'next/link'
@@ -16,32 +16,32 @@ import {
   PanelLeft,
   PanelRight,
 } from 'lucide-react'
-import { mockUser, mockCollections, mockItemTypeCounts } from '@/lib/mock-data'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import type { SidebarData } from './dashboard-layout'
 
 const ITEM_TYPES = [
-  { name: 'snippet' as const, label: 'Snippets', Icon: Code, color: '#3b82f6', href: '/items/snippets' },
-  { name: 'prompt' as const, label: 'Prompts', Icon: Sparkles, color: '#8b5cf6', href: '/items/prompts' },
-  { name: 'command' as const, label: 'Commands', Icon: Terminal, color: '#f97316', href: '/items/commands' },
-  { name: 'note' as const, label: 'Notes', Icon: StickyNote, color: '#fde047', href: '/items/notes' },
-  { name: 'file' as const, label: 'Files', Icon: File, color: '#6b7280', href: '/items/files' },
-  { name: 'image' as const, label: 'Images', Icon: ImageIcon, color: '#ec4899', href: '/items/images' },
-  { name: 'link' as const, label: 'Links', Icon: LinkIcon, color: '#10b981', href: '/items/links' },
-]
+  { name: 'snippet', label: 'Snippets', Icon: Code, color: '#3b82f6', href: '/items/snippets' },
+  { name: 'prompt', label: 'Prompts', Icon: Sparkles, color: '#8b5cf6', href: '/items/prompts' },
+  { name: 'command', label: 'Commands', Icon: Terminal, color: '#f97316', href: '/items/commands' },
+  { name: 'note', label: 'Notes', Icon: StickyNote, color: '#fde047', href: '/items/notes' },
+  { name: 'file', label: 'Files', Icon: File, color: '#6b7280', href: '/items/files' },
+  { name: 'image', label: 'Images', Icon: ImageIcon, color: '#ec4899', href: '/items/images' },
+  { name: 'link', label: 'Links', Icon: LinkIcon, color: '#10b981', href: '/items/links' },
+] as const
 
 interface CollapsedSidebarProps {
+  sidebarData: SidebarData
   onToggle: () => void
 }
 
-function CollapsedSidebar({ onToggle }: CollapsedSidebarProps) {
-  const favoriteCollections = mockCollections.filter((c) => c.isFavorite)
+function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
+  const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
 
   return (
     <TooltipProvider delay={300}>
@@ -106,24 +106,17 @@ function CollapsedSidebar({ onToggle }: CollapsedSidebarProps) {
 }
 
 interface ExpandedSidebarProps {
+  sidebarData: SidebarData
   onClose?: () => void
   onToggle?: () => void
 }
 
-function ExpandedSidebar({ onClose, onToggle }: ExpandedSidebarProps) {
+function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProps) {
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
 
-  const favoriteCollections = mockCollections.filter((c) => c.isFavorite)
-  const recentCollections = mockCollections
-    .filter((c) => !c.isFavorite)
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-
-  const initials = mockUser.name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
+  const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
+  const recentCollections = sidebarData.collections.filter((c) => !c.isFavorite)
 
   return (
     <div className="flex h-full flex-col">
@@ -154,7 +147,7 @@ function ExpandedSidebar({ onClose, onToggle }: ExpandedSidebarProps) {
               >
                 <Icon className="size-4 shrink-0" style={{ color }} />
                 <span className="flex-1">{label}</span>
-                <span className="text-xs tabular-nums">{mockItemTypeCounts[name]}</span>
+                <span className="text-xs tabular-nums">{sidebarData.itemTypeCounts[name] ?? 0}</span>
               </Link>
             ))}
           </CollapsibleContent>
@@ -170,9 +163,9 @@ function ExpandedSidebar({ onClose, onToggle }: ExpandedSidebarProps) {
           <CollapsibleContent>
             {favoriteCollections.length > 0 && (
               <>
-                <Label className="px-4 pb-0.5 text-xs uppercase tracking-wider text-muted-foreground/60">
+                <p className="px-4 pb-0.5 text-xs text-muted-foreground/60">
                   Favorites
-                </Label>
+                </p>
                 <div className="mb-3 space-y-0.5 px-2">
                   {favoriteCollections.map((c) => (
                     <Link
@@ -183,27 +176,46 @@ function ExpandedSidebar({ onClose, onToggle }: ExpandedSidebarProps) {
                     >
                       <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
                       <span className="flex-1 truncate">{c.name}</span>
+                      <span className="text-xs tabular-nums">{c.itemCount}</span>
                     </Link>
                   ))}
                 </div>
               </>
             )}
 
-            <Label className="px-4 pb-0.5 text-xs uppercase tracking-wider text-muted-foreground/60">
-              Recent
-            </Label>
-            <div className="space-y-0.5 px-2 pl-4">
-              {recentCollections.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/collections/${c.id}`}
-                  onClick={onClose}
-                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <span className="flex-1 truncate">{c.name}</span>
-                  <span className="text-xs tabular-nums">{c.itemCount}</span>
-                </Link>
-              ))}
+            {recentCollections.length > 0 && (
+              <>
+                <p className="px-4 pb-0.5 text-xs text-muted-foreground/60">
+                  Recent
+                </p>
+                <div className="space-y-0.5 px-2">
+                  {recentCollections.map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/collections/${c.id}`}
+                      onClick={onClose}
+                      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: c.dominantColor ?? '#6b7280' }}
+                      />
+                      <span className="flex-1 truncate">{c.name}</span>
+                      <span className="text-xs tabular-nums">{c.itemCount}</span>
+                    </Link>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="mt-2 px-4">
+              <Link
+                href="/collections"
+                onClick={onClose}
+                className="text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+              >
+                View all collections →
+              </Link>
             </div>
           </CollapsibleContent>
         </Collapsible>
@@ -214,12 +226,12 @@ function ExpandedSidebar({ onClose, onToggle }: ExpandedSidebarProps) {
         <div className="flex items-center gap-2">
           <Avatar className="size-8 shrink-0">
             <AvatarFallback className="bg-primary text-primary-foreground text-xs font-medium">
-              {initials}
+              DS
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium leading-none">{mockUser.name}</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">{mockUser.email}</p>
+            <p className="truncate text-sm font-medium leading-none">Demo User</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">demo@devstash.io</p>
           </div>
           <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground">
             <Settings className="size-3.5" />
@@ -231,14 +243,15 @@ function ExpandedSidebar({ onClose, onToggle }: ExpandedSidebarProps) {
 }
 
 interface SidebarContentProps {
+  sidebarData: SidebarData
   onClose?: () => void
   onToggle?: () => void
   collapsed?: boolean
 }
 
-export function SidebarContent({ onClose, onToggle, collapsed = false }: SidebarContentProps) {
+export function SidebarContent({ sidebarData, onClose, onToggle, collapsed = false }: SidebarContentProps) {
   if (collapsed && onToggle) {
-    return <CollapsedSidebar onToggle={onToggle} />
+    return <CollapsedSidebar sidebarData={sidebarData} onToggle={onToggle} />
   }
-  return <ExpandedSidebar onClose={onClose} onToggle={onToggle} />
+  return <ExpandedSidebar sidebarData={sidebarData} onClose={onClose} onToggle={onToggle} />
 }

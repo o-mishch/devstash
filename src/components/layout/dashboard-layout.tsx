@@ -3,16 +3,24 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CollapsibleSidebar } from './collapsible-sidebar'
 import { MobileDrawer } from './mobile-drawer'
+import type { CollectionWithTypes } from '@/lib/db/collections'
+
+export interface SidebarData {
+  collections: CollectionWithTypes[]
+  itemTypeCounts: Record<string, number>
+}
 
 interface DashboardLayoutProps {
   children: React.ReactNode
+  sidebarData: SidebarData
 }
 
-export function DashboardLayout({ children }: DashboardLayoutProps) {
+export function DashboardLayout({ children, sidebarData }: DashboardLayoutProps) {
+
   return (
     <div className="flex h-screen flex-col bg-background">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
-        <MobileDrawer />
+        <MobileDrawer sidebarData={sidebarData} />
 
         <Archive className="size-4 shrink-0 text-primary" />
         <span className="shrink-0 text-base font-semibold tracking-tight">DevStash</span>
@@ -38,7 +46,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <CollapsibleSidebar />
+        <CollapsibleSidebar sidebarData={sidebarData} />
 
         <main className="flex flex-1 flex-col overflow-auto">
           {children}
