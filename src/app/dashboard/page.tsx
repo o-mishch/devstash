@@ -1,29 +1,23 @@
+import { Pin } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { StatsCards } from '@/components/dashboard/stats-cards'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { ItemList } from '@/components/dashboard/item-list'
-import { mockItems as items } from '@/lib/mock-data'
 import { getRecentCollections, getCurrentUserId } from '@/lib/db/collections'
+import { getPinnedItems, getRecentItems, getItemStats } from '@/lib/db/items'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-
-const RECENT_ITEMS_LIMIT = 10
-
-function getPinnedItems() {
-  return items.filter((item) => item.isPinned)
-}
-
-function getRecentItems() {
-  return [...items]
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, RECENT_ITEMS_LIMIT)
-}
 
 export default async function DashboardPage() {
   const userId = await getCurrentUserId()
-  const collections = userId ? await getRecentCollections(userId) : []
 
-  const pinned = getPinnedItems()
-  const recent = getRecentItems()
+  const [collections, pinned, recent, itemStats] = userId
+    ? await Promise.all([
+        getRecentCollections(userId),
+        getPinnedItems(userId),
+        getRecentItems(userId),
+        getItemStats(userId),
+      ])
+    : [[], [], [], { totalItems: 0, favoriteItems: 0 }]
 
   return (
     <DashboardLayout>
@@ -34,9 +28,9 @@ export default async function DashboardPage() {
         </div>
 
         <StatsCards
-          totalItems={items.length}
+          totalItems={itemStats.totalItems}
           totalCollections={collections.length}
-          favoriteItems={items.filter((i) => i.isFavorite).length}
+          favoriteItems={itemStats.favoriteItems}
           favoriteCollections={collections.filter((c) => c.isFavorite).length}
         />
 
@@ -55,7 +49,10 @@ export default async function DashboardPage() {
         {pinned.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Pinned</CardTitle>
+              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                <Pin className="size-3.5" />
+                Pinned
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <ItemList items={pinned} />
