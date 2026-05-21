@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge'
-import { getItemIcon } from '@/lib/db/items'
+import { getItemIcon } from '@/lib/icon-utils'
 import type { DashboardItem } from '@/lib/db/items'
 
 function formatDate(date: Date): string {

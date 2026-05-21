@@ -1,5 +1,3 @@
-import * as Icons from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma/client'
 
@@ -28,10 +26,6 @@ type ItemWithRelations = Prisma.ItemGetPayload<{
 
 const itemInclude = { itemType: true, tags: true } as const
 
-export function getItemIcon(iconName: string): LucideIcon | null {
-  const icon = Icons[iconName as keyof typeof Icons]
-  return icon != null ? (icon as unknown as LucideIcon) : null
-}
 
 export async function getPinnedItems(userId: string): Promise<DashboardItem[]> {
   const items = await prisma.item.findMany({
@@ -52,16 +46,35 @@ export async function getRecentItems(userId: string, limit = 10): Promise<Dashbo
   return items.map(toDBItem)
 }
 
-export async function getItemTypeCounts(userId: string): Promise<Record<string, number>> {
+export interface SidebarItemType {
+  id: string
+  name: string
+  icon: string
+  color: string
+  count: number
+}
+
+const SYSTEM_TYPE_ORDER = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
+
+export async function getSidebarItemTypes(userId: string): Promise<SidebarItemType[]> {
   const types = await prisma.itemType.findMany({
-    where: { isSystem: true },
+    where: { isSystem: true, userId: null },
     include: {
       _count: {
         select: { items: { where: { userId } } },
       },
     },
   })
-  return Object.fromEntries(types.map((t) => [t.name, t._count.items]))
+  const mapped = types.map((t) => ({
+    id: t.id,
+    name: t.name,
+    icon: t.icon,
+    color: t.color,
+    count: t._count.items,
+  }))
+  return mapped.sort(
+    (a, b) => SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name)
+  )
 }
 
 export async function getItemStats(userId: string): Promise<ItemStats> {

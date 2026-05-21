@@ -3,13 +3,6 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import {
-  Code,
-  Sparkles,
-  Terminal,
-  StickyNote,
-  File,
-  Image as ImageIcon,
-  Link as LinkIcon,
   Star,
   Settings,
   ChevronDown,
@@ -23,17 +16,16 @@ import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { getItemIcon } from '@/lib/icon-utils'
 import type { SidebarData } from './dashboard-layout'
 
-const ITEM_TYPES = [
-  { name: 'snippet', label: 'Snippets', Icon: Code, color: '#3b82f6', href: '/items/snippets' },
-  { name: 'prompt', label: 'Prompts', Icon: Sparkles, color: '#8b5cf6', href: '/items/prompts' },
-  { name: 'command', label: 'Commands', Icon: Terminal, color: '#f97316', href: '/items/commands' },
-  { name: 'note', label: 'Notes', Icon: StickyNote, color: '#fde047', href: '/items/notes' },
-  { name: 'file', label: 'Files', Icon: File, color: '#6b7280', href: '/items/files' },
-  { name: 'image', label: 'Images', Icon: ImageIcon, color: '#ec4899', href: '/items/images' },
-  { name: 'link', label: 'Links', Icon: LinkIcon, color: '#10b981', href: '/items/links' },
-] as const
+function typeHref(name: string) {
+  return `/items/${name}s`
+}
+
+function typeLabel(name: string) {
+  return name.charAt(0).toUpperCase() + name.slice(1) + 's'
+}
 
 interface CollapsedSidebarProps {
   sidebarData: SidebarData
@@ -54,19 +46,22 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
 
         <ScrollArea className="flex-1 w-full">
           <div className="flex flex-col items-center gap-1 px-2">
-            {ITEM_TYPES.map(({ name, label, Icon, color, href }) => (
-              <Tooltip key={name}>
-                <TooltipTrigger render={<span />}>
-                  <Link
-                    href={href}
-                    className="flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-muted"
-                  >
-                    <Icon className="size-4 shrink-0" style={{ color }} />
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="right">{label}</TooltipContent>
-              </Tooltip>
-            ))}
+            {sidebarData.itemTypes.map((t) => {
+              const Icon = getItemIcon(t.icon)
+              return (
+                <Tooltip key={t.id}>
+                  <TooltipTrigger render={<span />}>
+                    <Link
+                      href={typeHref(t.name)}
+                      className="flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-muted"
+                    >
+                      {Icon && <Icon className="size-4 shrink-0" style={{ color: t.color }} />}
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{typeLabel(t.name)}</TooltipContent>
+                </Tooltip>
+              )
+            })}
 
             {favoriteCollections.length > 0 && (
               <>
@@ -116,7 +111,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
   const [collectionsOpen, setCollectionsOpen] = useState(true)
 
   const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
-  const recentCollections = sidebarData.collections.filter((c) => !c.isFavorite)
+  const recentCollections = sidebarData.collections.filter((c) => !c.isFavorite).slice(0, 5)
 
   return (
     <div className="flex h-full flex-col">
@@ -138,18 +133,21 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
             <ChevronDown className={cn('size-3 transition-transform duration-150', !typesOpen && '-rotate-90')} />
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-0.5 px-2">
-            {ITEM_TYPES.map(({ name, label, Icon, color, href }) => (
-              <Link
-                key={name}
-                href={href}
-                onClick={onClose}
-                className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <Icon className="size-4 shrink-0" style={{ color }} />
-                <span className="flex-1">{label}</span>
-                <span className="text-xs tabular-nums">{sidebarData.itemTypeCounts[name] ?? 0}</span>
-              </Link>
-            ))}
+            {sidebarData.itemTypes.map((t) => {
+              const Icon = getItemIcon(t.icon)
+              return (
+                <Link
+                  key={t.id}
+                  href={typeHref(t.name)}
+                  onClick={onClose}
+                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  {Icon && <Icon className="size-4 shrink-0" style={{ color: t.color }} />}
+                  <span className="flex-1">{typeLabel(t.name)}</span>
+                  <span className="text-xs tabular-nums">{t.count}</span>
+                </Link>
+              )
+            })}
           </CollapsibleContent>
         </Collapsible>
 

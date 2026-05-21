@@ -1,6 +1,6 @@
 import { Star } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
-import { getItemIcon } from '@/lib/db/items'
+import { getItemIcon } from '@/lib/icon-utils'
 import type { CollectionWithTypes } from '@/lib/db/collections'
 
 interface CollectionsGridProps {

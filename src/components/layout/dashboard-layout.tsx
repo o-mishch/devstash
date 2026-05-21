@@ -4,10 +4,11 @@ import { Input } from '@/components/ui/input'
 import { CollapsibleSidebar } from './collapsible-sidebar'
 import { MobileDrawer } from './mobile-drawer'
 import type { CollectionWithTypes } from '@/lib/db/collections'
+import type { SidebarItemType } from '@/lib/db/items'
 
 export interface SidebarData {
   collections: CollectionWithTypes[]
-  itemTypeCounts: Record<string, number>
+  itemTypes: SidebarItemType[]
 }
 
 interface DashboardLayoutProps {

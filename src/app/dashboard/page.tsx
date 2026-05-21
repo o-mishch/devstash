@@ -4,28 +4,28 @@ import { StatsCards } from '@/components/dashboard/stats-cards'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { ItemList } from '@/components/dashboard/item-list'
 import { getRecentCollections, getCurrentUserId } from '@/lib/db/collections'
-import { getPinnedItems, getRecentItems, getItemStats, getItemTypeCounts } from '@/lib/db/items'
+import { getPinnedItems, getRecentItems, getItemStats, getSidebarItemTypes } from '@/lib/db/items'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default async function DashboardPage() {
   const userId = await getCurrentUserId()
 
-  const [allCollections, pinned, recent, itemStats, itemTypeCounts] = userId
+  const [allCollections, pinned, recent, itemStats, itemTypes] = userId
     ? await Promise.all([
         getRecentCollections(userId, 1000),
         getPinnedItems(userId),
         getRecentItems(userId),
         getItemStats(userId),
-        getItemTypeCounts(userId),
+        getSidebarItemTypes(userId),
       ])
-    : [[], [], [], { totalItems: 0, favoriteItems: 0 }, {}]
+    : [[], [], [], { totalItems: 0, favoriteItems: 0 }, []]
 
   const collectionStats = {
     totalCollections: allCollections.length,
     favoriteCollections: allCollections.filter((c) => c.isFavorite).length,
   }
   const collections = allCollections.slice(0, 6)
-  const sidebarData = { collections: allCollections, itemTypeCounts }
+  const sidebarData = { collections: allCollections, itemTypes }
 
   return (
     <DashboardLayout sidebarData={sidebarData}>
