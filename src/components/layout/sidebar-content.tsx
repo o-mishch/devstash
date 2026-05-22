@@ -17,7 +17,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { getItemIcon } from '@/lib/icon-utils'
+import { Badge } from '@/components/ui/badge'
 import type { SidebarData } from './dashboard-layout'
+
+const PRO_TYPE_NAMES = new Set(['file', 'image'])
 
 function typeHref(name: string) {
   return `/items/${name}s`
@@ -144,6 +147,9 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                 >
                   {Icon && <Icon className="size-4 shrink-0" style={{ color: t.color }} />}
                   <span className="flex-1">{typeLabel(t.name)}</span>
+                  {PRO_TYPE_NAMES.has(t.name) && (
+                    <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
+                  )}
                   <span className="text-xs tabular-nums">{t.count}</span>
                 </Link>
               )
