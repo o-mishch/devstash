@@ -17,7 +17,21 @@ Review the codebase for cleanup tasks:
 
 **Mode: $ARGUMENTS**
 
-If no argument or argument is "check":
+If no argument is provided, respond with the following usage guide and stop — do not run any checks:
+
+---
+
+**Usage:** `/cleanup [argument]`
+
+| Argument | Description |
+| --- | --- |
+| `check` *(default)* | Scan the codebase and report all findings — no changes made |
+| `run` | Report findings, then ask which items to fix before making any changes |
+| `improve` | Code quality review across clarity, architecture, naming, SOLID, and overengineering |
+
+---
+
+If the argument is "check":
 
 - Only report findings, don't modify anything
 - List what WOULD be cleaned up
