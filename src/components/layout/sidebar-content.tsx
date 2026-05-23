@@ -22,11 +22,11 @@ import type { SidebarData } from './dashboard-layout'
 
 const PRO_TYPE_NAMES = new Set(['file', 'image'])
 
-function typeHref(name: string) {
+function getTypeHref(name: string) {
   return `/items/${name}s`
 }
 
-function typeLabel(name: string) {
+function getTypeLabel(name: string) {
   return name.charAt(0).toUpperCase() + name.slice(1) + 's'
 }
 
@@ -55,13 +55,13 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
                 <Tooltip key={t.id}>
                   <TooltipTrigger render={<span />}>
                     <Link
-                      href={typeHref(t.name)}
+                      href={getTypeHref(t.name)}
                       className="flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-muted"
                     >
                       {Icon && <Icon className="size-4 shrink-0" style={{ color: t.color }} />}
                     </Link>
                   </TooltipTrigger>
-                  <TooltipContent side="right">{typeLabel(t.name)}</TooltipContent>
+                  <TooltipContent side="right">{getTypeLabel(t.name)}</TooltipContent>
                 </Tooltip>
               )
             })}
@@ -141,12 +141,12 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
               return (
                 <Link
                   key={t.id}
-                  href={typeHref(t.name)}
+                  href={getTypeHref(t.name)}
                   onClick={onClose}
                   className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                   {Icon && <Icon className="size-4 shrink-0" style={{ color: t.color }} />}
-                  <span className="flex-1">{typeLabel(t.name)}</span>
+                  <span className="flex-1">{getTypeLabel(t.name)}</span>
                   {PRO_TYPE_NAMES.has(t.name) && (
                     <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
                   )}
@@ -249,13 +249,25 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
 interface SidebarContentProps {
   sidebarData: SidebarData
   onClose?: () => void
-  onToggle?: () => void
-  collapsed?: boolean
+  collapsible?: boolean
 }
 
-export function SidebarContent({ sidebarData, onClose, onToggle, collapsed = false }: SidebarContentProps) {
-  if (collapsed && onToggle) {
-    return <CollapsedSidebar sidebarData={sidebarData} onToggle={onToggle} />
+export function SidebarContent({ sidebarData, onClose, collapsible = false }: SidebarContentProps) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  if (collapsible) {
+    return (
+      <aside
+        className={`hidden flex-col border-r border-border bg-muted/30 transition-all duration-200 lg:flex ${collapsed ? 'w-14' : 'w-56'}`}
+      >
+        {collapsed ? (
+          <CollapsedSidebar sidebarData={sidebarData} onToggle={() => setCollapsed(false)} />
+        ) : (
+          <ExpandedSidebar sidebarData={sidebarData} onToggle={() => setCollapsed(true)} />
+        )}
+      </aside>
+    )
   }
-  return <ExpandedSidebar sidebarData={sidebarData} onClose={onClose} onToggle={onToggle} />
+
+  return <ExpandedSidebar sidebarData={sidebarData} onClose={onClose} />
 }

@@ -24,16 +24,16 @@ type ItemWithRelations = Prisma.ItemGetPayload<{
   include: { itemType: true; tags: true }
 }>
 
-const itemInclude = { itemType: true, tags: true } as const
+const ITEM_INCLUDE = { itemType: true, tags: true } as const
 
 
 export async function getPinnedItems(userId: string): Promise<DashboardItem[]> {
   const items = await prisma.item.findMany({
     where: { userId, isPinned: true },
     orderBy: { updatedAt: 'desc' },
-    include: itemInclude,
+    include: ITEM_INCLUDE,
   })
-  return items.map(toDBItem)
+  return items.map(toDashboardItem)
 }
 
 export async function getRecentItems(userId: string, limit = 10): Promise<DashboardItem[]> {
@@ -41,9 +41,9 @@ export async function getRecentItems(userId: string, limit = 10): Promise<Dashbo
     where: { userId },
     orderBy: { createdAt: 'desc' },
     take: limit,
-    include: itemInclude,
+    include: ITEM_INCLUDE,
   })
-  return items.map(toDBItem)
+  return items.map(toDashboardItem)
 }
 
 export interface SidebarItemType {
@@ -85,7 +85,7 @@ export async function getItemStats(userId: string): Promise<ItemStats> {
   return { totalItems, favoriteItems }
 }
 
-function toDBItem(item: ItemWithRelations): DashboardItem {
+function toDashboardItem(item: ItemWithRelations): DashboardItem {
   return {
     id: item.id,
     title: item.title,

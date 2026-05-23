@@ -1,7 +1,7 @@
 import { Archive, FolderPlus, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { CollapsibleSidebar } from './collapsible-sidebar'
+import { SidebarContent } from './sidebar-content'
 import { MobileDrawer } from './mobile-drawer'
 import type { CollectionWithTypes } from '@/lib/db/collections'
 import type { SidebarItemType } from '@/lib/db/items'
@@ -47,7 +47,7 @@ export function DashboardLayout({ children, sidebarData }: DashboardLayoutProps)
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <CollapsibleSidebar sidebarData={sidebarData} />
+        <SidebarContent sidebarData={sidebarData} collapsible />
 
         <main className="flex flex-1 flex-col overflow-auto">
           {children}

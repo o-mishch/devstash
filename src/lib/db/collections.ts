@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import type { Prisma } from '@/generated/prisma/client'
 
 export interface CollectionWithTypes {
   id: string
@@ -13,53 +14,67 @@ export interface CollectionWithTypes {
   types: Array<{ id: string; name: string; icon: string; color: string; isSystem: boolean }>
 }
 
+const COLLECTION_INCLUDE = {
+  items: {
+    include: {
+      item: {
+        include: { itemType: true },
+      },
+    },
+  },
+} as const
+
+type CollectionRow = Prisma.CollectionGetPayload<{ include: typeof COLLECTION_INCLUDE }>
+
+function mapCollection(col: CollectionRow): CollectionWithTypes {
+  const typeCounts = new Map<string, { count: number; type: { id: string; name: string; icon: string; color: string; isSystem: boolean } }>()
+
+  for (const ic of col.items) {
+    const { itemType } = ic.item
+    const existing = typeCounts.get(itemType.id)
+    if (existing) {
+      existing.count++
+    } else {
+      typeCounts.set(itemType.id, {
+        count: 1,
+        type: { id: itemType.id, name: itemType.name, icon: itemType.icon, color: itemType.color, isSystem: itemType.isSystem },
+      })
+    }
+  }
+
+  const sortedTypes = Array.from(typeCounts.values()).sort((a, b) => b.count - a.count)
+
+  return {
+    id: col.id,
+    name: col.name,
+    description: col.description,
+    isFavorite: col.isFavorite,
+    defaultTypeId: col.defaultTypeId,
+    createdAt: col.createdAt,
+    updatedAt: col.updatedAt,
+    itemCount: col.items.length,
+    dominantColor: sortedTypes[0]?.type.color ?? null,
+    types: sortedTypes.slice(0, 4).map(({ type }) => type),
+  }
+}
+
 export async function getRecentCollections(userId: string, limit = 6): Promise<CollectionWithTypes[]> {
   const collections = await prisma.collection.findMany({
     where: { userId },
     orderBy: { updatedAt: 'desc' },
     take: limit,
-    include: {
-      items: {
-        include: {
-          item: {
-            include: { itemType: true },
-          },
-        },
-      },
-    },
+    include: COLLECTION_INCLUDE,
   })
+  return collections.map(mapCollection)
+}
 
-  return collections.map((col) => {
-    const typeCounts = new Map<string, { count: number; type: { id: string; name: string; icon: string; color: string; isSystem: boolean } }>()
-
-    for (const ic of col.items) {
-      const { itemType } = ic.item
-      const existing = typeCounts.get(itemType.id)
-      if (existing) {
-        existing.count++
-      } else {
-        typeCounts.set(itemType.id, {
-          count: 1,
-          type: { id: itemType.id, name: itemType.name, icon: itemType.icon, color: itemType.color, isSystem: itemType.isSystem },
-        })
-      }
-    }
-
-    const sortedTypes = Array.from(typeCounts.values()).sort((a, b) => b.count - a.count)
-
-    return {
-      id: col.id,
-      name: col.name,
-      description: col.description,
-      isFavorite: col.isFavorite,
-      defaultTypeId: col.defaultTypeId,
-      createdAt: col.createdAt,
-      updatedAt: col.updatedAt,
-      itemCount: col.items.length,
-      dominantColor: sortedTypes[0]?.type.color ?? null,
-      types: sortedTypes.slice(0, 4).map(({ type }) => type),
-    }
+export async function getAllCollections(userId: string): Promise<CollectionWithTypes[]> {
+  const collections = await prisma.collection.findMany({
+    where: { userId },
+    orderBy: { updatedAt: 'desc' },
+    include: COLLECTION_INCLUDE,
   })
+  return collections.map(mapCollection)
 }
 
 // TODO: Replace with real session lookup once NextAuth is configured

@@ -2,8 +2,8 @@ import { Pin } from 'lucide-react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { StatsCards } from '@/components/dashboard/stats-cards'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
-import { ItemList } from '@/components/dashboard/item-list'
-import { getRecentCollections, getCurrentUserId } from '@/lib/db/collections'
+import { ItemRow } from '@/components/dashboard/item-row'
+import { getAllCollections, getCurrentUserId } from '@/lib/db/collections'
 import { getPinnedItems, getRecentItems, getItemStats, getSidebarItemTypes } from '@/lib/db/items'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -12,7 +12,7 @@ export default async function DashboardPage() {
 
   const [allCollections, pinned, recent, itemStats, itemTypes] = userId
     ? await Promise.all([
-        getRecentCollections(userId, 1000),
+        getAllCollections(userId),
         getPinnedItems(userId),
         getRecentItems(userId),
         getItemStats(userId),
@@ -63,7 +63,9 @@ export default async function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ItemList items={pinned} />
+              <div className="flex flex-col gap-3">
+                {pinned.map((item) => <ItemRow key={item.id} item={item} />)}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -73,7 +75,9 @@ export default async function DashboardPage() {
             <CardTitle className="text-sm font-semibold">Recent Items</CardTitle>
           </CardHeader>
           <CardContent>
-            <ItemList items={recent} />
+            <div className="flex flex-col gap-3">
+              {recent.map((item) => <ItemRow key={item.id} item={item} />)}
+            </div>
           </CardContent>
         </Card>
       </div>
