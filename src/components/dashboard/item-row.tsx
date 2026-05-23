@@ -1,10 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { getItemIcon } from '@/lib/icon-utils'
+import { formatDate } from '@/lib/utils'
 import type { DashboardItem } from '@/lib/db/items'
-
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
 
 interface ItemRowProps {
   item: DashboardItem

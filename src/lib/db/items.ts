@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma/client'
+import { clampLimit } from '@/lib/utils'
 
 export interface DashboardItem {
   id: string
@@ -26,21 +27,25 @@ type ItemWithRelations = Prisma.ItemGetPayload<{
 
 const ITEM_INCLUDE = { itemType: true, tags: true } as const
 
+const PINNED_LIMIT = 20
+const RECENT_LIMIT = 100
 
-export async function getPinnedItems(userId: string): Promise<DashboardItem[]> {
+
+export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<DashboardItem[]> {
   const items = await prisma.item.findMany({
     where: { userId, isPinned: true },
     orderBy: { updatedAt: 'desc' },
+    take: clampLimit(limit, 1, PINNED_LIMIT),
     include: ITEM_INCLUDE,
   })
   return items.map(toDashboardItem)
 }
 
-export async function getRecentItems(userId: string, limit = 10): Promise<DashboardItem[]> {
+export async function getRecentItems(userId: string, limit = RECENT_LIMIT): Promise<DashboardItem[]> {
   const items = await prisma.item.findMany({
     where: { userId },
     orderBy: { createdAt: 'desc' },
-    take: limit,
+    take: clampLimit(limit, 1, RECENT_LIMIT),
     include: ITEM_INCLUDE,
   })
   return items.map(toDashboardItem)

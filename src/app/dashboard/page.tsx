@@ -1,35 +1,31 @@
 import { Pin } from 'lucide-react'
-import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { StatsCards } from '@/components/dashboard/stats-cards'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { ItemRow } from '@/components/dashboard/item-row'
 import { getAllCollections, getCurrentUserId } from '@/lib/db/collections'
-import { getPinnedItems, getRecentItems, getItemStats, getSidebarItemTypes } from '@/lib/db/items'
+import { getPinnedItems, getRecentItems, getItemStats } from '@/lib/db/items'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export default async function DashboardPage() {
   const userId = await getCurrentUserId()
 
-  const [allCollections, pinned, recent, itemStats, itemTypes] = userId
+  const [allCollections, pinned, recent, itemStats] = userId
     ? await Promise.all([
         getAllCollections(userId),
         getPinnedItems(userId),
         getRecentItems(userId),
         getItemStats(userId),
-        getSidebarItemTypes(userId),
       ])
-    : [[], [], [], { totalItems: 0, favoriteItems: 0 }, []]
+    : [[], [], [], { totalItems: 0, favoriteItems: 0 }]
 
   const collectionStats = {
     totalCollections: allCollections.length,
     favoriteCollections: allCollections.filter((c) => c.isFavorite).length,
   }
   const collections = allCollections.slice(0, 6)
-  const sidebarData = { collections: allCollections, itemTypes }
 
   return (
-    <DashboardLayout sidebarData={sidebarData}>
-      <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Your developer knowledge hub</p>
@@ -80,7 +76,6 @@ export default async function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
-    </DashboardLayout>
+    </div>
   )
 }

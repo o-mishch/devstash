@@ -1,7 +1,16 @@
-import * as Icons from 'lucide-react'
+import { Code, Sparkles, Terminal, StickyNote, File, Image, Link } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
+const ICON_MAP: Record<string, LucideIcon> = {
+  Code,
+  Sparkles,
+  Terminal,
+  StickyNote,
+  File,
+  Image,
+  Link,
+}
+
 export function getItemIcon(iconName: string): LucideIcon | null {
-  const icon = Icons[iconName as keyof typeof Icons]
-  return icon != null ? (icon as unknown as LucideIcon) : null
+  return ICON_MAP[iconName] ?? null
 }
