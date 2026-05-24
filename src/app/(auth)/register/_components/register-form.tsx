@@ -48,7 +48,7 @@ export function RegisterForm() {
         return
       }
 
-      toast.success('Account created! You can now sign in.')
+      toast.success(data.message ?? 'Account created! Check your email to verify your account.')
       router.push('/sign-in')
     } catch {
       toast.error('Something went wrong. Please try again.')

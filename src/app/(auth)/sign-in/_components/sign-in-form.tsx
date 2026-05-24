@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useEffect } from 'react'
+import { useActionState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
@@ -9,13 +9,22 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { signInWithCredentials, signInWithGitHub } from '@/actions/auth'
+import { signInWithCredentials, signInWithGitHub, resendVerificationEmail } from '@/actions/auth'
 
-export function SignInForm() {
+interface SignInFormProps {
+  successMessage?: string
+}
+
+export function SignInForm({ successMessage }: SignInFormProps) {
   const router = useRouter()
+  const emailRef = useRef<HTMLInputElement>(null)
   const [state, formAction, isPending] = useActionState(signInWithCredentials, {
     status: 'idle' as const,
   })
+
+  useEffect(() => {
+    if (successMessage) toast.success(successMessage)
+  }, [successMessage])
 
   useEffect(() => {
     if (state.status === 'success') {
@@ -26,12 +35,41 @@ export function SignInForm() {
     }
   }, [state, router])
 
+  async function handleResend() {
+    const email = emailRef.current?.value
+    if (!email) return
+    const { sent } = await resendVerificationEmail(email)
+    if (sent) {
+      toast.success('Verification email resent. Check your inbox.')
+    } else {
+      toast.info('A verification email was sent recently. Please check your inbox.')
+    }
+  }
+
   return (
     <div className="space-y-4">
+      {state.status === 'unverified' && (
+        <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm">
+          <p className="font-medium text-yellow-600 dark:text-yellow-400">Email not verified</p>
+          <p className="mt-0.5 text-muted-foreground">
+            Please check your inbox or{' '}
+            <button
+              type="button"
+              onClick={handleResend}
+              className="text-primary underline-offset-4 hover:underline"
+            >
+              resend the verification email
+            </button>
+            .
+          </p>
+        </div>
+      )}
+
       <form action={formAction} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input
+            ref={emailRef}
             id="email"
             name="email"
             type="email"

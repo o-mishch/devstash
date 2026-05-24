@@ -5,7 +5,7 @@ import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { SidebarContent } from './sidebar-content'
-import type { SidebarData } from './dashboard-layout'
+import type { SidebarData } from '@/lib/db/sidebar'
 
 interface MobileDrawerProps {
   sidebarData: SidebarData

@@ -1,9 +1,6 @@
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma/client'
-import { clampLimit } from '@/lib/utils'
-
-const RECENT_COLLECTIONS_LIMIT = 50
 
 export interface CollectionWithTypes {
   id: string
@@ -64,16 +61,6 @@ function mapCollection(col: CollectionRow): CollectionWithTypes {
     dominantColor: sortedTypes[0]?.type.color ?? null,
     types: sortedTypes.slice(0, 4).map(({ type }) => type),
   }
-}
-
-export async function getRecentCollections(userId: string, limit = 6): Promise<CollectionWithTypes[]> {
-  const collections = await prisma.collection.findMany({
-    where: { userId },
-    orderBy: { updatedAt: 'desc' },
-    take: clampLimit(limit, 1, RECENT_COLLECTIONS_LIMIT),
-    include: COLLECTION_INCLUDE,
-  })
-  return collections.map(mapCollection)
 }
 
 export async function getAllCollections(userId: string): Promise<CollectionWithTypes[]> {

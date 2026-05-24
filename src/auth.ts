@@ -1,4 +1,4 @@
-import NextAuth, { type Session, type User } from 'next-auth'
+import NextAuth, { type User } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import type { AdapterUser } from '@auth/core/adapters'
 import { PrismaAdapter } from '@auth/prisma-adapter'
@@ -18,13 +18,16 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: 'jwt' },
   callbacks: {
-    jwt({ token, user }: { token: JWT; user?: AdapterUser | User }): JWT {
+    async jwt({ token, user }: { token: JWT; user?: AdapterUser | User }): Promise<JWT | null> {
       if (user) token.id = user.id
+      if (token.id) {
+        const exists = await prisma.user.findUnique({ where: { id: token.id as string }, select: { id: true } })
+        if (!exists) {
+          console.warn('[jwt] user not found by token.id, invalidating session:', token.id)
+          return null
+        }
+      }
       return token
-    },
-    session({ session, token }: { session: Session; token: JWT }): Session {
-      session.user.id = token.id as string
-      return session
     },
   },
   ...authConfig,
@@ -54,6 +57,8 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         )
 
         if (!isValid) return null
+
+        if (!user.emailVerified) return null
 
         return { id: user.id, email: user.email, name: user.name, image: user.image }
       },

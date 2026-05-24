@@ -1,7 +1,19 @@
 import { Archive } from 'lucide-react'
 import { SignInForm } from './_components/sign-in-form'
 
-export default function SignInPage() {
+interface SignInPageProps {
+  searchParams: Promise<{ verified?: string; resent?: string }>
+}
+
+function getSuccessMessage(verified?: string, resent?: string): string | undefined {
+  if (verified === '1') return 'Email verified! You can now sign in.'
+  if (resent === '1') return 'Verification email resent. Check your inbox.'
+  return undefined
+}
+
+export default async function SignInPage({ searchParams }: SignInPageProps) {
+  const { verified, resent } = await searchParams
+
   return (
     <div className="w-full max-w-sm space-y-6">
       <div className="flex flex-col items-center gap-2 text-center">
@@ -15,7 +27,7 @@ export default function SignInPage() {
         </p>
       </div>
 
-      <SignInForm />
+      <SignInForm successMessage={getSuccessMessage(verified, resent)} />
     </div>
   )
 }
