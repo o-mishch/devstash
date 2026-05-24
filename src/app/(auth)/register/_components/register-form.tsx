@@ -1,16 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+
+import { Loader2, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export function RegisterForm() {
-  const router = useRouter()
   const [isPending, setIsPending] = useState(false)
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null)
 
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -48,13 +49,36 @@ export function RegisterForm() {
         return
       }
 
-      toast.success(data.message ?? 'Account created! Check your email to verify your account.')
-      router.push('/sign-in')
+      setRegisteredEmail(email)
     } catch {
       toast.error('Something went wrong. Please try again.')
     } finally {
       setIsPending(false)
     }
+  }
+
+  if (registeredEmail) {
+    return (
+      <div className="flex flex-col items-center gap-5 rounded-lg border border-border bg-card p-8 text-center">
+        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10">
+          <Mail className="size-7 text-primary" />
+        </div>
+        <div className="space-y-1.5">
+          <p className="font-semibold">Check your inbox</p>
+          <p className="text-sm text-muted-foreground">
+            We sent a verification link to{' '}
+            <span className="font-medium text-foreground">{registeredEmail}</span>.
+            Click it to activate your account.
+          </p>
+        </div>
+        <Link
+          href="/sign-in"
+          className="inline-flex w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          Back to sign in
+        </Link>
+      </div>
+    )
   }
 
   return (
