@@ -6,9 +6,16 @@ import { MobileDrawer } from './mobile-drawer'
 import type { CollectionWithTypes } from '@/lib/db/collections'
 import type { SidebarItemType } from '@/lib/db/items'
 
+export interface SidebarUser {
+  name: string | null
+  email: string | null
+  image: string | null
+}
+
 export interface SidebarData {
   collections: CollectionWithTypes[]
   itemTypes: SidebarItemType[]
+  user: SidebarUser | null
 }
 
 interface DashboardLayoutProps {
