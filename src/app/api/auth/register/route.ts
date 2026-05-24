@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { sendVerificationEmail } from '@/lib/emails/verification'
+import { createVerificationToken } from '@/lib/tokens'
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,18 +20,20 @@ export async function POST(request: NextRequest) {
     }
 
     const existing = await prisma.user.findUnique({ where: { email } })
-    if (existing) {
-      return NextResponse.json({ error: 'Email already in use' }, { status: 409 })
+
+    if (!existing) {
+      const hashedPassword = await bcrypt.hash(password, 12)
+      await prisma.user.create({
+        data: { name, email, password: hashedPassword },
+      })
+      const token = await createVerificationToken(email)
+      await sendVerificationEmail(email, token)
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12)
-
-    const user = await prisma.user.create({
-      data: { name, email, password: hashedPassword },
-      select: { id: true, name: true, email: true },
-    })
-
-    return NextResponse.json({ success: true, user }, { status: 201 })
+    return NextResponse.json(
+      { success: true, message: "If that address is new to DevStash, you'll receive a verification email." },
+      { status: 200 }
+    )
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

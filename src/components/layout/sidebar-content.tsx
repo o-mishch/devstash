@@ -29,7 +29,7 @@ import { getItemIcon } from '@/lib/icon-utils'
 import { Badge } from '@/components/ui/badge'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { signOutAction } from '@/actions/auth'
-import type { SidebarData } from './dashboard-layout'
+import type { SidebarData } from '@/lib/db/sidebar'
 
 const PRO_TYPE_NAMES = new Set(['file', 'image'])
 

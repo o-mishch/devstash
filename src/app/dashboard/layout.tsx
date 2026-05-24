@@ -1,33 +1,62 @@
-import { auth } from '@/auth'
-import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { getAllCollections } from '@/lib/db/collections'
-import { getSidebarItemTypes } from '@/lib/db/items'
-import type { SidebarUser } from '@/components/layout/dashboard-layout'
+import { Suspense } from 'react'
+import { Archive, FolderPlus, Plus, Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { SidebarContent } from '@/components/layout/sidebar-content'
+import { SidebarSkeleton } from '@/components/layout/sidebar-skeleton'
+import { MobileDrawer } from '@/components/layout/mobile-drawer'
+import { getSidebarData } from '@/lib/db/sidebar'
 
-interface DashboardRootLayoutProps {
-  children: React.ReactNode
+async function SidebarAsync() {
+  const sidebarData = await getSidebarData()
+  return <SidebarContent sidebarData={sidebarData} collapsible />
 }
 
-export default async function DashboardRootLayout({ children }: DashboardRootLayoutProps) {
-  const session = await auth()
-  const userId: string | null = session?.user?.id ?? null
+async function MobileDrawerAsync() {
+  const sidebarData = await getSidebarData()
+  return <MobileDrawer sidebarData={sidebarData} />
+}
 
-  const [collections, itemTypes] = await Promise.all([
-    userId ? getAllCollections(userId) : Promise.resolve([]),
-    getSidebarItemTypes(userId),
-  ])
-
-  const user: SidebarUser | null = session?.user
-    ? {
-        name: session.user.name ?? null,
-        email: session.user.email ?? null,
-        image: session.user.image ?? null,
-      }
-    : null
-
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <DashboardLayout sidebarData={{ collections, itemTypes, user }}>
-      {children}
-    </DashboardLayout>
+    <div className="flex h-screen flex-col bg-background">
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+        <Suspense fallback={<div className="size-9 shrink-0 lg:hidden" />}>
+          <MobileDrawerAsync />
+        </Suspense>
+
+        <Archive className="size-4 shrink-0 text-primary" />
+        <span className="shrink-0 text-base font-semibold tracking-tight">DevStash</span>
+
+        <div className="relative mx-auto min-w-0 flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Search items..." className="pl-8" readOnly />
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" className="hidden sm:flex">
+            <FolderPlus className="size-4" />
+            New Collection
+          </Button>
+          <Button size="icon" className="sm:hidden">
+            <Plus className="size-4" />
+          </Button>
+          <Button size="sm" className="hidden sm:flex">
+            <Plus className="size-4" />
+            New Item
+          </Button>
+        </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+        <Suspense fallback={<SidebarSkeleton />}>
+          <SidebarAsync />
+        </Suspense>
+
+        <main className="flex flex-1 flex-col overflow-auto">
+          {children}
+        </main>
+      </div>
+    </div>
   )
 }

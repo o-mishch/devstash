@@ -43,7 +43,10 @@ async function seedItems(
 
 async function main() {
   console.log('Seeding system item types...')
-  await prisma.itemType.createMany({ data: systemItemTypes, skipDuplicates: true })
+  for (const type of systemItemTypes) {
+    const existing = await prisma.itemType.findFirst({ where: { name: type.name, userId: null } })
+    if (!existing) await prisma.itemType.create({ data: type })
+  }
 
   console.log('Seeding demo user...')
   const passwordHash = await bcrypt.hash('12345678', 12)
@@ -58,6 +61,10 @@ async function main() {
       emailVerified: new Date(),
     },
   })
+
+  // Wipe existing content before recreating (items have their own userId FK, not cascade-deleted with collections)
+  await prisma.item.deleteMany({ where: { userId: user.id } })
+  await prisma.collection.deleteMany({ where: { userId: user.id } })
 
   const types = await prisma.itemType.findMany({ where: { isSystem: true, userId: null } })
   const t = Object.fromEntries(types.map((type) => [type.name, type.id]))
