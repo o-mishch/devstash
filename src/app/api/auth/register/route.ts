@@ -27,13 +27,11 @@ export async function POST(request: NextRequest) {
         data: { name, email, password: hashedPassword },
       })
       const token = await createVerificationToken(email)
-      await sendVerificationEmail(email, token)
+      const emailSent = await sendVerificationEmail(email, token)
+      return NextResponse.json({ success: true, emailSent }, { status: 200 })
     }
 
-    return NextResponse.json(
-      { success: true, message: "If that address is new to DevStash, you'll receive a verification email." },
-      { status: 200 }
-    )
+    return NextResponse.json({ success: true, emailSent: true }, { status: 200 })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

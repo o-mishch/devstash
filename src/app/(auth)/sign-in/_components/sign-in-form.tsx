@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useEffect, useRef } from 'react'
+import { useActionState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
@@ -17,7 +17,6 @@ interface SignInFormProps {
 
 export function SignInForm({ successMessage }: SignInFormProps) {
   const router = useRouter()
-  const emailRef = useRef<HTMLInputElement>(null)
   const [state, formAction, isPending] = useActionState(signInWithCredentials, {
     status: 'idle' as const,
   })
@@ -36,13 +35,13 @@ export function SignInForm({ successMessage }: SignInFormProps) {
   }, [state, router])
 
   async function handleResend() {
-    const email = emailRef.current?.value
+    const email = state.email
     if (!email) return
     const { sent } = await resendVerificationEmail(email)
     if (sent) {
-      toast.success('Verification email resent. Check your inbox.')
+      toast.success('Verification email sent. Check your inbox.')
     } else {
-      toast.info('A verification email was sent recently. Please check your inbox.')
+      toast.error('Failed to send verification email. Please try again later.')
     }
   }
 
@@ -69,7 +68,6 @@ export function SignInForm({ successMessage }: SignInFormProps) {
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input
-            ref={emailRef}
             id="email"
             name="email"
             type="email"

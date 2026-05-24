@@ -18,6 +18,7 @@ export async function signInWithGitHub() {
 export type SignInState = {
   status: 'idle' | 'success' | 'unverified' | 'error'
   message?: string
+  email?: string
 }
 
 export async function signInWithCredentials(
@@ -39,7 +40,7 @@ export async function signInWithCredentials(
   }
 
   if (!user.emailVerified) {
-    return { status: 'unverified' }
+    return { status: 'unverified', email }
   }
 
   try {

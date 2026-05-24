@@ -6,13 +6,11 @@ import verificationHtml from './verification.html'
 const BASE_URL = process.env.NEXTAUTH_URL ?? 'http://localhost:3000'
 const RATE_LIMIT_MS = 55 * 60 * 1000
 
-export async function sendVerificationEmail(to: string, token: string) {
+export async function sendVerificationEmail(to: string, token: string): Promise<boolean> {
   const verifyUrl = `${BASE_URL}/verify-email?token=${token}`
   const html = verificationHtml.replace('{{VERIFY_URL}}', verifyUrl)
 
-  console.log(`[verification] sending email to ${to}`)
-
-  const { data, error } = await resend.emails.send(
+  const { error } = await resend.emails.send(
     {
       from: EMAIL_FROM,
       to: [to],
@@ -23,10 +21,11 @@ export async function sendVerificationEmail(to: string, token: string) {
   )
 
   if (error) {
-    console.error(`[verification] failed to send email to ${to}:`, error.message)
-  } else {
-    console.log(`[verification] email sent to ${to} (id: ${data?.id})`)
+    console.error('[verification] failed to send email:', error.message)
+    return false
   }
+
+  return true
 }
 
 export async function resendVerification(email: string): Promise<boolean> {
@@ -42,9 +41,13 @@ export async function resendVerification(email: string): Promise<boolean> {
     orderBy: { expires: 'desc' },
   })
 
-  if (existing && existing.expires.getTime() > Date.now() + (TOKEN_TTL_MS - RATE_LIMIT_MS)) return false
+  const isTokenFresh =
+    !!existing && existing.expires.getTime() > Date.now() + (TOKEN_TTL_MS - RATE_LIMIT_MS)
+
+  if (isTokenFresh) {
+    return sendVerificationEmail(email, existing.token)
+  }
 
   const token = await createVerificationToken(email)
-  await sendVerificationEmail(email, token)
-  return true
+  return sendVerificationEmail(email, token)
 }

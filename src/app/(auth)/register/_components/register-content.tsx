@@ -14,6 +14,7 @@ import { StatusCard } from '@/components/auth/status-card'
 export function RegisterContent() {
   const [isPending, setIsPending] = useState(false)
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null)
+  const [emailSent, setEmailSent] = useState(true)
 
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -51,6 +52,7 @@ export function RegisterContent() {
         return
       }
 
+      setEmailSent(data.emailSent)
       setRegisteredEmail(email)
     } catch {
       toast.error('Something went wrong. Please try again.')
@@ -60,6 +62,23 @@ export function RegisterContent() {
   }
 
   if (registeredEmail) {
+    if (!emailSent) {
+      return (
+        <StatusCard
+          variant="error"
+          title="Couldn't send verification email"
+          description={
+            <>
+              Your account was created, but we failed to send the verification email to{' '}
+              <span className="font-medium text-foreground">{registeredEmail}</span>.
+              Please sign in and request a new verification link.
+            </>
+          }
+          action={{ label: 'Go to sign in', href: '/sign-in' }}
+        />
+      )
+    }
+
     return (
       <StatusCard
         icon={Mail}
