@@ -1,27 +1,8 @@
-# Current Feature: Auth Credentials - Email/Password Provider
+# Current Feature
 
 ## Status
 
-In Progress
-
-## Goals
-
-- Add Credentials provider (email/password) to NextAuth alongside existing GitHub OAuth
-- Add `password` field to User model via Prisma migration if not already present
-- Update `auth.config.ts` with Credentials provider placeholder (`authorize: () => null`)
-- Update `auth.ts` to override Credentials with real bcrypt validation
-- Create `POST /api/auth/register` route (name, email, password, confirmPassword)
-- Registration validates passwords match, checks for existing user, hashes with bcryptjs, creates user
-- Sign-in with email/password redirects to `/dashboard`
-- GitHub OAuth continues to work unchanged
-
-## Notes
-
-- bcryptjs is already installed (added during Seed Data phase)
-- Use split config pattern: edge-compatible placeholder in `auth.config.ts`, actual bcrypt logic in `auth.ts`
-- Registration API returns `{ success, error }` pattern per coding standards
-- **Before implementing**: fetch NextAuth v5 Credentials provider docs via Context7 MCP to verify current API signatures for the split config pattern
-- Test: curl registration → `/api/auth/signin` sign-in → verify `/dashboard` redirect → verify GitHub OAuth still works
+None
 
 ---
 
@@ -39,3 +20,4 @@ In Progress
 - **Pro Badge in Sidebar** - Subtle outline `Badge` (ShadCN UI) with "PRO" label added inline next to the Files and Images item types in the expanded sidebar; `PRO_TYPE_NAMES` set used for clean gating with no DB changes required (Completed)
 - **Code Quality & Performance Pass** - Static lucide icon map, leaner `COLLECTION_INCLUDE` select, 5 missing DB indexes via migration, `formatDate`/`clampLimit` helpers in utils, DB query limit validation, dashboard route split into `layout.tsx`/`page.tsx` with `loading.tsx` skeleton and `error.tsx` boundary (Completed)
 - **Auth Setup - NextAuth + GitHub Provider** - `next-auth@beta` + `@auth/prisma-adapter` installed with npm overrides for Prisma 7; split config pattern (`auth.config.ts` edge-compatible, `auth.ts` with Prisma adapter + JWT); GitHub OAuth provider; `/dashboard` protected via `src/proxy.ts` (Next.js 16 proxy); `src/types/next-auth.d.ts` extends Session with `user.id`; default NextAuth sign-in page used (Completed)
+- **Auth Credentials - Email/Password Provider** - Credentials provider added to NextAuth using split config pattern: edge-safe placeholder in `auth.config.ts`, real bcrypt validation in `auth.ts`; duplicate provider deduped by filtering `authConfig.providers`; `POST /api/auth/register` validates inputs, checks for existing email, hashes with bcryptjs (cost 12), creates user, returns `{ success, user }` (Completed)
