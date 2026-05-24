@@ -18,3 +18,10 @@ npm run dev      # start dev server at localhost:3000
 npm run build    # production build
 npm run lint     # run ESLint
 ```
+
+## Neon Database
+
+- Project: `devstash` (ID: `wandering-lab-34213896`)
+- Default branch: `dev` (ID: `br-dry-scene-al1ir5ie`)
+- **Always use the `dev` branch for all Neon MCP queries and operations**
+- **Never touch the `production` branch** (`br-royal-poetry-ale2q4pb`) unless explicitly told to do so

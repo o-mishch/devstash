@@ -50,3 +50,8 @@ tmp
 
 # db session files
 *.session.sql
+
+.playwright-mcp
+
+# local MCP config (may contain API keys)
+.mcp.json
