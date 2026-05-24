@@ -1,3 +1,4 @@
+import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma/client'
 import { clampLimit } from '@/lib/utils'
@@ -84,11 +85,7 @@ export async function getAllCollections(userId: string): Promise<CollectionWithT
   return collections.map(mapCollection)
 }
 
-// TODO: Replace with real session lookup once NextAuth is configured
 export async function getCurrentUserId(): Promise<string | null> {
-  const user = await prisma.user.findUnique({
-    where: { email: 'demo@devstash.io' },
-    select: { id: true },
-  })
-  return user?.id ?? null
+  const session = await auth()
+  return session?.user?.id ?? null
 }

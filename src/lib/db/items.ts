@@ -61,21 +61,19 @@ export interface SidebarItemType {
 
 const SYSTEM_TYPE_ORDER = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
 
-export async function getSidebarItemTypes(userId: string): Promise<SidebarItemType[]> {
+export async function getSidebarItemTypes(userId: string | null): Promise<SidebarItemType[]> {
   const types = await prisma.itemType.findMany({
     where: { isSystem: true, userId: null },
-    include: {
-      _count: {
-        select: { items: { where: { userId } } },
-      },
-    },
+    include: userId
+      ? { _count: { select: { items: { where: { userId } } } } }
+      : { _count: { select: { items: true } } },
   })
   const mapped = types.map((t) => ({
     id: t.id,
     name: t.name,
     icon: t.icon,
     color: t.color,
-    count: t._count.items,
+    count: userId ? t._count.items : 0,
   }))
   return mapped.sort(
     (a, b) => SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name)

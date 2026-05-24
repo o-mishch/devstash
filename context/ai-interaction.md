@@ -57,3 +57,7 @@ Review AI-generated code periodically, especially for:
 - Performance (unnecessary re-renders, N+1 queries)
 - Logic errors (edge cases)
 - Patterns (matches existing codebase?)
+
+## Playwright MCP
+
+- After completing browser testing, always close the browser with `mcp__playwright__browser_close`

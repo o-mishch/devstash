@@ -1,6 +1,7 @@
 'use client' // required: collapsible sections and sidebar toggle use useState
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Star,
@@ -8,16 +9,26 @@ import {
   ChevronDown,
   PanelLeft,
   PanelRight,
+  LogOut,
+  User,
 } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { getItemIcon } from '@/lib/icon-utils'
 import { Badge } from '@/components/ui/badge'
+import { UserAvatar } from '@/components/shared/user-avatar'
+import { signOutAction } from '@/actions/auth'
 import type { SidebarData } from './dashboard-layout'
 
 const PRO_TYPE_NAMES = new Set(['file', 'image'])
@@ -110,6 +121,7 @@ interface ExpandedSidebarProps {
 }
 
 function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProps) {
+  const router = useRouter()
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
 
@@ -227,20 +239,35 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
 
       <Separator />
       <div className="shrink-0 p-3">
-        <div className="flex items-center gap-2">
-          <Avatar className="size-8 shrink-0">
-            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-medium">
-              DS
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium leading-none">Demo User</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">demo@devstash.io</p>
-          </div>
-          <Button variant="ghost" size="icon" className="size-7 shrink-0 text-muted-foreground">
-            <Settings className="size-3.5" />
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition-colors hover:bg-muted focus:outline-none">
+            <UserAvatar
+              name={sidebarData.user?.name}
+              image={sidebarData.user?.image}
+              className="shrink-0"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium leading-none">
+                {sidebarData.user?.name ?? 'Guest'}
+              </p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {sidebarData.user?.email ?? ''}
+              </p>
+            </div>
+            <Settings className="size-3.5 shrink-0 text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-52">
+            <DropdownMenuItem onClick={() => router.push('/profile')}>
+              <User className="size-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => signOutAction()} className="text-red-500 focus:text-red-500">
+              <LogOut className="size-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   )
