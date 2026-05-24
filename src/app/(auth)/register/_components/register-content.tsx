@@ -8,8 +8,10 @@ import { Loader2, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AuthLogo } from '@/components/auth/auth-logo'
+import { StatusCard } from '@/components/auth/status-card'
 
-export function RegisterForm() {
+export function RegisterContent() {
   const [isPending, setIsPending] = useState(false)
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null)
 
@@ -59,30 +61,32 @@ export function RegisterForm() {
 
   if (registeredEmail) {
     return (
-      <div className="flex flex-col items-center gap-5 rounded-lg border border-border bg-card p-8 text-center">
-        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10">
-          <Mail className="size-7 text-primary" />
-        </div>
-        <div className="space-y-1.5">
-          <p className="font-semibold">Check your inbox</p>
-          <p className="text-sm text-muted-foreground">
+      <StatusCard
+        icon={Mail}
+        title="Check your inbox"
+        description={
+          <>
             We sent a verification link to{' '}
             <span className="font-medium text-foreground">{registeredEmail}</span>.
             Click it to activate your account.
-          </p>
-        </div>
-        <Link
-          href="/sign-in"
-          className="inline-flex w-full items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-        >
-          Back to sign in
-        </Link>
-      </div>
+          </>
+        }
+        action={{ label: 'Back to sign in', href: '/sign-in' }}
+      />
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <>
+      <div className="flex flex-col items-center gap-2 text-center">
+        <AuthLogo />
+        <h1 className="text-2xl font-bold">Create an account</h1>
+        <p className="text-sm text-muted-foreground">
+          Get started with your developer knowledge hub.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-1.5">
         <Label htmlFor="name">Name</Label>
         <Input
@@ -133,5 +137,16 @@ export function RegisterForm() {
         Create account
       </Button>
     </form>
+
+      <p className="text-center text-sm text-muted-foreground">
+        Already have an account?{' '}
+        <Link
+          href="/sign-in"
+          className="font-medium text-foreground underline-offset-4 hover:underline"
+        >
+          Sign in
+        </Link>
+      </p>
+    </>
   )
 }
