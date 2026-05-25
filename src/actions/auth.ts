@@ -1,10 +1,16 @@
 'use server'
 
 import bcrypt from 'bcryptjs'
+import { redirect } from 'next/navigation'
 import { signIn, signOut } from '@/auth'
 import { AuthError } from 'next-auth'
 import { prisma } from '@/lib/prisma'
-import { emailVerificationEnabled } from '@/lib/emails/verification'
+import {
+  emailVerificationEnabled,
+  sendRegistrationVerification,
+  type VerificationResult,
+} from '@/lib/emails/verification'
+import { sendPasswordResetRequest } from '@/lib/emails/password-reset'
 import { consumePasswordResetToken } from '@/lib/tokens'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
@@ -98,4 +104,65 @@ export async function resetPasswordAction(
   })
 
   return ApiResponse.OK()
+}
+
+export async function forgotPasswordAction(
+  _prevState: ApiBody<null> | null,
+  formData: FormData
+): Promise<ApiBody<null>> {
+  const email = (formData.get('email') as string) ?? ''
+
+  if (!email) return ApiResponse.BAD_REQUEST('Email is required.')
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { password: true },
+  })
+
+  if (user?.password) {
+    await sendPasswordResetRequest(email)
+  }
+
+  redirect(`/forgot-password?sent=1&email=${encodeURIComponent(email)}`)
+}
+
+export async function registerAction(
+  _prevState: ApiBody<null> | null,
+  formData: FormData
+): Promise<ApiBody<null>> {
+  const name = (formData.get('name') as string) ?? ''
+  const email = (formData.get('email') as string) ?? ''
+  const password = (formData.get('password') as string) ?? ''
+  const confirm = (formData.get('confirmPassword') as string) ?? ''
+
+  if (!name || !email || !password) return ApiResponse.BAD_REQUEST('All fields are required.')
+  if (password.length < 8) return ApiResponse.BAD_REQUEST('Password must be at least 8 characters.')
+  if (password !== confirm) return ApiResponse.BAD_REQUEST('Passwords do not match.')
+
+  const verificationEnabled = emailVerificationEnabled()
+  const existing = await prisma.user.findUnique({ where: { email } })
+
+  let verification: VerificationResult = verificationEnabled ? 'sent' : 'skipped'
+
+  if (!existing) {
+    const hashedPassword = await bcrypt.hash(password, 12)
+    await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        emailVerified: verificationEnabled ? undefined : new Date(),
+      },
+    })
+
+    if (verificationEnabled) {
+      verification = await sendRegistrationVerification(email)
+    }
+  }
+
+  if (verification === 'skipped') {
+    redirect('/sign-in')
+  }
+
+  redirect(`/register?pending=1&email=${encodeURIComponent(email)}&sent=${verification === 'sent' ? '1' : '0'}`)
 }

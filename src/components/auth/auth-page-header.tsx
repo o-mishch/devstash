@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 // Shared base
 // ---------------------------------------------------------------------------
 
-function AuthPageBase({ children }: { children: React.ReactNode }) {
+export function AuthPageBase({ children }: { children: React.ReactNode }) {
   return (
     <div className="w-full max-w-sm space-y-6">
       <div className="flex justify-center">

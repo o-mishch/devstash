@@ -1,101 +1,25 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useActionState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { apiFetch } from '@/lib/api-fetch'
-import type { VerificationResult } from '@/lib/emails/verification'
-
-interface RegisterResponseData {
-  verification: VerificationResult
-}
-
-interface PostRegState {
-  email: string
-  emailSent: boolean
-}
+import { registerAction } from '@/actions/auth'
 
 export function RegisterForm() {
-  const router = useRouter()
-  const [isPending, setIsPending] = useState(false)
-  const [postReg, setPostReg] = useState<PostRegState | null>(null)
+  const [state, formAction, isPending] = useActionState(registerAction, null)
 
-  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const form = e.currentTarget
-    const formData = new FormData(form)
-
-    const name = formData.get('name') as string
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const confirmPassword = formData.get('confirmPassword') as string
-
-    if (password !== confirmPassword) {
-      toast.error('Passwords do not match.')
-      return
-    }
-
-    if (password.length < 8) {
-      toast.error('Password must be at least 8 characters.')
-      return
-    }
-
-    setIsPending(true)
-
-    const data = await apiFetch<RegisterResponseData>('/api/auth/register', {
-      method: 'POST',
-      body: { name, email, password },
-    })
-
-    setIsPending(false)
-
-    if (data.status !== 'ok') {
-      toast.error(data.message ?? 'Registration failed.')
-      return
-    }
-
-    if (data.data?.verification === 'skipped') {
-      toast.success('Account created! You can sign in now.')
-      router.push('/sign-in')
-      return
-    }
-
-    setPostReg({ email, emailSent: data.data?.verification === 'sent' })
-  }
-
-  if (postReg) {
-    return (
-      <div className="space-y-4">
-        <p className="text-center text-sm text-muted-foreground">
-          {postReg.emailSent ? (
-            <>
-              We sent a verification link to{' '}
-              <span className="font-medium text-foreground">{postReg.email}</span>.
-              Click it to activate your account.
-            </>
-          ) : (
-            <>
-              Your account was created, but we couldn&apos;t send the verification email to{' '}
-              <span className="font-medium text-foreground">{postReg.email}</span>.
-              Sign in and request a new verification link.
-            </>
-          )}
-        </p>
-        <Link href="/sign-in" className={buttonVariants({ variant: 'outline', className: 'w-full' })}>
-          Go to sign in
-        </Link>
-      </div>
-    )
-  }
+  useEffect(() => {
+    if (!state) return
+    toast.error(state.message ?? 'Registration failed.')
+  }, [state])
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form action={formAction} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="name">Name</Label>
           <Input
@@ -126,6 +50,7 @@ export function RegisterForm() {
             type="password"
             placeholder="••••••••"
             autoComplete="new-password"
+            minLength={8}
             required
           />
         </div>
@@ -137,6 +62,7 @@ export function RegisterForm() {
             type="password"
             placeholder="••••••••"
             autoComplete="new-password"
+            minLength={8}
             required
           />
         </div>
