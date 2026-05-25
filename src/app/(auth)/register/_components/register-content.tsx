@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
 
@@ -10,11 +11,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthLogo } from '@/components/auth/auth-logo'
 import { StatusCard } from '@/components/auth/status-card'
+import type { VerificationResult } from '@/lib/emails/verification'
+import type { ApiResponse } from '@/types/api'
+
+type RegisterResponse = ApiResponse<{ verification: VerificationResult }>
+type PostRegState = { email: string; emailSent: boolean } | null
 
 export function RegisterContent() {
+  const router = useRouter()
   const [isPending, setIsPending] = useState(false)
-  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null)
-  const [emailSent, setEmailSent] = useState(true)
+  const [postReg, setPostReg] = useState<PostRegState>(null)
 
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -45,15 +51,20 @@ export function RegisterContent() {
         body: JSON.stringify({ name, email, password }),
       })
 
-      const data = await res.json()
+      const data: RegisterResponse = await res.json()
 
-      if (!res.ok) {
-        toast.error(data.error ?? 'Registration failed.')
+      if (!data.success) {
+        toast.error(data.message ?? 'Registration failed.')
         return
       }
 
-      setEmailSent(data.emailSent)
-      setRegisteredEmail(email)
+      if (data.verification === 'skipped') {
+        toast.success('Account created! You can sign in now.')
+        router.push('/sign-in')
+        return
+      }
+
+      setPostReg({ email, emailSent: data.verification === 'sent' })
     } catch {
       toast.error('Something went wrong. Please try again.')
     } finally {
@@ -61,8 +72,8 @@ export function RegisterContent() {
     }
   }
 
-  if (registeredEmail) {
-    if (!emailSent) {
+  if (postReg) {
+    if (!postReg.emailSent) {
       return (
         <StatusCard
           variant="error"
@@ -70,7 +81,7 @@ export function RegisterContent() {
           description={
             <>
               Your account was created, but we failed to send the verification email to{' '}
-              <span className="font-medium text-foreground">{registeredEmail}</span>.
+              <span className="font-medium text-foreground">{postReg.email}</span>.
               Please sign in and request a new verification link.
             </>
           }
@@ -86,7 +97,7 @@ export function RegisterContent() {
         description={
           <>
             We sent a verification link to{' '}
-            <span className="font-medium text-foreground">{registeredEmail}</span>.
+            <span className="font-medium text-foreground">{postReg.email}</span>.
             Click it to activate your account.
           </>
         }

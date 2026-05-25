@@ -6,6 +6,7 @@ import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { authConfig } from '@/auth.config'
+import { emailVerificationEnabled } from '@/lib/emails/verification'
 
 interface AuthorizedUser {
   id: string
@@ -47,18 +48,15 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email as string },
+          select: { id: true, email: true, name: true, image: true, password: true, emailVerified: true },
         })
 
         if (!user?.password) return null
 
-        const isValid = await bcrypt.compare(
-          credentials.password as string,
-          user.password
-        )
-
+        const isValid = await bcrypt.compare(credentials.password as string, user.password)
         if (!isValid) return null
 
-        if (!user.emailVerified) return null
+        if (emailVerificationEnabled() && !user.emailVerified) return null
 
         return { id: user.id, email: user.email, name: user.name, image: user.image }
       },

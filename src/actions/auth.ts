@@ -2,13 +2,11 @@
 
 import { signIn, signOut } from '@/auth'
 import { AuthError } from 'next-auth'
-import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
-import { resendVerification } from '@/lib/emails/verification'
+import { resendVerification, emailVerificationEnabled } from '@/lib/emails/verification'
 
-export async function resendVerificationEmail(email: string): Promise<{ sent: boolean }> {
-  const sent = await resendVerification(email)
-  return { sent }
+export async function resendVerificationEmail(email: string): Promise<boolean> {
+  return resendVerification(email)
 }
 
 export async function signInWithGitHub() {
@@ -28,27 +26,18 @@ export async function signInWithCredentials(
   const email = (formData.get('email') as string) ?? ''
   const password = (formData.get('password') as string) ?? ''
 
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { password: true, emailVerified: true },
-  })
-
-  const passwordValid = user?.password && (await bcrypt.compare(password, user.password))
-
-  if (!passwordValid) {
-    return { status: 'error', message: 'Invalid email or password.' }
-  }
-
-  if (!user.emailVerified) {
-    return { status: 'unverified', email }
+  if (emailVerificationEnabled()) {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { emailVerified: true },
+    })
+    if (user && !user.emailVerified) {
+      return { status: 'unverified', email }
+    }
   }
 
   try {
-    await signIn('credentials', {
-      email,
-      password,
-      redirect: false,
-    })
+    await signIn('credentials', { email, password, redirect: false })
   } catch (error) {
     if (error instanceof AuthError) {
       switch (error.type) {
