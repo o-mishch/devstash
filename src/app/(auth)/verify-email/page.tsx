@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { resendVerification } from '@/lib/emails/verification'
-import { AuthLogo } from '@/components/auth/auth-logo'
-import { StatusCard } from '@/components/auth/status-card'
+import { AuthStatusPage } from '@/components/auth/auth-page-header'
 
 interface VerifyEmailPageProps {
   searchParams: Promise<{ token?: string }>
@@ -17,7 +16,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
 
   const record = await prisma.verificationToken.findUnique({ where: { token } })
 
-  if (!record) {
+  if (!record || record.identifier.startsWith('password-reset:')) {
     return (
       <ErrorCard
         title="Link invalid"
@@ -46,14 +45,12 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
   ])
 
   return (
-    <VerifyLayout>
-      <StatusCard
-        variant="success"
-        title="Email verified"
-        description="Your email address has been confirmed. You can now sign in to your account."
-        action={{ label: 'Sign in', href: '/sign-in' }}
-      />
-    </VerifyLayout>
+    <AuthStatusPage
+      variant="success"
+      title="Email verified"
+      description="Your email address has been confirmed. You can now sign in to your account."
+      action={{ label: 'Sign in', href: '/sign-in' }}
+    />
   )
 }
 
@@ -65,26 +62,12 @@ interface ErrorCardProps {
 
 function ErrorCard({ title, description, footer }: ErrorCardProps) {
   return (
-    <VerifyLayout>
-      <StatusCard
-        variant="error"
-        title={title}
-        description={description}
-        action={{ label: 'Back to sign in', href: '/sign-in' }}
-        footer={footer}
-      />
-    </VerifyLayout>
-  )
-}
-
-function VerifyLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="w-full max-w-sm space-y-6">
-      <div className="flex justify-center">
-        <AuthLogo />
-      </div>
-      {children}
-    </div>
+    <AuthStatusPage
+      variant="error"
+      title={title}
+      description={description}
+      footer={footer}
+    />
   )
 }
 
