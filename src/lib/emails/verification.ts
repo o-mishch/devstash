@@ -1,9 +1,8 @@
 import { prisma } from '@/lib/prisma'
-import { resend, EMAIL_FROM } from '@/lib/resend'
+import { resend, EMAIL_FROM, BASE_URL } from '@/lib/resend'
 import { createVerificationToken, TOKEN_TTL_MS } from '@/lib/tokens'
 import verificationHtml from './verification.html'
 
-const BASE_URL = process.env.NEXTAUTH_URL ?? 'http://localhost:3000'
 const RATE_LIMIT_MS = 55 * 60 * 1000
 
 export const emailVerificationEnabled = () =>

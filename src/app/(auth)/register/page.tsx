@@ -1,9 +1,13 @@
-import { RegisterContent } from './_components/register-content'
+import { AuthFormLayout } from '@/components/auth/auth-page-header'
+import { RegisterForm } from './_components/register-form'
 
 export default function RegisterPage() {
   return (
-    <div className="w-full max-w-sm space-y-6">
-      <RegisterContent />
-    </div>
+    <AuthFormLayout
+      title="Create an account"
+      description="Get started with your developer knowledge hub."
+    >
+      <RegisterForm />
+    </AuthFormLayout>
   )
 }
