@@ -12,15 +12,23 @@ import { Label } from '@/components/ui/label'
 import { AuthLogo } from '@/components/auth/auth-logo'
 import { StatusCard } from '@/components/auth/status-card'
 import type { VerificationResult } from '@/lib/emails/verification'
-import type { ApiResponse } from '@/types/api'
+import type { ApiBody } from '@/types/api'
 
-type RegisterResponse = ApiResponse<{ verification: VerificationResult }>
-type PostRegState = { email: string; emailSent: boolean } | null
+interface RegisterResponseData {
+  verification: VerificationResult
+}
+
+interface PostRegState {
+  email: string
+  emailSent: boolean
+}
+
+type RegisterResponse = ApiBody<RegisterResponseData>
 
 export function RegisterContent() {
   const router = useRouter()
   const [isPending, setIsPending] = useState(false)
-  const [postReg, setPostReg] = useState<PostRegState>(null)
+  const [postReg, setPostReg] = useState<PostRegState | null>(null)
 
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -53,18 +61,18 @@ export function RegisterContent() {
 
       const data: RegisterResponse = await res.json()
 
-      if (!data.success) {
+      if (data.status !== 'ok') {
         toast.error(data.message ?? 'Registration failed.')
         return
       }
 
-      if (data.verification === 'skipped') {
+      if (data.data?.verification === 'skipped') {
         toast.success('Account created! You can sign in now.')
         router.push('/sign-in')
         return
       }
 
-      setPostReg({ email, emailSent: data.verification === 'sent' })
+      setPostReg({ email, emailSent: data.data?.verification === 'sent' })
     } catch {
       toast.error('Something went wrong. Please try again.')
     } finally {

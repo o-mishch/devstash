@@ -1,12 +1,17 @@
-export type ApiSuccess<T extends Record<string, unknown> = Record<string, never>> = {
-  success: true
-} & T
+export type ApiStatus =
+  | 'ok'
+  | 'created'
+  | 'bad_request'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'conflict'
+  | 'validation_error'
+  | 'too_many_requests'
+  | 'internal_error'
 
-export type ApiError = {
-  success: false
-  message: string
+export type ApiBody<T = null> = {
+  status: ApiStatus
+  data: T | null
+  message: string | null
 }
-
-export type ApiResponse<T extends Record<string, unknown> = Record<string, never>> =
-  | ApiSuccess<T>
-  | ApiError

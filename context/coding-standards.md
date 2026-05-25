@@ -95,10 +95,95 @@ Example v4 configuration:
 - Client components use Server Actions
 - Validate all inputs with Zod
 
+## API Contract
+
+**Every response between FE and BE must use the `ApiBody<T>` shape — no exceptions.**
+
+```ts
+// src/types/api.ts — client-safe, import freely
+type ApiBody<T = null> = {
+  status: ApiStatus   // string status code, never null
+  data: T | null      // null on error or when no payload
+  message: string | null  // null on success or when no message
+}
+```
+
+### API Routes
+
+Wrap the handler with `apiRoute()` from `src/lib/api.ts`. This converts the plain `ApiBody` to a `NextResponse` and centralises error handling — no per-route try/catch needed.
+
+```ts
+// src/app/api/[route]/route.ts
+import { ApiResponse, apiRoute } from '@/lib/api'
+
+export const POST = apiRoute(async (request) => {
+  const { email } = await request.json()
+  if (!email) return ApiResponse.BAD_REQUEST('Email is required')
+  // ...
+  return ApiResponse.OK({ result })
+})
+```
+
+### Server Actions
+
+Return `ApiBody<T>` directly — same builders, plain object (not `NextResponse`).
+
+```ts
+// src/actions/[feature].ts
+import { ApiResponse } from '@/lib/api'
+import type { ApiBody } from '@/types/api'
+
+export async function myAction(
+  _prev: ApiBody<MyData | null> | null,
+  formData: FormData
+): Promise<ApiBody<MyData | null>> {
+  if (!valid) return ApiResponse.BAD_REQUEST('Validation failed')
+  return ApiResponse.OK({ result })
+}
+```
+
+### Frontend
+
+Client components type responses as `ApiBody<T>` and check `data.status`:
+
+```ts
+import type { ApiBody } from '@/types/api'
+
+const res = await fetch('/api/...')
+const data: ApiBody<MyData> = await res.json()
+if (data.status !== 'ok') {
+  toast.error(data.message ?? 'Something went wrong.')
+  return
+}
+// data.data is MyData here
+```
+
+### Available Status Codes
+
+| Status | HTTP | Meaning |
+| --- | --- | --- |
+| `ok` | 200 | Success |
+| `created` | 201 | Resource created |
+| `bad_request` | 400 | Validation / client error |
+| `unauthorized` | 401 | Not authenticated |
+| `forbidden` | 403 | Authenticated but not allowed |
+| `not_found` | 404 | Resource not found |
+| `conflict` | 409 | Duplicate / state conflict |
+| `validation_error` | 422 | Schema / input validation |
+| `too_many_requests` | 429 | Rate limited |
+| `internal_error` | 500 | Server error |
+
+### Rules
+
+- **Never** return raw `NextResponse.json()` or custom response shapes from API routes
+- **Never** return plain booleans, strings, or custom state types from Server Actions that communicate status to the FE
+- **Always** use named interfaces for response data types — no inline generics like `ApiBody<{ email: string }>`
+- Server Actions that only redirect (OAuth, sign-out) are exempt
+
 ## Error Handling
 
-- Use try/catch in Server Actions
-- Return `{ success, data, error }` pattern from actions
+- API routes: errors are caught by `apiRoute()` — no per-route try/catch needed
+- Server Actions: use try/catch and return `ApiResponse.INTERNAL_ERROR()` on unexpected failures
 - Display user-friendly error messages via toast
 
 ## Code Quality

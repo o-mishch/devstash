@@ -1,18 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { resendVerification } from '@/lib/emails/verification'
+import { ApiResponse, apiRoute } from '@/lib/api'
 
-export async function POST(request: NextRequest) {
-  try {
-    const { email } = await request.json()
+export const POST = apiRoute(async (request: NextRequest) => {
+  const { email } = await request.json()
 
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 })
-    }
-
-    await resendVerification(email)
-
-    return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  if (!email) {
+    return ApiResponse.BAD_REQUEST('Email is required')
   }
-}
+
+  await resendVerification(email)
+
+  return ApiResponse.OK()
+})

@@ -9,45 +9,56 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { signInWithCredentials, signInWithGitHub, resendVerificationEmail } from '@/actions/auth'
+import { signInWithCredentials, signInWithGitHub } from '@/actions/auth'
+import type { ApiBody } from '@/types/api'
 
 interface SignInFormProps {
   successMessage?: string
 }
 
+interface ResendResponse {
+  email: string
+}
+
 export function SignInForm({ successMessage }: SignInFormProps) {
   const router = useRouter()
-  const [state, formAction, isPending] = useActionState(signInWithCredentials, {
-    status: 'idle' as const,
-  })
+  const [state, formAction, isPending] = useActionState(signInWithCredentials, null)
 
   useEffect(() => {
     if (successMessage) toast.success(successMessage)
   }, [successMessage])
 
   useEffect(() => {
-    if (state.status === 'success') {
+    if (!state) return
+    if (state.status === 'ok') {
       toast.success('You successfully logged in.')
       router.push('/dashboard')
-    } else if (state.status === 'error') {
+    } else if (state.status === 'bad_request') {
       toast.error(state.message)
     }
   }, [state, router])
 
   async function handleResend() {
-    const email = state.email
+    const email = state?.data?.email
     if (!email) return
-    const sent = await resendVerificationEmail(email)
-    if (sent) {
+
+    const res = await fetch('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    const data: ApiBody<ResendResponse> = await res.json()
+
+    if (data.status === 'ok') {
       toast.success('Verification email sent. Check your inbox.')
     } else {
-      toast.error('Failed to send verification email. Please try again later.')
+      toast.error(data.message ?? 'Failed to send verification email. Please try again later.')
     }
   }
 
   return (
     <div className="space-y-4">
-      {state.status === 'unverified' && (
+      {state?.status === 'forbidden' && (
         <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm">
           <p className="font-medium text-yellow-600 dark:text-yellow-400">Email not verified</p>
           <p className="mt-0.5 text-muted-foreground">
