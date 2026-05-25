@@ -144,13 +144,15 @@ export async function myAction(
 
 ### Frontend
 
-Client components type responses as `ApiBody<T>` and check `data.status`:
+Client components use `apiFetch` from `@/lib/api-fetch` — never raw `fetch()`. It handles network/parse errors and always returns `ApiBody<T>`:
 
 ```ts
-import type { ApiBody } from '@/types/api'
+import { apiFetch } from '@/lib/api-fetch'
 
-const res = await fetch('/api/...')
-const data: ApiBody<MyData> = await res.json()
+const data = await apiFetch<MyData>('/api/...', {
+  method: 'POST',
+  body: { key: value }, // plain object — serialized to JSON automatically
+})
 if (data.status !== 'ok') {
   toast.error(data.message ?? 'Something went wrong.')
   return
@@ -177,6 +179,7 @@ if (data.status !== 'ok') {
 
 - **Never** return raw `NextResponse.json()` or custom response shapes from API routes
 - **Never** return plain booleans, strings, or custom state types from Server Actions that communicate status to the FE
+- **Never** call `fetch()` directly from client components — always use `apiFetch` from `@/lib/api-fetch`
 - **Always** use named interfaces for response data types — no inline generics like `ApiBody<{ email: string }>`
 - Server Actions that only redirect (OAuth, sign-out) are exempt
 

@@ -11,8 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthLogo } from '@/components/auth/auth-logo'
 import { StatusCard } from '@/components/auth/status-card'
+import { apiFetch } from '@/lib/api-fetch'
 import type { VerificationResult } from '@/lib/emails/verification'
-import type { ApiBody } from '@/types/api'
 
 interface RegisterResponseData {
   verification: VerificationResult
@@ -23,7 +23,6 @@ interface PostRegState {
   emailSent: boolean
 }
 
-type RegisterResponse = ApiBody<RegisterResponseData>
 
 export function RegisterContent() {
   const router = useRouter()
@@ -52,32 +51,25 @@ export function RegisterContent() {
 
     setIsPending(true)
 
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
-      })
+    const data = await apiFetch<RegisterResponseData>('/api/auth/register', {
+      method: 'POST',
+      body: { name, email, password },
+    })
 
-      const data: RegisterResponse = await res.json()
+    setIsPending(false)
 
-      if (data.status !== 'ok') {
-        toast.error(data.message ?? 'Registration failed.')
-        return
-      }
-
-      if (data.data?.verification === 'skipped') {
-        toast.success('Account created! You can sign in now.')
-        router.push('/sign-in')
-        return
-      }
-
-      setPostReg({ email, emailSent: data.data?.verification === 'sent' })
-    } catch {
-      toast.error('Something went wrong. Please try again.')
-    } finally {
-      setIsPending(false)
+    if (data.status !== 'ok') {
+      toast.error(data.message ?? 'Registration failed.')
+      return
     }
+
+    if (data.data?.verification === 'skipped') {
+      toast.success('Account created! You can sign in now.')
+      router.push('/sign-in')
+      return
+    }
+
+    setPostReg({ email, emailSent: data.data?.verification === 'sent' })
   }
 
   if (postReg) {

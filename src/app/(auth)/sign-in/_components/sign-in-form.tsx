@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { signInWithCredentials, signInWithGitHub } from '@/actions/auth'
-import type { ApiBody } from '@/types/api'
+import { apiFetch } from '@/lib/api-fetch'
 
 interface SignInFormProps {
   successMessage?: string
@@ -42,12 +42,10 @@ export function SignInForm({ successMessage }: SignInFormProps) {
     const email = state?.data?.email
     if (!email) return
 
-    const res = await fetch('/api/auth/resend-verification', {
+    const data = await apiFetch<ResendResponse>('/api/auth/resend-verification', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: { email },
     })
-    const data: ApiBody<ResendResponse> = await res.json()
 
     if (data.status === 'ok') {
       toast.success('Verification email sent. Check your inbox.')
