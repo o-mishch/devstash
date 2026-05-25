@@ -37,7 +37,7 @@ export function SignInForm({ successMessage }: SignInFormProps) {
   async function handleResend() {
     const email = state.email
     if (!email) return
-    const { sent } = await resendVerificationEmail(email)
+    const sent = await resendVerificationEmail(email)
     if (sent) {
       toast.success('Verification email sent. Check your inbox.')
     } else {

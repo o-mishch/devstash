@@ -6,6 +6,11 @@ import verificationHtml from './verification.html'
 const BASE_URL = process.env.NEXTAUTH_URL ?? 'http://localhost:3000'
 const RATE_LIMIT_MS = 55 * 60 * 1000
 
+export const emailVerificationEnabled = () =>
+  process.env.DISABLE_EMAIL_VERIFICATION !== 'true'
+
+export type VerificationResult = 'sent' | 'failed' | 'skipped'
+
 export async function sendVerificationEmail(to: string, token: string): Promise<boolean> {
   const verifyUrl = `${BASE_URL}/verify-email?token=${token}`
   const html = verificationHtml.replace('{{VERIFY_URL}}', verifyUrl)
@@ -41,8 +46,8 @@ export async function resendVerification(email: string): Promise<boolean> {
     orderBy: { expires: 'desc' },
   })
 
-  const isTokenFresh =
-    !!existing && existing.expires.getTime() > Date.now() + (TOKEN_TTL_MS - RATE_LIMIT_MS)
+  const tokenCreatedAt = existing ? existing.expires.getTime() - TOKEN_TTL_MS : 0
+  const isTokenFresh = !!existing && Date.now() - tokenCreatedAt < RATE_LIMIT_MS
 
   if (isTokenFresh) {
     return sendVerificationEmail(email, existing.token)
@@ -50,4 +55,10 @@ export async function resendVerification(email: string): Promise<boolean> {
 
   const token = await createVerificationToken(email)
   return sendVerificationEmail(email, token)
+}
+
+export async function sendRegistrationVerification(email: string): Promise<VerificationResult> {
+  const token = await createVerificationToken(email)
+  const sent = await sendVerificationEmail(email, token)
+  return sent ? 'sent' : 'failed'
 }

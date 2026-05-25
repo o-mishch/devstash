@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { getItemIcon } from '@/lib/icon-utils'
+import { ItemTypeIcon } from '@/lib/icon-utils'
 import { Badge } from '@/components/ui/badge'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { signOutAction } from '@/actions/auth'
@@ -60,22 +60,19 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
 
         <ScrollArea className="flex-1 w-full">
           <div className="flex flex-col items-center gap-1 px-2">
-            {sidebarData.itemTypes.map((t) => {
-              const Icon = getItemIcon(t.icon)
-              return (
-                <Tooltip key={t.id}>
-                  <TooltipTrigger render={<span />}>
-                    <Link
-                      href={getTypeHref(t.name)}
-                      className="flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-muted"
-                    >
-                      {Icon && <Icon className="size-4 shrink-0" style={{ color: t.color }} />}
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{getTypeLabel(t.name)}</TooltipContent>
-                </Tooltip>
-              )
-            })}
+            {sidebarData.itemTypes.map((t) => (
+              <Tooltip key={t.id}>
+                <TooltipTrigger render={<span />}>
+                  <Link
+                    href={getTypeHref(t.name)}
+                    className="flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-muted"
+                  >
+                    <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right">{getTypeLabel(t.name)}</TooltipContent>
+              </Tooltip>
+            ))}
 
             {favoriteCollections.length > 0 && (
               <>
@@ -148,24 +145,21 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
             <ChevronDown className={cn('size-3 transition-transform duration-150', !typesOpen && '-rotate-90')} />
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-0.5 px-2">
-            {sidebarData.itemTypes.map((t) => {
-              const Icon = getItemIcon(t.icon)
-              return (
-                <Link
-                  key={t.id}
-                  href={getTypeHref(t.name)}
-                  onClick={onClose}
-                  className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  {Icon && <Icon className="size-4 shrink-0" style={{ color: t.color }} />}
-                  <span className="flex-1">{getTypeLabel(t.name)}</span>
-                  {PRO_TYPE_NAMES.has(t.name) && (
-                    <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
-                  )}
-                  <span className="text-xs tabular-nums">{t.count}</span>
-                </Link>
-              )
-            })}
+            {sidebarData.itemTypes.map((t) => (
+              <Link
+                key={t.id}
+                href={getTypeHref(t.name)}
+                onClick={onClose}
+                className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
+                <span className="flex-1">{getTypeLabel(t.name)}</span>
+                {PRO_TYPE_NAMES.has(t.name) && (
+                  <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
+                )}
+                <span className="text-xs tabular-nums">{t.count}</span>
+              </Link>
+            ))}
           </CollapsibleContent>
         </Collapsible>
 

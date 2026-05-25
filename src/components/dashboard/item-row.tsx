@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge'
-import { getItemIcon } from '@/lib/icon-utils'
+import { ItemTypeIcon } from '@/lib/icon-utils'
 import { formatDate } from '@/lib/utils'
 import type { DashboardItem } from '@/lib/db/items'
 
@@ -9,7 +9,6 @@ interface ItemRowProps {
 
 export function ItemRow({ item }: ItemRowProps) {
   const { itemType } = item
-  const Icon = getItemIcon(itemType.icon)
 
   return (
     <div className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-2 py-2 transition-colors hover:bg-accent/50">
@@ -17,8 +16,9 @@ export function ItemRow({ item }: ItemRowProps) {
         className="flex size-5 shrink-0 items-center justify-center rounded"
         style={{ backgroundColor: `${itemType.color}20` }}
       >
-        {Icon && <Icon className="size-3" style={{ color: itemType.color }} />}
+        <ItemTypeIcon iconName={itemType.icon} color={itemType.color} />
       </div>
+
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{item.title}</p>
         {item.description && (
