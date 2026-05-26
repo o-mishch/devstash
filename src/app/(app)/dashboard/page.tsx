@@ -1,81 +1,107 @@
-import { Pin } from 'lucide-react'
-import { StatsCards } from '@/components/dashboard/stats-cards'
-import { CollectionsGrid } from '@/components/dashboard/collections-grid'
-import { ItemRow } from '@/components/dashboard/item-row'
-import { getAllCollections, getCurrentUserId } from '@/lib/db/collections'
-import { getPinnedItems, getRecentItems, getItemStats } from '@/lib/db/items'
+import { Suspense } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { getCurrentUserId } from '@/lib/db/collections'
+import { DashboardStats } from './_components/dashboard-stats'
+import { DashboardCollections } from './_components/dashboard-collections'
+import { DashboardPinned } from './_components/dashboard-pinned'
+import { DashboardRecent } from './_components/dashboard-recent'
+
+function StatsSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card key={i}>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-4">
+              <Skeleton className="size-8 shrink-0 rounded" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-7 w-10" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+function CollectionsSkeleton() {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold">Collections</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="border-l-2 border-l-border">
+              <CardContent className="p-4 space-y-1.5">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-3.5 w-16" />
+                <div className="mt-3 flex gap-1.5">
+                  <Skeleton className="size-3.5 rounded-sm" />
+                  <Skeleton className="size-3.5 rounded-sm" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ItemsListSkeleton({ title }: { title: string }) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-md border border-border px-2 py-2">
+              <Skeleton className="size-5 shrink-0 rounded" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-2/5" />
+                <Skeleton className="h-3 w-3/5" />
+              </div>
+              <Skeleton className="h-3.5 w-10 shrink-0" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default async function DashboardPage() {
   const userId = await getCurrentUserId()
 
-  const [allCollections, pinned, recent, itemStats] = userId
-    ? await Promise.all([
-        getAllCollections(userId),
-        getPinnedItems(userId),
-        getRecentItems(userId),
-        getItemStats(userId),
-      ])
-    : [[], [], [], { totalItems: 0, favoriteItems: 0 }]
-
-  const collectionStats = {
-    totalCollections: allCollections.length,
-    favoriteCollections: allCollections.filter((c) => c.isFavorite).length,
-  }
-  const collections = allCollections.slice(0, 6)
-
   return (
     <div className="flex flex-col gap-6 p-6">
-        <div>
-          <h1 className="text-xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Your developer knowledge hub</p>
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Your developer knowledge hub</p>
+      </div>
 
-        <StatsCards
-          totalItems={itemStats.totalItems}
-          totalCollections={collectionStats.totalCollections}
-          favoriteItems={itemStats.favoriteItems}
-          favoriteCollections={collectionStats.favoriteCollections}
-        />
+      <Suspense fallback={<StatsSkeleton />}>
+        {userId ? <DashboardStats userId={userId} /> : <StatsSkeleton />}
+      </Suspense>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-sm font-semibold">Collections</CardTitle>
-            <a href="/collections" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-              View all
-            </a>
-          </CardHeader>
-          <CardContent>
-            <CollectionsGrid collections={collections} />
-          </CardContent>
-        </Card>
+      <Suspense fallback={<CollectionsSkeleton />}>
+        {userId ? <DashboardCollections userId={userId} /> : <CollectionsSkeleton />}
+      </Suspense>
 
-        {pinned.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-                <Pin className="size-3.5" />
-                Pinned
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col gap-3">
-                {pinned.map((item) => <ItemRow key={item.id} item={item} />)}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      <Suspense fallback={<ItemsListSkeleton title="Pinned" />}>
+        {userId && <DashboardPinned userId={userId} />}
+      </Suspense>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Recent Items</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-3">
-              {recent.map((item) => <ItemRow key={item.id} item={item} />)}
-            </div>
-          </CardContent>
-        </Card>
+      <Suspense fallback={<ItemsListSkeleton title="Recent Items" />}>
+        {userId ? <DashboardRecent userId={userId} /> : <ItemsListSkeleton title="Recent Items" />}
+      </Suspense>
     </div>
   )
 }
