@@ -28,7 +28,7 @@ export function AuthPageBase({ children }: { children: React.ReactNode }) {
 
 interface AuthFormLayoutProps {
   title: string
-  description: string
+  description: React.ReactNode
   children: React.ReactNode
 }
 

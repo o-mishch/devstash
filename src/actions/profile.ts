@@ -52,6 +52,37 @@ export async function changePasswordAction(
   return ApiResponse.OK()
 }
 
+export async function unlinkProviderAction(accountId: string): Promise<ApiBody<null>> {
+  const session = await auth()
+  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      password: true,
+      accounts: { select: { id: true } },
+    },
+  })
+
+  if (!user) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+
+  const totalAuthMethods = (user.password ? 1 : 0) + user.accounts.length
+  if (totalAuthMethods <= 1) {
+    return ApiResponse.BAD_REQUEST('Cannot remove your only sign-in method.')
+  }
+
+  const account = await prisma.account.findFirst({
+    where: { id: accountId, userId: session.user.id },
+    select: { id: true },
+  })
+
+  if (!account) return ApiResponse.NOT_FOUND('Account not found.')
+
+  await prisma.account.delete({ where: { id: accountId } })
+
+  return ApiResponse.OK()
+}
+
 export async function deleteAccountAction(): Promise<void> {
   const session = await auth()
   if (!session?.user?.id) redirect('/sign-in')

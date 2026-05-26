@@ -7,13 +7,11 @@ import { UserAvatar } from '@/components/shared/user-avatar'
 import { ItemTypeIcon } from '@/lib/icon-utils'
 import { formatDate } from '@/lib/utils'
 import { getProfileData } from '@/lib/db/profile'
+import { PROVIDER_LABELS } from '@/lib/utils'
 import { ChangePasswordForm } from './_components/change-password-form'
 import { DeleteAccountDialog } from './_components/delete-account-dialog'
+import { ConnectedAccounts } from './_components/connected-accounts'
 import { Package, FolderOpen } from 'lucide-react'
-
-const PROVIDER_LABELS: Record<string, string> = {
-  github: 'GitHub',
-}
 
 export default async function ProfilePage() {
   const data = await getProfileData()
@@ -23,10 +21,9 @@ export default async function ProfilePage() {
 
   const accountTypes: string[] = []
   if (user.hasPassword) accountTypes.push('Email Account')
-  for (const provider of user.providers) {
-    const label = PROVIDER_LABELS[provider] ?? provider
-    accountTypes.push(`${label} Account`)
-  }
+  user.accounts.forEach(({ provider }) => {
+    accountTypes.push(`${PROVIDER_LABELS[provider] ?? provider} Account`)
+  })
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -76,6 +73,18 @@ export default async function ProfilePage() {
             {user.hasPassword && <ChangePasswordForm />}
             <DeleteAccountDialog />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Connected Accounts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Connected Accounts
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ConnectedAccounts hasPassword={user.hasPassword} accounts={user.accounts} />
         </CardContent>
       </Card>
 

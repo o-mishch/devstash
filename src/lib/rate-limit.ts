@@ -1,6 +1,6 @@
 import { Ratelimit, type Duration } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
 import { headers } from 'next/headers'
+import { getRedis } from '@/lib/redis'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 
@@ -11,6 +11,7 @@ type RateLimitKey =
   | 'resetPassword'
   | 'resendVerification'
   | 'resendVerificationIP'
+  | 'linkAccount'
 
 interface LimitConfig {
   attempts: number
@@ -25,6 +26,7 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   resetPassword:        { attempts: 5,  window: '15 m' }, // keyed by IP
   resendVerification:   { attempts: 3,  window: '15 m' }, // keyed by IP + email
   resendVerificationIP: { attempts: 10, window: '15 m' }, // keyed by IP (broad guard before body parse)
+  linkAccount:          { attempts: 5,  window: '15 m' }, // keyed by IP
 }
 
 interface RouteRateLimitDenied {
@@ -38,7 +40,8 @@ let limiters: Record<RateLimitKey, Ratelimit> | null = null
 function getLimiters(): Record<RateLimitKey, Ratelimit> | null {
   if (limiters) return limiters
   try {
-    const redis = Redis.fromEnv()
+    const redis = getRedis()
+    if (!redis) return null
     limiters = Object.fromEntries(
       Object.entries(LIMIT_CONFIG).map(([key, { attempts, window }]) => [
         key,
