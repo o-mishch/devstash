@@ -2,7 +2,7 @@ import { resend, EMAIL_FROM, BASE_URL } from '@/lib/resend'
 import { createPasswordResetToken } from '@/lib/tokens'
 import resetHtml from './password-reset.html'
 
-export async function sendPasswordResetEmail(to: string, token: string): Promise<boolean> {
+async function sendPasswordResetEmail(to: string, token: string): Promise<boolean> {
   const resetUrl = `${BASE_URL}/reset-password?token=${token}`
   const html = resetHtml.replace('{{RESET_URL}}', resetUrl)
 

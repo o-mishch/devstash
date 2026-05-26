@@ -33,8 +33,9 @@ export function SignInForm({ successMessage }: SignInFormProps) {
     if (state.status === 'ok') {
       toast.success('You successfully logged in.')
       router.push('/dashboard')
-    } else if (state.status === 'bad_request') {
-      toast.error(state.message)
+    } else if (state.status !== 'forbidden') {
+      // 'forbidden' renders the "email not verified" banner below — no toast needed
+      toast.error(state.message ?? 'Something went wrong. Please try again.')
     }
   }, [state, router])
 
