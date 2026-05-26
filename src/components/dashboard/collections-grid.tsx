@@ -14,7 +14,7 @@ export function CollectionsGrid({ collections }: CollectionsGridProps) {
       {collections.map((col) => (
         <Card
           key={col.id}
-          className="type-border-l cursor-pointer transition-colors hover:bg-accent/50"
+          className="type-border-l cursor-pointer transition-colors hover:bg-accent"
           style={{ '--item-color': col.dominantColor ?? undefined } as CSSProperties}
         >
           <CardContent className="p-4">

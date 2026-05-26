@@ -80,6 +80,29 @@ export async function getSidebarItemTypes(userId: string | null): Promise<Sideba
   )
 }
 
+const TYPE_LIST_LIMIT = 500
+
+export async function getItemsByType(userId: string, typeName: string): Promise<DashboardItem[]> {
+  const items = await prisma.item.findMany({
+    where: { userId, itemType: { name: typeName } },
+    orderBy: { createdAt: 'desc' },
+    take: TYPE_LIST_LIMIT,
+    include: ITEM_INCLUDE,
+  })
+  return items.map(toDashboardItem)
+}
+
+export async function getItemTypeBySlug(slug: string) {
+  return prisma.itemType.findFirst({
+    where: {
+      OR: [
+        { name: slug },
+        { name: slug.endsWith('s') ? slug.slice(0, -1) : slug },
+      ],
+    },
+  })
+}
+
 export async function getItemStats(userId: string): Promise<ItemStats> {
   const [totalItems, favoriteItems] = await Promise.all([
     prisma.item.count({ where: { userId } }),

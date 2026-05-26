@@ -1,4 +1,5 @@
 import { Suspense } from 'react'
+import Link from 'next/link'
 import { Archive, FolderPlus, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,8 +26,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <MobileDrawerAsync />
         </Suspense>
 
-        <Archive className="size-4 shrink-0 text-primary" />
-        <span className="shrink-0 text-base font-semibold tracking-tight">DevStash</span>
+        <Link href="/dashboard" className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity">
+          <Archive className="size-4 text-primary" />
+          <span className="text-base font-semibold tracking-tight">DevStash</span>
+        </Link>
 
         <div className="relative mx-auto min-w-0 flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
