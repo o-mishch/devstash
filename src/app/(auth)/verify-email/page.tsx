@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { resendVerification } from '@/lib/emails/verification'
-import { AuthStatusPage } from '@/components/auth/auth-page-header'
+import { AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 
 interface VerifyEmailPageProps {
   searchParams: Promise<{ token?: string }>
@@ -11,7 +11,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
   const { token } = await searchParams
 
   if (!token) {
-    return <ErrorCard title="Missing token" description="No verification token was provided." />
+    return <MissingTokenPage noun="verification token" />
   }
 
   const record = await prisma.verificationToken.findUnique({ where: { token } })
@@ -28,9 +28,8 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
   if (record.expires < new Date()) {
     await prisma.verificationToken.delete({ where: { token } })
     return (
-      <ErrorCard
-        title="Link expired"
-        description="This verification link has expired."
+      <ExpiredTokenPage
+        noun="verification link"
         footer={<ResendButton email={record.identifier} />}
       />
     )

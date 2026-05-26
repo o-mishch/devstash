@@ -1,21 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useEffect } from 'react'
-import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { registerAction } from '@/actions/auth'
+import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
 export function RegisterForm() {
-  const [state, formAction, isPending] = useActionState(registerAction, null)
-
-  useEffect(() => {
-    if (!state) return
-    if (state.status !== 'ok') toast.error(state.message ?? 'Registration failed.')
-  }, [state])
+  const { formAction, isPending } = useActionStateWithToast(registerAction, {
+    fallbackError: 'Registration failed.'
+  })
 
   return (
     <>
@@ -67,10 +62,9 @@ export function RegisterForm() {
           />
         </div>
 
-        <Button type="submit" className="w-full" disabled={isPending}>
-          {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
+        <SubmitButton className="w-full" isPending={isPending}>
           Create account
-        </Button>
+        </SubmitButton>
       </form>
 
       <p className="text-center text-sm text-muted-foreground">

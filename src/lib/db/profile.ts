@@ -1,5 +1,6 @@
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
+import { SYSTEM_TYPE_ORDER } from './items'
 
 export interface LinkedAccount {
   id: string
@@ -29,7 +30,6 @@ export interface ItemTypeCount {
   count: number
 }
 
-const SYSTEM_TYPE_ORDER = ['snippet', 'prompt', 'command', 'note', 'link', 'file', 'image']
 
 export async function getProfileData(): Promise<{ user: ProfileUser; stats: ProfileStats } | null> {
   const session = await auth()

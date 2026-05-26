@@ -59,7 +59,7 @@ export interface SidebarItemType {
   count: number
 }
 
-const SYSTEM_TYPE_ORDER = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
+export const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
 
 export async function getSidebarItemTypes(userId: string | null): Promise<SidebarItemType[]> {
   const types = await prisma.itemType.findMany({

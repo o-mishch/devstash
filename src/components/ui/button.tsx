@@ -1,5 +1,6 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -56,3 +57,17 @@ function Button({
 }
 
 export { Button, buttonVariants }
+
+interface SubmitButtonProps extends ButtonPrimitive.Props, VariantProps<typeof buttonVariants> {
+  isPending: boolean
+  children: React.ReactNode
+}
+
+export function SubmitButton({ isPending, children, className, ...props }: SubmitButtonProps) {
+  return (
+    <Button type="submit" disabled={isPending} className={className} {...props}>
+      {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
+      {children}
+    </Button>
+  )
+}

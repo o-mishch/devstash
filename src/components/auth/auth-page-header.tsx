@@ -113,3 +113,26 @@ export function AuthStatusPage({
     </AuthPageBase>
   )
 }
+
+export function MissingTokenPage({ noun = 'token' }: { noun?: string }) {
+  return (
+    <AuthStatusPage
+      variant="error"
+      title="Missing token"
+      description={`No ${noun} was provided.`}
+    />
+  )
+}
+
+export function ExpiredTokenPage({ noun = 'link', action, footer }: { noun?: string; action?: StatusAction, footer?: React.ReactNode }) {
+  return (
+    <AuthStatusPage
+      variant="error"
+      title="Link expired"
+      description={`This ${noun} has expired or was already used. Please try again.`}
+      action={action}
+      footer={footer}
+    />
+  )
+}
+

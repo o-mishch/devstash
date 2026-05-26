@@ -1,9 +1,9 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, KeyRound } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { KeyRound } from 'lucide-react'
+import { Button, SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -15,23 +15,16 @@ import {
 } from '@/components/ui/dialog'
 import { changePasswordAction } from '@/actions/profile'
 import type { ApiBody } from '@/types/api'
+import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
 export function ChangePasswordForm() {
   const [open, setOpen] = useState(false)
-  const [state, formAction, isPending] = useActionState<ApiBody<null> | null, FormData>(
-    changePasswordAction,
-    null
-  )
-
-  useEffect(() => {
-    if (!state) return
-    if (state.status === 'ok') {
+  const { formAction, isPending } = useActionStateWithToast<null>(changePasswordAction, {
+    onSuccess: () => {
       toast.success('Password updated successfully.')
       setOpen(false)
-    } else {
-      toast.error(state.message ?? 'Something went wrong. Please try again.')
     }
-  }, [state])
+  })
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -80,10 +73,9 @@ export function ChangePasswordForm() {
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
+            <SubmitButton isPending={isPending}>
               Update Password
-            </Button>
+            </SubmitButton>
           </div>
         </form>
       </DialogContent>

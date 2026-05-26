@@ -1,13 +1,12 @@
 'use client'
 
-import { useActionState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { ApiBody } from '@/types/api'
+import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 interface ResetPasswordFormProps {
   action: (_prev: ApiBody<null> | null, formData: FormData) => Promise<ApiBody<null>>
@@ -15,17 +14,12 @@ interface ResetPasswordFormProps {
 
 export function ResetPasswordForm({ action }: ResetPasswordFormProps) {
   const router = useRouter()
-  const [state, formAction, isPending] = useActionState(action, null)
-
-  useEffect(() => {
-    if (!state) return
-    if (state.status === 'ok') {
+  const { formAction, isPending } = useActionStateWithToast(action, {
+    onSuccess: () => {
       toast.success('Password updated! You can now sign in.')
       router.push('/sign-in')
-    } else {
-      toast.error(state.message ?? 'Something went wrong. Please try again.')
     }
-  }, [state, router])
+  })
 
   return (
     <form action={formAction} className="space-y-4">
@@ -54,10 +48,9 @@ export function ResetPasswordForm({ action }: ResetPasswordFormProps) {
         />
       </div>
 
-      <Button type="submit" className="w-full" disabled={isPending}>
-        {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
+      <SubmitButton className="w-full" isPending={isPending}>
         Reset password
-      </Button>
+      </SubmitButton>
     </form>
   )
 }

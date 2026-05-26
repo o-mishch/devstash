@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { resend, EMAIL_FROM, BASE_URL } from '@/lib/resend'
+import { BASE_URL, sendEmail } from '@/lib/resend'
 import { createVerificationToken, TOKEN_TTL_MS } from '@/lib/tokens'
 import verificationHtml from './verification.html'
 
@@ -14,22 +14,13 @@ async function sendVerificationEmail(to: string, token: string): Promise<boolean
   const verifyUrl = `${BASE_URL}/verify-email?token=${token}`
   const html = verificationHtml.replace('{{VERIFY_URL}}', verifyUrl)
 
-  const { error } = await resend.emails.send(
-    {
-      from: EMAIL_FROM,
-      to: [to],
-      subject: 'Verify your DevStash email',
-      html,
-    },
-    { idempotencyKey: `verify-email/${token}` }
-  )
-
-  if (error) {
-    console.error('[verification] failed to send email:', error.message)
-    return false
-  }
-
-  return true
+  return sendEmail({
+    to,
+    subject: 'Verify your DevStash email',
+    html,
+    idempotencyKey: `verify-email/${token}`,
+    logTag: 'verification',
+  })
 }
 
 export async function resendVerification(email: string): Promise<boolean> {

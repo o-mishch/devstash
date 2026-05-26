@@ -1,4 +1,4 @@
-import { AuthFormLayout, AuthStatusPage } from '@/components/auth/auth-page-header'
+import { AuthFormLayout, AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 import { GitHubIcon } from '@/components/icons/github'
 import { getPendingLink } from '@/lib/pending-link'
 import { linkAccountAction } from '@/actions/auth'
@@ -12,23 +12,15 @@ export default async function LinkAccountPage({ searchParams }: LinkAccountPageP
   const { token } = await searchParams
 
   if (!token) {
-    return (
-      <AuthStatusPage
-        variant="error"
-        title="Missing token"
-        description="No account link token was provided."
-      />
-    )
+    return <MissingTokenPage noun="account link token" />
   }
 
   const pending = await getPendingLink(token)
 
   if (!pending) {
     return (
-      <AuthStatusPage
-        variant="error"
-        title="Link expired"
-        description="This account linking session has expired or was already used. Please try signing in with GitHub again."
+      <ExpiredTokenPage
+        noun="account linking session"
         action={{ label: 'Back to sign in', href: '/sign-in' }}
       />
     )

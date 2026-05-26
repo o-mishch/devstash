@@ -1,4 +1,4 @@
-import { AuthFormLayout, AuthStatusPage } from '@/components/auth/auth-page-header'
+import { AuthFormLayout, AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 import { peekPasswordResetToken } from '@/lib/tokens'
 import { resetPasswordAction } from '@/actions/auth'
 import { ResetPasswordForm } from './_components/reset-password-form'
@@ -11,23 +11,15 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
   const { token } = await searchParams
 
   if (!token) {
-    return (
-      <AuthStatusPage
-        variant="error"
-        title="Missing token"
-        description="No reset token was provided."
-      />
-    )
+    return <MissingTokenPage />
   }
 
   const status = await peekPasswordResetToken(token)
 
   if (status === 'expired') {
     return (
-      <AuthStatusPage
-        variant="error"
-        title="Link expired"
-        description="This password reset link has expired. Request a new one."
+      <ExpiredTokenPage
+        noun="password reset link"
         action={{ label: 'Request new link', href: '/forgot-password' }}
       />
     )
