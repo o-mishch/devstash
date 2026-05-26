@@ -12,3 +12,7 @@ export function formatDate(date: Date): string {
 export function clampLimit(value: number, min = 1, max = 100): number {
   return Math.min(Math.max(Math.floor(value), min), max)
 }
+
+export const PROVIDER_LABELS: Record<string, string> = {
+  github: 'GitHub',
+}

@@ -682,7 +682,7 @@ export const ITEM_TYPE_COLORS = {
 
 ---
 
-## 📁 Suggested Project Structure
+## 📁 Project Structure
 
 ```
 devstash/
@@ -692,44 +692,54 @@ devstash/
 │   └── seed.ts
 ├── src/
 │   ├── app/
-│   │   ├── (auth)/
-│   │   │   ├── login/
-│   │   │   └── register/
-│   │   ├── (dashboard)/
-│   │   │   ├── items/
-│   │   │   │   └── [type]/
-│   │   │   ├── collections/
-│   │   │   │   └── [id]/
-│   │   │   └── settings/
+│   │   ├── (app)/                  # Protected: dashboard + profile (shared sidebar layout)
+│   │   │   ├── dashboard/
+│   │   │   └── profile/
+│   │   ├── (auth)/                 # Auth pages (no sidebar)
+│   │   │   ├── sign-in/
+│   │   │   ├── register/
+│   │   │   ├── forgot-password/
+│   │   │   ├── reset-password/
+│   │   │   ├── verify-email/
+│   │   │   └── link-account/
 │   │   ├── api/
-│   │   │   ├── items/
-│   │   │   ├── collections/
-│   │   │   ├── ai/
-│   │   │   ├── upload/
-│   │   │   └── webhooks/stripe/
+│   │   │   └── auth/
+│   │   │       ├── [...nextauth]/  # NextAuth handler
+│   │   │       └── resend-verification/
 │   │   ├── layout.tsx
 │   │   └── page.tsx
+│   ├── actions/                    # Server Actions
+│   │   ├── auth.ts
+│   │   └── profile.ts
 │   ├── components/
-│   │   ├── ui/           # shadcn components
-│   │   ├── items/
-│   │   ├── collections/
+│   │   ├── ui/                     # shadcn/ui components
+│   │   ├── auth/
+│   │   ├── dashboard/
 │   │   ├── layout/
 │   │   └── shared/
 │   ├── lib/
+│   │   ├── db/                     # DB query helpers
+│   │   ├── emails/                 # Email sending (Resend)
+│   │   ├── api.ts                  # ApiResponse builder + apiRoute wrapper
+│   │   ├── api-fetch.ts            # Client-side typed fetch helper
+│   │   ├── auth-service.ts         # Business logic (register, reset password)
+│   │   ├── icon-utils.tsx          # ItemTypeIcon component + static icon map
+│   │   ├── pending-link.ts         # Redis pending OAuth-link state
 │   │   ├── prisma.ts
-│   │   ├── auth.ts
-│   │   ├── stripe.ts
-│   │   ├── openai.ts
-│   │   ├── r2.ts
-│   │   └── constants/
-│   ├── hooks/
+│   │   ├── rate-limit.ts
+│   │   ├── redis.ts
+│   │   ├── resend.ts
+│   │   ├── tokens.ts               # Verification + password-reset tokens
+│   │   └── utils.ts
 │   ├── types/
-│   └── styles/
-│       └── globals.css
+│   ├── auth.ts                     # NextAuth full config (Prisma adapter, bcrypt)
+│   ├── auth.config.ts              # Edge-safe NextAuth config
+│   └── proxy.ts                    # Next.js middleware (route protection)
 ├── public/
+├── .env
 ├── .env.example
+├── .env.production
 ├── next.config.ts
-├── tailwind.config.ts
 ├── tsconfig.json
 └── package.json
 ```
@@ -738,12 +748,12 @@ devstash/
 
 ## 🚀 Next Steps
 
-1. [ ] Initialize Next.js 16 project with TypeScript
-2. [ ] Set up Prisma with Neon PostgreSQL
-3. [ ] Configure NextAuth v5 (email + GitHub)
-4. [ ] Create database migrations for initial schema
-5. [ ] Seed system item types
-6. [ ] Build core UI components with shadcn/ui
+1. [x] Initialize Next.js 16 project with TypeScript
+2. [x] Set up Prisma with Neon PostgreSQL
+3. [x] Configure NextAuth v5 (email + GitHub OAuth)
+4. [x] Create database migrations for initial schema
+5. [x] Seed system item types
+6. [x] Build core UI components with shadcn/ui
 7. [ ] Implement items CRUD
 8. [ ] Implement collections CRUD
 9. [ ] Add search functionality
@@ -756,4 +766,4 @@ devstash/
 
 ---
 
-_Last updated: January 2025_
+_Last updated: May 2026_

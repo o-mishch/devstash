@@ -1,13 +1,18 @@
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 
+export interface LinkedAccount {
+  id: string
+  provider: string
+}
+
 export interface ProfileUser {
   id: string
   name: string | null
   email: string
   image: string | null
   hasPassword: boolean
-  providers: string[]
+  accounts: LinkedAccount[]
   createdAt: Date
 }
 
@@ -42,7 +47,7 @@ export async function getProfileData(): Promise<{ user: ProfileUser; stats: Prof
         image: true,
         password: true,
         createdAt: true,
-        accounts: { select: { provider: true } },
+        accounts: { select: { id: true, provider: true } },
       },
     }),
     prisma.item.count({ where: { userId } }),
@@ -71,7 +76,7 @@ export async function getProfileData(): Promise<{ user: ProfileUser; stats: Prof
       email: user.email,
       image: user.image,
       hasPassword: !!user.password,
-      providers: user.accounts.map((a) => a.provider),
+      accounts: user.accounts.map((a) => ({ id: a.id, provider: a.provider })),
       createdAt: user.createdAt,
     },
     stats: {
