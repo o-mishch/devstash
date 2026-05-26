@@ -27,11 +27,12 @@ export const authConfig: NextAuthConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }: AuthorizedParams) {
       const isLoggedIn = !!auth?.user
-      const isDashboard = nextUrl.pathname.startsWith('/dashboard')
+      const isProtected =
+        nextUrl.pathname.startsWith('/dashboard') || nextUrl.pathname.startsWith('/profile')
       const isAuthPage =
         nextUrl.pathname === '/sign-in' || nextUrl.pathname === '/register'
 
-      if (isDashboard) return isLoggedIn
+      if (isProtected) return isLoggedIn
       if (isAuthPage && isLoggedIn) {
         return Response.redirect(new URL('/dashboard', nextUrl))
       }
