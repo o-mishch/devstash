@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ItemTypeIcon } from '@/lib/icon-utils'
 import { formatDate } from '@/lib/utils'
@@ -11,11 +12,11 @@ export function ItemRow({ item }: ItemRowProps) {
   const { itemType } = item
 
   return (
-    <div className="flex cursor-pointer items-center gap-3 rounded-md border border-border px-2 py-2 transition-colors hover:bg-accent/50">
-      <div
-        className="flex size-5 shrink-0 items-center justify-center rounded"
-        style={{ backgroundColor: `${itemType.color}20` }}
-      >
+    <div
+      className="type-border-l flex cursor-pointer items-center gap-3 rounded-md border border-border px-2 py-2 transition-colors hover:bg-accent/50"
+      style={{ '--item-color': itemType.color } as CSSProperties}
+    >
+      <div className="type-icon-bg flex size-5 shrink-0 items-center justify-center rounded">
         <ItemTypeIcon iconName={itemType.icon} color={itemType.color} />
       </div>
 

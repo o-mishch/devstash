@@ -127,3 +127,18 @@
     @apply font-sans;
     }
 }
+
+/* Dynamic item-type color utilities — set --item-color on the parent element */
+@utility type-border-l {
+  border-left-width: 2px;
+  border-left-style: solid;
+  border-left-color: var(--item-color);
+}
+
+@utility type-icon-bg {
+  background-color: color-mix(in srgb, var(--item-color) 12%, transparent);
+}
+
+@utility type-dot {
+  background-color: var(--item-color);
+}

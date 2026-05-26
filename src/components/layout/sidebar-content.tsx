@@ -1,6 +1,6 @@
 'use client' // required: collapsible sections and sidebar toggle use useState
 
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -207,8 +207,8 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                       className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     >
                       <span
-                        className="size-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: c.dominantColor ?? '#6b7280' }}
+                        className="type-dot size-2 shrink-0 rounded-full"
+                        style={{ '--item-color': c.dominantColor ?? '#6b7280' } as CSSProperties}
                       />
                       <span className="flex-1 truncate">{c.name}</span>
                       <span className="text-xs tabular-nums">{c.itemCount}</span>

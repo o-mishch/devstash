@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Star } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ItemTypeIcon } from '@/lib/icon-utils'
@@ -13,8 +14,8 @@ export function CollectionsGrid({ collections }: CollectionsGridProps) {
       {collections.map((col) => (
         <Card
           key={col.id}
-          className="cursor-pointer border-l-2 transition-colors hover:bg-accent/50"
-          style={{ borderLeftColor: col.dominantColor ?? undefined }}
+          className="type-border-l cursor-pointer transition-colors hover:bg-accent/50"
+          style={{ '--item-color': col.dominantColor ?? undefined } as CSSProperties}
         >
           <CardContent className="p-4">
             <div className="flex items-center gap-1.5">
