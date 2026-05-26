@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { ItemTypeIcon } from '@/lib/icon-utils'
+import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate } from '@/lib/utils'
 import type { DashboardItem } from '@/lib/db/items'
 
@@ -16,9 +16,7 @@ export function ItemRow({ item }: ItemRowProps) {
       className="type-border-l flex h-14 cursor-pointer items-center gap-3 overflow-hidden rounded-xl px-2 ring-1 ring-foreground/10 transition-colors hover:bg-accent"
       style={{ '--item-color': itemType.color } as CSSProperties}
     >
-      <div className="type-icon-bg flex size-7 shrink-0 items-center justify-center rounded-full">
-        <ItemTypeIcon iconName={itemType.icon} color={itemType.color} className="size-3.5" />
-      </div>
+      <ItemIconWrapper itemType={itemType} wrapperClassName="size-7" iconClassName="size-3.5" />
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{item.title}</p>

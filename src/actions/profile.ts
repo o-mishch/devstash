@@ -7,6 +7,7 @@ import { auth, signOut } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
+import { validatePassword } from '@/lib/utils/validators'
 
 async function withAuth<T>(fn: (userId: string) => Promise<ApiBody<T>>): Promise<ApiBody<T>> {
   const session = await auth()
@@ -26,12 +27,9 @@ export async function changePasswordAction(
     if (!currentPassword || !newPassword || !confirmPassword) {
       return ApiResponse.BAD_REQUEST('All fields are required.')
     }
-    if (newPassword.length < 8) {
-      return ApiResponse.BAD_REQUEST('New password must be at least 8 characters.')
-    }
-    if (newPassword !== confirmPassword) {
-      return ApiResponse.BAD_REQUEST('Passwords do not match.')
-    }
+    
+    const error = validatePassword(newPassword, confirmPassword)
+    if (error) return ApiResponse.BAD_REQUEST(error)
 
     const user = await prisma.user.findUnique({
       where: { id: userId },

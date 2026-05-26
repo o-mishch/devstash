@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
-import { ItemTypeIcon } from '@/lib/icon-utils'
+import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate } from '@/lib/utils'
 import type { DashboardItem } from '@/lib/db/items'
 
@@ -19,9 +19,7 @@ export function ItemCard({ item }: ItemCardProps) {
     >
       <CardContent className="flex h-full items-center p-4">
         <div className="flex w-full items-center gap-3">
-          <div className="type-icon-bg flex size-8 shrink-0 items-center justify-center rounded-full">
-            <ItemTypeIcon iconName={itemType.icon} color={itemType.color} className="size-4" />
-          </div>
+          <ItemIconWrapper itemType={itemType} wrapperClassName="size-8" iconClassName="size-4" />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{item.title}</p>
             {item.description && (

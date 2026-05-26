@@ -105,3 +105,16 @@ export async function rateLimitAction(
   if (result.success) return null
   return ApiResponse.TOO_MANY_REQUESTS(deniedMessage(result.retryAfter))
 }
+
+/** 
+ * Higher-order action wrapper for standardized rate-limiting.
+ * Automatically checks the rate limit using the action's IP. 
+ */
+export async function withRateLimit<T>(
+  key: RateLimitKey,
+  fn: () => Promise<ApiBody<T>>
+): Promise<ApiBody<T>> {
+  const rl = await rateLimitAction(key, await getActionIP())
+  if (rl) return rl as ApiBody<T>
+  return fn()
+}
