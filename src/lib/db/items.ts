@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma/client'
-import { clampLimit } from '@/lib/utils'
+
 
 export interface DashboardItem {
   id: string
@@ -30,6 +30,9 @@ const ITEM_INCLUDE = { itemType: true, tags: true } as const
 const PINNED_LIMIT = 20
 const RECENT_LIMIT = 100
 
+function clampLimit(value: number, min = 1, max = 100): number {
+  return Math.min(Math.max(Math.floor(value), min), max)
+}
 
 export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<DashboardItem[]> {
   const items = await prisma.item.findMany({

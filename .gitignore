@@ -55,3 +55,5 @@ tmp
 
 # local MCP config (may contain API keys)
 .mcp.json
+
+*.png
