@@ -4,6 +4,8 @@ import type { NextRequest } from 'next/server'
 import GitHub from 'next-auth/providers/github'
 import Credentials from 'next-auth/providers/credentials'
 
+export const BCRYPT_ROUNDS = 12
+
 interface AuthorizedParams {
   auth: Session | null
   request: NextRequest

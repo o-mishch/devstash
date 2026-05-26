@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import bcrypt from 'bcryptjs'
+import { BCRYPT_ROUNDS } from '@/auth.config'
 import { prisma } from '@/lib/prisma'
 import {
   emailVerificationEnabled,
@@ -32,7 +33,7 @@ export const POST = apiRoute(async (request: NextRequest) => {
     return ApiResponse.OK<RegisterData>({ verification })
   }
 
-  const hashedPassword = await bcrypt.hash(password, 12)
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS)
   await prisma.user.create({
     data: {
       name,

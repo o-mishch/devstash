@@ -3,6 +3,7 @@
 import bcrypt from 'bcryptjs'
 import { redirect } from 'next/navigation'
 import { signIn, signOut } from '@/auth'
+import { BCRYPT_ROUNDS } from '@/auth.config'
 import { AuthError } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import {
@@ -96,7 +97,7 @@ export async function resetPasswordAction(
     return ApiResponse.BAD_REQUEST('This reset link is invalid or has expired.')
   }
 
-  const hashed = await bcrypt.hash(password, 12)
+  const hashed = await bcrypt.hash(password, BCRYPT_ROUNDS)
 
   await prisma.user.update({
     where: { id: user.id },
@@ -145,7 +146,7 @@ export async function registerAction(
   let verification: VerificationResult = verificationEnabled ? 'sent' : 'skipped'
 
   if (!existing) {
-    const hashedPassword = await bcrypt.hash(password, 12)
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS)
     await prisma.user.create({
       data: {
         name,

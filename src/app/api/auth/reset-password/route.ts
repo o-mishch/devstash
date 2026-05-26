@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs'
+import { BCRYPT_ROUNDS } from '@/auth.config'
 import { prisma } from '@/lib/prisma'
 import { ApiResponse, apiRoute } from '@/lib/api'
 import { consumePasswordResetToken } from '@/lib/tokens'
@@ -28,7 +29,7 @@ export const POST = apiRoute(async (request) => {
     return ApiResponse.BAD_REQUEST('This account uses social sign-in and has no password.')
   }
 
-  const hashed = await bcrypt.hash(password, 12)
+  const hashed = await bcrypt.hash(password, BCRYPT_ROUNDS)
 
   await prisma.user.update({
     where: { id: user.id },

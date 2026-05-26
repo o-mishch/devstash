@@ -2,6 +2,7 @@
 
 import bcrypt from 'bcryptjs'
 import { redirect } from 'next/navigation'
+import { BCRYPT_ROUNDS } from '@/auth.config'
 import { auth, signOut } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { ApiResponse } from '@/lib/api'
@@ -42,7 +43,7 @@ export async function changePasswordAction(
     return ApiResponse.BAD_REQUEST('Current password is incorrect.')
   }
 
-  const hashed = await bcrypt.hash(newPassword, 12)
+  const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
   await prisma.user.update({
     where: { id: session.user.id },
     data: { password: hashed },
