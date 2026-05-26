@@ -10,7 +10,7 @@ export const emailVerificationEnabled = () =>
 
 export type VerificationResult = 'sent' | 'failed' | 'skipped'
 
-export async function sendVerificationEmail(to: string, token: string): Promise<boolean> {
+async function sendVerificationEmail(to: string, token: string): Promise<boolean> {
   const verifyUrl = `${BASE_URL}/verify-email?token=${token}`
   const html = verificationHtml.replace('{{VERIFY_URL}}', verifyUrl)
 

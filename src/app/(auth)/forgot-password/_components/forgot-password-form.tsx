@@ -14,7 +14,7 @@ export function ForgotPasswordForm() {
 
   useEffect(() => {
     if (!state) return
-    toast.error(state.message ?? 'Something went wrong. Please try again.')
+    if (state.status !== 'ok') toast.error(state.message ?? 'Something went wrong. Please try again.')
   }, [state])
 
   return (

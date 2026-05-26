@@ -2,7 +2,7 @@ import { randomBytes } from 'crypto'
 import { prisma } from '@/lib/prisma'
 
 export const TOKEN_TTL_MS = 24 * 60 * 60 * 1000
-export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 
 export async function createVerificationToken(email: string): Promise<string> {
   const token = randomBytes(32).toString('hex')

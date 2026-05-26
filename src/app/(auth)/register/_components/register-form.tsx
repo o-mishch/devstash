@@ -14,7 +14,7 @@ export function RegisterForm() {
 
   useEffect(() => {
     if (!state) return
-    toast.error(state.message ?? 'Registration failed.')
+    if (state.status !== 'ok') toast.error(state.message ?? 'Registration failed.')
   }, [state])
 
   return (

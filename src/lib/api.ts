@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { ApiStatus, ApiBody } from '@/types/api'
 
-export type { ApiStatus, ApiBody }
 
 const HTTP_STATUS: Record<ApiStatus, number> = {
   ok: 200,
@@ -45,16 +44,29 @@ export const ApiResponse = {
   INTERNAL_ERROR: makeBuilder('internal_error'),
 }
 
-function toNextResponse<T>(body: ApiBody<T>): NextResponse<ApiBody<T>> {
-  return NextResponse.json(body, { status: HTTP_STATUS[body.status] })
+interface ApiBodyWithHeaders<T> {
+  body: ApiBody<T>
+  headers: Record<string, string>
+}
+
+type HandlerResult = ApiBody<unknown> | ApiBodyWithHeaders<unknown>
+
+function isWithHeaders(result: HandlerResult): result is ApiBodyWithHeaders<unknown> {
+  return 'body' in result && 'headers' in result
+}
+
+function toNextResponse<T>(body: ApiBody<T>, headers?: Record<string, string>): NextResponse<ApiBody<T>> {
+  return NextResponse.json(body, { status: HTTP_STATUS[body.status], headers })
 }
 
 export function apiRoute(
-  handler: (request: NextRequest) => Promise<ApiBody<unknown>>
+  handler: (request: NextRequest) => Promise<HandlerResult>
 ): (request: NextRequest) => Promise<NextResponse> {
   return async (request) => {
     try {
-      return toNextResponse(await handler(request))
+      const result = await handler(request)
+      if (isWithHeaders(result)) return toNextResponse(result.body, result.headers)
+      return toNextResponse(result)
     } catch {
       return toNextResponse(ApiResponse.INTERNAL_ERROR())
     }
