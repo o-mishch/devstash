@@ -13,11 +13,11 @@ export function ItemRow({ item }: ItemRowProps) {
 
   return (
     <div
-      className="type-border-l flex cursor-pointer items-center gap-3 rounded-md border border-border px-2 py-2 transition-colors hover:bg-accent/50"
+      className="type-border-l flex h-14 cursor-pointer items-center gap-3 overflow-hidden rounded-xl px-2 ring-1 ring-foreground/10 transition-colors hover:bg-accent"
       style={{ '--item-color': itemType.color } as CSSProperties}
     >
-      <div className="type-icon-bg flex size-5 shrink-0 items-center justify-center rounded">
-        <ItemTypeIcon iconName={itemType.icon} color={itemType.color} />
+      <div className="type-icon-bg flex size-7 shrink-0 items-center justify-center rounded-full">
+        <ItemTypeIcon iconName={itemType.icon} color={itemType.color} className="size-3.5" />
       </div>
 
       <div className="min-w-0 flex-1">
