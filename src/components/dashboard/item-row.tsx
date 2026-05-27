@@ -1,8 +1,8 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { Badge } from '@/components/ui/badge'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
+import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate } from '@/lib/utils'
 import type { Item } from '@/types/item'
@@ -30,11 +30,7 @@ export function ItemRow({ item }: ItemRowProps) {
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {item.tags.slice(0, 2).map((tag) => (
-          <Badge key={tag} variant="secondary" className="hidden text-xs sm:inline-flex">
-            {tag}
-          </Badge>
-        ))}
+        <ItemTags tags={item.tags} max={2} badgeClassName="hidden sm:inline-flex" />
         <span className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</span>
       </div>
     </div>

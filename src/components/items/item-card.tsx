@@ -1,9 +1,9 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
+import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate } from '@/lib/utils'
 import type { Item } from '@/types/item'
@@ -30,15 +30,7 @@ export function ItemCard({ item }: ItemCardProps) {
             {item.description && (
               <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
             )}
-            {item.tags.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {item.tags.slice(0, 3).map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
+            <ItemTags tags={item.tags} max={3} className="mt-1.5" />
           </div>
           <span className="ml-2 shrink-0 text-xs text-muted-foreground">{formatDate(item.createdAt)}</span>
         </div>

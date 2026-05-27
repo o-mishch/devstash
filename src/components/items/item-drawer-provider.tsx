@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { ItemDrawerContext } from '@/context/item-drawer-context'
-import { ItemDetailDrawer } from './item-detail-drawer'
+import { ItemDetailDrawer } from './drawer/item-detail-drawer'
 
 interface ItemDrawerProviderProps {
   children: React.ReactNode
