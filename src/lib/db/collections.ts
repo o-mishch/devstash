@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { withCache, CacheKeys } from '@/lib/redis-cache'
+import { withDataCache, CacheTags } from '@/lib/cache'
 import type { CollectionWithTypes, CollectionStats } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
 
@@ -52,7 +52,7 @@ function mapCollection(col: CollectionRow): CollectionWithTypes {
 }
 
 export async function getAllCollections(userId: string): Promise<CollectionWithTypes[]> {
-  return withCache(CacheKeys.allCollections(userId), async () => {
+  return withDataCache(CacheTags.allCollections(userId), async () => {
     const collections = await prisma.collection.findMany({
       where: { userId },
       orderBy: { updatedAt: 'desc' },
@@ -63,7 +63,7 @@ export async function getAllCollections(userId: string): Promise<CollectionWithT
 }
 
 export async function getCollectionStats(userId: string): Promise<CollectionStats> {
-  return withCache(CacheKeys.collectionStats(userId), async () => {
+  return withDataCache(CacheTags.collectionStats(userId), async () => {
     const [totalCollections, favoriteCollections] = await Promise.all([
       prisma.collection.count({ where: { userId } }),
       prisma.collection.count({ where: { userId, isFavorite: true } }),

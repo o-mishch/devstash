@@ -2,15 +2,15 @@
 
 ## Status
 
-Not Started
+Completed
 
 ## Goals
 
-<!-- Add feature goals here -->
+- No active goals.
 
 ## Notes
 
-<!-- Add implementation notes here -->
+- No active notes.
 
 ---
 
@@ -42,3 +42,4 @@ Not Started
 - **Redis Cache-Aside** - Replaced `unstable_cache` with Upstash Redis cache-aside pattern; `src/lib/redis-cache.ts` is the single source of truth for all Redis keys (`CacheKeys`, `CacheTTL`, `RATE_LIMIT_NS`), TTLs co-located with keys; `withCache` + `invalidateCache` helpers; DB query functions in `items.ts`, `collections.ts`, `profile.ts` updated; `src/lib/cache.ts` provides `invalidateItemsCache`, `invalidateCollectionsCache`, `invalidateProfileCache`; `pending-link.ts` and `rate-limit.ts` import keys from `redis-cache.ts`; `profile.ts` actions call `invalidateProfileCache` after mutations; Router Cache disabled (`staleTimes` removed from `next.config.ts`); dead `next/cache` mock removed from test setup (Completed)
 - **Items Page Fix** - Removed `export const revalidate = 60` leftover; refactored `/items/[type]/page.tsx` to fetch `getItemTypeBySlug` + `getCurrentUserId` in parallel then `getItemsByType` sequentially with resolved `itemType.name`; `ItemsGrid` converted from async server component to plain component receiving items as props; removed `ItemsGridSkeleton` (single `loading.tsx` skeleton instead of double skeleton) (Completed)
 - **Utility and Architecture Refactoring** - Split `src/lib/utils.ts` into smaller focused utility files; extracted DB logic from server actions into `src/lib/db/profile.ts`; split `auth.ts` Server Actions into dedicated files under `src/actions/auth/`; moved `getCurrentUserId` to `src/lib/session.ts`; renamed `icon-utils.tsx` to `item-type-icon.tsx`; fixed `@auth/core/adapters` unlisted dependency in `src/auth.ts` (Completed)
+- **Caching & Latency Optimization** - Replaced Upstash Redis caching with Next.js App Router Data Cache (`unstable_cache`) to provide single-digit millisecond latency via Vercel's edge network; decoupled ephemeral Redis usage (rate limiting, auth tokens) from permanent page caching; eliminated layout skeletons (`loading.tsx`) in favor of Next.js deferred transitions for instant UX; added global `nextjs-toploader` loading bar; fixed system item types pluralization bug (Completed)

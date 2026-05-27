@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { withCache, CacheKeys } from '@/lib/redis-cache'
+import { withDataCache, CacheTags } from '@/lib/cache'
 import { compareBySystemTypeOrder } from './items'
 import { invalidateProfileCache } from '@/lib/cache'
 
@@ -81,8 +81,8 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
 }
 
 export async function getProfileData(userId: string): Promise<ProfileData | null> {
-  return withCache(
-    CacheKeys.profile(userId),
+  return withDataCache(
+    CacheTags.profile(userId),
     () => fetchProfileData(userId)
   )
 }

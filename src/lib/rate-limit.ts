@@ -1,7 +1,6 @@
 import { Ratelimit, type Duration } from '@upstash/ratelimit'
 import { headers } from 'next/headers'
-import { getRedis } from '@/lib/redis-cache'
-import { RATE_LIMIT_NS } from '@/lib/redis-cache'
+import { getRedis, RATE_LIMIT_NS } from '@/lib/redis'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 

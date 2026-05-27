@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { withCache, CacheKeys } from '@/lib/redis-cache'
+import { withDataCache, CacheTags } from '@/lib/cache'
 import type { Item, ItemStats, SidebarItemType } from '@/types/item'
 import type { Prisma } from '@/generated/prisma/client'
 
@@ -18,7 +18,7 @@ function clampLimit(value: number, min = 1, max = 100): number {
 }
 
 export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<Item[]> {
-  return withCache(CacheKeys.pinnedItems(userId), async () => {
+  return withDataCache(CacheTags.pinnedItems(userId), async () => {
     const items = await prisma.item.findMany({
       where: { userId, isPinned: true },
       orderBy: { updatedAt: 'desc' },
@@ -30,7 +30,7 @@ export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Prom
 }
 
 export async function getRecentItems(userId: string, limit = RECENT_LIMIT): Promise<Item[]> {
-  return withCache(CacheKeys.recentItems(userId), async () => {
+  return withDataCache(CacheTags.recentItems(userId), async () => {
     const items = await prisma.item.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -42,7 +42,7 @@ export async function getRecentItems(userId: string, limit = RECENT_LIMIT): Prom
 }
 
 export async function getItemsByType(userId: string, typeName: string): Promise<Item[]> {
-  return withCache(CacheKeys.itemsByType(userId, typeName), async () => {
+  return withDataCache(CacheTags.itemsByType(userId, typeName), async () => {
     const items = await prisma.item.findMany({
       where: { userId, itemType: { name: typeName } },
       orderBy: { createdAt: 'desc' },
@@ -54,7 +54,7 @@ export async function getItemsByType(userId: string, typeName: string): Promise<
 }
 
 export async function getItemStats(userId: string): Promise<ItemStats> {
-  return withCache(CacheKeys.itemStats(userId), async () => {
+  return withDataCache(CacheTags.itemStats(userId), async () => {
     const [totalItems, favoriteItems] = await Promise.all([
       prisma.item.count({ where: { userId } }),
       prisma.item.count({ where: { userId, isFavorite: true } }),
@@ -64,11 +64,11 @@ export async function getItemStats(userId: string): Promise<ItemStats> {
 }
 
 export async function getItemTypeBySlug(slug: string) {
-  return withCache(CacheKeys.itemTypeBySlug(slug), () => {
+  return withDataCache(CacheTags.itemTypeBySlug(slug), () => {
     const candidates = [slug]
     if (slug.endsWith('ies')) candidates.push(slug.slice(0, -3) + 'y')
-    else if (slug.endsWith('es')) candidates.push(slug.slice(0, -2))
-    else if (slug.endsWith('s')) candidates.push(slug.slice(0, -1))
+    if (slug.endsWith('es')) candidates.push(slug.slice(0, -2))
+    if (slug.endsWith('s')) candidates.push(slug.slice(0, -1))
 
     return prisma.itemType.findFirst({
       where: { name: { in: candidates } },
@@ -82,27 +82,45 @@ export function compareBySystemTypeOrder(a: { name: string }, b: { name: string 
   return SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name)
 }
 
-export async function getSidebarItemTypes(userId: string | null): Promise<SidebarItemType[]> {
-  const query = async () => {
+export async function getSystemItemTypes() {
+  return withDataCache(CacheTags.systemItemTypes(), async () => {
     const types = await prisma.itemType.findMany({
-      where: { isSystem: true, userId: null },
-      include: userId
-        ? { _count: { select: { items: { where: { userId } } } } }
-        : { _count: { select: { items: true } } },
+      where: { isSystem: true, userId: null }
     })
-    return types
-      .map((t) => ({
-        id: t.id,
-        name: t.name,
-        icon: t.icon,
-        color: t.color,
-        count: userId ? t._count.items : 0,
-      }))
-      .sort(compareBySystemTypeOrder)
+    return types.sort(compareBySystemTypeOrder)
+  })
+}
+
+export async function getSidebarItemTypes(userId: string | null): Promise<SidebarItemType[]> {
+  const types = await getSystemItemTypes()
+
+  if (!userId) {
+    return types.map((t) => ({
+      id: t.id,
+      name: t.name,
+      icon: t.icon,
+      color: t.color,
+      count: 0,
+    }))
   }
 
-  if (!userId) return query()
-  return withCache(CacheKeys.sidebarTypes(userId), query)
+  return withDataCache(CacheTags.sidebarTypes(userId), async () => {
+    const typeCounts = await prisma.item.groupBy({
+      by: ['itemTypeId'],
+      where: { userId },
+      _count: true,
+    })
+
+    const countMap = new Map(typeCounts.map((tc) => [tc.itemTypeId, tc._count]))
+
+    return types.map((t) => ({
+      id: t.id,
+      name: t.name,
+      icon: t.icon,
+      color: t.color,
+      count: countMap.get(t.id) || 0,
+    }))
+  })
 }
 
 function toItem(item: ItemWithRelations): Item {

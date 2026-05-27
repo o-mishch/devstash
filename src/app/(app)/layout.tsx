@@ -1,10 +1,8 @@
-import { Suspense } from 'react'
 import Link from 'next/link'
 import { Archive, FolderPlus, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SidebarContent } from '@/components/layout/sidebar-content'
-import { SidebarSkeleton } from '@/components/layout/sidebar-skeleton'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
 import { cache } from 'react'
 import { auth } from '@/auth'
@@ -33,9 +31,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen flex-col bg-background">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
-        <Suspense fallback={<div className="size-9 shrink-0 lg:hidden" />}>
-          <MobileDrawerAsync />
-        </Suspense>
+        <MobileDrawerAsync />
 
         <Link href="/dashboard" className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity">
           <Archive className="size-4 text-primary" />
@@ -63,9 +59,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <Suspense fallback={<SidebarSkeleton />}>
-          <SidebarAsync />
-        </Suspense>
+        <SidebarAsync />
 
         <main className="flex flex-1 flex-col overflow-auto">
           {children}

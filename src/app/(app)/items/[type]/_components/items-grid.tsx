@@ -10,8 +10,8 @@ interface ItemsGridProps {
 export function ItemsGrid({ items, typeName }: ItemsGridProps) {
   if (items.length === 0) {
     return (
-      <Card>
-        <CardContent className="p-6">
+      <Card className="h-20">
+        <CardContent className="flex h-full items-center justify-center p-4">
           <p className="text-sm text-muted-foreground">No {typeName}s yet.</p>
         </CardContent>
       </Card>

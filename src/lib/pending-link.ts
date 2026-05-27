@@ -1,6 +1,6 @@
 import crypto from 'crypto'
-import { getRedis } from '@/lib/redis-cache'
-import { CacheKeys } from '@/lib/redis-cache'
+import { getRedis } from '@/lib/redis'
+
 
 export interface PendingLinkData {
   email: string
@@ -21,7 +21,8 @@ export async function createPendingLink(data: PendingLinkData): Promise<string |
     const redis = getRedis()
     if (!redis) return null
     const token = crypto.randomBytes(32).toString('hex')
-    const { key, ttl } = CacheKeys.pendingLink(token)
+    const key = `pending-link:${token}`
+    const ttl = 60 * 15 // 15 minutes
     await redis.set(key, data, { ex: ttl })
     return token
   } catch {
@@ -33,7 +34,7 @@ export async function getPendingLink(token: string): Promise<PendingLinkData | n
   try {
     const redis = getRedis()
     if (!redis) return null
-    return await redis.get<PendingLinkData>(CacheKeys.pendingLink(token).key)
+    return await redis.get<PendingLinkData>(`pending-link:${token}`)
   } catch {
     return null
   }
@@ -43,7 +44,7 @@ export async function deletePendingLink(token: string): Promise<void> {
   try {
     const redis = getRedis()
     if (!redis) return
-    await redis.del(CacheKeys.pendingLink(token).key)
+    await redis.del(`pending-link:${token}`)
   } catch {
     // fail open — non-critical, token expires automatically via TTL
   }
