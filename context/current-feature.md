@@ -6,11 +6,11 @@ Not Started
 
 ## Goals
 
-<!-- List the high-level goals of the feature here -->
+<!-- Add goals here -->
 
 ## Notes
 
-<!-- Add any important technical notes, decisions, or constraints here -->
+<!-- Add context or constraints here -->
 
 ---
 
@@ -48,3 +48,4 @@ Not Started
 - **Item Drawer** - `ItemDrawerContext` + `ItemDrawerProvider` client wrapper manages open/itemId state; `ItemDetailDrawer` (shadcn Sheet, right side) fetches full item via `GET /api/items/[id]` on click, shows `DrawerSkeleton` while loading; action bar with Favorite (yellow when active), Pin, Copy (functional), Edit, Delete (right-aligned); resizable via `useResizable` hook with left-edge drag strip; `ItemCard` and `ItemRow` wired with `onClick → openDrawer`; `ItemDrawerProvider` placed in `(app)` layout covering dashboard and items pages; `getItemById` added to `lib/db/items.ts`; `RouteContext` type added to `lib/api.ts`; seed made idempotent (find-or-create); Vitest tests added for `compareBySystemTypeOrder`, `getItemTypeBySlug` slug normalization, and `getSidebarItemTypes` null/live-userId paths (Completed)
 - **Item Drawer - Edit Mode** - Implemented edit mode within the existing ItemDetailDrawer using conditional `DrawerEditContent`; built robust server action `updateItemAction` (Zod 4 compliant) and Prisma query `updateItem`; optimized cache invalidation via `updateTag`; resolved react architecture warning by replacing boolean state with `editingItemId`; updated cache invalidation architecture across profile actions for tighter cache consistency. (Completed)
 - **Item Drawer - Delete Functionality** - Implemented the delete feature for items; added `deleteItem` to Prisma db layer using `deleteMany` for user safety; created `deleteItemAction` server action to invalidate items cache on success; wired `Trash2` button in `ItemDetailDrawer` to open a shadcn `Dialog` for confirmation; configured `toast.success`/`error` feedback, drawer auto-close, and router refresh; wrote full test suite for new action/db functions passing with 100% statement coverage. (Completed)
+- **Item Create** - Implemented `ItemCreateDialog` with dynamic, conditional form fields driven by database item types; built `createItemAction` Server Action with DRY Zod validation (`baseItemSchema.extend`); added `createItem` Prisma query; centralized system type logic in `src/lib/utils/constants.ts`; resolved React hydration issues by properly scoping Client Components. (Completed)

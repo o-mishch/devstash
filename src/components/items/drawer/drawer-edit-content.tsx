@@ -8,10 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { updateItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
+import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import type { ItemDetail } from '@/types/item'
-
-const CONTENT_TYPES = new Set(['snippet', 'prompt', 'command', 'note'])
-const LANGUAGE_TYPES = new Set(['snippet', 'command'])
 
 interface DrawerEditContentProps {
   item: ItemDetail
@@ -33,9 +31,9 @@ export function DrawerEditContent({ item, onClose, onSave, onCancel }: DrawerEdi
   const [tags, setTags] = useState(item.tags.join(', '))
   const [saving, setSaving] = useState(false)
 
-  const showContent = CONTENT_TYPES.has(typeName)
-  const showLanguage = LANGUAGE_TYPES.has(typeName)
-  const showUrl = typeName === 'link'
+  const showContent = ITEM_TYPES_WITH_CONTENT.has(typeName)
+  const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(typeName)
+  const showUrl = ITEM_TYPES_WITH_URL.has(typeName)
 
   async function handleSave() {
     if (!title.trim()) return

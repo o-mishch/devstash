@@ -1,10 +1,11 @@
 import Link from 'next/link'
-import { Archive, FolderPlus, Plus, Search } from 'lucide-react'
+import { Archive, FolderPlus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
 import { ItemDrawerProvider } from '@/components/items/item-drawer-provider'
+import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { cache } from 'react'
 import { auth } from '@/auth'
 import { fetchSidebarData } from '@/lib/db/sidebar'
@@ -28,6 +29,11 @@ async function MobileDrawerAsync() {
   return <MobileDrawer sidebarData={sidebarData} />
 }
 
+async function CreateItemDialogAsync() {
+  const sidebarData = await getSidebarData()
+  return <CreateItemDialog itemTypes={sidebarData.itemTypes} />
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -49,13 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <FolderPlus className="size-4" />
             New Collection
           </Button>
-          <Button size="icon" className="sm:hidden">
-            <Plus className="size-4" />
-          </Button>
-          <Button size="sm" className="hidden sm:flex">
-            <Plus className="size-4" />
-            New Item
-          </Button>
+          <CreateItemDialogAsync />
         </div>
       </header>
 

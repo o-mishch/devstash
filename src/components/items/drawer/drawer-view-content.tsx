@@ -8,9 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ItemTags } from '@/components/shared/item-tags'
 import { deleteItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
+import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import type { ItemDetail } from '@/types/item'
-
-const CONTENT_TYPES = new Set(['snippet', 'prompt', 'command', 'note'])
 
 interface DrawerViewContentProps {
   item: ItemDetail
@@ -83,7 +82,7 @@ export function DrawerViewContent({ item, onClose, onEdit }: DrawerViewContentPr
           </>
         }
       >
-        {CONTENT_TYPES.has(itemType.name) && (
+        {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
           <DrawerSection label="Content" className="flex min-h-0 flex-1 flex-col">
             {item.content ? (
               <pre className="flex-1 min-h-0 overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed whitespace-pre">
@@ -103,7 +102,7 @@ export function DrawerViewContent({ item, onClose, onEdit }: DrawerViewContentPr
           )}
         </DrawerSection>
 
-        {itemType.name === 'link' && (
+        {ITEM_TYPES_WITH_URL.has(itemType.name) && (
           <DrawerSection label="URL">
             {item.url ? (
               <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all">

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, SYSTEM_TYPE_ORDER } from '@/lib/utils/constants'
 import type { Item, ItemDetail, ItemStats, SidebarItemType } from '@/types/item'
 import type { Prisma } from '@/generated/prisma/client'
 
@@ -85,6 +86,61 @@ export async function getItemById(userId: string, itemId: string): Promise<ItemD
   }
 }
 
+export interface CreateItemInput {
+  title: string
+  description: string | null
+  content: string | null
+  url: string | null
+  language: string | null
+  tags: string[]
+  itemTypeName: string
+}
+
+export async function createItem(userId: string, data: CreateItemInput): Promise<ItemDetail | null> {
+  const itemType = await prisma.itemType.findFirst({
+    where: { name: data.itemTypeName, OR: [{ userId }, { userId: null }] },
+  })
+  
+  if (!itemType) return null
+
+  let contentType: 'TEXT' | 'FILE' | 'URL' = 'TEXT'
+  if (ITEM_TYPES_WITH_URL.has(data.itemTypeName)) contentType = 'URL'
+  else if (ITEM_TYPES_WITH_FILE.has(data.itemTypeName)) contentType = 'FILE'
+
+  const created = await prisma.item.create({
+    data: {
+      userId,
+      itemTypeId: itemType.id,
+      title: data.title,
+      contentType,
+      description: data.description,
+      content: data.content,
+      url: data.url,
+      language: data.language,
+      tags: {
+        connectOrCreate: data.tags.map((name) => ({
+          where: { name },
+          create: { name },
+        })),
+      },
+    },
+    include: {
+      ...ITEM_INCLUDE,
+      collections: { include: { collection: { select: { id: true, name: true } } } },
+    },
+  })
+
+  return {
+    ...toItem(created),
+    content: created.content,
+    url: created.url,
+    fileUrl: created.fileUrl,
+    fileName: created.fileName,
+    fileSize: created.fileSize,
+    collections: created.collections.map((ic) => ic.collection),
+  }
+}
+
 export interface UpdateItemInput {
   title: string
   description: string | null
@@ -150,8 +206,6 @@ export async function getItemTypeBySlug(slug: string) {
     })
   })
 }
-
-const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
 
 export function compareBySystemTypeOrder(a: { name: string }, b: { name: string }): number {
   return SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name)

@@ -1,17 +1,18 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
-vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn() }))
 vi.mock('@/lib/cache', () => ({ invalidateItemsCache: vi.fn() }))
 
 import { auth } from '@/auth'
-import { updateItem, deleteItem, getItemById } from '@/lib/db/items'
-import { updateItemAction, deleteItemAction } from './items'
+import { updateItem, deleteItem, getItemById, createItem } from '@/lib/db/items'
+import { updateItemAction, deleteItemAction, createItemAction } from './items'
 
 const mockAuth = auth as ReturnType<typeof vi.fn>
 const mockUpdateItem = updateItem as ReturnType<typeof vi.fn>
 const mockDeleteItem = deleteItem as ReturnType<typeof vi.fn>
 const mockGetItemById = getItemById as ReturnType<typeof vi.fn>
+const mockCreateItem = createItem as ReturnType<typeof vi.fn>
 
 const validInput = {
   title: 'My snippet',
@@ -28,7 +29,41 @@ const mockItem = {
   itemType: { name: 'snippet' },
 }
 
+const validCreateInput = {
+  ...validInput,
+  itemTypeName: 'snippet',
+}
+
 beforeEach(() => vi.clearAllMocks())
+
+describe('createItemAction', () => {
+  it('returns UNAUTHORIZED when not signed in', async () => {
+    mockAuth.mockResolvedValue(null)
+    const result = await createItemAction(validCreateInput)
+    expect(result.status).toBe('unauthorized')
+  })
+
+  it('returns VALIDATION_ERROR when url is missing for link type', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'link', url: null })
+    expect(result.status).toBe('validation_error')
+  })
+
+  it('returns CREATED with created item on success', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCreateItem.mockResolvedValue(mockItem)
+    const result = await createItemAction(validCreateInput)
+    expect(result.status).toBe('created')
+    expect(result.data).toEqual(mockItem)
+  })
+
+  it('returns INTERNAL_ERROR on unexpected DB failure', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCreateItem.mockRejectedValue(new Error('DB down'))
+    const result = await createItemAction(validCreateInput)
+    expect(result.status).toBe('internal_error')
+  })
+})
 
 describe('updateItemAction', () => {
   it('returns UNAUTHORIZED when not signed in', async () => {
