@@ -1,7 +1,10 @@
+'use client'
+
 import type { CSSProperties } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
+import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate } from '@/lib/utils'
 import type { Item } from '@/types/item'
 
@@ -11,11 +14,13 @@ interface ItemCardProps {
 
 export function ItemCard({ item }: ItemCardProps) {
   const { itemType } = item
+  const { openDrawer } = useItemDrawer()
 
   return (
     <Card
       className="type-border-l h-20 cursor-pointer overflow-hidden transition-colors hover:bg-accent"
       style={{ '--item-color': itemType.color } as CSSProperties}
+      onClick={() => openDrawer(item.id)}
     >
       <CardContent className="flex h-full items-center p-4">
         <div className="flex w-full items-center gap-3">

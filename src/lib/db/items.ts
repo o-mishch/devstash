@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
-import type { Item, ItemStats, SidebarItemType } from '@/types/item'
+import type { Item, ItemDetail, ItemStats, SidebarItemType } from '@/types/item'
 import type { Prisma } from '@/generated/prisma/client'
 
 type ItemWithRelations = Prisma.ItemGetPayload<{
@@ -61,6 +61,28 @@ export async function getItemStats(userId: string): Promise<ItemStats> {
     ])
     return { totalItems, favoriteItems }
   })
+}
+
+export async function getItemById(userId: string, itemId: string): Promise<ItemDetail | null> {
+  const item = await prisma.item.findFirst({
+    where: { id: itemId, userId },
+    include: {
+      ...ITEM_INCLUDE,
+      collections: { include: { collection: { select: { id: true, name: true } } } },
+    },
+  })
+
+  if (!item) return null
+
+  return {
+    ...toItem(item),
+    content: item.content,
+    url: item.url,
+    fileUrl: item.fileUrl,
+    fileName: item.fileName,
+    fileSize: item.fileSize,
+    collections: item.collections.map((ic) => ic.collection),
+  }
 }
 
 export async function getItemTypeBySlug(slug: string) {

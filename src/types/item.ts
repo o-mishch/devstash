@@ -25,6 +25,20 @@ export interface ItemStats {
   favoriteItems: number
 }
 
+export interface ItemDetailCollection {
+  id: string
+  name: string
+}
+
+export interface ItemDetail extends Item {
+  content: string | null
+  url: string | null
+  fileUrl: string | null
+  fileName: string | null
+  fileSize: number | null
+  collections: ItemDetailCollection[]
+}
+
 export interface SidebarItemType {
   id: string
   name: string

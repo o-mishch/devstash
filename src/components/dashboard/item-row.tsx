@@ -1,6 +1,9 @@
+'use client'
+
 import type { CSSProperties } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
+import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate } from '@/lib/utils'
 import type { Item } from '@/types/item'
 
@@ -10,11 +13,13 @@ interface ItemRowProps {
 
 export function ItemRow({ item }: ItemRowProps) {
   const { itemType } = item
+  const { openDrawer } = useItemDrawer()
 
   return (
     <div
       className="type-border-l flex h-14 cursor-pointer items-center gap-3 overflow-hidden rounded-xl px-2 ring-1 ring-foreground/10 transition-colors hover:bg-accent"
       style={{ '--item-color': itemType.color } as CSSProperties}
+      onClick={() => openDrawer(item.id)}
     >
       <ItemIconWrapper itemType={itemType} wrapperClassName="size-7" iconClassName="size-3.5" />
 

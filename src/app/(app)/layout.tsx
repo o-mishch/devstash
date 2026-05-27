@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
+import { ItemDrawerProvider } from '@/components/items/item-drawer-provider'
 import { cache } from 'react'
 import { auth } from '@/auth'
 import { fetchSidebarData } from '@/lib/db/sidebar'
@@ -62,7 +63,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <SidebarAsync />
 
         <main className="flex flex-1 flex-col overflow-auto">
-          {children}
+          <ItemDrawerProvider>
+            {children}
+          </ItemDrawerProvider>
         </main>
       </div>
     </div>

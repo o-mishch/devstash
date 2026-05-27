@@ -35,8 +35,19 @@ async function seedItems(
 ) {
   await Promise.all(
     items.map(async (data) => {
-      const item = await prisma.item.create({ data })
-      await prisma.itemCollection.create({ data: { itemId: item.id, collectionId } })
+      let item = await prisma.item.findFirst({
+        where: { title: data.title, userId: data.userId },
+      })
+      if (!item) {
+        item = await prisma.item.create({ data })
+      }
+
+      const link = await prisma.itemCollection.findUnique({
+        where: { itemId_collectionId: { itemId: item.id, collectionId } },
+      })
+      if (!link) {
+        await prisma.itemCollection.create({ data: { itemId: item.id, collectionId } })
+      }
     }),
   )
 }
@@ -62,18 +73,21 @@ async function main() {
     },
   })
 
-  // Wipe existing content before recreating (items have their own userId FK, not cascade-deleted with collections)
-  await prisma.item.deleteMany({ where: { userId: user.id } })
-  await prisma.collection.deleteMany({ where: { userId: user.id } })
+  // Items and collections are now seeded idempotently (no deletion needed)
 
   const types = await prisma.itemType.findMany({ where: { isSystem: true, userId: null } })
   const t = Object.fromEntries(types.map((type) => [type.name, type.id]))
 
   // ── React Patterns ────────────────────────────────────────────────
   console.log('Seeding React Patterns...')
-  const reactPatterns = await prisma.collection.create({
-    data: { name: 'React Patterns', description: 'Reusable React patterns and hooks', userId: user.id, isFavorite: true },
+  let reactPatterns = await prisma.collection.findFirst({
+    where: { name: 'React Patterns', userId: user.id },
   })
+  if (!reactPatterns) {
+    reactPatterns = await prisma.collection.create({
+      data: { name: 'React Patterns', description: 'Reusable React patterns and hooks', userId: user.id, isFavorite: true },
+    })
+  }
 
   await seedItems(
     [
@@ -147,9 +161,14 @@ export function cn(...inputs: ClassValue[]) {
 
   // ── AI Workflows ──────────────────────────────────────────────────
   console.log('Seeding AI Workflows...')
-  const aiWorkflows = await prisma.collection.create({
-    data: { name: 'AI Workflows', description: 'AI prompts and workflow automations', userId: user.id, isFavorite: true },
+  let aiWorkflows = await prisma.collection.findFirst({
+    where: { name: 'AI Workflows', userId: user.id },
   })
+  if (!aiWorkflows) {
+    aiWorkflows = await prisma.collection.create({
+      data: { name: 'AI Workflows', description: 'AI prompts and workflow automations', userId: user.id, isFavorite: true },
+    })
+  }
 
   await seedItems(
     [
@@ -218,9 +237,14 @@ Show the refactored version only. Add a brief bullet list of what changed.
 
   // ── DevOps ────────────────────────────────────────────────────────
   console.log('Seeding DevOps...')
-  const devops = await prisma.collection.create({
-    data: { name: 'DevOps', description: 'Infrastructure and deployment resources', userId: user.id },
+  let devops = await prisma.collection.findFirst({
+    where: { name: 'DevOps', userId: user.id },
   })
+  if (!devops) {
+    devops = await prisma.collection.create({
+      data: { name: 'DevOps', description: 'Infrastructure and deployment resources', userId: user.id },
+    })
+  }
 
   await seedItems(
     [
@@ -291,9 +315,14 @@ docker run -d --name app --restart unless-stopped \\
 
   // ── Terminal Commands ─────────────────────────────────────────────
   console.log('Seeding Terminal Commands...')
-  const terminalCmds = await prisma.collection.create({
-    data: { name: 'Terminal Commands', description: 'Useful shell commands for everyday development', userId: user.id },
+  let terminalCmds = await prisma.collection.findFirst({
+    where: { name: 'Terminal Commands', userId: user.id },
   })
+  if (!terminalCmds) {
+    terminalCmds = await prisma.collection.create({
+      data: { name: 'Terminal Commands', description: 'Useful shell commands for everyday development', userId: user.id },
+    })
+  }
 
   await seedItems(
     [
@@ -336,9 +365,14 @@ docker run -d --name app --restart unless-stopped \\
 
   // ── Design Resources ──────────────────────────────────────────────
   console.log('Seeding Design Resources...')
-  const designResources = await prisma.collection.create({
-    data: { name: 'Design Resources', description: 'UI/UX resources and references', userId: user.id },
+  let designResources = await prisma.collection.findFirst({
+    where: { name: 'Design Resources', userId: user.id },
   })
+  if (!designResources) {
+    designResources = await prisma.collection.create({
+      data: { name: 'Design Resources', description: 'UI/UX resources and references', userId: user.id },
+    })
+  }
 
   await seedItems(
     [

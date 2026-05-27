@@ -59,12 +59,16 @@ function toNextResponse<T>(body: ApiBody<T>, headers?: Record<string, string>): 
   return NextResponse.json(body, { status: HTTP_STATUS[body.status], headers })
 }
 
+export interface RouteContext {
+  params: Promise<Record<string, string>>
+}
+
 export function apiRoute(
-  handler: (request: NextRequest) => Promise<HandlerResult>
-): (request: NextRequest) => Promise<NextResponse> {
-  return async (request) => {
+  handler: (request: NextRequest, context: RouteContext) => Promise<HandlerResult>
+): (request: NextRequest, context: RouteContext) => Promise<NextResponse> {
+  return async (request, context) => {
     try {
-      const result = await handler(request)
+      const result = await handler(request, context)
       if (isWithHeaders(result)) return toNextResponse(result.body, result.headers)
       return toNextResponse(result)
     } catch {
