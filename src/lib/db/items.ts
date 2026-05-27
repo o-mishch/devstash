@@ -78,7 +78,7 @@ export async function getItemTypeBySlug(slug: string) {
 
 const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
 
-function compareBySystemTypeOrder(a: { name: string }, b: { name: string }): number {
+export function compareBySystemTypeOrder(a: { name: string }, b: { name: string }): number {
   return SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name)
 }
 

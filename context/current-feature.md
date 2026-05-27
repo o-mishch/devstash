@@ -2,7 +2,7 @@
 
 ## Status
 
-Completed
+Not Started
 
 ## Goals
 
@@ -44,3 +44,4 @@ Completed
 - **Utility and Architecture Refactoring** - Split `src/lib/utils.ts` into smaller focused utility files; extracted DB logic from server actions into `src/lib/db/profile.ts`; split `auth.ts` Server Actions into dedicated files under `src/actions/auth/`; moved `getCurrentUserId` to `src/lib/session.ts`; renamed `icon-utils.tsx` to `item-type-icon.tsx`; fixed `@auth/core/adapters` unlisted dependency in `src/auth.ts` (Completed)
 - **Caching & Latency Optimization** - Replaced Upstash Redis caching with Next.js App Router Data Cache (`unstable_cache`) to provide single-digit millisecond latency via Vercel's edge network; decoupled ephemeral Redis usage (rate limiting, auth tokens) from permanent page caching; eliminated layout skeletons (`loading.tsx`) in favor of Next.js deferred transitions for instant UX; added global `nextjs-toploader` loading bar; fixed system item types pluralization bug (Completed)
 - **Precise Loading Skeletons & Router Cache** - Removed `nextjs-toploader`; restored `loading.tsx` skeletons across Dashboard, Items, and Profile with precise DOM-matching shapes to eliminate layout shift during DB cold starts; enabled Next.js Client Router Cache via `staleTimes.dynamic = 30` in `next.config.ts` to provide 0ms instantaneous navigation between recently visited routes. (Completed)
+- **Add Vercel Analytics & Cleanup** - Installed `@vercel/analytics`, added `Analytics` component to root layout, and cleaned up unused UI component exports (Completed)

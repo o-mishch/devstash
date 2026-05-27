@@ -5,7 +5,7 @@ export interface DataCacheConfig {
   revalidate: number
 }
 
-export const CacheRevalidate = {
+const CacheRevalidate = {
   items:       60,
   collections: 60,
   profile:     300,
@@ -48,7 +48,7 @@ export async function withDataCache<T>(
   return cachedFetcher()
 }
 
-export async function invalidateDataCache(...configs: DataCacheConfig[]): Promise<void> {
+async function invalidateDataCache(...configs: DataCacheConfig[]): Promise<void> {
   if (!configs.length) return
   
   // Invalidate Next.js Data Cache
@@ -61,25 +61,7 @@ export async function invalidateDataCache(...configs: DataCacheConfig[]): Promis
   })
 }
 
-// Called after any item mutation (create / update / delete / pin / favorite).
-// When items CRUD is built, add CacheTags.itemsByType invalidation there too
-// since we'd need to know the type name for targeted tag deletion.
-export async function invalidateItemsCache(userId: string): Promise<void> {
-  await invalidateDataCache(
-    CacheTags.pinnedItems(userId),
-    CacheTags.recentItems(userId),
-    CacheTags.itemStats(userId),
-    CacheTags.sidebarTypes(userId),
-  )
-}
 
-// Called after any collection mutation (create / update / delete / favorite).
-export async function invalidateCollectionsCache(userId: string): Promise<void> {
-  await invalidateDataCache(
-    CacheTags.allCollections(userId),
-    CacheTags.collectionStats(userId),
-  )
-}
 
 // Called after profile mutations (password change, unlink provider).
 export async function invalidateProfileCache(userId: string): Promise<void> {
