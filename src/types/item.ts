@@ -25,7 +25,7 @@ export interface ItemStats {
   favoriteItems: number
 }
 
-export interface ItemDetailCollection {
+interface ItemDetailCollection {
   id: string
   name: string
 }

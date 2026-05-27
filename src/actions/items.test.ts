@@ -1,15 +1,17 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
-vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn() }))
 vi.mock('@/lib/cache', () => ({ invalidateItemsCache: vi.fn() }))
 
 import { auth } from '@/auth'
-import { updateItem } from '@/lib/db/items'
-import { updateItemAction } from './items'
+import { updateItem, deleteItem, getItemById } from '@/lib/db/items'
+import { updateItemAction, deleteItemAction } from './items'
 
 const mockAuth = auth as ReturnType<typeof vi.fn>
 const mockUpdateItem = updateItem as ReturnType<typeof vi.fn>
+const mockDeleteItem = deleteItem as ReturnType<typeof vi.fn>
+const mockGetItemById = getItemById as ReturnType<typeof vi.fn>
 
 const validInput = {
   title: 'My snippet',
@@ -84,6 +86,44 @@ describe('updateItemAction', () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockUpdateItem.mockRejectedValue(new Error('DB down'))
     const result = await updateItemAction('item-1', validInput)
+    expect(result.status).toBe('internal_error')
+  })
+})
+
+describe('deleteItemAction', () => {
+  it('returns UNAUTHORIZED when not signed in', async () => {
+    mockAuth.mockResolvedValue(null)
+    const result = await deleteItemAction('item-1')
+    expect(result.status).toBe('unauthorized')
+  })
+
+  it('returns NOT_FOUND when item does not exist or belongs to another user', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetItemById.mockResolvedValue(null)
+    const result = await deleteItemAction('item-1')
+    expect(result.status).toBe('not_found')
+  })
+
+  it('returns INTERNAL_ERROR if delete operation fails (returns false)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetItemById.mockResolvedValue(mockItem)
+    mockDeleteItem.mockResolvedValue(false)
+    const result = await deleteItemAction('item-1')
+    expect(result.status).toBe('internal_error')
+  })
+
+  it('returns OK and invalidates cache on success', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetItemById.mockResolvedValue(mockItem)
+    mockDeleteItem.mockResolvedValue(true)
+    const result = await deleteItemAction('item-1')
+    expect(result.status).toBe('ok')
+  })
+
+  it('returns INTERNAL_ERROR on unexpected DB failure', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetItemById.mockRejectedValue(new Error('DB down'))
+    const result = await deleteItemAction('item-1')
     expect(result.status).toBe('internal_error')
   })
 })

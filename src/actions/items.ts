@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { auth } from '@/auth'
 import { ApiResponse } from '@/lib/api'
-import { updateItem as dbUpdateItem } from '@/lib/db/items'
+import { updateItem as dbUpdateItem, deleteItem as dbDeleteItem, getItemById as dbGetItemById } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/cache'
 import type { ApiBody } from '@/types/api'
 import type { ItemDetail } from '@/types/item'
@@ -41,6 +41,26 @@ export async function updateItemAction(
     return ApiResponse.OK(updated)
   } catch (error) {
     console.error('[updateItemAction] Error:', error)
+    return ApiResponse.INTERNAL_ERROR()
+  }
+}
+
+export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
+  const session = await auth()
+  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+
+  try {
+    const existing = await dbGetItemById(session.user.id, itemId)
+    if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
+
+    const deleted = await dbDeleteItem(session.user.id, itemId)
+    if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
+
+    invalidateItemsCache(session.user.id, existing.itemType.name)
+
+    return ApiResponse.OK()
+  } catch (error) {
+    console.error('[deleteItemAction] Error:', error)
     return ApiResponse.INTERNAL_ERROR()
   }
 }

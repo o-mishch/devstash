@@ -2,7 +2,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    item: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
+    item: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn() },
     itemType: { findFirst: vi.fn(), findMany: vi.fn() },
   },
 }))
@@ -21,11 +21,12 @@ vi.mock('@/lib/cache', () => ({
 }))
 
 import { prisma } from '@/lib/prisma'
-import { compareBySystemTypeOrder, getItemTypeBySlug, getSidebarItemTypes } from './items'
+import { compareBySystemTypeOrder, getItemTypeBySlug, getSidebarItemTypes, deleteItem } from './items'
 
 const mockFindFirst = prisma.itemType.findFirst as ReturnType<typeof vi.fn>
 const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>
 const mockGroupBy = prisma.item.groupBy as ReturnType<typeof vi.fn>
+const mockDeleteMany = prisma.item.deleteMany as ReturnType<typeof vi.fn>
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -123,5 +124,25 @@ describe('getSidebarItemTypes', () => {
     const prompt = result.find((t) => t.name === 'prompt')
     expect(snippet?.count).toBe(5)
     expect(prompt?.count).toBe(0)
+  })
+})
+
+// ── deleteItem ───────────────────────────────────────────────────────────────
+
+describe('deleteItem', () => {
+  it('calls prisma.item.deleteMany with userId and itemId', async () => {
+    mockDeleteMany.mockResolvedValue({ count: 1 })
+    const result = await deleteItem('user-1', 'item-1')
+    
+    expect(mockDeleteMany).toHaveBeenCalledWith({
+      where: { id: 'item-1', userId: 'user-1' }
+    })
+    expect(result).toBe(true)
+  })
+
+  it('returns false if count is 0', async () => {
+    mockDeleteMany.mockResolvedValue({ count: 0 })
+    const result = await deleteItem('user-1', 'item-x')
+    expect(result).toBe(false)
   })
 })
