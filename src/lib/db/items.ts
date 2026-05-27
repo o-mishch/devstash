@@ -78,11 +78,11 @@ export async function getItemTypeBySlug(slug: string) {
 
 const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
 
-export function compareBySystemTypeOrder(a: { name: string }, b: { name: string }): number {
+function compareBySystemTypeOrder(a: { name: string }, b: { name: string }): number {
   return SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name)
 }
 
-export async function getSystemItemTypes() {
+async function getSystemItemTypes() {
   return withDataCache(CacheTags.systemItemTypes(), async () => {
     const types = await prisma.itemType.findMany({
       where: { isSystem: true, userId: null }
