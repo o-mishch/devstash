@@ -30,7 +30,14 @@ export async function withDataCache<T>(
   fetcher: () => Promise<T>
 ): Promise<T> {
   const cachedFetcher = unstable_cache(
-    fetcher,
+    async () => {
+      console.log('❌ CACHE MISS OR REVALIDATION:', config.tag)
+      const start = Date.now()
+      const result = await fetcher()
+      console.log(`✅ FETCHED ${config.tag} in ${Date.now() - start}ms`)
+      // Strip Prisma proxies and non-serializable objects to guarantee successful caching
+      return JSON.parse(JSON.stringify(result)) as T
+    },
     [config.tag],
     {
       revalidate: config.revalidate,

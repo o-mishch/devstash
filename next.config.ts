@@ -11,6 +11,12 @@ const nextConfig: NextConfig = {
       '*.svg': { loaders: ['@svgr/webpack'], as: '*.js' },
     },
   },
+  experimental: {
+    staleTimes: {
+      dynamic: 30,
+      static: 180,
+    },
+  },
 };
 
 export default nextConfig;
