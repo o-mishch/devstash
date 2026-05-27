@@ -1,18 +1,25 @@
 'use client'
 
 import { useEffect, useState, type CSSProperties } from 'react'
-import { Star, Pin, Copy, Pencil, Trash2, Calendar, FolderOpen, Tag, X, ExternalLink } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Star, Pin, Copy, Pencil, Trash2, Calendar, FolderOpen, Tag, X, ExternalLink, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { apiFetch } from '@/lib/api-fetch'
 import { formatDate } from '@/lib/utils'
 import { useResizable } from '@/hooks/use-resizable'
+import { updateItemAction } from '@/actions/items'
 import type { ItemDetail } from '@/types/item'
+
+const CONTENT_TYPES = new Set(['snippet', 'prompt', 'command', 'note'])
+const LANGUAGE_TYPES = new Set(['snippet', 'command'])
 
 interface ItemDetailDrawerProps {
   itemId: string | null
@@ -22,11 +29,13 @@ interface ItemDetailDrawerProps {
 
 export function ItemDetailDrawer({ itemId, open, onOpenChange }: ItemDetailDrawerProps) {
   const [item, setItem] = useState<ItemDetail | null>(null)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
+  
+  const editing = editingItemId === itemId
 
   useEffect(() => {
     if (!open || !itemId) return
-
     apiFetch<ItemDetail>(`/api/items/${itemId}`)
       .then((res) => {
         if (res.status === 'ok' && res.data) setItem(res.data)
@@ -34,7 +43,6 @@ export function ItemDetailDrawer({ itemId, open, onOpenChange }: ItemDetailDrawe
       })
   }, [open, itemId])
 
-  // Skeleton while item hasn't loaded yet or a different item was just selected
   const showSkeleton = !item || item.id !== itemId
 
   return (
@@ -45,7 +53,6 @@ export function ItemDetailDrawer({ itemId, open, onOpenChange }: ItemDetailDrawe
         style={{ width, maxWidth: 'none' }}
         showCloseButton={false}
       >
-        {/* Resize handle — left edge drag strip */}
         <div
           className={`absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize transition-colors ${dragging ? 'bg-primary/40' : 'hover:bg-primary/30'}`}
           onMouseDown={startResize}
@@ -55,20 +62,34 @@ export function ItemDetailDrawer({ itemId, open, onOpenChange }: ItemDetailDrawe
 
         {showSkeleton ? (
           <DrawerSkeleton />
+        ) : editing ? (
+          <DrawerEditContent
+            item={item}
+            onClose={() => onOpenChange(false)}
+            onSave={(updated) => { setItem(updated); setEditingItemId(null) }}
+            onCancel={() => setEditingItemId(null)}
+          />
         ) : (
-          <DrawerContent item={item} onClose={() => onOpenChange(false)} />
+          <DrawerViewContent
+            item={item}
+            onClose={() => onOpenChange(false)}
+            onEdit={() => setEditingItemId(itemId)}
+          />
         )}
       </SheetContent>
     </Sheet>
   )
 }
 
-interface DrawerContentProps {
+// ── View mode ────────────────────────────────────────────────────────────────
+
+interface DrawerViewContentProps {
   item: ItemDetail
   onClose: () => void
+  onEdit: () => void
 }
 
-function DrawerContent({ item, onClose }: DrawerContentProps) {
+function DrawerViewContent({ item, onClose, onEdit }: DrawerViewContentProps) {
   const { itemType } = item
 
   function handleCopy() {
@@ -78,7 +99,6 @@ function DrawerContent({ item, onClose }: DrawerContentProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden" style={{ '--item-color': itemType.color } as CSSProperties}>
-      {/* Header */}
       <div className="flex items-start gap-3 px-5 pt-5 pb-4">
         <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0" iconClassName="size-4.5" />
         <div className="min-w-0 flex-1">
@@ -95,13 +115,8 @@ function DrawerContent({ item, onClose }: DrawerContentProps) {
 
       <Separator />
 
-      {/* Action bar */}
       <div className="flex items-center gap-0.5 px-2 py-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          className={item.isFavorite ? 'text-yellow-500 hover:text-yellow-500' : ''}
-        >
+        <Button variant="ghost" size="sm" className={item.isFavorite ? 'text-yellow-500 hover:text-yellow-500' : ''}>
           <Star className={`size-4 ${item.isFavorite ? 'fill-yellow-500' : ''}`} />
           Favorite
         </Button>
@@ -113,7 +128,7 @@ function DrawerContent({ item, onClose }: DrawerContentProps) {
           <Copy className="size-4" />
           Copy
         </Button>
-        <Button variant="ghost" size="sm">
+        <Button variant="ghost" size="sm" onClick={onEdit}>
           <Pencil className="size-4" />
           Edit
         </Button>
@@ -124,60 +139,48 @@ function DrawerContent({ item, onClose }: DrawerContentProps) {
 
       <Separator />
 
-      {/* Body */}
       <div className="flex-1 min-h-0 flex flex-col gap-5 px-5 py-4 overflow-hidden">
-        {item.description && (
-          <section className="shrink-0">
-            <SectionLabel>Description</SectionLabel>
-            <p className="text-sm leading-relaxed">{item.description}</p>
-          </section>
-        )}
-
-        {item.content && (
+        {CONTENT_TYPES.has(itemType.name) && (
           <section className="flex min-h-0 flex-1 flex-col">
             <SectionLabel>Content</SectionLabel>
-            <pre className="flex-1 min-h-0 overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed whitespace-pre">
-              {item.content}
-            </pre>
+            {item.content
+              ? <pre className="flex-1 min-h-0 overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed whitespace-pre">{item.content}</pre>
+              : <p className="text-sm text-muted-foreground">—</p>}
           </section>
         )}
 
-        {item.url && (
+        <section className="shrink-0">
+          <SectionLabel>Description</SectionLabel>
+          {item.description
+            ? <p className="text-sm leading-relaxed">{item.description}</p>
+            : <p className="text-sm text-muted-foreground">—</p>}
+        </section>
+
+        {itemType.name === 'link' && (
           <section className="shrink-0">
             <SectionLabel>URL</SectionLabel>
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all"
-            >
-              {item.url}
-              <ExternalLink className="size-3 shrink-0" />
-            </a>
+            {item.url
+              ? <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all">
+                  {item.url}
+                  <ExternalLink className="size-3 shrink-0" />
+                </a>
+              : <p className="text-sm text-muted-foreground">—</p>}
           </section>
         )}
 
-        {item.tags.length > 0 && (
-          <section className="shrink-0">
-            <SectionLabel icon={<Tag className="size-3" />}>Tags</SectionLabel>
-            <div className="flex flex-wrap gap-1.5">
-              {item.tags.map((tag) => (
-                <Badge key={tag} variant="secondary">{tag}</Badge>
-              ))}
-            </div>
-          </section>
-        )}
+        <section className="shrink-0">
+          <SectionLabel icon={<Tag className="size-3" />}>Tags</SectionLabel>
+          {item.tags.length > 0
+            ? <div className="flex flex-wrap gap-1.5">{item.tags.map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}</div>
+            : <p className="text-sm text-muted-foreground">—</p>}
+        </section>
 
-        {item.collections.length > 0 && (
-          <section className="shrink-0">
-            <SectionLabel icon={<FolderOpen className="size-3" />}>Collections</SectionLabel>
-            <div className="flex flex-wrap gap-1.5">
-              {item.collections.map((col) => (
-                <Badge key={col.id} variant="outline">{col.name}</Badge>
-              ))}
-            </div>
-          </section>
-        )}
+        <section className="shrink-0">
+          <SectionLabel icon={<FolderOpen className="size-3" />}>Collections</SectionLabel>
+          {item.collections.length > 0
+            ? <div className="flex flex-wrap gap-1.5">{item.collections.map((col) => <Badge key={col.id} variant="outline">{col.name}</Badge>)}</div>
+            : <p className="text-sm text-muted-foreground">—</p>}
+        </section>
 
         <section className="shrink-0">
           <SectionLabel icon={<Calendar className="size-3" />}>Details</SectionLabel>
@@ -197,6 +200,175 @@ function DrawerContent({ item, onClose }: DrawerContentProps) {
   )
 }
 
+// ── Edit mode ────────────────────────────────────────────────────────────────
+
+interface DrawerEditContentProps {
+  item: ItemDetail
+  onClose: () => void
+  onSave: (updated: ItemDetail) => void
+  onCancel: () => void
+}
+
+function DrawerEditContent({ item, onClose, onSave, onCancel }: DrawerEditContentProps) {
+  const router = useRouter()
+  const { itemType } = item
+  const typeName = itemType.name
+
+  const [title, setTitle] = useState(item.title)
+  const [description, setDescription] = useState(item.description ?? '')
+  const [content, setContent] = useState(item.content ?? '')
+  const [url, setUrl] = useState(item.url ?? '')
+  const [language, setLanguage] = useState(item.language ?? '')
+  const [tags, setTags] = useState(item.tags.join(', '))
+  const [saving, setSaving] = useState(false)
+
+  const showContent = CONTENT_TYPES.has(typeName)
+  const showLanguage = LANGUAGE_TYPES.has(typeName)
+  const showUrl = typeName === 'link'
+
+  async function handleSave() {
+    if (!title.trim()) return
+    setSaving(true)
+
+    const tagArray = tags.split(',').map((t) => t.trim()).filter(Boolean)
+
+    const result = await updateItemAction(item.id, {
+      title: title.trim(),
+      description: description.trim() || null,
+      content: content || null,
+      url: url.trim() || null,
+      language: language.trim() || null,
+      tags: tagArray,
+    })
+
+    setSaving(false)
+
+    if (result.status !== 'ok' || !result.data) {
+      toast.error(result.message ?? 'Failed to save item')
+      return
+    }
+
+    toast.success('Item saved')
+    router.refresh()
+    onSave(result.data)
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden" style={{ '--item-color': itemType.color } as CSSProperties}>
+      <div className="flex items-start gap-3 px-5 pt-5 pb-4">
+        <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0" iconClassName="size-4.5" />
+        <div className="min-w-0 flex-1">
+          <Textarea
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Item title"
+            rows={1}
+            className="-my-1 min-h-0 resize-none border-transparent bg-transparent px-2 py-1 -ml-2 text-base font-semibold leading-snug shadow-none transition-colors hover:bg-accent/50 focus-visible:border-ring focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-ring/50"
+          />
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <Badge variant="secondary" className="capitalize">{typeName}</Badge>
+            {showLanguage && (
+              <Input
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                placeholder="Language"
+                className="h-5 w-24 rounded-md border-border/60 px-1.5 py-0 text-xs shadow-none transition-colors hover:bg-accent/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+              />
+            )}
+          </div>
+        </div>
+        <Button variant="ghost" size="icon-sm" className="shrink-0" onClick={onClose}>
+          <X className="size-4" />
+        </Button>
+      </div>
+
+      <Separator />
+
+      <div className="flex items-center gap-0.5 px-2 py-1.5">
+        <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
+          <X className="size-4" />
+          Cancel
+        </Button>
+        <Button size="sm" onClick={handleSave} disabled={saving || !title.trim()}>
+          <Check className="size-4" />
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
+      </div>
+
+      <Separator />
+
+      <div className="flex-1 min-h-0 flex flex-col gap-5 px-5 py-4 overflow-hidden">
+        {showContent && (
+          <section className="flex min-h-0 flex-1 flex-col space-y-1.5">
+            <SectionLabel>Content</SectionLabel>
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Content"
+              className="flex-1 min-h-0 resize-none font-mono text-xs"
+            />
+          </section>
+        )}
+
+        <section className="shrink-0 space-y-1.5">
+          <SectionLabel>Description</SectionLabel>
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional description"
+            className="min-h-[3rem] resize-none"
+          />
+        </section>
+
+        {showUrl && (
+          <section className="shrink-0 space-y-1.5">
+            <SectionLabel>URL</SectionLabel>
+            <Input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://..."
+              type="url"
+            />
+          </section>
+        )}
+
+        <section className="shrink-0 space-y-1.5">
+          <SectionLabel icon={<Tag className="size-3" />}>Tags</SectionLabel>
+          <Input
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="react, hooks, typescript"
+          />
+          <p className="text-xs text-muted-foreground">Comma-separated</p>
+        </section>
+
+        <section className="shrink-0">
+          <SectionLabel icon={<FolderOpen className="size-3" />}>Collections</SectionLabel>
+          {item.collections.length > 0
+            ? <div className="flex flex-wrap gap-1.5">{item.collections.map((col) => <Badge key={col.id} variant="outline">{col.name}</Badge>)}</div>
+            : <p className="text-sm text-muted-foreground">—</p>}
+        </section>
+
+        <section className="shrink-0">
+          <SectionLabel icon={<Calendar className="size-3" />}>Details</SectionLabel>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Created</span>
+              <span>{formatDate(item.createdAt)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Updated</span>
+              <span>{formatDate(item.updatedAt)}</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+// ── Shared ───────────────────────────────────────────────────────────────────
+
 interface SectionLabelProps {
   children: React.ReactNode
   icon?: React.ReactNode
@@ -214,7 +386,6 @@ function SectionLabel({ children, icon }: SectionLabelProps) {
 function DrawerSkeleton() {
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="flex items-start gap-3 px-5 pt-5 pb-4">
         <Skeleton className="mt-0.5 size-9 shrink-0 rounded-full" />
         <div className="flex-1 space-y-2">
@@ -223,7 +394,6 @@ function DrawerSkeleton() {
         </div>
       </div>
       <Separator />
-      {/* Action bar */}
       <div className="flex items-center gap-1 px-2 py-1.5">
         <Skeleton className="h-8 w-24" />
         <Skeleton className="h-8 w-16" />
@@ -232,18 +402,17 @@ function DrawerSkeleton() {
         <Skeleton className="ml-auto h-8 w-8" />
       </div>
       <Separator />
-      {/* Body */}
       <div className="flex-1 min-h-0 flex flex-col gap-5 px-5 py-4 overflow-hidden">
+        {/* Content block — fills remaining space */}
+        <div className="flex flex-1 min-h-0 flex-col space-y-2">
+          <Skeleton className="h-3 w-16 shrink-0" />
+          <Skeleton className="flex-1 min-h-0 w-full rounded-md" />
+        </div>
         {/* Description */}
         <div className="shrink-0 space-y-2">
           <Skeleton className="h-3 w-24" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-3/4" />
-        </div>
-        {/* Content block — fills remaining space */}
-        <div className="flex flex-1 min-h-0 flex-col space-y-2">
-          <Skeleton className="h-3 w-16 shrink-0" />
-          <Skeleton className="flex-1 min-h-0 w-full rounded-md" />
         </div>
         {/* Tags */}
         <div className="shrink-0 space-y-2">

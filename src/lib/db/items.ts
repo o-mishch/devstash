@@ -85,6 +85,52 @@ export async function getItemById(userId: string, itemId: string): Promise<ItemD
   }
 }
 
+export interface UpdateItemInput {
+  title: string
+  description: string | null
+  content: string | null
+  url: string | null
+  language: string | null
+  tags: string[]
+}
+
+export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<ItemDetail | null> {
+  const existing = await prisma.item.findFirst({ where: { id: itemId, userId } })
+  if (!existing) return null
+
+  const updated = await prisma.item.update({
+    where: { id: itemId },
+    data: {
+      title: data.title,
+      description: data.description,
+      content: data.content,
+      url: data.url,
+      language: data.language,
+      tags: {
+        set: [],
+        connectOrCreate: data.tags.map((name) => ({
+          where: { name },
+          create: { name },
+        })),
+      },
+    },
+    include: {
+      ...ITEM_INCLUDE,
+      collections: { include: { collection: { select: { id: true, name: true } } } },
+    },
+  })
+
+  return {
+    ...toItem(updated),
+    content: updated.content,
+    url: updated.url,
+    fileUrl: updated.fileUrl,
+    fileName: updated.fileName,
+    fileSize: updated.fileSize,
+    collections: updated.collections.map((ic) => ic.collection),
+  }
+}
+
 export async function getItemTypeBySlug(slug: string) {
   return withDataCache(CacheTags.itemTypeBySlug(slug), () => {
     const candidates = [slug]

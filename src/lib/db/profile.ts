@@ -92,10 +92,10 @@ export async function updateUserPassword(userId: string, hashed: string): Promis
     where: { id: userId },
     data: { password: hashed },
   })
-  await invalidateProfileCache(userId)
+  invalidateProfileCache(userId)
 }
 
 export async function unlinkUserAccount(userId: string, accountId: string): Promise<void> {
-  await prisma.account.delete({ where: { id: accountId } })
-  await invalidateProfileCache(userId)
+  await prisma.account.delete({ where: { id: accountId, userId } })
+  invalidateProfileCache(userId)
 }
