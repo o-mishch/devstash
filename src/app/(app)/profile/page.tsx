@@ -1,20 +1,22 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Mail, CalendarDays } from 'lucide-react'
+import { ArrowLeft, Mail, CalendarDays, Package, FolderOpen } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { UserAvatar } from '@/components/shared/user-avatar'
-import { ItemTypeIcon } from '@/lib/icon-utils'
-import { formatDate } from '@/lib/utils'
+import { ItemTypeIcon } from '@/components/shared/item-type-icon'
+import { formatDate, PROVIDER_LABELS } from '@/lib/utils'
+import { getCurrentUserId } from '@/lib/session'
 import { getProfileData } from '@/lib/db/profile'
-import { PROVIDER_LABELS } from '@/lib/utils'
 import { ChangePasswordForm } from './_components/change-password-form'
 import { DeleteAccountDialog } from './_components/delete-account-dialog'
 import { ConnectedAccounts } from './_components/connected-accounts'
-import { Package, FolderOpen } from 'lucide-react'
 
 export default async function ProfilePage() {
-  const data = await getProfileData()
+  const userId = await getCurrentUserId()
+  if (!userId) redirect('/sign-in')
+
+  const data = await getProfileData(userId)
   if (!data) redirect('/sign-in')
 
   const { user, stats } = data

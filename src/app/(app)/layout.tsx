@@ -6,7 +6,18 @@ import { Input } from '@/components/ui/input'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 import { SidebarSkeleton } from '@/components/layout/sidebar-skeleton'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
-import { getSidebarData } from '@/lib/db/sidebar'
+import { cache } from 'react'
+import { auth } from '@/auth'
+import { fetchSidebarData } from '@/lib/db/sidebar'
+
+const getSidebarData = cache(async () => {
+  const session = await auth()
+  const userId = session?.user?.id ?? null
+  const user = session?.user
+    ? { name: session.user.name ?? null, email: session.user.email ?? null, image: session.user.image ?? null }
+    : null
+  return fetchSidebarData(userId, user)
+})
 
 async function SidebarAsync() {
   const sidebarData = await getSidebarData()

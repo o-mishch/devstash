@@ -1,7 +1,7 @@
 import NextAuth, { type User } from 'next-auth'
 import type { Account } from '@auth/core/types'
 import type { JWT } from 'next-auth/jwt'
-import type { AdapterUser } from '@auth/core/adapters'
+import type { AdapterUser } from 'next-auth/adapters'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'

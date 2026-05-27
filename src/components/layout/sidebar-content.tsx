@@ -24,21 +24,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
-import { ItemTypeIcon } from '@/lib/icon-utils'
+import { cn, getTypeLabel } from '@/lib/utils'
+import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Badge } from '@/components/ui/badge'
 import { UserAvatar } from '@/components/shared/user-avatar'
-import { signOutAction } from '@/actions/auth'
-import type { SidebarData } from '@/lib/db/sidebar'
+import { signOutAction } from '@/actions/auth/login'
+import type { SidebarData } from '@/types/sidebar'
 
 const PRO_TYPE_NAMES = new Set(['file', 'image'])
 
 function getTypeHref(name: string) {
   return `/items/${name}s`
-}
-
-function getTypeLabel(name: string) {
-  return name.charAt(0).toUpperCase() + name.slice(1) + 's'
 }
 
 interface CollapsedSidebarProps {

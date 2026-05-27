@@ -48,7 +48,9 @@ At the end of "run" mode, provide a summary report as a markdown table with colu
 
 If the argument is "improve":
 
-Review the codebase from a code quality perspective. Evaluate each of the following dimensions and report findings grouped by severity (Major / Minor):
+**Scope:** Only review files that are currently uncommitted (modified, added, or deleted according to `git status`). For each changed file, also include files that are directly related (e.g. files that import or are imported by the changed files, shared types, or utilities they call) — but do NOT scan the entire codebase. Run `git diff --name-only HEAD` (and `git ls-files --others --exclude-standard` for untracked files) to get the list of files to review.
+
+Review the scoped files from a code quality perspective. Evaluate each of the following dimensions and report findings grouped by severity (Major / Minor):
 
 1. **Clarity & KISS** — logic that is harder to read than it needs to be; unnecessary abstraction; anything a new developer would stumble on
 2. **Architecture & separation of concerns** — wrong layer doing wrong job; data fetching mixed with rendering; business logic leaking into UI
@@ -59,6 +61,7 @@ Review the codebase from a code quality perspective. Evaluate each of the follow
 
 Rules for this mode:
 
+- Always list the files being reviewed at the top so the scope is clear
 - Minor improvements (renaming, small restructures, comment removal): report findings, then ask which to fix — same flow as "run" mode
 - Major refactoring (moving files, restructuring layers, merging/splitting components): describe the purpose and concrete benefits first, then ask for confirmation before touching anything
 - Never make major changes without explicit user approval

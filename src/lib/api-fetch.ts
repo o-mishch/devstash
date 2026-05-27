@@ -22,6 +22,12 @@ export async function apiFetch<T = null>(
       body: isJsonBody ? JSON.stringify(body) : (body as BodyInit | undefined),
     })
 
+    const contentType = res.headers.get('content-type')
+    if (!contentType?.includes('application/json')) {
+      await res.text() // Consume body to free resources
+      return { status: 'internal_error', data: null, message: 'Server returned an invalid response format.' }
+    }
+
     const data: ApiBody<T> = await res.json()
     return data
   } catch (err) {

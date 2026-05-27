@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { buttonVariants, SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { forgotPasswordAction } from '@/actions/auth'
+import { forgotPasswordAction } from '@/actions/auth/reset'
 import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
 export function ForgotPasswordForm() {

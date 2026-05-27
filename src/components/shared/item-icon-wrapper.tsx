@@ -1,8 +1,8 @@
-import { ItemTypeIcon } from '@/lib/icon-utils'
-import type { DashboardItem } from '@/lib/db/items'
+import { ItemTypeIcon } from '@/components/shared/item-type-icon'
+import type { ItemType } from '@/types/item'
 
 interface ItemIconWrapperProps {
-  itemType: DashboardItem['itemType']
+  itemType: ItemType
   wrapperClassName?: string
   iconClassName?: string
 }

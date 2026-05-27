@@ -2,10 +2,10 @@ import type { CSSProperties } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate } from '@/lib/utils'
-import type { DashboardItem } from '@/lib/db/items'
+import type { Item } from '@/types/item'
 
 interface ItemRowProps {
-  item: DashboardItem
+  item: Item
 }
 
 export function ItemRow({ item }: ItemRowProps) {

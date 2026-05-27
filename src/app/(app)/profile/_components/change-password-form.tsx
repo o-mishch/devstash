@@ -14,7 +14,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { changePasswordAction } from '@/actions/profile'
-import type { ApiBody } from '@/types/api'
 import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
 export function ChangePasswordForm() {

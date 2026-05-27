@@ -1,5 +1,6 @@
 import crypto from 'crypto'
-import { getRedis } from '@/lib/redis'
+import { getRedis } from '@/lib/redis-cache'
+import { CacheKeys } from '@/lib/redis-cache'
 
 export interface PendingLinkData {
   email: string
@@ -15,14 +16,13 @@ export interface PendingLinkData {
   session_state: string | null
 }
 
-const TTL_SECONDS = 60 * 15 // 15 minutes
-
 export async function createPendingLink(data: PendingLinkData): Promise<string | null> {
   try {
     const redis = getRedis()
     if (!redis) return null
     const token = crypto.randomBytes(32).toString('hex')
-    await redis.set(`pending-link:${token}`, JSON.stringify(data), { ex: TTL_SECONDS })
+    const { key, ttl } = CacheKeys.pendingLink(token)
+    await redis.set(key, data, { ex: ttl })
     return token
   } catch {
     return null
@@ -33,10 +33,7 @@ export async function getPendingLink(token: string): Promise<PendingLinkData | n
   try {
     const redis = getRedis()
     if (!redis) return null
-    const raw = await redis.get(`pending-link:${token}`)
-    if (!raw) return null
-    // Upstash auto-deserializes JSON in some client configurations; handle both cases
-    return typeof raw === 'string' ? (JSON.parse(raw) as PendingLinkData) : (raw as PendingLinkData)
+    return await redis.get<PendingLinkData>(CacheKeys.pendingLink(token).key)
   } catch {
     return null
   }
@@ -46,7 +43,7 @@ export async function deletePendingLink(token: string): Promise<void> {
   try {
     const redis = getRedis()
     if (!redis) return
-    await redis.del(`pending-link:${token}`)
+    await redis.del(CacheKeys.pendingLink(token).key)
   } catch {
     // fail open — non-critical, token expires automatically via TTL
   }

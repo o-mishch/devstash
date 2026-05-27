@@ -3,10 +3,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate } from '@/lib/utils'
-import type { DashboardItem } from '@/lib/db/items'
+import type { Item } from '@/types/item'
 
 interface ItemCardProps {
-  item: DashboardItem
+  item: Item
 }
 
 export function ItemCard({ item }: ItemCardProps) {

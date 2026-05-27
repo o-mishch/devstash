@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getCurrentUserId } from '@/lib/db/collections'
+import { getCurrentUserId } from '@/lib/session'
 import { DashboardStats } from './_components/dashboard-stats'
 import { DashboardCollections } from './_components/dashboard-collections'
 import { DashboardPinned } from './_components/dashboard-pinned'
@@ -96,7 +96,7 @@ export default async function DashboardPage() {
       </Suspense>
 
       <Suspense fallback={<ItemsListSkeleton title="Pinned" />}>
-        {userId && <DashboardPinned userId={userId} />}
+        {userId ? <DashboardPinned userId={userId} /> : <ItemsListSkeleton title="Pinned" />}
       </Suspense>
 
       <Suspense fallback={<ItemsListSkeleton title="Recent Items" />}>

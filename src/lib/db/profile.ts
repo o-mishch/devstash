@@ -1,13 +1,14 @@
-import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-import { SYSTEM_TYPE_ORDER } from './items'
+import { withCache, CacheKeys } from '@/lib/redis-cache'
+import { compareBySystemTypeOrder } from './items'
+import { invalidateProfileCache } from '@/lib/cache'
 
 export interface LinkedAccount {
   id: string
   provider: string
 }
 
-export interface ProfileUser {
+interface ProfileUser {
   id: string
   name: string | null
   email: string
@@ -17,26 +18,22 @@ export interface ProfileUser {
   createdAt: Date
 }
 
-export interface ProfileStats {
+interface ProfileStats {
   totalItems: number
   totalCollections: number
   itemTypeCounts: ItemTypeCount[]
 }
 
-export interface ItemTypeCount {
+interface ItemTypeCount {
   name: string
   icon: string
   color: string
   count: number
 }
 
+type ProfileData = { user: ProfileUser; stats: ProfileStats }
 
-export async function getProfileData(): Promise<{ user: ProfileUser; stats: ProfileStats } | null> {
-  const session = await auth()
-  if (!session?.user?.id) return null
-
-  const userId = session.user.id
-
+async function fetchProfileData(userId: string): Promise<ProfileData | null> {
   const [user, totalItems, totalCollections, itemTypes] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
@@ -67,7 +64,7 @@ export async function getProfileData(): Promise<{ user: ProfileUser; stats: Prof
       color: t.color,
       count: t._count.items,
     }))
-    .sort((a, b) => SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name))
+    .sort(compareBySystemTypeOrder)
 
   return {
     user: {
@@ -79,10 +76,26 @@ export async function getProfileData(): Promise<{ user: ProfileUser; stats: Prof
       accounts: user.accounts.map((a) => ({ id: a.id, provider: a.provider })),
       createdAt: user.createdAt,
     },
-    stats: {
-      totalItems,
-      totalCollections,
-      itemTypeCounts,
-    },
+    stats: { totalItems, totalCollections, itemTypeCounts },
   }
+}
+
+export async function getProfileData(userId: string): Promise<ProfileData | null> {
+  return withCache(
+    CacheKeys.profile(userId),
+    () => fetchProfileData(userId)
+  )
+}
+
+export async function updateUserPassword(userId: string, hashed: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashed },
+  })
+  await invalidateProfileCache(userId)
+}
+
+export async function unlinkUserAccount(userId: string, accountId: string): Promise<void> {
+  await prisma.account.delete({ where: { id: accountId } })
+  await invalidateProfileCache(userId)
 }

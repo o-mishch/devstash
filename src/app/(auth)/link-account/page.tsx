@@ -1,7 +1,7 @@
-import { AuthFormLayout, AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
+import { AuthFormLayout, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 import { GitHubIcon } from '@/components/icons/github'
 import { getPendingLink } from '@/lib/pending-link'
-import { linkAccountAction } from '@/actions/auth'
+import { linkAccountAction } from '@/actions/auth/link'
 import { LinkAccountForm } from './_components/link-account-form'
 
 interface LinkAccountPageProps {

@@ -1,26 +1,7 @@
-import { unstable_cache } from 'next/cache'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-import { CACHE_TAGS } from '@/lib/cache'
+import { withCache, CacheKeys } from '@/lib/redis-cache'
+import type { CollectionWithTypes, CollectionStats } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
-
-export interface CollectionWithTypes {
-  id: string
-  name: string
-  description: string | null
-  isFavorite: boolean
-  defaultTypeId: string | null
-  createdAt: Date
-  updatedAt: Date
-  itemCount: number
-  dominantColor: string | null
-  types: Array<{ id: string; name: string; icon: string; color: string; isSystem: boolean }>
-}
-
-export interface CollectionStats {
-  totalCollections: number
-  favoriteCollections: number
-}
 
 const COLLECTION_INCLUDE = {
   items: {
@@ -39,7 +20,7 @@ const COLLECTION_INCLUDE = {
 type CollectionRow = Prisma.CollectionGetPayload<{ include: typeof COLLECTION_INCLUDE }>
 
 function mapCollection(col: CollectionRow): CollectionWithTypes {
-  const typeCounts = new Map<string, { count: number; type: { id: string; name: string; icon: string; color: string; isSystem: boolean } }>()
+  const typeCounts = new Map<string, { count: number; type: CollectionWithTypes['types'][number] }>()
 
   for (const ic of col.items) {
     const { itemType } = ic.item
@@ -70,32 +51,23 @@ function mapCollection(col: CollectionRow): CollectionWithTypes {
   }
 }
 
-export const getAllCollections = unstable_cache(
-  async (userId: string): Promise<CollectionWithTypes[]> => {
+export async function getAllCollections(userId: string): Promise<CollectionWithTypes[]> {
+  return withCache(CacheKeys.allCollections(userId), async () => {
     const collections = await prisma.collection.findMany({
       where: { userId },
       orderBy: { updatedAt: 'desc' },
       include: COLLECTION_INCLUDE,
     })
     return collections.map(mapCollection)
-  },
-  ['all-collections'],
-  { revalidate: 60, tags: [CACHE_TAGS.collections] }
-)
+  })
+}
 
-export const getCollectionStats = unstable_cache(
-  async (userId: string): Promise<CollectionStats> => {
+export async function getCollectionStats(userId: string): Promise<CollectionStats> {
+  return withCache(CacheKeys.collectionStats(userId), async () => {
     const [totalCollections, favoriteCollections] = await Promise.all([
       prisma.collection.count({ where: { userId } }),
       prisma.collection.count({ where: { userId, isFavorite: true } }),
     ])
     return { totalCollections, favoriteCollections }
-  },
-  ['collection-stats'],
-  { revalidate: 60, tags: [CACHE_TAGS.collections] }
-)
-
-export async function getCurrentUserId(): Promise<string | null> {
-  const session = await auth()
-  return session?.user?.id ?? null
+  })
 }

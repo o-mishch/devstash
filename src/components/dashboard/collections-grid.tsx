@@ -1,8 +1,8 @@
 import type { CSSProperties } from 'react'
 import { Star } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ItemTypeIcon } from '@/lib/icon-utils'
-import type { CollectionWithTypes } from '@/lib/db/collections'
+import { ItemTypeIcon } from '@/components/shared/item-type-icon'
+import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionsGridProps {
   collections: CollectionWithTypes[]

@@ -8,6 +8,8 @@ import { prisma } from '@/lib/prisma'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 import { validatePassword } from '@/lib/utils/validators'
+import { updateUserPassword, unlinkUserAccount } from '@/lib/db/profile'
+
 
 async function withAuth<T>(fn: (userId: string) => Promise<ApiBody<T>>): Promise<ApiBody<T>> {
   const session = await auth()
@@ -46,10 +48,7 @@ export async function changePasswordAction(
     }
 
     const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
-    await prisma.user.update({
-      where: { id: userId },
-      data: { password: hashed },
-    })
+    await updateUserPassword(userId, hashed)
 
     return ApiResponse.OK()
   })
@@ -79,7 +78,7 @@ export async function unlinkProviderAction(accountId: string): Promise<ApiBody<n
 
     if (!account) return ApiResponse.NOT_FOUND('Account not found.')
 
-    await prisma.account.delete({ where: { id: accountId } })
+    await unlinkUserAccount(userId, accountId)
 
     return ApiResponse.OK()
   })

@@ -9,7 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { signInWithCredentials, signInWithGitHub } from '@/actions/auth'
+import { signInWithCredentials, signInWithGitHub } from '@/actions/auth/login'
 import { apiFetch } from '@/lib/api-fetch'
 
 interface SignInFormProps {

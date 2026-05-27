@@ -1,15 +1,13 @@
 import { ItemCard } from '@/components/items/item-card'
 import { Card, CardContent } from '@/components/ui/card'
-import { getItemsByType } from '@/lib/db/items'
+import type { Item } from '@/types/item'
 
 interface ItemsGridProps {
-  userId: string
+  items: Item[]
   typeName: string
 }
 
-export async function ItemsGrid({ userId, typeName }: ItemsGridProps) {
-  const items = await getItemsByType(userId, typeName)
-
+export function ItemsGrid({ items, typeName }: ItemsGridProps) {
   if (items.length === 0) {
     return (
       <Card>

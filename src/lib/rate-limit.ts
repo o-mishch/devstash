@@ -1,6 +1,7 @@
 import { Ratelimit, type Duration } from '@upstash/ratelimit'
 import { headers } from 'next/headers'
-import { getRedis } from '@/lib/redis'
+import { getRedis } from '@/lib/redis-cache'
+import { RATE_LIMIT_NS } from '@/lib/redis-cache'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 
@@ -45,7 +46,7 @@ function getLimiters(): Record<RateLimitKey, Ratelimit> | null {
     limiters = Object.fromEntries(
       Object.entries(LIMIT_CONFIG).map(([key, { attempts, window }]) => [
         key,
-        new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(attempts, window), prefix: `rl:${key}` }),
+        new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(attempts, window), prefix: `${RATE_LIMIT_NS}:${key}` }),
       ])
     ) as Record<RateLimitKey, Ratelimit>
     return limiters
