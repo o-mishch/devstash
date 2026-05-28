@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Check, Tag } from 'lucide-react'
@@ -6,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { ItemContentInput, LanguageInput } from '@/components/shared/item-content'
 import { updateItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
@@ -78,9 +81,10 @@ export function DrawerEditContent({ item, onClose, onSave, onCancel }: DrawerEdi
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <Badge variant="secondary" className="capitalize">{typeName}</Badge>
             {showLanguage && (
-              <Input
+              <LanguageInput
+                id="drawer-language"
                 value={language}
-                onChange={(e) => setLanguage(e.target.value)}
+                onChange={setLanguage}
                 placeholder="Language"
                 className="h-5 w-24 rounded-md border-border/60 px-1.5 py-0 text-xs shadow-none transition-colors hover:bg-accent/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
               />
@@ -103,11 +107,15 @@ export function DrawerEditContent({ item, onClose, onSave, onCancel }: DrawerEdi
     >
       {showContent && (
         <DrawerSection label="Content" className="flex min-h-0 flex-1 flex-col space-y-1.5">
-          <Textarea
+          <ItemContentInput
+            itemType={typeName}
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={setContent}
+            language={language}
             placeholder="Content"
-            className="flex-1 min-h-0 resize-none font-mono text-xs"
+            codeEditorClassName="h-full"
+            codeEditorWrapperClassName="flex-1 min-h-[200px]"
+            textareaClassName="flex-1 min-h-0 resize-none font-mono text-xs"
           />
         </DrawerSection>
       )}

@@ -6,11 +6,7 @@ Not Started
 
 ## Goals
 
-<!-- Add goals here -->
-
 ## Notes
-
-<!-- Add context or constraints here -->
 
 ---
 
@@ -49,3 +45,4 @@ Not Started
 - **Item Drawer - Edit Mode** - Implemented edit mode within the existing ItemDetailDrawer using conditional `DrawerEditContent`; built robust server action `updateItemAction` (Zod 4 compliant) and Prisma query `updateItem`; optimized cache invalidation via `updateTag`; resolved react architecture warning by replacing boolean state with `editingItemId`; updated cache invalidation architecture across profile actions for tighter cache consistency. (Completed)
 - **Item Drawer - Delete Functionality** - Implemented the delete feature for items; added `deleteItem` to Prisma db layer using `deleteMany` for user safety; created `deleteItemAction` server action to invalidate items cache on success; wired `Trash2` button in `ItemDetailDrawer` to open a shadcn `Dialog` for confirmation; configured `toast.success`/`error` feedback, drawer auto-close, and router refresh; wrote full test suite for new action/db functions passing with 100% statement coverage. (Completed)
 - **Item Create** - Implemented `ItemCreateDialog` with dynamic, conditional form fields driven by database item types; built `createItemAction` Server Action with DRY Zod validation (`baseItemSchema.extend`); added `createItem` Prisma query; centralized system type logic in `src/lib/utils/constants.ts`; resolved React hydration issues by properly scoping Client Components. (Completed)
+- **Code Editor** - `CodeEditor` component using `@monaco-editor/react` with `vs-dark` theme, fluid height up to 400px, custom Monaco scrollbar; macOS-style window dots (red/yellow/green) in header with language badge and copy button; `ItemContentInput` and `ItemContentView` in `src/components/shared/item-content.tsx` route to `CodeEditor` for snippets/commands and `Textarea` for all other types; `useMonacoLanguage` hook resolves language strings to Monaco IDs; `useMonacoLanguageList` powers the `LanguageInput` datalist autocomplete; `ITEM_TYPES_WITH_CODE_EDITOR` constant drives all routing logic. (Completed)

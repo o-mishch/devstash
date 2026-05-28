@@ -58,6 +58,17 @@ Review the scoped files from a code quality perspective. Evaluate each of the fo
 4. **SOLID principles** — single-responsibility violations, unnecessary coupling, things that are hard to extend without modification
 5. **Overdecomposition / overengineering** — abstractions that add complexity without payoff; files or components that don't justify their existence
 6. **Regressions** — any pattern that looks like it could silently break existing behavior if changed
+7. **SSR vs Client rendering** — components marked `'use client'` that may not need to be; opportunities to push client boundaries down; data fetching done client-side that could be done on the server
+
+For the SSR check specifically, after listing all other findings, produce a dedicated **SSR Conversion Opportunities** table with these columns:
+
+| File | Current | Can Convert? | Pros | Cons | Verdict |
+
+- **Current**: `'use client'` or `server` (no directive)
+- **Can Convert?**: Yes / Partial / No
+- **Pros**: e.g. smaller JS bundle, no loading state, SEO, faster LCP
+- **Cons**: e.g. needs interactivity, uses browser APIs, depends on a client-only library, requires event handlers or hooks
+- **Verdict**: one of — `Convert`, `Convert with refactor`, `Keep client`, `Split component`
 
 Rules for this mode:
 
@@ -66,3 +77,4 @@ Rules for this mode:
 - Major refactoring (moving files, restructuring layers, merging/splitting components): describe the purpose and concrete benefits first, then ask for confirmation before touching anything
 - Never make major changes without explicit user approval
 - Avoid suggesting changes that are purely stylistic preference with no real benefit
+- For the SSR table: flag a component as `Partial` when only part of it needs interactivity — the fix is usually to split it so the server shell renders static content and a small client island handles the interactive part
