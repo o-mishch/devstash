@@ -206,7 +206,7 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
                   onChange={setContent}
                   language={language}
                   placeholder="Paste your content here..."
-                  codeEditorClassName="h-64"
+                  contentEditorClassName="h-64"
                   textareaClassName="min-h-[100px] font-mono text-sm"
                 />
               </div>

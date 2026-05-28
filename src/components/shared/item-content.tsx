@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { CodeEditor } from '@/components/ui/code-editor'
+import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ITEM_TYPES_WITH_CODE_EDITOR } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
 
@@ -69,7 +70,7 @@ export function useMonacoLanguageList() {
         }
       })
       setLanguages(Array.from(list).sort())
-    }).catch(console.error)
+    }).catch(() => {})
     
     return () => { isMounted = false }
   }, [])
@@ -108,6 +109,71 @@ export function LanguageInput({ id, value, onChange, placeholder = "e.g. typescr
   )
 }
 
+interface CodeEditorInputProps {
+  value: string
+  onChange: (val: string) => void
+  language?: string | null
+  contentEditorClassName?: string
+  contentEditorWrapperClassName?: string
+}
+
+function CodeEditorInput({ value, onChange, language, contentEditorClassName, contentEditorWrapperClassName }: CodeEditorInputProps) {
+  const { resolvedLang, isLoading } = useMonacoLanguage(language)
+
+  const handleChange = useCallback((val: string | undefined) => {
+    onChange(val || '')
+  }, [onChange])
+
+  if (isLoading) {
+    const skeleton = <Skeleton className={contentEditorClassName || "h-64 w-full"} />
+    if (contentEditorWrapperClassName) {
+      return <div className={contentEditorWrapperClassName}>{skeleton}</div>
+    }
+    return skeleton
+  }
+
+  if (resolvedLang !== null || !language) {
+    const editor = (
+      <CodeEditor
+        value={value}
+        onChange={handleChange}
+        language={resolvedLang}
+        className={contentEditorClassName}
+      />
+    )
+    if (contentEditorWrapperClassName) {
+      return <div className={contentEditorWrapperClassName}>{editor}</div>
+    }
+    return editor
+  }
+
+  return null
+}
+
+interface CodeEditorViewProps {
+  content: string
+  language?: string | null
+}
+
+function CodeEditorView({ content, language }: CodeEditorViewProps) {
+  const { resolvedLang, isLoading } = useMonacoLanguage(language)
+
+  if (isLoading) return <Skeleton className="h-[200px] w-full" />
+
+  if (resolvedLang !== null || !language) {
+    return (
+      <CodeEditor
+        value={content}
+        language={resolvedLang}
+        readOnly
+        className="h-auto"
+      />
+    )
+  }
+
+  return null
+}
+
 interface ItemContentInputProps {
   itemType: string
   value: string
@@ -115,52 +181,36 @@ interface ItemContentInputProps {
   language?: string | null
   id?: string
   placeholder?: string
-  codeEditorClassName?: string
-  codeEditorWrapperClassName?: string
+  contentEditorClassName?: string
+  contentEditorWrapperClassName?: string
   textareaClassName?: string
 }
 
-export function ItemContentInput({ 
-  itemType, 
-  value, 
-  onChange, 
-  language, 
+export function ItemContentInput({
+  itemType,
+  value,
+  onChange,
+  language,
   id,
   placeholder,
-  codeEditorClassName,
-  codeEditorWrapperClassName,
+  contentEditorClassName,
+  contentEditorWrapperClassName,
   textareaClassName
 }: ItemContentInputProps) {
-  const { resolvedLang, isLoading } = useMonacoLanguage(language)
-  const isCodeEditorType = ITEM_TYPES_WITH_CODE_EDITOR.has(itemType)
-
-  const handleMonacoChange = useCallback((val: string | undefined) => {
-    onChange(val || '')
-  }, [onChange])
-
-  if (isCodeEditorType && isLoading) {
-    const skeleton = <Skeleton className={codeEditorClassName || "h-64 w-full"} />
-    if (codeEditorWrapperClassName) {
-      return <div className={codeEditorWrapperClassName}>{skeleton}</div>
-    }
-    return skeleton
+  if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
+    return <MarkdownEditor value={value} onChange={onChange} className={contentEditorClassName} />
   }
 
-  const shouldUseMonaco = isCodeEditorType && (resolvedLang !== null || !language)
-
-  if (shouldUseMonaco) {
-    const editor = (
-      <CodeEditor
+  if (ITEM_TYPES_WITH_CODE_EDITOR.has(itemType)) {
+    return (
+      <CodeEditorInput
         value={value}
-        onChange={handleMonacoChange}
-        language={resolvedLang}
-        className={codeEditorClassName}
+        onChange={onChange}
+        language={language}
+        contentEditorClassName={contentEditorClassName}
+        contentEditorWrapperClassName={contentEditorWrapperClassName}
       />
     )
-    if (codeEditorWrapperClassName) {
-      return <div className={codeEditorWrapperClassName}>{editor}</div>
-    }
-    return editor
   }
 
   return (
@@ -181,28 +231,16 @@ interface ItemContentViewProps {
 }
 
 export function ItemContentView({ itemType, content, language }: ItemContentViewProps) {
-  const { resolvedLang, isLoading } = useMonacoLanguage(language)
-  const isCodeEditorType = ITEM_TYPES_WITH_CODE_EDITOR.has(itemType)
-
   if (!content) {
     return <p className="text-sm text-muted-foreground">—</p>
   }
 
-  if (isCodeEditorType && isLoading) {
-    return <Skeleton className="h-[200px] w-full" />
+  if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
+    return <MarkdownEditor value={content} readOnly />
   }
 
-  const shouldUseMonaco = isCodeEditorType && (resolvedLang !== null || !language)
-
-  if (shouldUseMonaco) {
-    return (
-      <CodeEditor
-        value={content}
-        language={resolvedLang}
-        readOnly
-        className="h-auto"
-      />
-    )
+  if (ITEM_TYPES_WITH_CODE_EDITOR.has(itemType)) {
+    return <CodeEditorView content={content} language={language} />
   }
 
   return (
