@@ -113,8 +113,8 @@ export function DrawerEditContent({ item, onClose, onSave, onCancel }: DrawerEdi
             onChange={setContent}
             language={language}
             placeholder="Content"
-            codeEditorClassName="h-full"
-            codeEditorWrapperClassName="flex-1 min-h-[200px]"
+            contentEditorClassName="h-full"
+            contentEditorWrapperClassName="flex-1 min-h-[200px]"
             textareaClassName="flex-1 min-h-0 resize-none font-mono text-xs"
           />
         </DrawerSection>
