@@ -1,9 +1,12 @@
+'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Star, Pin, Copy, Pencil, Trash2, ExternalLink, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ItemContentView } from '@/components/shared/item-content'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ItemTags } from '@/components/shared/item-tags'
 import { deleteItemAction } from '@/actions/items'
@@ -84,13 +87,11 @@ export function DrawerViewContent({ item, onClose, onEdit }: DrawerViewContentPr
       >
         {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
           <DrawerSection label="Content" className="flex min-h-0 flex-1 flex-col">
-            {item.content ? (
-              <pre className="flex-1 min-h-0 overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed whitespace-pre">
-                {item.content}
-              </pre>
-            ) : (
-              <p className="text-sm text-muted-foreground">—</p>
-            )}
+            <ItemContentView
+              itemType={itemType.name}
+              content={item.content}
+              language={item.language}
+            />
           </DrawerSection>
         )}
 

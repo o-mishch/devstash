@@ -8,7 +8,7 @@ import { Loader2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { ItemContentInput, LanguageInput } from '@/components/shared/item-content'
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import {
   Select,
@@ -31,9 +30,15 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import type { SidebarItemType } from '@/types/item'
 
-export function CreateItemDialog({ itemTypes }: { itemTypes: SidebarItemType[] }) {
+interface CreateItemDialogProps {
+  itemTypes: SidebarItemType[]
+  initialType?: string
+  trigger?: React.ReactNode
+}
+
+export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItemDialogProps) {
   const router = useRouter()
-  const defaultItemType = itemTypes[0]?.name || ''
+  const defaultItemType = initialType || itemTypes[0]?.name || ''
 
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -93,10 +98,17 @@ export function CreateItemDialog({ itemTypes }: { itemTypes: SidebarItemType[] }
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(itemType)
   const showUrl = ITEM_TYPES_WITH_URL.has(itemType)
 
+  const triggerEl = trigger ?? (
+    <Button size="sm">
+      <Plus className="size-4" />
+      <span className="hidden sm:inline">New Item</span>
+    </Button>
+  )
+
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={<Button size="icon" className="sm:hidden"><Plus className="size-4" /></Button>} />
-      <DialogTrigger render={<Button size="sm" className="hidden sm:flex"><Plus className="size-4" />New Item</Button>} />
+    <>
+      <span onClick={() => setOpen(true)} style={{ display: 'contents' }}>{triggerEl}</span>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
@@ -111,7 +123,18 @@ export function CreateItemDialog({ itemTypes }: { itemTypes: SidebarItemType[] }
               <Label htmlFor="type">Type</Label>
               <Select value={itemType} onValueChange={(val) => val && setItemType(val)}>
                 <SelectTrigger id="type">
-                  <SelectValue placeholder="Select type" />
+                  {itemType ? (
+                    <div className="flex items-center gap-2">
+                      <ItemTypeIcon 
+                        iconName={itemTypes.find(t => t.name === itemType)?.icon || ''} 
+                        color={itemTypes.find(t => t.name === itemType)?.color || ''} 
+                        className="size-4" 
+                      />
+                      <span className="capitalize">{itemType}</span>
+                    </div>
+                  ) : (
+                    <SelectValue placeholder="Select type" />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   {itemTypes.map((type) => (
@@ -164,10 +187,10 @@ export function CreateItemDialog({ itemTypes }: { itemTypes: SidebarItemType[] }
             {showLanguage && (
               <div className="grid gap-2">
                 <Label htmlFor="language">Language</Label>
-                <Input
+                <LanguageInput
                   id="language"
                   value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
+                  onChange={setLanguage}
                   placeholder="e.g. typescript, bash"
                 />
               </div>
@@ -176,12 +199,15 @@ export function CreateItemDialog({ itemTypes }: { itemTypes: SidebarItemType[] }
             {showContent && (
               <div className="grid gap-2">
                 <Label htmlFor="content">Content</Label>
-                <Textarea
+                <ItemContentInput
                   id="content"
+                  itemType={itemType}
                   value={content}
-                  onChange={(e) => setContent(e.target.value)}
+                  onChange={setContent}
+                  language={language}
                   placeholder="Paste your content here..."
-                  className="min-h-[100px] font-mono text-sm"
+                  codeEditorClassName="h-64"
+                  textareaClassName="min-h-[100px] font-mono text-sm"
                 />
               </div>
             )}
@@ -209,5 +235,6 @@ export function CreateItemDialog({ itemTypes }: { itemTypes: SidebarItemType[] }
         </form>
       </DialogContent>
     </Dialog>
+    </>
   )
 }

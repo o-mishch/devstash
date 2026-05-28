@@ -62,7 +62,7 @@ interface SectionLabelProps {
   icon?: ReactNode
 }
 
-export function SectionLabel({ children, icon }: SectionLabelProps) {
+function SectionLabel({ children, icon }: SectionLabelProps) {
   return (
     <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
       {icon}
