@@ -1,16 +1,16 @@
-# File Upload with filebase
+# File Upload with Cloudflare R2
 
 ## Overview
 
-Add file and image upload functionality using filebase storage.
+Add file and image upload functionality using Cloudflare R2 storage.
 
 ## Requirements
 
-- Create upload API route for filebase
+- Create upload API route for R2
 - Stick to lib/db/items.ts for prisma/db functions
 - Create FileUpload component with drag-and-drop
 - Update create item modal to use FileUpload for file/image types
-- Delete files from filebase when items are deleted
+- Delete files from R2 when items are deleted
 - Create download proxy API route (avoids CORS issues)
 - Add download button in ItemDrawer for file types
 - Show upload progress indicator
@@ -18,9 +18,9 @@ Add file and image upload functionality using filebase storage.
 
 ## File Constraints
 
-| Type   | Max Size | Extensions                                                                       |
-| ------ | -------- | -------------------------------------------------------------------------------- |
-| Images | 5 MB     | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`                                 |
+| Type   | Max Size | Extensions                                            |
+| ------ | -------- | ----------------------------------------------------- |
+| Images | 5 MB     | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`      |
 | Files  | 10 MB    | `.pdf`, `.txt`, `.md`, `.json`, `.yaml`, `.yml`, `.xml`, `.csv`, `.toml`, `.ini` |
 
 ## MIME Types

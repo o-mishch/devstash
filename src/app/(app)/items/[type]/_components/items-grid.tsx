@@ -1,7 +1,8 @@
 import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'
+import { FileRow } from '@/components/items/file-row'
 import { Card, CardContent } from '@/components/ui/card'
-import { ITEM_TYPES_WITH_IMAGE_GRID } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 import type { Item } from '@/types/item'
 
 interface ItemsGridProps {
@@ -20,11 +21,21 @@ export function ItemsGrid({ items, typeName }: ItemsGridProps) {
     )
   }
 
-  if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName.toLowerCase())) {
+  if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {
     return (
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3">
         {items.map((item) => (
           <ImageCard key={item.id} item={item} />
+        ))}
+      </div>
+    )
+  }
+
+  if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) {
+    return (
+      <div className="flex flex-col gap-2">
+        {items.map((item) => (
+          <FileRow key={item.id} item={item} />
         ))}
       </div>
     )

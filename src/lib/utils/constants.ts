@@ -9,6 +9,7 @@ export const ITEM_TYPES_WITH_MARKDOWN_EDITOR = new Set(['prompt', 'note'])
 export const ITEM_TYPES_WITH_URL = new Set(['link'])
 export const ITEM_TYPES_WITH_FILE = new Set(['image', 'file'])
 export const ITEM_TYPES_WITH_IMAGE_GRID = new Set(['image'])
+export const ITEM_TYPES_WITH_FILE_LIST = new Set(['file'])
 export const PRO_ITEM_TYPE_NAMES = new Set(['file', 'image'])
 
 export const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
@@ -16,7 +17,12 @@ export const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'not
 export const ALLOWED_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'])
 export const ALLOWED_FILE_EXTS = new Set(['pdf', 'txt', 'md', 'json', 'yaml', 'yml', 'xml', 'csv', 'toml', 'ini'])
 
+export const FILE_ICON_CODE_EXTS = new Set(['js', 'ts', 'tsx', 'jsx', 'py', 'rb', 'go', 'rs', 'sh', 'bash', 'zsh'])
+export const FILE_ICON_JSON_EXTS = new Set(['json', 'yaml', 'yml', 'toml', 'xml'])
+export const FILE_ICON_TEXT_EXTS = new Set(['txt', 'md', 'pdf', 'csv'])
+
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
 export const FILE_MAX_BYTES = 10 * 1024 * 1024
 
 const IMAGE_ACCEPT = [...ALLOWED_IMAGE_EXTS].map((e) => `.${e}`).join(',')

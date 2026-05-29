@@ -12,6 +12,8 @@ Not Started
 
 ## History
 
+- **File List View & Copy Buttons** - `FileRow` component with single-column Drive-style layout: file icon by extension (`FileTypeIcon` early-return component using `FILE_ICON_*_EXTS` constants), file name, file size, upload date, download button (programmatic anchor, no new tab), copy button (full download URL via `location.origin`); `ItemsGrid` routes `file` type to `FileRow` list via `ITEM_TYPES_WITH_FILE_LIST`; `Item` type extended with `content`, `url`, `fileName`, `fileSize` (promoted from `ItemDetail`); copy button added to `ItemCard` (absolute bottom-right corner, hover-reveal via `group/card`) and `ImageCard` (gradient overlay, hover-reveal); all card types use `group/card` + `opacity-0 group-hover/card:opacity-100` pattern; ghost button hover changed to `hover:bg-foreground/10` for visibility on any background; `cursor: pointer` global base rule added; `ReactNode` named import in `button.tsx`; `LucideIcon` from `lucide-react` in `file-row.tsx`; `<Image />` replaces `<img>` in `item-drawer-view-content.tsx` (Completed)
+
 - **Initial Setup** - Next.js 16, Tailwind CSS v4, TypeScript configured (Completed)
 - **Dashboard UI Phase 1** - ShadCN UI init, `/dashboard` route, dark mode, top bar with search + buttons, sidebar/main placeholders (Completed)
 - **Dashboard UI Phase 2** - Collapsible sidebar with icon-only mode, item type links, collections with favorites/recent, user area, mobile Sheet drawer, app icon in header (Completed)

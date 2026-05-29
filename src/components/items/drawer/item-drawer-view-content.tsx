@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Star, Pin, Copy, Pencil, Trash2, ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,9 +27,12 @@ function FileSectionContent({ item }: FileSectionProps) {
     return (
       <div className="flex justify-center">
         <div className="group relative flex max-w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted/30">
-          <img
+          <Image
             src={`/api/download/${item.id}`}
             alt={item.fileName ?? item.title}
+            width={0}
+            height={0}
+            unoptimized
             className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
           />
           <a 
