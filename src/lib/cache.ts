@@ -20,6 +20,8 @@ export const CacheTags = {
   itemStats: (userId: string) => ({ tag: `user:${userId}:item-stats`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   sidebarTypes: (userId: string) => ({ tag: `user:${userId}:sidebar-types`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   allCollections: (userId: string) => ({ tag: `user:${userId}:collections`, revalidate: CacheRevalidate.collections }),
+  collectionById: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}`, revalidate: CacheRevalidate.collections }),
+  itemsByCollection: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}:items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   collectionStats: (userId: string) => ({ tag: `user:${userId}:collection-stats`, revalidate: CacheRevalidate.collections }),
   profile: (userId: string) => ({ tag: `user:${userId}:profile`, revalidate: CacheRevalidate.profile }),
   itemTypeBySlug: (slug: string) => ({ tag: `item-type:slug:${slug}`, revalidate: CacheRevalidate.itemTypes }),
@@ -54,6 +56,7 @@ export function invalidateCollectionsCache(userId: string): void {
   updateTag(CacheTags.allCollections(userId).tag)
   updateTag(CacheTags.collectionStats(userId).tag)
   revalidatePath('/dashboard')
+  revalidatePath('/collections')
 }
 
 // Called after profile mutations (password change, unlink provider).
@@ -63,16 +66,13 @@ export function invalidateProfileCache(userId: string): void {
 }
 
 // Called after item mutations (create, update, delete).
-export function invalidateItemsCache(userId?: string, typeName?: string): void {
+// Any cache entry that includes `items-${userId}` in its tags is swept automatically —
+// no need to enumerate specific tags here when adding new item caches.
+export function invalidateItemsCache(userId?: string): void {
   if (userId) {
-    updateTag(CacheTags.recentItems(userId).tag)
-    updateTag(CacheTags.pinnedItems(userId).tag)
-    updateTag(CacheTags.itemStats(userId).tag)
-    updateTag(CacheTags.sidebarTypes(userId).tag)
-    if (typeName) {
-      updateTag(CacheTags.itemsByType(userId, typeName).tag)
-    }
+    updateTag(`items-${userId}`)
   }
   revalidatePath('/dashboard')
   revalidatePath('/items')
+  revalidatePath('/collections', 'layout')
 }

@@ -43,19 +43,20 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
           unoptimized
           priority={priority}
           onLoad={() => setIsLoaded(true)}
-          className={`object-cover transition-all duration-300 group-hover/card:scale-105 z-10 ${
-            isLoaded ? 'opacity-100' : 'opacity-0'
-          }`}
+          className={`object-cover transition-all duration-300 group-hover/card:scale-105 z-10 ${isLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
         />
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-12">
-          <div className="flex items-end justify-between">
-            <p className="truncate text-sm font-medium text-white">{item.title}</p>
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-12 z-20">
+          <div className="flex items-end justify-between gap-2">
+            <p className="truncate text-sm font-medium text-white drop-shadow-sm" title={item.title}>
+              {item.title}
+            </p>
             <Button
               size="icon"
               variant="ghost"
-              className="size-7 shrink-0 text-white/70 opacity-0 transition-opacity hover:bg-white/20 hover:text-white group-hover/card:opacity-100"
+              className="size-7 shrink-0 text-white/70 opacity-0 transition-opacity hover:bg-white/20 hover:text-white group-hover/card:opacity-100 z-30"
               onClick={handleCopy}
-              title="Copy link"
+              title="Copy download link"
             >
               {isCopied ? <Check className="size-3.5 text-green-400" /> : <Copy className="size-3.5" />}
             </Button>

@@ -192,6 +192,18 @@ export async function deleteItem(userId: string, itemId: string): Promise<boolea
   return result.count > 0
 }
 
+export async function getItemsByCollection(userId: string, collectionId: string): Promise<Item[]> {
+  return withDataCache(CacheTags.itemsByCollection(userId, collectionId), async () => {
+    const items = await prisma.item.findMany({
+      where: { userId, collections: { some: { collectionId } } },
+      orderBy: { createdAt: 'desc' },
+      take: TYPE_LIST_LIMIT,
+      include: ITEM_INCLUDE,
+    })
+    return items.map(toItem)
+  })
+}
+
 export async function getItemTypeBySlug(slug: string) {
   return withDataCache(CacheTags.itemTypeBySlug(slug), () => {
     const candidates = [slug]

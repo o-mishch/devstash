@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { getAllCollections } from '@/lib/db/collections'
@@ -13,9 +14,9 @@ export async function DashboardCollections({ userId }: DashboardCollectionsProps
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-sm font-semibold">Collections</CardTitle>
-        <a href="/collections" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <Link href="/collections" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
           View all
-        </a>
+        </Link>
       </CardHeader>
       <CardContent>
         <CollectionsGrid collections={collections} />

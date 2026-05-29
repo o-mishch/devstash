@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
@@ -19,9 +19,15 @@ interface ItemDetailDrawerProps {
 export function ItemDetailDrawer({ item, open, onOpenChange, collections }: ItemDetailDrawerProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [savedItem, setSavedItem] = useState<Item | null>(null)
+  const [prevItemId, setPrevItemId] = useState<string | null>(null)
   const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
 
-  useEffect(() => { setSavedItem(null) }, [item?.id])
+  const currentId = item?.id ?? null
+  if (currentId !== prevItemId) {
+    setPrevItemId(currentId)
+    setSavedItem(null)
+    setEditingItemId(null)
+  }
 
   const displayItem = savedItem ?? item
   const editing = editingItemId !== null && editingItemId === displayItem?.id

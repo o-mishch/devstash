@@ -15,3 +15,10 @@ The create button should open a modal with the fields needed. Show a toast on su
 /feature load Add functionality to add an item to a single or multiple collections.
 Add an input to the new/edit item forms to select the available collection to add the item to.
 Don't worry about displaying the collection pages yet
+
+
+
+/feature load create the /collections page and show the collections
+Create the /collections/[id] page to show the items in that collection
+Use the existing cards
+Link the "View all collections" in the sidebar to /collections and link all collection cards to that specific collection page

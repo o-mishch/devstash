@@ -63,6 +63,17 @@ export async function getAllCollections(userId: string): Promise<CollectionWithT
   })
 }
 
+export async function getCollectionById(userId: string, collectionId: string): Promise<CollectionWithTypes | null> {
+  return withDataCache(CacheTags.collectionById(userId, collectionId), async () => {
+    const col = await prisma.collection.findFirst({
+      where: { id: collectionId, userId },
+      include: COLLECTION_INCLUDE,
+    })
+    if (!col) return null
+    return mapCollection(col)
+  })
+}
+
 export interface CreateCollectionInput {
   name: string
   description?: string | null

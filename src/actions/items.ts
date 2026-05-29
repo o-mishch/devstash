@@ -66,7 +66,7 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<It
     })
     if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
 
-    invalidateItemsCache(session.user.id, created.itemType.name)
+    invalidateItemsCache(session.user.id)
 
     return ApiResponse.CREATED(created)
   } catch (error) {
@@ -95,7 +95,7 @@ export async function updateItemAction(
     })
     if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
 
-    invalidateItemsCache(session.user.id, updated.itemType.name)
+    invalidateItemsCache(session.user.id)
 
     return ApiResponse.OK(updated)
   } catch (error) {
@@ -117,7 +117,7 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
 
     if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
 
-    invalidateItemsCache(session.user.id, existing.itemType.name)
+    invalidateItemsCache(session.user.id)
 
     return ApiResponse.OK()
   } catch (error) {
