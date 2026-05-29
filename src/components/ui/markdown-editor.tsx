@@ -1,15 +1,14 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, Suspense } from 'react'
 import dynamic from 'next/dynamic'
-import { Copy, Check, Loader2 } from 'lucide-react'
+import { Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { cn } from '@/lib/utils'
 
 const MarkdownViewer = dynamic(
-  () => import('./markdown-viewer').then(m => m.MarkdownViewer),
-  { loading: () => <div className="flex h-32 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div> }
+  () => import('./markdown-viewer').then(m => m.MarkdownViewer)
 )
 
 interface MarkdownEditorProps {
@@ -44,7 +43,6 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
 
   return (
     <div className={cn("flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D]">
         <EditorWindowDots />
 
@@ -96,8 +94,7 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
         </div>
       </div>
 
-      {/* Content */}
-      {activeTab === 'write' && !readOnly ? (
+      {activeTab === 'write' ? (
         <textarea
           ref={textareaRef}
           value={value}
@@ -106,7 +103,13 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
           className="w-full min-h-[100px] resize-none overflow-y-auto bg-[#1E1E1E] text-white/90 text-sm font-mono outline-none border-0 p-4 leading-relaxed placeholder:text-white/30"
         />
       ) : (
-        <MarkdownViewer value={value} />
+        <Suspense fallback={
+          <pre className="p-4 text-sm font-mono text-white/90 whitespace-pre-wrap leading-relaxed">
+            {value}
+          </pre>
+        }>
+          <MarkdownViewer value={value} />
+        </Suspense>
       )}
     </div>
   )
