@@ -61,6 +61,7 @@
     }
   },
   "devDependencies": {
+    "@svgr/webpack": "^8.1.0",
     "@tailwindcss/postcss": "^4",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^25",
@@ -70,6 +71,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "prisma": "^7.9.0-dev.6",
+    "raw-loader": "^4.0.2",
     "tailwindcss": "^4",
     "tsx": "^4.22.3",
     "typescript": "^6",
