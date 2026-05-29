@@ -6,7 +6,9 @@ import { getCollectionById } from '@/lib/db/collections'
 import { getItemsByCollection } from '@/lib/db/items'
 import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'
-import { FileRow } from '@/components/items/file-row'
+import { VirtualImageGrid } from '@/components/items/virtual-image-grid'
+import { VirtualItemGrid } from '@/components/items/virtual-item-grid'
+import { VirtualFileList } from '@/components/items/virtual-file-list'
 import { Card, CardContent } from '@/components/ui/card'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 import type { Item } from '@/types/item'
@@ -34,28 +36,12 @@ function CollectionItemsGrid({ items }: CollectionItemsGridProps) {
 
   if (uniqueTypeCount === 1) {
     const typeName = items[0].itemType.name
-
-    if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {
-      return (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          {items.map((item, index) => (
-            <ImageCard key={item.id} item={item} priority={index < 6} />
-          ))}
-        </div>
-      )
-    }
-
-    if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) {
-      return (
-        <div className="flex flex-col gap-2">
-          {items.map((item) => (
-            <FileRow key={item.id} item={item} />
-          ))}
-        </div>
-      )
-    }
+    if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) return <VirtualImageGrid items={items} />
+    if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) return <VirtualFileList items={items} />
+    return <VirtualItemGrid items={items} />
   }
 
+  // Mixed types: render without virtualization (variable row heights)
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
       {items.map((item) => {
