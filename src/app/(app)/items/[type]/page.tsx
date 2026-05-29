@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getCurrentUserId } from '@/lib/session'
-import { getItemTypeBySlug, getItemsByType, getSidebarItemTypes } from '@/lib/db/items'
-import { getAllCollections } from '@/lib/db/collections'
+import { getItemTypeBySlug, getItemsByType } from '@/lib/db/items'
+import { fetchSidebarData } from '@/lib/db/sidebar'
 import { getTypeLabel } from '@/lib/utils'
 import { ItemsGrid } from './_components/items-grid'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
@@ -22,12 +22,10 @@ export default async function ItemsPage({ params }: ItemsPageProps) {
 
   if (!itemType) notFound()
 
-  const [itemTypes, collections] = await Promise.all([
-    getSidebarItemTypes(userId),
-    userId ? getAllCollections(userId) : Promise.resolve([])
+  const [{ itemTypes, collections }, items] = await Promise.all([
+    fetchSidebarData(userId, null),
+    userId ? getItemsByType(userId, itemType.name) : Promise.resolve([]),
   ])
-
-  const items = userId ? await getItemsByType(userId, itemType.name) : []
 
   const label = getTypeLabel(itemType.name)
 

@@ -205,19 +205,17 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
 
         {collections.length > 0 && (
           <DrawerSection label="Collections" className="space-y-1.5">
-            <div className="rounded-md border border-border p-3">
-              <Controller
-                control={form.control}
-                name="collectionIds"
-                render={({ field }) => (
-                  <CollectionSelector
-                    collections={collections}
-                    selectedIds={field.value}
-                    onChange={field.onChange}
-                  />
-                )}
-              />
-            </div>
+            <Controller
+              control={form.control}
+              name="collectionIds"
+              render={({ field }) => (
+                <CollectionSelector
+                  collections={collections}
+                  selectedIds={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
             {form.formState.errors.collectionIds && <p className="text-red-500 text-[10px]">{form.formState.errors.collectionIds.message}</p>}
           </DrawerSection>
         )}

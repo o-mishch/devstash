@@ -169,7 +169,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger 
 
   return (
     <>
-      <span onClick={() => setOpen(true)} style={{ display: 'contents' }}>{triggerEl}</span>
+      <span onClick={() => setOpen(true)} className="contents">{triggerEl}</span>
       <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <form onSubmit={handleFormSubmit}>
@@ -186,40 +186,43 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger 
               <Controller
                 control={form.control}
                 name="itemType"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={(val) => { field.onChange(val); form.clearErrors() }}>
-                    <SelectTrigger id="type" className="w-full">
-                      {field.value ? (
-                        <div className="flex items-center gap-2">
-                          <ItemTypeIcon
-                            iconName={itemTypes.find(t => t.name === field.value)?.icon || ''}
-                            color={itemTypes.find(t => t.name === field.value)?.color || ''}
-                            className="size-4"
-                          />
-                          <span className="capitalize">{field.value}</span>
-                          {PRO_ITEM_TYPE_NAMES.has(field.value) && (
-                            <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
-                          )}
-                        </div>
-                      ) : (
-                        <SelectValue placeholder="Select type" />
-                      )}
-                    </SelectTrigger>
-                    <SelectContent>
-                      {itemTypes.map((type) => (
-                        <SelectItem key={type.id} value={type.name}>
+                render={({ field }) => {
+                  const selectedType = itemTypes.find(t => t.name === field.value)
+                  return (
+                    <Select value={field.value} onValueChange={(val) => { field.onChange(val); form.clearErrors() }}>
+                      <SelectTrigger id="type" className="w-full">
+                        {field.value ? (
                           <div className="flex items-center gap-2">
-                            <ItemTypeIcon iconName={type.icon} color={type.color} className="size-4" />
-                            <span className="capitalize">{type.name}</span>
-                            {PRO_ITEM_TYPE_NAMES.has(type.name) && (
+                            <ItemTypeIcon
+                              iconName={selectedType?.icon || ''}
+                              color={selectedType?.color || ''}
+                              className="size-4"
+                            />
+                            <span className="capitalize">{field.value}</span>
+                            {PRO_ITEM_TYPE_NAMES.has(field.value) && (
                               <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
                             )}
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                        ) : (
+                          <SelectValue placeholder="Select type" />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {itemTypes.map((type) => (
+                          <SelectItem key={type.id} value={type.name}>
+                            <div className="flex items-center gap-2">
+                              <ItemTypeIcon iconName={type.icon} color={type.color} className="size-4" />
+                              <span className="capitalize">{type.name}</span>
+                              {PRO_ITEM_TYPE_NAMES.has(type.name) && (
+                                <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )
+                }}
               />
               {form.formState.errors.itemType && <p className="text-red-500 text-xs mt-1">{form.formState.errors.itemType.message}</p>}
             </div>
@@ -337,19 +340,17 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger 
             {collections.length > 0 && (
               <div className="grid gap-2">
                 <Label>Collections</Label>
-                <div className="rounded-md border border-border p-3">
-                  <Controller
-                    control={form.control}
-                    name="collectionIds"
-                    render={({ field }) => (
-                      <CollectionSelector
-                        collections={collections}
-                        selectedIds={field.value}
-                        onChange={field.onChange}
-                      />
-                    )}
-                  />
-                </div>
+                <Controller
+                  control={form.control}
+                  name="collectionIds"
+                  render={({ field }) => (
+                    <CollectionSelector
+                      collections={collections}
+                      selectedIds={field.value}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
                 {form.formState.errors.collectionIds && <p className="text-red-500 text-xs mt-1">{form.formState.errors.collectionIds.message}</p>}
               </div>
             )}

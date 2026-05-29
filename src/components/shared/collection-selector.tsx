@@ -31,70 +31,68 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
   const unselect = (id: string, e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
     e.stopPropagation()
-    onChange(selectedIds.filter(sid => sid !== id))
+    toggleCollection(id)
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              variant="outline"
-              role="combobox"
-              className="w-full justify-between font-normal text-muted-foreground hover:bg-transparent"
-            />
-          }
-        >
-          {selectedIds.length === 0 ? 'Search and select collections...' : `${selectedIds.length} collection${selectedIds.length > 1 ? 's' : ''} selected`}
-          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-        </PopoverTrigger>
-        <PopoverContent className="w-[300px] p-0" align="start">
-          <Command>
-            <CommandInput placeholder="Search collections..." />
-            <CommandList>
-              <CommandEmpty>No collection found.</CommandEmpty>
-              <CommandGroup>
-                {collections.map((col) => {
-                  const isSelected = selectedIds.includes(col.id)
-                  return (
-                    <CommandItem
-                      key={col.id}
-                      value={col.name}
-                      onSelect={() => toggleCollection(col.id)}
-                      data-checked={isSelected || undefined}
-                    >
-                      {col.name}
-                    </CommandItem>
-                  )
-                })}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-
-      {selectedCollections.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-1">
-          {selectedCollections.map((col) => (
-            <Badge
-              key={col.id}
-              variant="secondary"
-              className="px-2 py-0.5 text-xs font-medium transition-colors"
-            >
-              {col.name}
-              <button
-                type="button"
-                className="ml-1.5 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-foreground/10 p-0.5"
-                onClick={(e) => unselect(col.id, e)}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="outline"
+            role="combobox"
+            className="w-full min-h-9 h-auto justify-between font-normal hover:bg-transparent"
+          />
+        }
+      >
+        <span className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+          {selectedCollections.length === 0 ? (
+            <span className="text-muted-foreground">Search and select collections...</span>
+          ) : (
+            selectedCollections.map((col) => (
+              <Badge
+                key={col.id}
+                variant="outline"
+                className="px-2 py-0.5 text-xs font-medium bg-foreground/10 text-foreground border-foreground/20"
               >
-                <X className="size-3" />
-                <span className="sr-only">Remove {col.name}</span>
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
-    </div>
+                {col.name}
+                <button
+                  type="button"
+                  className="ml-1.5 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-foreground/10 p-0.5"
+                  onClick={(e) => unselect(col.id, e)}
+                >
+                  <X className="size-3" />
+                  <span className="sr-only">Remove {col.name}</span>
+                </button>
+              </Badge>
+            ))
+          )}
+        </span>
+        <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search collections..." />
+          <CommandList>
+            <CommandEmpty>No collection found.</CommandEmpty>
+            <CommandGroup>
+              {collections.map((col) => {
+                const isSelected = selectedIds.includes(col.id)
+                return (
+                  <CommandItem
+                    key={col.id}
+                    value={col.name}
+                    onSelect={() => toggleCollection(col.id)}
+                    data-checked={isSelected || undefined}
+                  >
+                    {col.name}
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }

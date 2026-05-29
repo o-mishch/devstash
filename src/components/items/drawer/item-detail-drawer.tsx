@@ -18,14 +18,13 @@ interface ItemDetailDrawerProps {
 
 export function ItemDetailDrawer({ item, open, onOpenChange, collections }: ItemDetailDrawerProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
-  const [currentItem, setCurrentItem] = useState<Item | null>(item)
+  const [savedItem, setSavedItem] = useState<Item | null>(null)
   const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
 
-  useEffect(() => { setCurrentItem(item) }, [item])
+  useEffect(() => { setSavedItem(null) }, [item?.id])
 
-  const itemId = currentItem?.id ?? null
-  const displayItem = currentItem
-  const editing = editingItemId === itemId
+  const displayItem = savedItem ?? item
+  const editing = editingItemId !== null && editingItemId === displayItem?.id
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -49,14 +48,14 @@ export function ItemDetailDrawer({ item, open, onOpenChange, collections }: Item
             item={displayItem}
             collections={collections}
             onClose={() => onOpenChange(false)}
-            onSave={(updated: Item) => { setCurrentItem(updated); setEditingItemId(null) }}
+            onSave={(updated: Item) => { setSavedItem(updated); setEditingItemId(null) }}
             onCancel={() => setEditingItemId(null)}
           />
         ) : (
           <ItemDrawerViewContent
             item={displayItem}
             onClose={() => onOpenChange(false)}
-            onEdit={() => setEditingItemId(itemId)}
+            onEdit={() => setEditingItemId(displayItem?.id ?? null)}
           />
         )}
       </SheetContent>
