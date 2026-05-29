@@ -17,7 +17,7 @@
     "db:format": "prisma format",
     "db:test": "tsx scripts/test-db.ts",
     "db:purge-users": "tsx scripts/purge-users.ts",
-    "test:watch": "vitest watch",
+    "test": "vitest watch",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage"
   },

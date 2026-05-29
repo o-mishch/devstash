@@ -167,18 +167,18 @@ if (data.status !== 'ok') {
 
 ### Available Status Codes
 
-| Status | HTTP | Meaning |
-| --- | --- | --- |
-| `ok` | 200 | Success |
-| `created` | 201 | Resource created |
-| `bad_request` | 400 | Validation / client error |
-| `unauthorized` | 401 | Not authenticated |
-| `forbidden` | 403 | Authenticated but not allowed |
-| `not_found` | 404 | Resource not found |
-| `conflict` | 409 | Duplicate / state conflict |
-| `validation_error` | 422 | Schema / input validation |
-| `too_many_requests` | 429 | Rate limited |
-| `internal_error` | 500 | Server error |
+| Status              | HTTP | Meaning                       |
+| ------------------- | ---- | ----------------------------- |
+| `ok`                | 200  | Success                       |
+| `created`           | 201  | Resource created              |
+| `bad_request`       | 400  | Validation / client error     |
+| `unauthorized`      | 401  | Not authenticated             |
+| `forbidden`         | 403  | Authenticated but not allowed |
+| `not_found`         | 404  | Resource not found            |
+| `conflict`          | 409  | Duplicate / state conflict    |
+| `validation_error`  | 422  | Schema / input validation     |
+| `too_many_requests` | 429  | Rate limited                  |
+| `internal_error`    | 500  | Server error                  |
 
 ### Rules
 

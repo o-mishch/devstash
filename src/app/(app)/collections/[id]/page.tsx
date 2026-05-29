@@ -11,6 +11,7 @@ import { VirtualItemGrid } from '@/components/items/virtual-item-grid'
 import { VirtualFileList } from '@/components/items/virtual-file-list'
 import { Card, CardContent } from '@/components/ui/card'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
+import { CollectionHeaderActions } from './_components/collection-header-actions'
 import type { Item } from '@/types/item'
 
 interface CollectionPageProps {
@@ -75,11 +76,16 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
           <ChevronRight className="size-3" />
           <span className="text-foreground">{collection.name}</span>
         </nav>
-        <h1 className="text-xl font-semibold">{collection.name}</h1>
-        {collection.description && (
-          <p className="mt-0.5 text-sm text-muted-foreground">{collection.description}</p>
-        )}
-        <p className="mt-1 text-sm text-muted-foreground">{items.length} item{items.length !== 1 ? 's' : ''}</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">{collection.name}</h1>
+            {collection.description && (
+              <p className="mt-0.5 text-sm text-muted-foreground">{collection.description}</p>
+            )}
+            <p className="mt-1 text-sm text-muted-foreground">{items.length} item{items.length !== 1 ? 's' : ''}</p>
+          </div>
+          <CollectionHeaderActions collection={collection} />
+        </div>
       </div>
 
       <CollectionItemsGrid items={items} />

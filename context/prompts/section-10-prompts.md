@@ -22,3 +22,7 @@ Don't worry about displaying the collection pages yet
 Create the /collections/[id] page to show the items in that collection
 Use the existing cards
 Link the "View all collections" in the sidebar to /collections and link all collection cards to that specific collection page
+
+
+/feature load Add buttons on /collections/lid] to edit, delete, and favorite. Do not implement favorites yet, just the icon/button. Add a modal for editing the metadata. Add a confirmation on delete. Items should NOT be deleted; they just will not exist in that collection anymore.
+On the cards at/collections and dashboard, have the 3 dots icon show a dropdown with edit, delete, and favorite. Clicking anywhere else in the card will go to that collection page.

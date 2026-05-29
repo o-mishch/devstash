@@ -100,3 +100,25 @@ export async function getCollectionStats(userId: string): Promise<CollectionStat
     return { totalCollections, favoriteCollections }
   })
 }
+
+export interface UpdateCollectionInput {
+  name?: string
+  description?: string | null
+  isFavorite?: boolean
+}
+
+export async function updateCollection(userId: string, collectionId: string, input: UpdateCollectionInput): Promise<CollectionWithTypes> {
+  const col = await prisma.collection.update({
+    where: { id: collectionId, userId },
+    data: input,
+    include: COLLECTION_INCLUDE,
+  })
+  return mapCollection(col)
+}
+
+export async function deleteCollection(userId: string, collectionId: string): Promise<boolean> {
+  await prisma.collection.delete({
+    where: { id: collectionId, userId },
+  })
+  return true
+}
