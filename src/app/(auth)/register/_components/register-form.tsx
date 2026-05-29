@@ -14,8 +14,8 @@ export function RegisterForm() {
 
   return (
     <>
-      <form action={formAction} className="space-y-4">
-        <div className="space-y-1.5">
+      <form action={formAction} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="name">Name</Label>
           <Input
             id="name"
@@ -26,7 +26,7 @@ export function RegisterForm() {
             required
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
@@ -37,7 +37,7 @@ export function RegisterForm() {
             required
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="password">Password</Label>
           <Input
             id="password"
@@ -49,7 +49,7 @@ export function RegisterForm() {
             required
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="flex flex-col gap-1.5">
           <Label htmlFor="confirmPassword">Confirm password</Label>
           <Input
             id="confirmPassword"

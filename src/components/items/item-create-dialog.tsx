@@ -34,19 +34,14 @@ import { createItemAction } from '@/actions/items'
 import { apiFetch } from '@/lib/api-fetch'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import { baseItemSchema } from '@/lib/utils/validators'
 import type { FileItemType } from '@/lib/utils/constants'
 import type { SidebarItemType } from '@/types/item'
 import type { UploadedFile } from '@/components/shared/file-upload'
 
-const formSchema = z.object({
+const formSchema = baseItemSchema.extend({
   itemType: z.string().min(1, 'Type is required'),
-  title: z.string().min(1, 'Title is required'),
-  description: z.string().optional(),
-  content: z.string().optional(),
-  url: z.string().optional(),
-  language: z.string().optional(),
-  tags: z.string().optional(),
-  uploadedFile: z.any().optional(),
+  uploadedFile: z.custom<UploadedFile>().optional(),
 }).superRefine((data, ctx) => {
   if (ITEM_TYPES_WITH_URL.has(data.itemType) && !data.url) {
     ctx.addIssue({

@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import type { ComponentType } from 'react'
 import { toast } from 'sonner'
-import { Mail, Loader2, Unlink, Globe } from 'lucide-react'
+import { Mail, Unlink, Globe } from 'lucide-react'
 import { GitHubIcon } from '@/components/icons/github'
 import { Button } from '@/components/ui/button'
 import {
@@ -13,9 +13,9 @@ import {
   DialogTitle,
   DialogDescription,
   DialogTrigger,
-  DialogFooter,
 } from '@/components/ui/dialog'
 import { unlinkProviderAction } from '@/actions/profile'
+import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { PROVIDER_LABELS } from '@/lib/utils'
 import type { LinkedAccount } from '@/lib/db/profile'
 
@@ -94,15 +94,12 @@ function ProviderAccountRow({ account, canUnlink, onUnlinked }: ProviderAccountR
                 linked methods.
               </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="pt-2">
-              <Button variant="ghost" onClick={() => setOpen(false)} disabled={isPending}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleUnlink} disabled={isPending}>
-                {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
-                Unlink {label}
-              </Button>
-            </DialogFooter>
+            <DestructiveDialogFooter
+              onCancel={() => setOpen(false)}
+              onConfirm={handleUnlink}
+              isPending={isPending}
+              confirmText={`Unlink ${label}`}
+            />
           </DialogContent>
         </Dialog>
       ) : (

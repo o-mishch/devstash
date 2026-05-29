@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export const MAX_PASSWORD_LENGTH = 128
 
 export function validatePassword(password: string, confirmPassword?: string): string | null {
@@ -6,3 +8,12 @@ export function validatePassword(password: string, confirmPassword?: string): st
   if (confirmPassword !== undefined && password !== confirmPassword) return 'Passwords do not match.'
   return null
 }
+
+export const baseItemSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().optional(),
+  content: z.string().optional(),
+  url: z.string().optional(),
+  language: z.string().optional(),
+  tags: z.string().optional(),
+})

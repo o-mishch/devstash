@@ -14,16 +14,10 @@ import { ItemContentInput, LanguageInput } from '@/components/shared/item-conten
 import { updateItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
+import { baseItemSchema } from '@/lib/utils/validators'
 import type { ItemDetail } from '@/types/item'
 
-const createDrawerFormSchema = (itemType: string) => z.object({
-  title: z.string().min(1, 'Title is required'),
-  description: z.string().optional(),
-  content: z.string().optional(),
-  url: z.string().optional(),
-  language: z.string().optional(),
-  tags: z.string().optional(),
-}).superRefine((data, ctx) => {
+const createDrawerFormSchema = (itemType: string) => baseItemSchema.superRefine((data, ctx) => {
   if (ITEM_TYPES_WITH_URL.has(itemType) && !data.url) {
     ctx.addIssue({
       code: 'custom',

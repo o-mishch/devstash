@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -11,9 +11,9 @@ import {
   DialogTitle,
   DialogDescription,
   DialogTrigger,
-  DialogFooter,
 } from '@/components/ui/dialog'
 import { deleteAccountAction } from '@/actions/profile'
+import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
 export function DeleteAccountDialog() {
   const [open, setOpen] = useState(false)
@@ -47,15 +47,12 @@ export function DeleteAccountDialog() {
             cannot be recovered.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="pt-2">
-          <Button variant="ghost" onClick={() => setOpen(false)} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={handleDelete} disabled={isPending}>
-            {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
-            Yes, Delete My Account
-          </Button>
-        </DialogFooter>
+        <DestructiveDialogFooter
+          onCancel={() => setOpen(false)}
+          onConfirm={handleDelete}
+          isPending={isPending}
+          confirmText="Yes, Delete My Account"
+        />
       </DialogContent>
     </Dialog>
   )

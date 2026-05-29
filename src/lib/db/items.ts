@@ -75,15 +75,7 @@ export async function getItemById(userId: string, itemId: string): Promise<ItemD
 
   if (!item) return null
 
-  return {
-    ...toItem(item),
-    content: item.content,
-    url: item.url,
-    fileUrl: item.fileUrl,
-    fileName: item.fileName,
-    fileSize: item.fileSize,
-    collections: item.collections.map((ic) => ic.collection),
-  }
+  return toItemDetail(item)
 }
 
 export interface CreateItemInput {
@@ -124,10 +116,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
       fileSize: data.fileSize,
       language: data.language,
       tags: {
-        connectOrCreate: data.tags.map((name) => ({
-          where: { name },
-          create: { name },
-        })),
+        connectOrCreate: buildTagsConnectOrCreate(data.tags),
       },
     },
     include: {
@@ -136,15 +125,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
     },
   })
 
-  return {
-    ...toItem(created),
-    content: created.content,
-    url: created.url,
-    fileUrl: created.fileUrl,
-    fileName: created.fileName,
-    fileSize: created.fileSize,
-    collections: created.collections.map((ic) => ic.collection),
-  }
+  return toItemDetail(created)
 }
 
 export interface UpdateItemInput {
@@ -170,10 +151,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
       language: data.language,
       tags: {
         set: [],
-        connectOrCreate: data.tags.map((name) => ({
-          where: { name },
-          create: { name },
-        })),
+        connectOrCreate: buildTagsConnectOrCreate(data.tags),
       },
     },
     include: {
@@ -182,15 +160,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
     },
   })
 
-  return {
-    ...toItem(updated),
-    content: updated.content,
-    url: updated.url,
-    fileUrl: updated.fileUrl,
-    fileName: updated.fileName,
-    fileSize: updated.fileSize,
-    collections: updated.collections.map((ic) => ic.collection),
-  }
+  return toItemDetail(updated)
 }
 
 export async function deleteItem(userId: string, itemId: string): Promise<boolean> {
@@ -271,5 +241,33 @@ function toItem(item: ItemWithRelations): Item {
     updatedAt: item.updatedAt,
     itemType: item.itemType,
     tags: item.tags.map((t) => t.name),
+  }
+}
+
+function buildTagsConnectOrCreate(tags: string[]) {
+  return tags.map((name) => ({
+    where: { name },
+    create: { name },
+  }))
+}
+
+type ItemDetailWithRelations = ItemWithRelations & {
+  content: string | null
+  url: string | null
+  fileUrl: string | null
+  fileName: string | null
+  fileSize: number | null
+  collections: { collection: { id: string; name: string } }[]
+}
+
+function toItemDetail(item: ItemDetailWithRelations): ItemDetail {
+  return {
+    ...toItem(item),
+    content: item.content,
+    url: item.url,
+    fileUrl: item.fileUrl,
+    fileName: item.fileName,
+    fileSize: item.fileSize,
+    collections: item.collections.map((ic) => ic.collection),
   }
 }
