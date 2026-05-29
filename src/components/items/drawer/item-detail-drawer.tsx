@@ -1,48 +1,30 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { useState, useEffect } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
-import { apiFetch } from '@/lib/api-fetch'
 import { useResizable } from '@/hooks/use-resizable'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
-import type { Item, ItemDetail } from '@/types/item'
+import type { Item } from '@/types/item'
+import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDetailDrawerProps {
   item: Item | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  collections: CollectionWithTypes[]
 }
 
-export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerProps) {
-  const [fullItem, setFullItem] = useState<ItemDetail | null>(null)
+export function ItemDetailDrawer({ item, open, onOpenChange, collections }: ItemDetailDrawerProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [currentItem, setCurrentItem] = useState<Item | null>(item)
   const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
 
-  const itemId = item?.id ?? null
+  useEffect(() => { setCurrentItem(item) }, [item])
 
-  useEffect(() => {
-    if (!open || !itemId) return
-    setFullItem(null)
-    apiFetch<ItemDetail>(`/api/items/${itemId}`)
-      .then((res) => {
-        if (res.status === 'ok' && res.data) setFullItem(res.data)
-        else toast.error(res.message ?? 'Failed to load item')
-      })
-  }, [open, itemId])
-
-  // Build a shell ItemDetail from the Item we already have so the drawer
-  // renders instantly. fileUrl and collections are the only fields missing.
-  const shellItem: ItemDetail | null = item
-    ? { ...item, fileUrl: null, collections: [] }
-    : null
-
-  const resolvedFullItem = fullItem?.id === itemId ? fullItem : null
-  const displayItem = resolvedFullItem ?? shellItem
-  const isLoadingDetail = !resolvedFullItem
-
+  const itemId = currentItem?.id ?? null
+  const displayItem = currentItem
   const editing = editingItemId === itemId
 
   return (
@@ -64,15 +46,15 @@ export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerP
           <DrawerSkeleton />
         ) : editing ? (
           <ItemDrawerEditContent
-            item={resolvedFullItem ?? displayItem}
+            item={displayItem}
+            collections={collections}
             onClose={() => onOpenChange(false)}
-            onSave={(updated) => { setFullItem(updated); setEditingItemId(null) }}
+            onSave={(updated: Item) => { setCurrentItem(updated); setEditingItemId(null) }}
             onCancel={() => setEditingItemId(null)}
           />
         ) : (
           <ItemDrawerViewContent
             item={displayItem}
-            isLoadingDetail={isLoadingDetail}
             onClose={() => onOpenChange(false)}
             onEdit={() => setEditingItemId(itemId)}
           />

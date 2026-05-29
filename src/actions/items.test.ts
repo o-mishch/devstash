@@ -25,6 +25,7 @@ const validInput = {
   url: null,
   language: 'TypeScript',
   tags: ['react', 'hooks'],
+  collectionIds: [],
 }
 
 const mockItem = {
@@ -88,6 +89,27 @@ describe('createItemAction', () => {
     const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'user-1/abc.png', fileName: 'abc.png', fileSize: 1024 })
     expect(result.status).toBe('created')
     expect(mockCreateItem).toHaveBeenCalled()
+  })
+
+  it('passes collectionIds to dbCreateItem', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCreateItem.mockResolvedValue(mockItem)
+    const collectionIds = ['col-1', 'col-2']
+    await createItemAction({ ...validCreateInput, collectionIds })
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ collectionIds })
+    )
+  })
+
+  it('passes empty collectionIds when none provided', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCreateItem.mockResolvedValue(mockItem)
+    await createItemAction({ ...validCreateInput, collectionIds: [] })
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ collectionIds: [] })
+    )
   })
 
   it('returns INTERNAL_ERROR when createItem returns null (item type not found)', async () => {
@@ -155,6 +177,29 @@ describe('updateItemAction', () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     const result = await updateItemAction('item-1', { ...validInput, tags: ['react', '', 'hooks'] })
     expect(result.status).toBe('validation_error')
+  })
+
+  it('passes collectionIds to dbUpdateItem', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockUpdateItem.mockResolvedValue(mockItem)
+    const collectionIds = ['col-1', 'col-2']
+    await updateItemAction('item-1', { ...validInput, collectionIds })
+    expect(mockUpdateItem).toHaveBeenCalledWith(
+      'user-1',
+      'item-1',
+      expect.objectContaining({ collectionIds })
+    )
+  })
+
+  it('passes empty collectionIds when none provided', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockUpdateItem.mockResolvedValue(mockItem)
+    await updateItemAction('item-1', { ...validInput, collectionIds: [] })
+    expect(mockUpdateItem).toHaveBeenCalledWith(
+      'user-1',
+      'item-1',
+      expect.objectContaining({ collectionIds: [] })
+    )
   })
 
   it('returns INTERNAL_ERROR on unexpected DB failure', async () => {

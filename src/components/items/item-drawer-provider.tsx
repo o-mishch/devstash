@@ -5,8 +5,13 @@ import { ItemDrawerContext } from '@/context/item-drawer-context'
 import { ItemDetailDrawer } from './drawer/item-detail-drawer'
 import type { WithChildren } from '@/types/common'
 import type { Item } from '@/types/item'
+import type { CollectionWithTypes } from '@/types/collection'
 
-export function ItemDrawerProvider({ children }: WithChildren) {
+interface ItemDrawerProviderProps extends WithChildren {
+  collections: CollectionWithTypes[]
+}
+
+export function ItemDrawerProvider({ children, collections }: ItemDrawerProviderProps) {
   const [open, setOpen] = useState(false)
   const [openItem, setOpenItem] = useState<Item | null>(null)
 
@@ -24,6 +29,7 @@ export function ItemDrawerProvider({ children }: WithChildren) {
         item={openItem}
         open={open}
         onOpenChange={setOpen}
+        collections={collections}
       />
     </ItemDrawerContext.Provider>
   )

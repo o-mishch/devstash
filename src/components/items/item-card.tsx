@@ -1,8 +1,8 @@
 'use client'
 
 import type { CSSProperties, MouseEvent } from 'react'
-import { Copy } from 'lucide-react'
-import { toast } from 'sonner'
+import { Copy, Check } from 'lucide-react'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
@@ -20,12 +20,12 @@ interface ItemCardProps {
 export function ItemCard({ item }: ItemCardProps) {
   const { itemType } = item
   const { openDrawer } = useItemDrawer()
+  const { isCopied, copy } = useCopyToClipboard()
 
   function handleCopy(e: MouseEvent) {
     e.stopPropagation()
     const isFile = ITEM_TYPES_WITH_FILE.has(item.itemType.name)
-    const text = isFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.content ?? item.url ?? item.title)
-    navigator.clipboard.writeText(text).then(() => toast.success('Copied to clipboard'))
+    copy(isFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.content ?? item.url ?? item.title))
   }
 
   return (
@@ -54,7 +54,7 @@ export function ItemCard({ item }: ItemCardProps) {
         onClick={handleCopy}
         title="Copy"
       >
-        <Copy className="size-3" />
+        {isCopied ? <Check className="size-3 text-green-400" /> : <Copy className="size-3" />}
       </Button>
     </Card>
   )

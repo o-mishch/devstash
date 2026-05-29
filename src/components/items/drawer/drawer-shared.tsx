@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate, cn } from '@/lib/utils'
-import type { ItemDetail } from '@/types/item'
+import type { Item } from '@/types/item'
 
 interface DrawerContainerProps {
   header: ReactNode
@@ -30,7 +30,7 @@ function DrawerContainer({ header, actions, children, style }: DrawerContainerPr
 }
 
 interface DrawerLayoutProps {
-  itemType: ItemDetail['itemType']
+  itemType: Item['itemType']
   onClose: () => void
   titleArea: ReactNode
   actionArea: ReactNode
@@ -88,20 +88,12 @@ export function DrawerSection({ label, icon, className, children }: DrawerSectio
 }
 
 interface DrawerSharedSectionsProps {
-  item: ItemDetail
-  isLoadingDetail?: boolean
+  item: Item
 }
 
-export function DrawerSharedSections({ item, isLoadingDetail }: DrawerSharedSectionsProps) {
+export function DrawerSharedSections({ item }: DrawerSharedSectionsProps) {
   let collectionsContent: ReactNode
-  if (isLoadingDetail) {
-    collectionsContent = (
-      <div className="flex gap-1.5">
-        <Skeleton className="h-6 w-20 rounded-full" />
-        <Skeleton className="h-6 w-14 rounded-full" />
-      </div>
-    )
-  } else if (item.collections.length > 0) {
+  if (item.collections.length > 0) {
     collectionsContent = (
       <div className="flex flex-wrap gap-1.5">
         {item.collections.map((col) => (

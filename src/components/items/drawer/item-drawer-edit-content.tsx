@@ -11,12 +11,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { CollectionSelector } from '@/components/shared/collection-selector'
 import { ItemContentInput, LanguageInput } from '@/components/shared/item-content-input'
 import { updateItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
-import type { ItemDetail } from '@/types/item'
+import type { Item } from '@/types/item'
+import type { CollectionWithTypes } from '@/types/collection'
 
 const createDrawerFormSchema = (itemType: string) => itemFormBaseSchema.superRefine((data, ctx) => {
   if (ITEM_TYPES_WITH_URL.has(itemType) && !data.url) {
@@ -31,13 +33,14 @@ const createDrawerFormSchema = (itemType: string) => itemFormBaseSchema.superRef
 type DrawerFormValues = z.infer<ReturnType<typeof createDrawerFormSchema>>
 
 interface ItemDrawerEditContentProps {
-  item: ItemDetail
+  item: Item
+  collections: CollectionWithTypes[]
   onClose: () => void
-  onSave: (updated: ItemDetail) => void
+  onSave: (updated: Item) => void
   onCancel: () => void
 }
 
-export function ItemDrawerEditContent({ item, onClose, onSave, onCancel }: ItemDrawerEditContentProps) {
+export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel }: ItemDrawerEditContentProps) {
   const router = useRouter()
   const { itemType } = item
   const typeName = itemType.name
@@ -53,6 +56,7 @@ export function ItemDrawerEditContent({ item, onClose, onSave, onCancel }: ItemD
       url: item.url ?? '',
       language: item.language ?? '',
       tags: item.tags.join(', '),
+      collectionIds: item.collections.map((c) => c.id),
     }
   })
 
@@ -78,6 +82,7 @@ export function ItemDrawerEditContent({ item, onClose, onSave, onCancel }: ItemD
         url: data.url?.trim() || null,
         language: data.language?.trim() || null,
         tags: tagArray,
+        collectionIds: data.collectionIds,
       })
 
       if (result.status !== 'ok' || !result.data) {
@@ -197,6 +202,25 @@ export function ItemDrawerEditContent({ item, onClose, onSave, onCancel }: ItemD
           <p className="text-xs text-muted-foreground">Comma-separated</p>
           {form.formState.errors.tags && <p className="text-red-500 text-[10px]">{form.formState.errors.tags.message}</p>}
         </DrawerSection>
+
+        {collections.length > 0 && (
+          <DrawerSection label="Collections" className="space-y-1.5">
+            <div className="rounded-md border border-border p-3">
+              <Controller
+                control={form.control}
+                name="collectionIds"
+                render={({ field }) => (
+                  <CollectionSelector
+                    collections={collections}
+                    selectedIds={field.value}
+                    onChange={field.onChange}
+                  />
+                )}
+              />
+            </div>
+            {form.formState.errors.collectionIds && <p className="text-red-500 text-[10px]">{form.formState.errors.collectionIds.message}</p>}
+          </DrawerSection>
+        )}
 
         <DrawerSharedSections item={item} />
       </form>

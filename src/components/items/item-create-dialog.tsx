@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { CollectionSelector } from '@/components/shared/collection-selector'
 import { ItemContentInput, LanguageInput } from '@/components/shared/item-content-input'
 import { FileUpload } from '@/components/shared/file-upload'
 import {
@@ -38,6 +39,7 @@ import { itemFormBaseSchema } from '@/lib/utils/validators'
 import type { FileItemType } from '@/lib/utils/constants'
 import type { SidebarItemType } from '@/types/item'
 import type { UploadedFile } from '@/components/shared/file-upload'
+import type { CollectionWithTypes } from '@/types/collection'
 
 const formSchema = itemFormBaseSchema.extend({
   itemType: z.string().min(1, 'Type is required'),
@@ -63,11 +65,12 @@ type FormValues = z.infer<typeof formSchema>
 
 interface CreateItemDialogProps {
   itemTypes: SidebarItemType[]
+  collections: CollectionWithTypes[]
   initialType?: string
   trigger?: ReactNode
 }
 
-export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItemDialogProps) {
+export function CreateItemDialog({ itemTypes, collections, initialType, trigger }: CreateItemDialogProps) {
   const router = useRouter()
   const defaultItemType = initialType || itemTypes[0]?.name || ''
 
@@ -84,6 +87,7 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
       url: '',
       language: '',
       tags: '',
+      collectionIds: [],
     }
   })
 
@@ -112,6 +116,7 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
         url: '',
         language: '',
         tags: '',
+        collectionIds: [],
         uploadedFile: undefined
       })
     }
@@ -136,6 +141,7 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
         fileUrl: data.uploadedFile?.fileUrl ?? null,
         fileName: data.uploadedFile?.fileName ?? null,
         fileSize: data.uploadedFile?.fileSize ?? null,
+        collectionIds: data.collectionIds,
       })
 
       if (result.status === 'created' || result.status === 'ok') {
@@ -327,6 +333,26 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
               />
               {form.formState.errors.tags && <p className="text-red-500 text-xs mt-1">{form.formState.errors.tags.message}</p>}
             </div>
+
+            {collections.length > 0 && (
+              <div className="grid gap-2">
+                <Label>Collections</Label>
+                <div className="rounded-md border border-border p-3">
+                  <Controller
+                    control={form.control}
+                    name="collectionIds"
+                    render={({ field }) => (
+                      <CollectionSelector
+                        collections={collections}
+                        selectedIds={field.value}
+                        onChange={field.onChange}
+                      />
+                    )}
+                  />
+                </div>
+                {form.formState.errors.collectionIds && <p className="text-red-500 text-xs mt-1">{form.formState.errors.collectionIds.message}</p>}
+              </div>
+            )}
 
           </div>
           <DialogFooter>

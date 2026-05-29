@@ -65,7 +65,7 @@ export async function getAllCollections(userId: string): Promise<CollectionWithT
 
 export interface CreateCollectionInput {
   name: string
-  description: string | null
+  description?: string | null
 }
 
 export async function createCollection(userId: string, input: CreateCollectionInput): Promise<CollectionWithTypes> {

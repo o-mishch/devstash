@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Star, Pin, Copy, Pencil, Trash2, ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
+import { Star, Pin, Copy, Check, Pencil, Trash2, ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ItemTags } from '@/components/shared/item-tags'
@@ -15,10 +15,10 @@ import { deleteItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
-import type { ItemDetail } from '@/types/item'
+import type { Item } from '@/types/item'
 
 interface FileSectionProps {
-  item: ItemDetail
+  item: Item
 }
 
 function FileSectionContent({ item }: FileSectionProps) {
@@ -34,6 +34,7 @@ function FileSectionContent({ item }: FileSectionProps) {
             width={0}
             height={0}
             unoptimized
+            priority
             className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
           />
           <a 
@@ -68,22 +69,18 @@ function FileSectionContent({ item }: FileSectionProps) {
 }
 
 interface ItemDrawerViewContentProps {
-  item: ItemDetail
-  isLoadingDetail?: boolean
+  item: Item
   onClose: () => void
   onEdit: () => void
 }
 
-export function ItemDrawerViewContent({ item, isLoadingDetail, onClose, onEdit }: ItemDrawerViewContentProps) {
+export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewContentProps) {
   const router = useRouter()
   const { itemType } = item
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  function handleCopy() {
-    const text = item.content ?? item.url ?? item.title
-    navigator.clipboard.writeText(text).then(() => toast.success('Copied to clipboard'))
-  }
+  const { isCopied, copy } = useCopyToClipboard()
 
   async function handleDelete() {
     setIsDeleting(true)
@@ -125,11 +122,11 @@ export function ItemDrawerViewContent({ item, isLoadingDetail, onClose, onEdit }
               <Pin className={`size-4 ${item.isPinned ? 'fill-primary' : ''}`} />
               Pin
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleCopy}>
-              <Copy className="size-4" />
+            <Button variant="ghost" size="sm" onClick={() => copy(item.content ?? item.url ?? item.title)}>
+              {isCopied ? <Check className="size-4 text-green-400" /> : <Copy className="size-4" />}
               Copy
             </Button>
-            <Button variant="ghost" size="sm" onClick={onEdit} disabled={isLoadingDetail}>
+            <Button variant="ghost" size="sm" onClick={onEdit}>
               <Pencil className="size-4" />
               Edit
             </Button>
@@ -151,10 +148,7 @@ export function ItemDrawerViewContent({ item, isLoadingDetail, onClose, onEdit }
 
         {ITEM_TYPES_WITH_FILE.has(itemType.name) && (
           <DrawerSection label={itemType.name === 'image' ? 'Image' : 'File'}>
-            {isLoadingDetail
-              ? <Skeleton className={itemType.name === 'image' ? 'h-40 w-full rounded-md' : 'h-12 w-full rounded-md'} />
-              : <FileSectionContent item={item} />
-            }
+            <FileSectionContent item={item} />
           </DrawerSection>
         )}
 
@@ -187,7 +181,7 @@ export function ItemDrawerViewContent({ item, isLoadingDetail, onClose, onEdit }
           )}
         </DrawerSection>
 
-        <DrawerSharedSections item={item} isLoadingDetail={isLoadingDetail} />
+        <DrawerSharedSections item={item} />
       </DrawerLayout>
       
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

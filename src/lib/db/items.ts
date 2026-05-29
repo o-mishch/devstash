@@ -1,14 +1,18 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, SYSTEM_TYPE_ORDER } from '@/lib/utils/constants'
-import type { Item, ItemDetail, ItemStats, SidebarItemType } from '@/types/item'
+import type { Item, ItemStats, SidebarItemType } from '@/types/item'
 import type { Prisma } from '@/generated/prisma/client'
 
 type ItemWithRelations = Prisma.ItemGetPayload<{
-  include: { itemType: true; tags: true }
+  include: { itemType: true; tags: true; collections: { include: { collection: { select: { id: true, name: true } } } } }
 }>
 
-const ITEM_INCLUDE = { itemType: true, tags: true } as const
+const ITEM_INCLUDE = { 
+  itemType: true, 
+  tags: true,
+  collections: { include: { collection: { select: { id: true, name: true } } } }
+} as const
 
 const PINNED_LIMIT = 20
 const RECENT_LIMIT = 100
@@ -64,18 +68,15 @@ export async function getItemStats(userId: string): Promise<ItemStats> {
   })
 }
 
-export async function getItemById(userId: string, itemId: string): Promise<ItemDetail | null> {
+export async function getItemById(userId: string, itemId: string): Promise<Item | null> {
   const item = await prisma.item.findFirst({
     where: { id: itemId, userId },
-    include: {
-      ...ITEM_INCLUDE,
-      collections: { include: { collection: { select: { id: true, name: true } } } },
-    },
+    include: ITEM_INCLUDE,
   })
 
   if (!item) return null
 
-  return toItemDetail(item)
+  return toItem(item)
 }
 
 export interface CreateItemInput {
@@ -89,9 +90,10 @@ export interface CreateItemInput {
   language: string | null
   tags: string[]
   itemTypeName: string
+  collectionIds: string[]
 }
 
-export async function createItem(userId: string, data: CreateItemInput): Promise<ItemDetail | null> {
+export async function createItem(userId: string, data: CreateItemInput): Promise<Item | null> {
   const itemType = await prisma.itemType.findFirst({
     where: { name: data.itemTypeName, OR: [{ userId }, { userId: null }] },
   })
@@ -101,6 +103,10 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
   let contentType: 'TEXT' | 'FILE' | 'URL' = 'TEXT'
   if (ITEM_TYPES_WITH_URL.has(data.itemTypeName)) contentType = 'URL'
   else if (ITEM_TYPES_WITH_FILE.has(data.itemTypeName)) contentType = 'FILE'
+
+  const validCollectionIds = data.collectionIds.length > 0
+    ? await prisma.collection.findMany({ where: { id: { in: data.collectionIds }, userId }, select: { id: true } }).then(rows => rows.map(r => r.id))
+    : []
 
   const created = await prisma.item.create({
     data: {
@@ -118,6 +124,11 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
       tags: {
         connectOrCreate: buildTagsConnectOrCreate(data.tags),
       },
+      collections: {
+        create: validCollectionIds.map(id => ({
+          collection: { connect: { id } }
+        }))
+      }
     },
     include: {
       ...ITEM_INCLUDE,
@@ -125,7 +136,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
     },
   })
 
-  return toItemDetail(created)
+  return toItem(created)
 }
 
 export interface UpdateItemInput {
@@ -135,11 +146,16 @@ export interface UpdateItemInput {
   url: string | null
   language: string | null
   tags: string[]
+  collectionIds: string[]
 }
 
-export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<ItemDetail | null> {
+export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<Item | null> {
   const ownership = await prisma.item.findFirst({ where: { id: itemId, userId }, select: { id: true } })
   if (!ownership) return null
+
+  const validCollectionIds = data.collectionIds.length > 0
+    ? await prisma.collection.findMany({ where: { id: { in: data.collectionIds }, userId }, select: { id: true } }).then(rows => rows.map(r => r.id))
+    : []
 
   const updated = await prisma.item.update({
     where: { id: itemId, userId },
@@ -153,6 +169,12 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
         set: [],
         connectOrCreate: buildTagsConnectOrCreate(data.tags),
       },
+      collections: {
+        deleteMany: {},
+        create: validCollectionIds.map(id => ({
+          collection: { connect: { id } }
+        }))
+      }
     },
     include: {
       ...ITEM_INCLUDE,
@@ -160,7 +182,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
     },
   })
 
-  return toItemDetail(updated)
+  return toItem(updated)
 }
 
 export async function deleteItem(userId: string, itemId: string): Promise<boolean> {
@@ -244,7 +266,9 @@ function toItem(item: ItemWithRelations): Item {
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     itemType: item.itemType,
+    fileUrl: item.fileUrl,
     tags: item.tags.map((t) => t.name),
+    collections: item.collections.map((ic) => ic.collection),
   }
 }
 
@@ -253,25 +277,4 @@ function buildTagsConnectOrCreate(tags: string[]) {
     where: { name },
     create: { name },
   }))
-}
-
-type ItemDetailWithRelations = ItemWithRelations & {
-  content: string | null
-  url: string | null
-  fileUrl: string | null
-  fileName: string | null
-  fileSize: number | null
-  collections: { collection: { id: string; name: string } }[]
-}
-
-function toItemDetail(item: ItemDetailWithRelations): ItemDetail {
-  return {
-    ...toItem(item),
-    content: item.content,
-    url: item.url,
-    fileUrl: item.fileUrl,
-    fileName: item.fileName,
-    fileSize: item.fileSize,
-    collections: item.collections.map((ic) => ic.collection),
-  }
 }

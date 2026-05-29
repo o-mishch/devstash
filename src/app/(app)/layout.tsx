@@ -30,12 +30,9 @@ async function MobileDrawerAsync() {
   return <MobileDrawer sidebarData={sidebarData} />
 }
 
-async function CreateItemDialogAsync() {
+export default async function DashboardLayout({ children }: WithChildren) {
   const sidebarData = await getSidebarData()
-  return <CreateItemDialog itemTypes={sidebarData.itemTypes} />
-}
 
-export default function DashboardLayout({ children }: WithChildren) {
   return (
     <div className="flex h-screen flex-col bg-background">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
@@ -53,7 +50,7 @@ export default function DashboardLayout({ children }: WithChildren) {
 
         <div className="flex shrink-0 items-center gap-2">
           <CollectionCreateDialog />
-          <CreateItemDialogAsync />
+          <CreateItemDialog itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
         </div>
       </header>
 
@@ -61,7 +58,7 @@ export default function DashboardLayout({ children }: WithChildren) {
         <SidebarAsync />
 
         <main className="flex flex-1 flex-col overflow-auto">
-          <ItemDrawerProvider>
+          <ItemDrawerProvider collections={sidebarData.collections}>
             {children}
           </ItemDrawerProvider>
         </main>

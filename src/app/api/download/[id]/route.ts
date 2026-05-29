@@ -16,8 +16,17 @@ export const GET = apiRoute(async (_request, context: RouteContext) => {
   const item = await getItemById(session.user.id, id)
   if (!item || !item.fileUrl) return ApiResponse.NOT_FOUND('File not found.')
 
+  const start = Date.now()
+  console.log(`⏳ FETCHING from Filebase (S3): ${item.fileUrl} for item ${item.id}`)
+  
   const nodeStream = await downloadFromFilebase(item.fileUrl)
-  if (!nodeStream) return ApiResponse.NOT_FOUND('File could not be retrieved.')
+  
+  if (!nodeStream) {
+    console.log(`❌ FAILED to fetch from Filebase in ${Date.now() - start}ms: ${item.fileUrl}`)
+    return ApiResponse.NOT_FOUND('File could not be retrieved.')
+  }
+  
+  console.log(`✅ FETCHED stream from Filebase in ${Date.now() - start}ms: ${item.fileUrl}`)
 
   const readable = nodeStream as Readable
 

@@ -8,7 +8,7 @@ import { invalidateItemsCache } from '@/lib/cache'
 import { deleteFromFilebase } from '@/lib/filebase'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import type { ApiBody } from '@/types/api'
-import type { ItemDetail } from '@/types/item'
+import type { Item } from '@/types/item'
 
 const baseItemSchema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
@@ -17,6 +17,7 @@ const baseItemSchema = z.object({
   url: z.union([z.string().trim().pipe(z.url('Must be a valid URL')), z.literal('')]).optional().nullable().transform((v) => v || null),
   language: z.string().trim().optional().nullable().transform((v) => v || null),
   tags: z.array(z.string().trim().min(1)).default([]),
+  collectionIds: z.array(z.string()).default([]),
 })
 
 const updateItemSchema = baseItemSchema
@@ -44,7 +45,7 @@ const createItemSchema = baseItemSchema.extend({
 
 type CreateItemInput = z.infer<typeof createItemSchema>
 
-export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<ItemDetail | null>> {
+export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Item | null>> {
   const session = await auth()
   if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
 
@@ -59,7 +60,10 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<It
   }
 
   try {
-    const created = await dbCreateItem(session.user.id, parsed.data)
+    const created = await dbCreateItem(session.user.id, {
+      ...parsed.data,
+      collectionIds: parsed.data.collectionIds,
+    })
     if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
 
     invalidateItemsCache(session.user.id, created.itemType.name)
@@ -74,7 +78,7 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<It
 export async function updateItemAction(
   itemId: string,
   raw: UpdateItemInput
-): Promise<ApiBody<ItemDetail | null>> {
+): Promise<ApiBody<Item | null>> {
   const session = await auth()
   if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
 
@@ -85,7 +89,10 @@ export async function updateItemAction(
   }
 
   try {
-    const updated = await dbUpdateItem(session.user.id, itemId, parsed.data)
+    const updated = await dbUpdateItem(session.user.id, itemId, {
+      ...parsed.data,
+      collectionIds: parsed.data.collectionIds,
+    })
     if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
 
     invalidateItemsCache(session.user.id, updated.itemType.name)

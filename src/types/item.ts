@@ -6,6 +6,11 @@ export interface ItemType {
   isSystem: boolean
 }
 
+export interface ItemCollection {
+  id: string
+  name: string
+}
+
 export interface Item {
   id: string
   title: string
@@ -16,27 +21,19 @@ export interface Item {
   language: string | null
   fileName: string | null
   fileSize: number | null
+  fileUrl: string | null
   isFavorite: boolean
   isPinned: boolean
   createdAt: Date
   updatedAt: Date
   itemType: ItemType
   tags: string[]
+  collections: ItemCollection[]
 }
 
 export interface ItemStats {
   totalItems: number
   favoriteItems: number
-}
-
-interface ItemDetailCollection {
-  id: string
-  name: string
-}
-
-export interface ItemDetail extends Item {
-  fileUrl: string | null
-  collections: ItemDetailCollection[]
 }
 
 export interface SidebarItemType {

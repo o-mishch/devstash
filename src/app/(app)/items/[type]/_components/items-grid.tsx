@@ -24,8 +24,8 @@ export function ItemsGrid({ items, typeName }: ItemsGridProps) {
   if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {
     return (
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-3">
-        {items.map((item) => (
-          <ImageCard key={item.id} item={item} />
+        {items.map((item, index) => (
+          <ImageCard key={item.id} item={item} priority={index < 6} />
         ))}
       </div>
     )

@@ -21,4 +21,5 @@ export const itemFormBaseSchema = z.object({
   url: z.string().optional(),
   language: z.string().optional(),
   tags: z.string().optional(),
+  collectionIds: z.array(z.string()),
 })
