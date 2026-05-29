@@ -19,7 +19,7 @@ export function ItemRow({ item }: ItemRowProps) {
     <div
       className="type-border-l flex h-14 cursor-pointer items-center gap-3 overflow-hidden rounded-xl px-2 ring-1 ring-foreground/10 transition-colors hover:bg-accent"
       style={{ '--item-color': itemType.color } as CSSProperties}
-      onClick={() => openDrawer(item.id)}
+      onClick={() => openDrawer(item)}
     >
       <ItemIconWrapper itemType={itemType} wrapperClassName="size-7" iconClassName="size-3.5" />
 

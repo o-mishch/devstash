@@ -28,7 +28,7 @@ export function ImageCard({ item }: ImageCardProps) {
     <Card
       className="group/card relative cursor-pointer overflow-hidden transition-colors hover:bg-accent"
       style={{ '--item-color': item.itemType.color } as CSSProperties}
-      onClick={() => openDrawer(item.id)}
+      onClick={() => openDrawer(item)}
     >
       <div className="relative aspect-video w-full overflow-hidden bg-muted/30">
         <Image

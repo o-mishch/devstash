@@ -8,31 +8,42 @@ import { useResizable } from '@/hooks/use-resizable'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
-import type { ItemDetail } from '@/types/item'
+import type { Item, ItemDetail } from '@/types/item'
 
 interface ItemDetailDrawerProps {
-  itemId: string | null
+  item: Item | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function ItemDetailDrawer({ itemId, open, onOpenChange }: ItemDetailDrawerProps) {
-  const [item, setItem] = useState<ItemDetail | null>(null)
+export function ItemDetailDrawer({ item, open, onOpenChange }: ItemDetailDrawerProps) {
+  const [fullItem, setFullItem] = useState<ItemDetail | null>(null)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
-  
-  const editing = editingItemId === itemId
+
+  const itemId = item?.id ?? null
 
   useEffect(() => {
     if (!open || !itemId) return
+    setFullItem(null)
     apiFetch<ItemDetail>(`/api/items/${itemId}`)
       .then((res) => {
-        if (res.status === 'ok' && res.data) setItem(res.data)
+        if (res.status === 'ok' && res.data) setFullItem(res.data)
         else toast.error(res.message ?? 'Failed to load item')
       })
   }, [open, itemId])
 
-  const showSkeleton = !item || item.id !== itemId
+  // Build a shell ItemDetail from the Item we already have so the drawer
+  // renders instantly. fileUrl and collections are the only fields missing.
+  const shellItem: ItemDetail | null = item
+    ? { ...item, fileUrl: null, collections: [] }
+    : null
+
+  const resolvedFullItem = fullItem?.id === itemId ? fullItem : null
+  const displayItem = resolvedFullItem ?? shellItem
+  const isLoadingDetail = !resolvedFullItem
+
+  const editing = editingItemId === itemId
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -47,20 +58,21 @@ export function ItemDetailDrawer({ itemId, open, onOpenChange }: ItemDetailDrawe
           onMouseDown={startResize}
         />
 
-        <SheetTitle className="sr-only">{item?.title ?? 'Item details'}</SheetTitle>
+        <SheetTitle className="sr-only">{displayItem?.title ?? 'Item details'}</SheetTitle>
 
-        {showSkeleton ? (
+        {!displayItem ? (
           <DrawerSkeleton />
         ) : editing ? (
           <ItemDrawerEditContent
-            item={item}
+            item={resolvedFullItem ?? displayItem}
             onClose={() => onOpenChange(false)}
-            onSave={(updated) => { setItem(updated); setEditingItemId(null) }}
+            onSave={(updated) => { setFullItem(updated); setEditingItemId(null) }}
             onCancel={() => setEditingItemId(null)}
           />
         ) : (
           <ItemDrawerViewContent
-            item={item}
+            item={displayItem}
+            isLoadingDetail={isLoadingDetail}
             onClose={() => onOpenChange(false)}
             onEdit={() => setEditingItemId(itemId)}
           />

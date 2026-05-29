@@ -6,3 +6,12 @@ CRUD functionality. Log in with the user demo@devstash.io with the password 1234
 Then proceed to edit the title of that snippet and update it.
 Finally, delete the snippet.
 ```
+
+
+/feature load Implement collection "create". We need a button in the top bar to create a new collection with a description.
+We should follow the same patterns as items. Collections should be user-scoped, fetch from the server component via lib/db functions and api routes for any client-side calls
+The create button should open a modal with the fields needed. Show a toast on success or failure. Make sure everything is updated with the new collection on save!
+
+/feature load Add functionality to add an item to a single or multiple collections.
+Add an input to the new/edit item forms to select the available collection to add the item to.
+Don't worry about displaying the collection pages yet

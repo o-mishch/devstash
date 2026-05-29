@@ -87,21 +87,36 @@ export function DrawerSection({ label, icon, className, children }: DrawerSectio
   )
 }
 
-export function DrawerSharedSections({ item }: { item: ItemDetail }) {
+interface DrawerSharedSectionsProps {
+  item: ItemDetail
+  isLoadingDetail?: boolean
+}
+
+export function DrawerSharedSections({ item, isLoadingDetail }: DrawerSharedSectionsProps) {
+  let collectionsContent: ReactNode
+  if (isLoadingDetail) {
+    collectionsContent = (
+      <div className="flex gap-1.5">
+        <Skeleton className="h-6 w-20 rounded-full" />
+        <Skeleton className="h-6 w-14 rounded-full" />
+      </div>
+    )
+  } else if (item.collections.length > 0) {
+    collectionsContent = (
+      <div className="flex flex-wrap gap-1.5">
+        {item.collections.map((col) => (
+          <Badge key={col.id} variant="outline">{col.name}</Badge>
+        ))}
+      </div>
+    )
+  } else {
+    collectionsContent = <p className="text-sm text-muted-foreground">—</p>
+  }
+
   return (
     <>
       <DrawerSection label="Collections" icon={<FolderOpen className="size-3" />}>
-        {item.collections.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {item.collections.map((col) => (
-              <Badge key={col.id} variant="outline">
-                {col.name}
-              </Badge>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">—</p>
-        )}
+        {collectionsContent}
       </DrawerSection>
 
       <DrawerSection label="Details" icon={<Calendar className="size-3" />}>

@@ -7,6 +7,7 @@ import { Star, Pin, Copy, Pencil, Trash2, ExternalLink, Tag, Download, FileIcon 
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ItemTags } from '@/components/shared/item-tags'
@@ -68,11 +69,12 @@ function FileSectionContent({ item }: FileSectionProps) {
 
 interface ItemDrawerViewContentProps {
   item: ItemDetail
+  isLoadingDetail?: boolean
   onClose: () => void
   onEdit: () => void
 }
 
-export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewContentProps) {
+export function ItemDrawerViewContent({ item, isLoadingDetail, onClose, onEdit }: ItemDrawerViewContentProps) {
   const router = useRouter()
   const { itemType } = item
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -127,7 +129,7 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
               <Copy className="size-4" />
               Copy
             </Button>
-            <Button variant="ghost" size="sm" onClick={onEdit}>
+            <Button variant="ghost" size="sm" onClick={onEdit} disabled={isLoadingDetail}>
               <Pencil className="size-4" />
               Edit
             </Button>
@@ -149,7 +151,10 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
 
         {ITEM_TYPES_WITH_FILE.has(itemType.name) && (
           <DrawerSection label={itemType.name === 'image' ? 'Image' : 'File'}>
-            <FileSectionContent item={item} />
+            {isLoadingDetail
+              ? <Skeleton className={itemType.name === 'image' ? 'h-40 w-full rounded-md' : 'h-12 w-full rounded-md'} />
+              : <FileSectionContent item={item} />
+            }
           </DrawerSection>
         )}
 
@@ -182,7 +187,7 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
           )}
         </DrawerSection>
 
-        <DrawerSharedSections item={item} />
+        <DrawerSharedSections item={item} isLoadingDetail={isLoadingDetail} />
       </DrawerLayout>
       
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

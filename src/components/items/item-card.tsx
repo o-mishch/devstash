@@ -32,7 +32,7 @@ export function ItemCard({ item }: ItemCardProps) {
     <Card
       className="group/card relative type-border-l h-20 cursor-pointer overflow-hidden transition-colors hover:bg-accent"
       style={{ '--item-color': itemType.color } as CSSProperties}
-      onClick={() => openDrawer(item.id)}
+      onClick={() => openDrawer(item)}
     >
       <CardContent className="flex h-full items-center p-4">
         <div className="flex w-full items-center gap-3">
