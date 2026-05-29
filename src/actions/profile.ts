@@ -3,19 +3,13 @@
 import bcrypt from 'bcryptjs'
 import { redirect } from 'next/navigation'
 import { BCRYPT_ROUNDS } from '@/auth.config'
-import { auth, signOut } from '@/auth'
+import { signOut } from '@/auth'
 import { prisma } from '@/lib/prisma'
 import { ApiResponse } from '@/lib/api'
+import { withAuth, getCurrentUserId } from '@/lib/session'
 import type { ApiBody } from '@/types/api'
 import { validatePassword } from '@/lib/utils/validators'
 import { updateUserPassword, unlinkUserAccount } from '@/lib/db/profile'
-
-
-async function withAuth<T>(fn: (userId: string) => Promise<ApiBody<T>>): Promise<ApiBody<T>> {
-  const session = await auth()
-  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.') as ApiBody<T>
-  return fn(session.user.id)
-}
 
 export async function changePasswordAction(
   _prevState: ApiBody<null> | null,
@@ -85,10 +79,10 @@ export async function unlinkProviderAction(accountId: string): Promise<ApiBody<n
 }
 
 export async function deleteAccountAction(): Promise<void> {
-  const session = await auth()
-  if (!session?.user?.id) redirect('/sign-in')
+  const userId = await getCurrentUserId()
+  if (!userId) redirect('/sign-in')
 
-  await prisma.user.delete({ where: { id: session.user.id } })
+  await prisma.user.delete({ where: { id: userId } })
   await signOut({ redirect: false })
   redirect('/')
 }

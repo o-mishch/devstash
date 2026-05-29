@@ -2,8 +2,7 @@
 
 import Link from 'next/link'
 import { SubmitButton } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { AuthFormField } from '@/components/auth/auth-form-field'
 import { registerAction } from '@/actions/auth/register'
 import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
@@ -15,52 +14,10 @@ export function RegisterForm() {
   return (
     <>
       <form action={formAction} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="name">Name</Label>
-          <Input
-            id="name"
-            name="name"
-            type="text"
-            placeholder="Brad Traversy"
-            autoComplete="name"
-            required
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="you@example.com"
-            autoComplete="email"
-            required
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            placeholder="••••••••"
-            autoComplete="new-password"
-            minLength={8}
-            required
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="confirmPassword">Confirm password</Label>
-          <Input
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
-            placeholder="••••••••"
-            autoComplete="new-password"
-            minLength={8}
-            required
-          />
-        </div>
+        <AuthFormField id="name" name="name" label="Name" type="text" placeholder="Brad Traversy" autoComplete="name" required />
+        <AuthFormField id="email" name="email" label="Email" type="email" placeholder="you@example.com" autoComplete="email" required />
+        <AuthFormField id="password" name="password" label="Password" type="password" placeholder="••••••••" autoComplete="new-password" minLength={8} required />
+        <AuthFormField id="confirmPassword" name="confirmPassword" label="Confirm password" type="password" placeholder="••••••••" autoComplete="new-password" minLength={8} required />
 
         <SubmitButton className="w-full" isPending={isPending}>
           Create account

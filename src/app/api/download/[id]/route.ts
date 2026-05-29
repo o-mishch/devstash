@@ -1,19 +1,15 @@
 import type { Readable } from 'stream'
 import { lookup as mimeType } from 'mime-types'
-import { auth } from '@/auth'
-import { ApiResponse, apiRoute } from '@/lib/api'
+import { ApiResponse, authenticatedRoute } from '@/lib/api'
 import { getItemById } from '@/lib/db/items'
 import { downloadFromFilebase } from '@/lib/filebase'
 import type { RouteContext } from '@/lib/api'
 
-export const GET = apiRoute(async (_request, context: RouteContext) => {
-  const session = await auth()
-  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
-
+export const GET = authenticatedRoute(async (_request, context: RouteContext, userId) => {
   const { id } = await context.params
   if (!id) return ApiResponse.BAD_REQUEST('Missing item ID.')
 
-  const item = await getItemById(session.user.id, id)
+  const item = await getItemById(userId, id)
   if (!item || !item.fileUrl) return ApiResponse.NOT_FOUND('File not found.')
 
   const start = Date.now()

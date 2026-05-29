@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import Editor from '@monaco-editor/react'
 import { Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { cn } from '@/lib/utils'
 import type { editor } from 'monaco-editor'
 
@@ -76,11 +77,7 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
     <div className={cn("flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
       {/* macOS Style Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D]">
-        <div className="flex gap-2 items-center">
-          <div className="size-3 rounded-full bg-[#FF5F56]" />
-          <div className="size-3 rounded-full bg-[#FFBD2E]" />
-          <div className="size-3 rounded-full bg-[#27C93F]" />
-        </div>
+        <EditorWindowDots />
         
         <div className="flex items-center gap-2">
           {language && (

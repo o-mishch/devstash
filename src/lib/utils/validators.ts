@@ -1,4 +1,24 @@
-import { z } from 'zod'
+import { z, ZodType } from 'zod'
+import type { ApiBody } from '@/types/api'
+
+type ParseResult<T> =
+  | { success: true; data: T }
+  | { success: false; response: ApiBody<null> }
+
+export function parseOrFail<T>(schema: ZodType<T>, input: unknown): ParseResult<T> {
+  const parsed = schema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      success: false,
+      response: {
+        status: 'validation_error',
+        data: null,
+        message: parsed.error.issues[0]?.message ?? 'Validation failed',
+      },
+    }
+  }
+  return { success: true, data: parsed.data }
+}
 
 export const MAX_PASSWORD_LENGTH = 128
 

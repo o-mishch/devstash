@@ -1,8 +1,9 @@
 'use server'
 
 import { z } from 'zod'
-import { auth } from '@/auth'
 import { ApiResponse } from '@/lib/api'
+import { withAuth } from '@/lib/session'
+import { parseOrFail } from '@/lib/utils/validators'
 import { updateItem as dbUpdateItem, deleteItem as dbDeleteItem, getItemById as dbGetItemById, createItem as dbCreateItem } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/cache'
 import { deleteFromFilebase } from '@/lib/filebase'
@@ -10,7 +11,7 @@ import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants
 import type { ApiBody } from '@/types/api'
 import type { Item } from '@/types/item'
 
-const baseItemSchema = z.object({
+const itemMutationSchema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
   description: z.string().trim().optional().nullable().transform((v) => v || null),
   content: z.string().optional().nullable().transform((v) => v || null),
@@ -20,11 +21,11 @@ const baseItemSchema = z.object({
   collectionIds: z.array(z.string()).default([]),
 })
 
-const updateItemSchema = baseItemSchema
+const updateItemSchema = itemMutationSchema
 
 type UpdateItemInput = z.infer<typeof updateItemSchema>
 
-const createItemSchema = baseItemSchema.extend({
+const createItemSchema = itemMutationSchema.extend({
   itemTypeName: z.string().trim().min(1, 'Type is required'),
   fileUrl: z.string().trim().optional().nullable().transform((v) => v || null),
   fileName: z.string().trim().optional().nullable().transform((v) => v || null),
@@ -46,82 +47,69 @@ const createItemSchema = baseItemSchema.extend({
 type CreateItemInput = z.infer<typeof createItemSchema>
 
 export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Item | null>> {
-  const session = await auth()
-  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+  return withAuth(async (userId) => {
+    const result = parseOrFail(createItemSchema, raw)
+    if (!result.success) return result.response
 
-  const parsed = createItemSchema.safeParse(raw)
-  if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message ?? 'Validation failed'
-    return ApiResponse.VALIDATION_ERROR(message)
-  }
+    const { data } = result
 
-  if (parsed.data.fileUrl && !parsed.data.fileUrl.startsWith(`${session.user.id}/`)) {
-    return ApiResponse.FORBIDDEN('Invalid file reference.')
-  }
+    if (data.fileUrl && !data.fileUrl.startsWith(`${userId}/`)) {
+      return ApiResponse.FORBIDDEN('Invalid file reference.')
+    }
 
-  try {
-    const created = await dbCreateItem(session.user.id, {
-      ...parsed.data,
-      collectionIds: parsed.data.collectionIds,
-    })
-    if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
+    try {
+      const created = await dbCreateItem(userId, data)
+      if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
 
-    invalidateItemsCache(session.user.id)
+      invalidateItemsCache(userId)
 
-    return ApiResponse.CREATED(created)
-  } catch (error) {
-    console.error('[createItemAction] Error:', error)
-    return ApiResponse.INTERNAL_ERROR()
-  }
+      return ApiResponse.CREATED(created)
+    } catch (error) {
+      console.error('[createItemAction] Error:', error)
+      return ApiResponse.INTERNAL_ERROR()
+    }
+  })
 }
 
 export async function updateItemAction(
   itemId: string,
   raw: UpdateItemInput
 ): Promise<ApiBody<Item | null>> {
-  const session = await auth()
-  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+  return withAuth(async (userId) => {
+    const result = parseOrFail(updateItemSchema, raw)
+    if (!result.success) return result.response
 
-  const parsed = updateItemSchema.safeParse(raw)
-  if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message ?? 'Validation failed'
-    return ApiResponse.VALIDATION_ERROR(message)
-  }
+    try {
+      const updated = await dbUpdateItem(userId, itemId, result.data)
+      if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
 
-  try {
-    const updated = await dbUpdateItem(session.user.id, itemId, {
-      ...parsed.data,
-      collectionIds: parsed.data.collectionIds,
-    })
-    if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
+      invalidateItemsCache(userId)
 
-    invalidateItemsCache(session.user.id)
-
-    return ApiResponse.OK(updated)
-  } catch (error) {
-    console.error('[updateItemAction] Error:', error)
-    return ApiResponse.INTERNAL_ERROR()
-  }
+      return ApiResponse.OK(updated)
+    } catch (error) {
+      console.error('[updateItemAction] Error:', error)
+      return ApiResponse.INTERNAL_ERROR()
+    }
+  })
 }
 
 export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
-  const session = await auth()
-  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+  return withAuth(async (userId) => {
+    try {
+      const existing = await dbGetItemById(userId, itemId)
+      if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
 
-  try {
-    const existing = await dbGetItemById(session.user.id, itemId)
-    if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
+      const deleted = await dbDeleteItem(userId, itemId)
+      if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
 
-    const deleted = await dbDeleteItem(session.user.id, itemId)
-    if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
+      if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
 
-    if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
+      invalidateItemsCache(userId)
 
-    invalidateItemsCache(session.user.id)
-
-    return ApiResponse.OK()
-  } catch (error) {
-    console.error('[deleteItemAction] Error:', error)
-    return ApiResponse.INTERNAL_ERROR()
-  }
+      return ApiResponse.OK()
+    } catch (error) {
+      console.error('[deleteItemAction] Error:', error)
+      return ApiResponse.INTERNAL_ERROR()
+    }
+  })
 }

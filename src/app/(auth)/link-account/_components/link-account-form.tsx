@@ -1,8 +1,7 @@
 'use client'
 
 import { SubmitButton } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { AuthFormField } from '@/components/auth/auth-form-field'
 import type { ApiBody } from '@/types/api'
 import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
@@ -15,18 +14,7 @@ export function LinkAccountForm({ action }: LinkAccountFormProps) {
 
   return (
     <form action={formAction} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="password">Your DevStash password</Label>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          placeholder="••••••••"
-          autoComplete="current-password"
-          autoFocus
-          required
-        />
-      </div>
+      <AuthFormField id="password" name="password" label="Your DevStash password" type="password" placeholder="••••••••" autoComplete="current-password" autoFocus required />
 
       <SubmitButton className="w-full" isPending={isPending}>
         Link GitHub account

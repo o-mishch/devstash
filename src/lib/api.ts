@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@/auth'
 import type { ApiStatus, ApiBody } from '@/types/api'
-
 
 const HTTP_STATUS: Record<ApiStatus, number> = {
   ok: 200,
@@ -67,6 +67,20 @@ export interface RouteContext {
   params: Promise<Record<string, string>>
 }
 
+type AuthenticatedHandler = (
+  request: NextRequest,
+  context: RouteContext,
+  userId: string
+) => Promise<HandlerResult>
+
+export function authenticatedRoute(handler: AuthenticatedHandler) {
+  return apiRoute(async (request, context) => {
+    const session = await auth()
+    if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+    return handler(request, context, session.user.id)
+  })
+}
+
 export function apiRoute(
   handler: (request: NextRequest, context: RouteContext) => Promise<HandlerResult>
 ): (request: NextRequest, context: RouteContext) => Promise<NextResponse | Response> {
@@ -82,3 +96,4 @@ export function apiRoute(
     }
   }
 }
+

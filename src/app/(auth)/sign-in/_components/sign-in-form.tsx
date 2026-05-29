@@ -9,6 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { AuthFormField } from '@/components/auth/auth-form-field'
 import { signInWithCredentials, signInWithGitHub } from '@/actions/auth/login'
 import { apiFetch } from '@/lib/api-fetch'
 import { GitHubIcon } from '@/components/icons/github'
@@ -76,17 +77,7 @@ export function SignInForm({ successMessage }: SignInFormProps) {
       )}
 
       <form action={formAction} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="you@example.com"
-            autoComplete="email"
-            required
-          />
-        </div>
+        <AuthFormField id="email" name="email" label="Email" type="email" placeholder="you@example.com" autoComplete="email" required />
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Password</Label>

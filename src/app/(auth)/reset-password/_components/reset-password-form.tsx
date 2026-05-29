@@ -1,8 +1,7 @@
 'use client'
 
 import { SubmitButton } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { AuthFormField } from '@/components/auth/auth-form-field'
 import type { ApiBody } from '@/types/api'
 import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 import { useRouter } from 'next/navigation'
@@ -23,30 +22,8 @@ export function ResetPasswordForm({ action }: ResetPasswordFormProps) {
 
   return (
     <form action={formAction} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="password">New password</Label>
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          placeholder="••••••••"
-          autoComplete="new-password"
-          minLength={8}
-          required
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="confirmPassword">Confirm password</Label>
-        <Input
-          id="confirmPassword"
-          name="confirmPassword"
-          type="password"
-          placeholder="••••••••"
-          autoComplete="new-password"
-          minLength={8}
-          required
-        />
-      </div>
+      <AuthFormField id="password" name="password" label="New password" type="password" placeholder="••••••••" autoComplete="new-password" minLength={8} required />
+      <AuthFormField id="confirmPassword" name="confirmPassword" label="Confirm password" type="password" placeholder="••••••••" autoComplete="new-password" minLength={8} required />
 
       <SubmitButton className="w-full" isPending={isPending}>
         Reset password
