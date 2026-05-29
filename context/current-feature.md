@@ -6,11 +6,7 @@ Not Started
 
 ## Goals
 
-<!-- Describe the goals here -->
-
 ## Notes
-
-<!-- Add notes or constraints here -->
 
 ---
 
@@ -60,3 +56,4 @@ Not Started
 - **Add Item to Collections** - `CollectionSelector` multi-select combobox (Popover + Command) with badge display and `data-checked` selection indicator; `collectionIds` field added to `itemFormBaseSchema`, `createItemAction`, `updateItemAction`, `CreateItemDialog`, and `ItemDrawerEditContent`; DB layer `createItem`/`updateItem` validate ownership of collection IDs before creating `ItemCollection` join rows; view mode shows collection badges via `DrawerSharedSections`; collections flow from `sidebarData` in layout to `ItemDrawerProvider` and `CreateItemDialog`; `ItemDetailDrawer` tracks `currentItem` locally so edits reflect immediately without reopening; `useCopyToClipboard` hook extracted — fires toast + flips icon to green `Check` for 2s, applied to all 6 copy buttons (drawer, ItemCard, ImageCard, FileRow, CodeEditor, MarkdownEditor); `ItemDetail` type alias removed, all callers use `Item` directly; `notFound()` moved before secondary fetches in items page; `CreateItemDialogAsync` wrapper inlined; `import * as React` replaced with named imports in 3 UI components; 4 new Vitest tests for collectionIds pass-through (66 total) (Completed)
 - **Collection Selector UI Polish** - `CollectionSelector` trigger redesigned to show selected collection badges inline inside the button (replacing count text); separate badge block below the popover removed; `rounded-md border border-border p-3` wrapper removed from both drawer edit and create dialog contexts; `unselect` simplified to delegate to `toggleCollection`; duplicate `getSidebarItemTypes` + `getAllCollections` calls in `/items/[type]/page.tsx` replaced with single `fetchSidebarData(userId, null)` call; `fetchSidebarData` and `getItemsByType` parallelized in items page; `ItemDetailDrawer` state refactored — `savedItem` replaces `currentItem` so all item types render immediately from card data without a skeleton flash; `editing` guard tightened to `editingItemId !== null && editingItemId === displayItem?.id`; render prop indentation fixed in `CreateItemDialog` type selector (Completed)
 - **Collections Pages** - Created `/collections` page listing user collections via `CollectionsGrid`, and `/collections/[id]` detail page displaying items dynamically based on their specific types. Linked collection card elements and sidebars, implemented matching loading skeleton wrappers, protected routes, and enabled router caching & revalidation. (Completed)
+- **Optimizing Item Drawer Loading** - Created `PlainTextFallback` component matching the editor chrome (macOS dots header, monospace `<pre>`) as a Suspense boundary fallback; removed `loading: () => <Skeleton />` from `CodeEditor` and `MarkdownViewer` dynamic imports; wrapped both editors in `<Suspense fallback={<PlainTextFallback content={value} />}>`; `CodeEditorInput` and `CodeEditorView` sub-components handle Monaco language resolution with `PlainTextFallback` during the async `useMonacoLanguage` check; eliminates skeleton flash and layout shift when opening item drawers. (Completed)

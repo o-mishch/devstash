@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
+import { PlainTextFallback } from '@/components/shared/plain-text-fallback'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
@@ -12,12 +12,12 @@ import { useMonacoLanguage } from '@/hooks/use-monaco-language'
 
 const MarkdownEditor = dynamic(
   () => import('@/components/ui/markdown-editor').then(m => m.MarkdownEditor),
-  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> }
+  { ssr: false }
 )
 
 const CodeEditor = dynamic(
   () => import('@/components/ui/code-editor').then(m => m.CodeEditor),
-  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> }
+  { ssr: false }
 )
 
 function useMonacoLanguageList() {
@@ -37,7 +37,7 @@ function useMonacoLanguageList() {
       })
       setLanguages(Array.from(list).sort())
     }).catch(() => {})
-    
+
     return () => { isMounted = false }
   }, [])
 
@@ -91,21 +91,23 @@ function CodeEditorInput({ value, onChange, language, contentEditorClassName, co
   }, [onChange])
 
   if (isLoading) {
-    const skeleton = <Skeleton className={contentEditorClassName || "h-64 w-full"} />
+    const fallback = <PlainTextFallback content={value} />
     if (contentEditorWrapperClassName) {
-      return <div className={contentEditorWrapperClassName}>{skeleton}</div>
+      return <div className={contentEditorWrapperClassName}>{fallback}</div>
     }
-    return skeleton
+    return fallback
   }
 
   if (resolvedLang !== null || !language) {
     const editor = (
-      <CodeEditor
-        value={value}
-        onChange={handleChange}
-        language={resolvedLang}
-        className={contentEditorClassName}
-      />
+      <Suspense fallback={<PlainTextFallback content={value} />}>
+        <CodeEditor
+          value={value}
+          onChange={handleChange}
+          language={resolvedLang}
+          className={contentEditorClassName}
+        />
+      </Suspense>
     )
     if (contentEditorWrapperClassName) {
       return <div className={contentEditorWrapperClassName}>{editor}</div>
@@ -140,7 +142,11 @@ export function ItemContentInput({
   textareaClassName
 }: ItemContentInputProps) {
   if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
-    return <MarkdownEditor value={value} onChange={onChange} className={contentEditorClassName} />
+    return (
+      <Suspense fallback={<PlainTextFallback content={value} />}>
+        <MarkdownEditor value={value} onChange={onChange} className={contentEditorClassName} />
+      </Suspense>
+    )
   }
 
   if (ITEM_TYPES_WITH_CODE_EDITOR.has(itemType)) {

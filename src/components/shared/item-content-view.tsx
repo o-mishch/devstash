@@ -3,6 +3,7 @@
 import { Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
+import { PlainTextFallback } from '@/components/shared/plain-text-fallback'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
 
@@ -15,18 +16,6 @@ const CodeEditor = dynamic(
   { ssr: false }
 )
 
-function PlainTextFallback({ content }: { content: string }) {
-  return (
-    <div className="flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset">
-      <div className="flex items-center px-4 py-2 border-b border-white/10 bg-[#2D2D2D]">
-        <EditorWindowDots />
-      </div>
-      <pre className="flex-1 min-h-0 overflow-auto p-3 text-xs leading-relaxed whitespace-pre text-white/90 font-mono">
-        {content}
-      </pre>
-    </div>
-  )
-}
 
 interface CodeEditorViewProps {
   content: string
@@ -51,7 +40,7 @@ function CodeEditorView({ content, language }: CodeEditorViewProps) {
     )
   }
 
-  return null
+  return <PlainTextFallback content={content} />
 }
 
 interface ItemContentViewProps {
@@ -74,7 +63,11 @@ export function ItemContentView({ itemType, content, language }: ItemContentView
             Markdown
           </span>
         </div>
-        <Suspense fallback={<PlainTextFallback content={content} />}>
+        <Suspense fallback={
+          <pre className="p-4 text-sm font-mono text-white/90 whitespace-pre-wrap leading-relaxed">
+            {content}
+          </pre>
+        }>
           <MarkdownViewer value={content} />
         </Suspense>
       </div>
