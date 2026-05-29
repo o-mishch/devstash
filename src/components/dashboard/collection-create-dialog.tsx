@@ -1,0 +1,124 @@
+'use client'
+
+import { useState, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { FolderPlus, Loader2 } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { createCollectionAction } from '@/actions/collections'
+import { collectionFormSchema } from '@/lib/utils/validators'
+
+type FormValues = z.input<typeof collectionFormSchema>
+
+interface CollectionCreateDialogProps {
+  trigger?: ReactNode
+}
+
+export function CollectionCreateDialog({ trigger }: CollectionCreateDialogProps) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(collectionFormSchema),
+    defaultValues: { name: '', description: '' },
+  })
+
+  const isSubmitting = form.formState.isSubmitting
+
+  function handleOpenChange(isOpen: boolean) {
+    setOpen(isOpen)
+    if (!isOpen) form.reset()
+  }
+
+  async function onSubmit(data: FormValues) {
+    const result = await createCollectionAction({
+      name: data.name,
+      description: data.description ?? null,
+    })
+
+    if (result.status === 'created' || result.status === 'ok') {
+      toast.success('Collection created')
+      setOpen(false)
+      router.refresh()
+    } else {
+      toast.error(result.message ?? 'Failed to create collection')
+    }
+  }
+
+  const triggerEl = trigger ?? (
+    <Button variant="outline" size="sm" className="hidden sm:flex">
+      <FolderPlus className="size-4" />
+      New Collection
+    </Button>
+  )
+
+  return (
+    <>
+      <span onClick={() => setOpen(true)} style={{ display: 'contents' }}>{triggerEl}</span>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-[440px]">
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <DialogHeader>
+              <DialogTitle>Create Collection</DialogTitle>
+              <DialogDescription>
+                Organize your items into a new collection.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">
+                  Name <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="name"
+                  placeholder="e.g. React Patterns"
+                  {...form.register('name')}
+                />
+                {form.formState.errors.name && (
+                  <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
+                )}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Optional description"
+                  className="resize-none"
+                  rows={3}
+                  {...form.register('description')}
+                />
+                {form.formState.errors.description && (
+                  <p className="text-xs text-red-500">{form.formState.errors.description.message}</p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Create Collection
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}

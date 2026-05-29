@@ -63,6 +63,23 @@ export async function getAllCollections(userId: string): Promise<CollectionWithT
   })
 }
 
+export interface CreateCollectionInput {
+  name: string
+  description: string | null
+}
+
+export async function createCollection(userId: string, input: CreateCollectionInput): Promise<CollectionWithTypes> {
+  const col = await prisma.collection.create({
+    data: {
+      name: input.name,
+      description: input.description,
+      userId,
+    },
+    include: COLLECTION_INCLUDE,
+  })
+  return mapCollection(col)
+}
+
 export async function getCollectionStats(userId: string): Promise<CollectionStats> {
   return withDataCache(CacheTags.collectionStats(userId), async () => {
     const [totalCollections, favoriteCollections] = await Promise.all([

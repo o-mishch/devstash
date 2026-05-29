@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import type { WithChildren } from '@/types/common'
-import { Archive, FolderPlus, Search } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Archive, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
 import { ItemDrawerProvider } from '@/components/items/item-drawer-provider'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
+import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
 import { cache } from 'react'
 import { auth } from '@/auth'
 import { fetchSidebarData } from '@/lib/db/sidebar'
@@ -52,10 +52,7 @@ export default function DashboardLayout({ children }: WithChildren) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="outline" size="sm" className="hidden sm:flex">
-            <FolderPlus className="size-4" />
-            New Collection
-          </Button>
+          <CollectionCreateDialog />
           <CreateItemDialogAsync />
         </div>
       </header>

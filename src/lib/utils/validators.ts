@@ -9,6 +9,11 @@ export function validatePassword(password: string, confirmPassword?: string): st
   return null
 }
 
+export const collectionFormSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(100, 'Name is too long'),
+  description: z.string().trim().max(500, 'Description is too long').optional().nullable().transform((v) => v || null),
+})
+
 export const itemFormBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
