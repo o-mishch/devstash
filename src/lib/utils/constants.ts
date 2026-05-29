@@ -8,6 +8,7 @@ export const ITEM_TYPES_WITH_CODE_EDITOR = new Set(['snippet', 'command'])
 export const ITEM_TYPES_WITH_MARKDOWN_EDITOR = new Set(['prompt', 'note'])
 export const ITEM_TYPES_WITH_URL = new Set(['link'])
 export const ITEM_TYPES_WITH_FILE = new Set(['image', 'file'])
+export const ITEM_TYPES_WITH_IMAGE_GRID = new Set(['image'])
 export const PRO_ITEM_TYPE_NAMES = new Set(['file', 'image'])
 
 export const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']

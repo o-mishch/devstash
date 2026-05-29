@@ -32,7 +32,7 @@ export default async function ItemsPage({ params }: ItemsPageProps) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">{label}</h1>
-          <p className="text-sm text-muted-foreground capitalize">{itemType.name}s</p>
+          <p className="text-sm text-muted-foreground capitalize">{itemType.name}s • {items.length}</p>
         </div>
         <CreateItemDialog 
           itemTypes={itemTypes} 

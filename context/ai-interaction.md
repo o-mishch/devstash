@@ -60,4 +60,8 @@ Review AI-generated code periodically, especially for:
 
 ## Playwright MCP
 
-- After completing browser testing, always close the browser with `mcp__playwright__browser_close`
+- Always close the browser with `mcp__playwright__browser_close` when you are finished testing.
+- Begin testing by navigating to the target URL using `mcp__playwright__browser_navigate` (e.g., `http://localhost:3000`).
+- If you need to debug a layout or verify visual changes, use `mcp__playwright__browser_take_screenshot` to capture the current state.
+- Rely on `mcp__playwright__browser_wait_for` to wait for specific selectors instead of using arbitrary delays.
+- If you encounter an unexpected state, check for errors using `mcp__playwright__browser_console_messages` or inspect the DOM with `mcp__playwright__browser_snapshot`.

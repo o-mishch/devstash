@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import { Star, Pin, Copy, Pencil, Trash2, ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -25,14 +24,22 @@ function FileSectionContent({ item }: FileSectionProps) {
 
   if (item.itemType.name === 'image') {
     return (
-      <div className="relative h-48 overflow-hidden rounded-md border border-border">
-        <Image
-          src={`/api/download/${item.id}`}
-          alt={item.fileName ?? item.title}
-          fill
-          unoptimized
-          className="object-contain"
-        />
+      <div className="flex justify-center">
+        <div className="group relative flex max-w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted/30">
+          <img
+            src={`/api/download/${item.id}`}
+            alt={item.fileName ?? item.title}
+            className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
+          />
+          <a 
+            href={`/api/download/${item.id}`} 
+            download={item.fileName ?? item.title}
+            className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100"
+            title="Download image"
+          >
+            <Download className="size-4 text-foreground" />
+          </a>
+        </div>
       </div>
     )
   }
@@ -46,7 +53,7 @@ function FileSectionContent({ item }: FileSectionProps) {
           <p className="text-xs text-muted-foreground">{formatBytes(item.fileSize)}</p>
         )}
       </div>
-      <a href={`/api/download/${item.id}`} download={item.fileName ?? true}>
+      <a href={`/api/download/${item.id}`} download={item.fileName ?? item.title}>
         <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0">
           <Download className="size-3.5" />
         </Button>

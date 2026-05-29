@@ -6,11 +6,7 @@ Not Started
 
 ## Goals
 
-<!-- Add goals here -->
-
 ## Notes
-
-<!-- Add notes here -->
 
 ---
 
@@ -53,3 +49,4 @@ Not Started
 - **Markdown Editor** - `MarkdownEditor` component with Write/Preview tabs, macOS-style header, copy button; `react-markdown` + `remark-gfm` for GFM rendering; `@tailwindcss/typography` `prose prose-invert` handles all element styling; auto-growing textarea (capped at 400px) with vertical scroll at cap; readonly mode shows Preview-only with "MARKDOWN" badge; `ITEM_TYPES_WITH_MARKDOWN_EDITOR = new Set(['prompt', 'note'])` drives routing; `ItemContentInput`/`ItemContentView` refactored into routing-only components with `CodeEditorInput`/`CodeEditorView` sub-components so Monaco only loads for code types; `contentEditorClassName`/`contentEditorWrapperClassName` props renamed from `codeEditor*` for accuracy. (Completed)
 - **File & Image Upload** - Built `FileUpload` component with drag-and-drop and progress tracking. Added API routes `POST /api/upload` and `GET /api/download/[id]` to securely proxy traffic to Filebase (S3). Updated `ItemCreateDialog` to handle file uploads. Refactored Item Drawer architecture completely, introducing unified `react-hook-form` logic for edit mode and handling image previews & file downloads cleanly. Achieved 100% test coverage on all related server actions and AWS S3 utilities. (Completed)
 - **Refactoring & Cleanup** - Extracted `baseItemSchema` to share between creation and edit forms; centralized database logic for tags (`buildTagsConnectOrCreate`) and relation mapping (`toItemDetail`); created reusable `DestructiveDialogFooter` and `DashboardListSkeleton`; removed unused imports and optimized SSR boundaries across UI components. (Completed)
+- **Image Gallery View** - `ImageCard` component with `aspect-video`, `object-cover`, and `group-hover/card:scale-105` zoom on a 300ms transition; `ItemsGrid` routes image type to a dedicated 2/3-column thumbnail grid via `ITEM_TYPES_WITH_IMAGE_GRID` constant; title overlay with gradient on each card; non-image types continue to use `ItemCard` in the standard grid. (Completed)
