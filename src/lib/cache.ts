@@ -49,6 +49,13 @@ export async function withDataCache<T>(
   return cachedFetcher()
 }
 
+// Called after collection mutations (create, update, delete).
+export function invalidateCollectionsCache(userId: string): void {
+  updateTag(CacheTags.allCollections(userId).tag)
+  updateTag(CacheTags.collectionStats(userId).tag)
+  revalidatePath('/dashboard')
+}
+
 // Called after profile mutations (password change, unlink provider).
 export function invalidateProfileCache(userId: string): void {
   updateTag(CacheTags.profile(userId).tag)
