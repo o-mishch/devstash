@@ -66,5 +66,6 @@ export function invalidateItemsCache(userId?: string, typeName?: string): void {
       updateTag(CacheTags.itemsByType(userId, typeName).tag)
     }
   }
-  revalidatePath('/', 'layout')
+  revalidatePath('/dashboard')
+  revalidatePath('/items')
 }

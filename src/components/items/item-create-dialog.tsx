@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type SyntheticEvent } from 'react'
+import { useRef, useState, type SyntheticEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2, Plus } from 'lucide-react'
@@ -34,12 +34,12 @@ import { createItemAction } from '@/actions/items'
 import { apiFetch } from '@/lib/api-fetch'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
-import { baseItemSchema } from '@/lib/utils/validators'
+import { itemFormBaseSchema } from '@/lib/utils/validators'
 import type { FileItemType } from '@/lib/utils/constants'
 import type { SidebarItemType } from '@/types/item'
 import type { UploadedFile } from '@/components/shared/file-upload'
 
-const formSchema = baseItemSchema.extend({
+const formSchema = itemFormBaseSchema.extend({
   itemType: z.string().min(1, 'Type is required'),
   uploadedFile: z.custom<UploadedFile>().optional(),
 }).superRefine((data, ctx) => {
@@ -64,7 +64,7 @@ type FormValues = z.infer<typeof formSchema>
 interface CreateItemDialogProps {
   itemTypes: SidebarItemType[]
   initialType?: string
-  trigger?: React.ReactNode
+  trigger?: ReactNode
 }
 
 export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItemDialogProps) {
@@ -91,8 +91,11 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
   const watchedLanguage = useWatch({ control: form.control, name: 'language' })
   const isSubmitting = form.formState.isSubmitting
 
-  function deleteOrphanedFile(file: UploadedFile) {
-    void apiFetch(`/api/upload?key=${encodeURIComponent(file.fileUrl)}`, { method: 'DELETE' })
+  async function deleteOrphanedFile(file: UploadedFile) {
+    const result = await apiFetch(`/api/upload?key=${encodeURIComponent(file.fileUrl)}`, { method: 'DELETE' })
+    if (result.status !== 'ok') {
+      console.error('[deleteOrphanedFile] Failed to delete orphaned file:', file.fileUrl, result.message)
+    }
   }
 
   function handleOpenChange(isOpen: boolean) {

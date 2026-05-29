@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
+import { getBaseUrl } from '@/lib/utils/url'
 import { formatDate } from '@/lib/utils'
 import { ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import type { Item } from '@/types/item'
@@ -23,7 +24,7 @@ export function ItemCard({ item }: ItemCardProps) {
   function handleCopy(e: MouseEvent) {
     e.stopPropagation()
     const isFile = ITEM_TYPES_WITH_FILE.has(item.itemType.name)
-    const text = isFile ? `${location.origin}/api/download/${item.id}` : (item.content ?? item.url ?? item.title)
+    const text = isFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.content ?? item.url ?? item.title)
     navigator.clipboard.writeText(text).then(() => toast.success('Copied to clipboard'))
   }
 

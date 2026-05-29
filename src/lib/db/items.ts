@@ -138,11 +138,11 @@ export interface UpdateItemInput {
 }
 
 export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<ItemDetail | null> {
-  const existing = await prisma.item.findFirst({ where: { id: itemId, userId } })
-  if (!existing) return null
+  const ownership = await prisma.item.findFirst({ where: { id: itemId, userId }, select: { id: true } })
+  if (!ownership) return null
 
   const updated = await prisma.item.update({
-    where: { id: itemId },
+    where: { id: itemId, userId },
     data: {
       title: data.title,
       description: data.description,

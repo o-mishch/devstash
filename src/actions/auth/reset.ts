@@ -31,11 +31,11 @@ export async function forgotPasswordAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
-  const email = (formData.get('email') as string) ?? ''
-
-  if (!email) return ApiResponse.BAD_REQUEST('Email is required.')
-
   return withRateLimit('forgotPassword', async () => {
+    const email = (formData.get('email') as string) ?? ''
+
+    if (!email) return ApiResponse.BAD_REQUEST('Email is required.')
+
     await triggerPasswordReset(email)
 
     redirect(`/forgot-password?sent=1&email=${encodeURIComponent(email)}`)

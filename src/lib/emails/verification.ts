@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { BASE_URL, sendEmail } from '@/lib/resend'
+import { sendEmail } from '@/lib/resend'
+import { getBaseUrl } from '@/lib/utils/url'
 import { createVerificationToken, TOKEN_TTL_MS } from '@/lib/tokens'
 import verificationHtml from './verification.html'
 
@@ -11,7 +12,7 @@ export const emailVerificationEnabled = () =>
 export type VerificationResult = 'sent' | 'failed' | 'skipped'
 
 async function sendVerificationEmail(to: string, token: string): Promise<boolean> {
-  const verifyUrl = `${BASE_URL}/verify-email?token=${token}`
+  const verifyUrl = `${getBaseUrl()}/verify-email?token=${token}`
   const html = verificationHtml.replace('{{VERIFY_URL}}', verifyUrl)
 
   return sendEmail({

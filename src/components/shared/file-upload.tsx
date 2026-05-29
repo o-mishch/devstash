@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/styles'
 import { apiUpload } from '@/lib/api-fetch'
@@ -55,7 +55,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     if (file) void uploadFile(file)
   }
 
-  function handleDrop(e: React.DragEvent) {
+  function handleDrop(e: DragEvent) {
     e.preventDefault()
     setIsDragging(false)
     handleFiles(e.dataTransfer.files)

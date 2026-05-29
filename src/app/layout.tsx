@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { WithChildren } from "@/types/common";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { Analytics } from "@vercel/analytics/next";
@@ -19,11 +20,7 @@ export const metadata: Metadata = {
   description: "Developer knowledge hub",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<WithChildren>) {
   return (
     <html
       lang="en"
