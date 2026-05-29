@@ -127,6 +127,9 @@
   html {
     @apply font-sans;
     }
+  button, [role="button"] {
+    cursor: pointer;
+    }
 }
 
 /* Dynamic item-type color utilities — set --item-color on the parent element */

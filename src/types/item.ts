@@ -10,8 +10,12 @@ export interface Item {
   id: string
   title: string
   contentType: string
+  content: string | null
+  url: string | null
   description: string | null
   language: string | null
+  fileName: string | null
+  fileSize: number | null
   isFavorite: boolean
   isPinned: boolean
   createdAt: Date
@@ -31,11 +35,7 @@ interface ItemDetailCollection {
 }
 
 export interface ItemDetail extends Item {
-  content: string | null
-  url: string | null
   fileUrl: string | null
-  fileName: string | null
-  fileSize: number | null
   collections: ItemDetailCollection[]
 }
 

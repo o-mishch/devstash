@@ -15,6 +15,9 @@
 - Extract reusable logic into custom hooks
 - Always define an explicit named interface for component props — never inline prop types
 - No nested ternary operators — extract to a variable, early return, or a small focused component instead
+- Never use `React.` namespace prefix — import named types/hooks directly (e.g. `MouseEvent` not `React.MouseEvent`)
+- Avoid `window.` access — prefer DOM APIs, Next.js router, or React patterns. Only use `window` when there is no framework-level alternative and the browser global is genuinely required (e.g. `window.location` for hard redirects outside React). Always justify the usage in a comment if it is not self-evident.
+- Avoid direct `document.` manipulation — prefer React refs (`useRef`), event handlers, or library abstractions. Only use `document.` when no React or Next.js alternative exists (e.g. programmatically triggering a file download via a temporary anchor). Always justify the usage in a comment if it is not self-evident.
 
 ```tsx
 // ✅ correct
@@ -82,6 +85,7 @@ Example v4 configuration:
 - Use shadcn/ui components where applicable
 - No inline styles
 - Dark mode first, light mode as option
+- All `<button>` and `[role="button"]` elements get `cursor: pointer` via the global base layer — do not add `cursor-pointer` on individual components
 
 ## Database
 
