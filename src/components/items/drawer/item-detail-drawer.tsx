@@ -5,8 +5,8 @@ import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { apiFetch } from '@/lib/api-fetch'
 import { useResizable } from '@/hooks/use-resizable'
-import { DrawerViewContent } from './drawer-view-content'
-import { DrawerEditContent } from './drawer-edit-content'
+import { ItemDrawerViewContent } from './item-drawer-view-content'
+import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
 import type { ItemDetail } from '@/types/item'
 
@@ -52,14 +52,14 @@ export function ItemDetailDrawer({ itemId, open, onOpenChange }: ItemDetailDrawe
         {showSkeleton ? (
           <DrawerSkeleton />
         ) : editing ? (
-          <DrawerEditContent
+          <ItemDrawerEditContent
             item={item}
             onClose={() => onOpenChange(false)}
             onSave={(updated) => { setItem(updated); setEditingItemId(null) }}
             onCancel={() => setEditingItemId(null)}
           />
         ) : (
-          <DrawerViewContent
+          <ItemDrawerViewContent
             item={item}
             onClose={() => onOpenChange(false)}
             onEdit={() => setEditingItemId(itemId)}

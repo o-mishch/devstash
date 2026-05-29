@@ -2,25 +2,66 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Star, Pin, Copy, Pencil, Trash2, ExternalLink, Tag } from 'lucide-react'
+import Image from 'next/image'
+import { Star, Pin, Copy, Pencil, Trash2, ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ItemContentView } from '@/components/shared/item-content'
+import { ItemContentView } from '@/components/shared/item-content-view'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ItemTags } from '@/components/shared/item-tags'
 import { deleteItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
-import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
+import { formatBytes } from '@/lib/utils/format'
 import type { ItemDetail } from '@/types/item'
 
-interface DrawerViewContentProps {
+interface FileSectionProps {
+  item: ItemDetail
+}
+
+function FileSectionContent({ item }: FileSectionProps) {
+  if (!item.fileUrl) return <p className="text-sm text-muted-foreground">—</p>
+
+  if (item.itemType.name === 'image') {
+    return (
+      <div className="relative h-48 overflow-hidden rounded-md border border-border">
+        <Image
+          src={`/api/download/${item.id}`}
+          alt={item.fileName ?? item.title}
+          fill
+          unoptimized
+          className="object-contain"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
+      <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{item.fileName ?? '—'}</p>
+        {item.fileSize != null && (
+          <p className="text-xs text-muted-foreground">{formatBytes(item.fileSize)}</p>
+        )}
+      </div>
+      <a href={`/api/download/${item.id}`} download={item.fileName ?? true}>
+        <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0">
+          <Download className="size-3.5" />
+        </Button>
+      </a>
+    </div>
+  )
+}
+
+interface ItemDrawerViewContentProps {
   item: ItemDetail
   onClose: () => void
   onEdit: () => void
 }
 
-export function DrawerViewContent({ item, onClose, onEdit }: DrawerViewContentProps) {
+export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewContentProps) {
   const router = useRouter()
   const { itemType } = item
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -92,6 +133,12 @@ export function DrawerViewContent({ item, onClose, onEdit }: DrawerViewContentPr
               content={item.content}
               language={item.language}
             />
+          </DrawerSection>
+        )}
+
+        {ITEM_TYPES_WITH_FILE.has(itemType.name) && (
+          <DrawerSection label={itemType.name === 'image' ? 'Image' : 'File'}>
+            <FileSectionContent item={item} />
           </DrawerSection>
         )}
 

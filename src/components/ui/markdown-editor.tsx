@@ -1,11 +1,15 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Copy, Check } from 'lucide-react'
+import dynamic from 'next/dynamic'
+import { Copy, Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+const MarkdownViewer = dynamic(
+  () => import('./markdown-viewer').then(m => m.MarkdownViewer),
+  { loading: () => <div className="flex h-32 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div> }
+)
 
 interface MarkdownEditorProps {
   value: string
@@ -15,13 +19,10 @@ interface MarkdownEditorProps {
 }
 
 export function MarkdownEditor({ value, onChange, readOnly = false, className }: MarkdownEditorProps) {
-  const [activeTab, setActiveTab] = useState<'write' | 'preview'>(readOnly ? 'preview' : 'write')
+  const [activeTabState, setActiveTab] = useState<'write' | 'preview'>('write')
+  const activeTab = readOnly ? 'preview' : activeTabState
   const [isCopied, setIsCopied] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    setActiveTab(readOnly ? 'preview' : 'write')
-  }, [readOnly])
 
   useEffect(() => {
     const el = textareaRef.current
@@ -108,17 +109,7 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
           className="w-full min-h-[100px] resize-none overflow-y-auto bg-[#1E1E1E] text-white/90 text-sm font-mono outline-none border-0 p-4 leading-relaxed placeholder:text-white/30"
         />
       ) : (
-        <div className="overflow-auto max-h-[400px] p-4">
-          {value ? (
-            <div className="prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {value}
-              </ReactMarkdown>
-            </div>
-          ) : (
-            <p className="text-sm text-white/30 italic">Nothing to preview.</p>
-          )}
-        </div>
+        <MarkdownViewer value={value} />
       )}
     </div>
   )

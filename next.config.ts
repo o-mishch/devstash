@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: 'bottom-right',
   },
-  serverExternalPackages: ['@prisma/client', '@prisma/adapter-neon', '@neondatabase/serverless'],
+  serverExternalPackages: ['@prisma/client', '@prisma/adapter-neon', '@neondatabase/serverless', '@aws-sdk/client-s3'],
   turbopack: {
     rules: {
       '*.html': { loaders: ['raw-loader'], as: '*.js' },

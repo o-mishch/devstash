@@ -15,7 +15,7 @@ interface DrawerContainerProps {
   style?: CSSProperties
 }
 
-export function DrawerContainer({ header, actions, children, style }: DrawerContainerProps) {
+function DrawerContainer({ header, actions, children, style }: DrawerContainerProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden" style={style}>
       <div className="flex items-start gap-3 px-5 pt-5 pb-4">{header}</div>

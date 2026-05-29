@@ -6,7 +6,11 @@ Not Started
 
 ## Goals
 
+<!-- Add goals here -->
+
 ## Notes
+
+<!-- Add notes here -->
 
 ---
 
@@ -47,3 +51,4 @@ Not Started
 - **Item Create** - Implemented `ItemCreateDialog` with dynamic, conditional form fields driven by database item types; built `createItemAction` Server Action with DRY Zod validation (`baseItemSchema.extend`); added `createItem` Prisma query; centralized system type logic in `src/lib/utils/constants.ts`; resolved React hydration issues by properly scoping Client Components. (Completed)
 - **Code Editor** - `CodeEditor` component using `@monaco-editor/react` with `vs-dark` theme, fluid height up to 400px, custom Monaco scrollbar; macOS-style window dots (red/yellow/green) in header with language badge and copy button; `ItemContentInput` and `ItemContentView` in `src/components/shared/item-content.tsx` route to `CodeEditor` for snippets/commands and `Textarea` for all other types; `useMonacoLanguage` hook resolves language strings to Monaco IDs; `useMonacoLanguageList` powers the `LanguageInput` datalist autocomplete; `ITEM_TYPES_WITH_CODE_EDITOR` constant drives all routing logic. (Completed)
 - **Markdown Editor** - `MarkdownEditor` component with Write/Preview tabs, macOS-style header, copy button; `react-markdown` + `remark-gfm` for GFM rendering; `@tailwindcss/typography` `prose prose-invert` handles all element styling; auto-growing textarea (capped at 400px) with vertical scroll at cap; readonly mode shows Preview-only with "MARKDOWN" badge; `ITEM_TYPES_WITH_MARKDOWN_EDITOR = new Set(['prompt', 'note'])` drives routing; `ItemContentInput`/`ItemContentView` refactored into routing-only components with `CodeEditorInput`/`CodeEditorView` sub-components so Monaco only loads for code types; `contentEditorClassName`/`contentEditorWrapperClassName` props renamed from `codeEditor*` for accuracy. (Completed)
+- **File & Image Upload** - Built `FileUpload` component with drag-and-drop and progress tracking. Added API routes `POST /api/upload` and `GET /api/download/[id]` to securely proxy traffic to Filebase (S3). Updated `ItemCreateDialog` to handle file uploads. Refactored Item Drawer architecture completely, introducing unified `react-hook-form` logic for edit mode and handling image previews & file downloads cleanly. Achieved 100% test coverage on all related server actions and AWS S3 utilities. (Completed)

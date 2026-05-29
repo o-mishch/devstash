@@ -49,10 +49,14 @@ interface ApiBodyWithHeaders<T> {
   headers: Record<string, string>
 }
 
-type HandlerResult = ApiBody<unknown> | ApiBodyWithHeaders<unknown>
+type HandlerResult = ApiBody<unknown> | ApiBodyWithHeaders<unknown> | Response
 
 function isWithHeaders(result: HandlerResult): result is ApiBodyWithHeaders<unknown> {
-  return 'body' in result && 'headers' in result
+  return !(result instanceof Response) && 'body' in result && 'headers' in result
+}
+
+function isRawResponse(result: HandlerResult): result is Response {
+  return result instanceof Response
 }
 
 function toNextResponse<T>(body: ApiBody<T>, headers?: Record<string, string>): NextResponse<ApiBody<T>> {
@@ -65,13 +69,15 @@ export interface RouteContext {
 
 export function apiRoute(
   handler: (request: NextRequest, context: RouteContext) => Promise<HandlerResult>
-): (request: NextRequest, context: RouteContext) => Promise<NextResponse> {
+): (request: NextRequest, context: RouteContext) => Promise<NextResponse | Response> {
   return async (request, context) => {
     try {
       const result = await handler(request, context)
+      if (isRawResponse(result)) return result
       if (isWithHeaders(result)) return toNextResponse(result.body, result.headers)
       return toNextResponse(result)
-    } catch {
+    } catch (err) {
+      console.error('[API Route Error]:', err)
       return toNextResponse(ApiResponse.INTERNAL_ERROR())
     }
   }

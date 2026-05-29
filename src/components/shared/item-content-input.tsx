@@ -1,60 +1,26 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
-import { CodeEditor } from '@/components/ui/code-editor'
-import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
+import { useMonacoLanguage } from '@/hooks/use-monaco-language'
 
-export function useMonacoLanguage(language?: string | null) {
-  const [prevLang, setPrevLang] = useState(language)
-  const [resolvedLang, setResolvedLang] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(!!language)
+const MarkdownEditor = dynamic(
+  () => import('@/components/ui/markdown-editor').then(m => m.MarkdownEditor),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> }
+)
 
-  if (language !== prevLang) {
-    setPrevLang(language)
-    setResolvedLang(null)
-    setIsLoading(!!language)
-  }
+const CodeEditor = dynamic(
+  () => import('@/components/ui/code-editor').then(m => m.CodeEditor),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> }
+)
 
-  useEffect(() => {
-    if (!language) return
-
-    let isMounted = true
-
-    loader.init().then((monaco) => {
-      if (!isMounted) return
-      
-      const langs = monaco.languages.getLanguages()
-      const target = language.toLowerCase().trim()
-      
-      const match = langs.find((l: MonacoLanguages.ILanguageExtensionPoint) => {
-        if (l.id === target) return true
-        if (l.aliases && l.aliases.some(a => a.toLowerCase() === target)) return true
-        if (l.extensions && l.extensions.some(e => e.toLowerCase() === `.${target}`)) return true
-        if (l.aliases && l.aliases.some(a => a.toLowerCase().replace(/^\./, '') === target)) return true
-        return false
-      })
-
-      setResolvedLang(match ? match.id : null)
-      setIsLoading(false)
-    }).catch(() => {
-      if (!isMounted) return
-      setResolvedLang(null)
-      setIsLoading(false)
-    })
-
-    return () => { isMounted = false }
-  }, [language])
-
-  return { resolvedLang, isLoading }
-}
-
-export function useMonacoLanguageList() {
+function useMonacoLanguageList() {
   const [languages, setLanguages] = useState<string[]>([])
 
   useEffect(() => {
@@ -150,30 +116,6 @@ function CodeEditorInput({ value, onChange, language, contentEditorClassName, co
   return null
 }
 
-interface CodeEditorViewProps {
-  content: string
-  language?: string | null
-}
-
-function CodeEditorView({ content, language }: CodeEditorViewProps) {
-  const { resolvedLang, isLoading } = useMonacoLanguage(language)
-
-  if (isLoading) return <Skeleton className="h-[200px] w-full" />
-
-  if (resolvedLang !== null || !language) {
-    return (
-      <CodeEditor
-        value={content}
-        language={resolvedLang}
-        readOnly
-        className="h-auto"
-      />
-    )
-  }
-
-  return null
-}
-
 interface ItemContentInputProps {
   itemType: string
   value: string
@@ -221,31 +163,5 @@ export function ItemContentInput({
       placeholder={placeholder}
       className={textareaClassName}
     />
-  )
-}
-
-interface ItemContentViewProps {
-  itemType: string
-  content?: string | null
-  language?: string | null
-}
-
-export function ItemContentView({ itemType, content, language }: ItemContentViewProps) {
-  if (!content) {
-    return <p className="text-sm text-muted-foreground">—</p>
-  }
-
-  if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
-    return <MarkdownEditor value={content} readOnly />
-  }
-
-  if (ITEM_TYPES_WITH_CODE_EDITOR.has(itemType)) {
-    return <CodeEditorView content={content} language={language} />
-  }
-
-  return (
-    <pre className="flex-1 min-h-0 overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed whitespace-pre">
-      {content}
-    </pre>
   )
 }

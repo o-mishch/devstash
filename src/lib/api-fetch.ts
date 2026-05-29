@@ -1,37 +1,56 @@
+import axios from 'axios'
+import type { Method } from 'axios'
 import type { ApiBody } from '@/types/api'
 
-type FetchOptions = Omit<RequestInit, 'body'> & {
+type RequestOptions = {
+  method?: Method
   body?: unknown
+  headers?: Record<string, string>
+}
+
+function handleApiError<T>(err: unknown, fallbackMessage: string): ApiBody<T> {
+  if (axios.isAxiosError(err) && err.response) {
+    const body = err.response.data as ApiBody<T>
+    if (body && typeof body.status === 'string') return body
+  }
+  const message = err instanceof Error ? err.message : fallbackMessage
+  return { status: 'internal_error', data: null, message }
 }
 
 export async function apiFetch<T = null>(
   url: string,
-  options: FetchOptions = {}
+  options: RequestOptions = {}
 ): Promise<ApiBody<T>> {
-  const { body, headers, ...rest } = options
-
-  const isJsonBody = body !== undefined && !(body instanceof FormData)
+  const { method = 'GET', body, headers } = options
 
   try {
-    const res = await fetch(url, {
-      ...rest,
-      headers: {
-        ...(isJsonBody ? { 'Content-Type': 'application/json' } : {}),
-        ...headers,
-      },
-      body: isJsonBody ? JSON.stringify(body) : (body as BodyInit | undefined),
+    const { data } = await axios.request<ApiBody<T>>({
+      url,
+      method,
+      data: body,
+      headers,
     })
-
-    const contentType = res.headers.get('content-type')
-    if (!contentType?.includes('application/json')) {
-      await res.text() // Consume body to free resources
-      return { status: 'internal_error', data: null, message: 'Server returned an invalid response format.' }
-    }
-
-    const data: ApiBody<T> = await res.json()
     return data
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Network error. Please try again.'
-    return { status: 'internal_error', data: null, message }
+    return handleApiError(err, 'Network error. Please try again.')
+  }
+}
+
+export async function apiUpload<T = null>(
+  url: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void
+): Promise<ApiBody<T>> {
+  try {
+    const { data } = await axios.post<ApiBody<T>>(url, formData, {
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) {
+          onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      },
+    })
+    return data
+  } catch (err) {
+    return handleApiError(err, 'Upload failed. Please try again.')
   }
 }

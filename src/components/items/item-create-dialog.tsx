@@ -1,14 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState, type SyntheticEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2, Plus } from 'lucide-react'
+import { useForm, Controller, useWatch } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ItemContentInput, LanguageInput } from '@/components/shared/item-content'
+import { ItemContentInput, LanguageInput } from '@/components/shared/item-content-input'
+import { FileUpload } from '@/components/shared/file-upload'
 import {
   Dialog,
   DialogContent,
@@ -26,9 +31,40 @@ import {
 } from '@/components/ui/select'
 
 import { createItemAction } from '@/actions/items'
+import { apiFetch } from '@/lib/api-fetch'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
-import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import type { FileItemType } from '@/lib/utils/constants'
 import type { SidebarItemType } from '@/types/item'
+import type { UploadedFile } from '@/components/shared/file-upload'
+
+const formSchema = z.object({
+  itemType: z.string().min(1, 'Type is required'),
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().optional(),
+  content: z.string().optional(),
+  url: z.string().optional(),
+  language: z.string().optional(),
+  tags: z.string().optional(),
+  uploadedFile: z.any().optional(),
+}).superRefine((data, ctx) => {
+  if (ITEM_TYPES_WITH_URL.has(data.itemType) && !data.url) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'URL is required for this item type',
+      path: ['url'],
+    })
+  }
+  if (ITEM_TYPES_WITH_FILE.has(data.itemType) && !data.uploadedFile) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'File is required for this item type',
+      path: ['uploadedFile'],
+    })
+  }
+})
+
+type FormValues = z.infer<typeof formSchema>
 
 interface CreateItemDialogProps {
   itemTypes: SidebarItemType[]
@@ -41,62 +77,84 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
   const defaultItemType = initialType || itemTypes[0]?.name || ''
 
   const [open, setOpen] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const savedRef = useRef(false)
 
-  const [itemType, setItemType] = useState(defaultItemType)
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [content, setContent] = useState('')
-  const [url, setUrl] = useState('')
-  const [language, setLanguage] = useState('')
-  const [tags, setTags] = useState('')
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      itemType: defaultItemType,
+      title: '',
+      description: '',
+      content: '',
+      url: '',
+      language: '',
+      tags: '',
+    }
+  })
+
+  const itemType = useWatch({ control: form.control, name: 'itemType' }) || defaultItemType
+  const watchedLanguage = useWatch({ control: form.control, name: 'language' })
+  const isSubmitting = form.formState.isSubmitting
+
+  function deleteOrphanedFile(file: UploadedFile) {
+    void apiFetch(`/api/upload?key=${encodeURIComponent(file.fileUrl)}`, { method: 'DELETE' })
+  }
 
   function handleOpenChange(isOpen: boolean) {
     setOpen(isOpen)
-    if (isOpen) {
-      setItemType(defaultItemType)
-      setTitle('')
-      setDescription('')
-      setContent('')
-      setUrl('')
-      setLanguage('')
-      setTags('')
+    if (!isOpen) {
+      const file = form.getValues('uploadedFile')
+      if (file && !savedRef.current) deleteOrphanedFile(file)
+      savedRef.current = false
+      form.reset({
+        itemType: defaultItemType,
+        title: '',
+        description: '',
+        content: '',
+        url: '',
+        language: '',
+        tags: '',
+        uploadedFile: undefined
+      })
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleFormSubmit = (e: SyntheticEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
+    void form.handleSubmit(async (data: FormValues) => {
+      const tagArray = (data.tags || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
 
-    const tagArray = tags
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
+      const result = await createItemAction({
+        title: data.title,
+        description: data.description || null,
+        content: data.content || null,
+        url: data.url || null,
+        language: data.language || null,
+        tags: tagArray,
+        itemTypeName: data.itemType,
+        fileUrl: data.uploadedFile?.fileUrl ?? null,
+        fileName: data.uploadedFile?.fileName ?? null,
+        fileSize: data.uploadedFile?.fileSize ?? null,
+      })
 
-    const result = await createItemAction({
-      title,
-      description,
-      content,
-      url,
-      language,
-      tags: tagArray,
-      itemTypeName: itemType,
-    })
-
-    setIsSubmitting(false)
-
-    if (result.status === 'created' || result.status === 'ok') {
-      toast.success('Item created successfully')
-      setOpen(false)
-      router.refresh()
-    } else {
-      toast.error(result.message || 'Failed to create item')
-    }
+      if (result.status === 'created' || result.status === 'ok') {
+        toast.success('Item created successfully')
+        savedRef.current = true
+        setOpen(false)
+        router.refresh()
+      } else {
+        toast.error(result.message || 'Failed to create item')
+      }
+    })(e)
   }
 
   const showContent = ITEM_TYPES_WITH_CONTENT.has(itemType)
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(itemType)
   const showUrl = ITEM_TYPES_WITH_URL.has(itemType)
+  const showFile = ITEM_TYPES_WITH_FILE.has(itemType)
 
   const triggerEl = trigger ?? (
     <Button size="sm">
@@ -110,7 +168,7 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
       <span onClick={() => setOpen(true)} style={{ display: 'contents' }}>{triggerEl}</span>
       <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleFormSubmit}>
           <DialogHeader>
             <DialogTitle>Create New Item</DialogTitle>
             <DialogDescription>
@@ -121,53 +179,65 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
             
             <div className="grid gap-2">
               <Label htmlFor="type">Type</Label>
-              <Select value={itemType} onValueChange={(val) => val && setItemType(val)}>
-                <SelectTrigger id="type">
-                  {itemType ? (
-                    <div className="flex items-center gap-2">
-                      <ItemTypeIcon 
-                        iconName={itemTypes.find(t => t.name === itemType)?.icon || ''} 
-                        color={itemTypes.find(t => t.name === itemType)?.color || ''} 
-                        className="size-4" 
-                      />
-                      <span className="capitalize">{itemType}</span>
-                    </div>
-                  ) : (
-                    <SelectValue placeholder="Select type" />
-                  )}
-                </SelectTrigger>
-                <SelectContent>
-                  {itemTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.name}>
-                      <div className="flex items-center gap-2">
-                        <ItemTypeIcon iconName={type.icon} color={type.color} className="size-4" />
-                        <span className="capitalize">{type.name}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                control={form.control}
+                name="itemType"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={(val) => { field.onChange(val); form.clearErrors() }}>
+                    <SelectTrigger id="type" className="w-full">
+                      {field.value ? (
+                        <div className="flex items-center gap-2">
+                          <ItemTypeIcon
+                            iconName={itemTypes.find(t => t.name === field.value)?.icon || ''}
+                            color={itemTypes.find(t => t.name === field.value)?.color || ''}
+                            className="size-4"
+                          />
+                          <span className="capitalize">{field.value}</span>
+                          {PRO_ITEM_TYPE_NAMES.has(field.value) && (
+                            <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <SelectValue placeholder="Select type" />
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {itemTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.name}>
+                          <div className="flex items-center gap-2">
+                            <ItemTypeIcon iconName={type.icon} color={type.color} className="size-4" />
+                            <span className="capitalize">{type.name}</span>
+                            {PRO_ITEM_TYPE_NAMES.has(type.name) && (
+                              <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {form.formState.errors.itemType && <p className="text-red-500 text-xs mt-1">{form.formState.errors.itemType.message}</p>}
             </div>
 
             <div className="grid gap-2">
               <Label htmlFor="title">Title <span className="text-red-500">*</span></Label>
               <Input
                 id="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
                 placeholder="Item title"
-                required
+                {...form.register('title')}
               />
+              {form.formState.errors.title && <p className="text-red-500 text-xs mt-1">{form.formState.errors.title.message}</p>}
             </div>
 
             <div className="grid gap-2">
               <Label htmlFor="description">Description</Label>
               <Input
                 id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
                 placeholder="Optional description"
+                {...form.register('description')}
               />
+              {form.formState.errors.description && <p className="text-red-500 text-xs mt-1">{form.formState.errors.description.message}</p>}
             </div>
 
             {showUrl && (
@@ -176,39 +246,77 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
                 <Input
                   id="url"
                   type="url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://example.com"
-                  required={showUrl}
+                  {...form.register('url')}
                 />
+                {form.formState.errors.url && <p className="text-red-500 text-xs mt-1">{form.formState.errors.url.message}</p>}
               </div>
             )}
 
             {showLanguage && (
               <div className="grid gap-2">
                 <Label htmlFor="language">Language</Label>
-                <LanguageInput
-                  id="language"
-                  value={language}
-                  onChange={setLanguage}
-                  placeholder="e.g. typescript, bash"
+                <Controller
+                  control={form.control}
+                  name="language"
+                  render={({ field }) => (
+                    <LanguageInput
+                      id="language"
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      placeholder="e.g. typescript, bash"
+                    />
+                  )}
                 />
+                {form.formState.errors.language && <p className="text-red-500 text-xs mt-1">{form.formState.errors.language.message}</p>}
               </div>
             )}
 
             {showContent && (
               <div className="grid gap-2">
                 <Label htmlFor="content">Content</Label>
-                <ItemContentInput
-                  id="content"
-                  itemType={itemType}
-                  value={content}
-                  onChange={setContent}
-                  language={language}
-                  placeholder="Paste your content here..."
-                  contentEditorClassName="h-64"
-                  textareaClassName="min-h-[100px] font-mono text-sm"
+                <Controller
+                  control={form.control}
+                  name="content"
+                  render={({ field }) => (
+                    <ItemContentInput
+                      id="content"
+                      itemType={itemType}
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      language={watchedLanguage}
+                      placeholder="Paste your content here..."
+                      contentEditorClassName="h-64"
+                      textareaClassName="min-h-[100px] font-mono text-sm"
+                    />
+                  )}
                 />
+                {form.formState.errors.content && <p className="text-red-500 text-xs mt-1">{form.formState.errors.content.message}</p>}
+              </div>
+            )}
+
+            {showFile && (
+              <div className="grid gap-2">
+                <Label>File <span className="text-red-500">*</span></Label>
+                <Controller
+                  control={form.control}
+                  name="uploadedFile"
+                  render={({ field }) => (
+                    <FileUpload
+                      itemType={itemType as FileItemType}
+                      value={field.value || null}
+                      onUpload={(file) => {
+                        if (field.value) deleteOrphanedFile(field.value)
+                        field.onChange(file)
+                      }}
+                      onClear={() => {
+                        if (field.value) deleteOrphanedFile(field.value)
+                        field.onChange(null)
+                      }}
+                    />
+                  )}
+                />
+                {form.formState.errors.uploadedFile && <p className="text-red-500 text-xs mt-1">{form.formState.errors.uploadedFile.message as string}</p>}
               </div>
             )}
 
@@ -216,10 +324,10 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
               <Label htmlFor="tags">Tags</Label>
               <Input
                 id="tags"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
                 placeholder="react, hooks, frontend (comma separated)"
+                {...form.register('tags')}
               />
+              {form.formState.errors.tags && <p className="text-red-500 text-xs mt-1">{form.formState.errors.tags.message}</p>}
             </div>
 
           </div>
@@ -227,7 +335,7 @@ export function CreateItemDialog({ itemTypes, initialType, trigger }: CreateItem
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting || !title || (showUrl && !url)}>
+            <Button type="submit" disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create Item
             </Button>

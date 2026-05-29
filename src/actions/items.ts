@@ -5,7 +5,8 @@ import { auth } from '@/auth'
 import { ApiResponse } from '@/lib/api'
 import { updateItem as dbUpdateItem, deleteItem as dbDeleteItem, getItemById as dbGetItemById, createItem as dbCreateItem } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/cache'
-import { ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
+import { deleteFromFilebase } from '@/lib/filebase'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import type { ApiBody } from '@/types/api'
 import type { ItemDetail } from '@/types/item'
 
@@ -24,12 +25,21 @@ type UpdateItemInput = z.infer<typeof updateItemSchema>
 
 const createItemSchema = baseItemSchema.extend({
   itemTypeName: z.string().trim().min(1, 'Type is required'),
+  fileUrl: z.string().trim().optional().nullable().transform((v) => v || null),
+  fileName: z.string().trim().optional().nullable().transform((v) => v || null),
+  fileSize: z.number().int().positive().optional().nullable().transform((v) => v ?? null),
 }).refine((data) => {
   if (ITEM_TYPES_WITH_URL.has(data.itemTypeName) && !data.url) return false
   return true
 }, {
   message: 'URL is required for links',
   path: ['url'],
+}).refine((data) => {
+  if (ITEM_TYPES_WITH_FILE.has(data.itemTypeName) && !data.fileUrl) return false
+  return true
+}, {
+  message: 'A file must be uploaded for this type',
+  path: ['fileUrl'],
 })
 
 type CreateItemInput = z.infer<typeof createItemSchema>
@@ -42,6 +52,10 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<It
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? 'Validation failed'
     return ApiResponse.VALIDATION_ERROR(message)
+  }
+
+  if (parsed.data.fileUrl && !parsed.data.fileUrl.startsWith(`${session.user.id}/`)) {
+    return ApiResponse.FORBIDDEN('Invalid file reference.')
   }
 
   try {
@@ -93,6 +107,8 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
 
     const deleted = await dbDeleteItem(session.user.id, itemId)
     if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
+
+    if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
 
     invalidateItemsCache(session.user.id, existing.itemType.name)
 

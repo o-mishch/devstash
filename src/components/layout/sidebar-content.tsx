@@ -29,9 +29,8 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Badge } from '@/components/ui/badge'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { signOutAction } from '@/actions/auth/login'
+import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { SidebarData } from '@/types/sidebar'
-
-const PRO_TYPE_NAMES = new Set(['file', 'image'])
 
 function getTypeHref(name: string) {
   return `/items/${name}s`
@@ -150,7 +149,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
               >
                 <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
                 <span className="flex-1">{getTypeLabel(t.name)}</span>
-                {PRO_TYPE_NAMES.has(t.name) && (
+                {PRO_ITEM_TYPE_NAMES.has(t.name) && (
                   <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
                 )}
                 <span className="text-xs tabular-nums">{t.count}</span>

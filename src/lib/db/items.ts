@@ -91,6 +91,9 @@ export interface CreateItemInput {
   description: string | null
   content: string | null
   url: string | null
+  fileUrl: string | null
+  fileName: string | null
+  fileSize: number | null
   language: string | null
   tags: string[]
   itemTypeName: string
@@ -116,6 +119,9 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
       description: data.description,
       content: data.content,
       url: data.url,
+      fileUrl: data.fileUrl,
+      fileName: data.fileName,
+      fileSize: data.fileSize,
       language: data.language,
       tags: {
         connectOrCreate: data.tags.map((name) => ({

@@ -3,6 +3,10 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn() }))
 vi.mock('@/lib/cache', () => ({ invalidateItemsCache: vi.fn() }))
+vi.mock('@/lib/filebase', () => ({ deleteFromFilebase: vi.fn() }))
+
+import { deleteFromFilebase } from '@/lib/filebase'
+const mockDeleteFromFilebase = deleteFromFilebase as ReturnType<typeof vi.fn>
 
 import { auth } from '@/auth'
 import { updateItem, deleteItem, getItemById, createItem } from '@/lib/db/items'
@@ -32,6 +36,9 @@ const mockItem = {
 const validCreateInput = {
   ...validInput,
   itemTypeName: 'snippet',
+  fileUrl: null,
+  fileName: null,
+  fileSize: null,
 }
 
 beforeEach(() => vi.clearAllMocks())
@@ -49,12 +56,45 @@ describe('createItemAction', () => {
     expect(result.status).toBe('validation_error')
   })
 
+  it('returns VALIDATION_ERROR when fileUrl is missing for file type', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'file', fileUrl: null })
+    expect(result.status).toBe('validation_error')
+  })
+
+  it('returns FORBIDDEN when fileUrl does not belong to the authenticated user', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'other-user/abc.png' })
+    expect(result.status).toBe('forbidden')
+  })
+
+  it('returns VALIDATION_ERROR when title is empty', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    const result = await createItemAction({ ...validCreateInput, title: '   ' })
+    expect(result.status).toBe('validation_error')
+  })
+
   it('returns CREATED with created item on success', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockCreateItem.mockResolvedValue(mockItem)
     const result = await createItemAction(validCreateInput)
     expect(result.status).toBe('created')
     expect(result.data).toEqual(mockItem)
+  })
+
+  it('returns CREATED when fileUrl belongs to the authenticated user', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCreateItem.mockResolvedValue(mockItem)
+    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'user-1/abc.png', fileName: 'abc.png', fileSize: 1024 })
+    expect(result.status).toBe('created')
+    expect(mockCreateItem).toHaveBeenCalled()
+  })
+
+  it('returns INTERNAL_ERROR when createItem returns null (item type not found)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCreateItem.mockResolvedValue(null)
+    const result = await createItemAction(validCreateInput)
+    expect(result.status).toBe('internal_error')
   })
 
   it('returns INTERNAL_ERROR on unexpected DB failure', async () => {
@@ -153,6 +193,16 @@ describe('deleteItemAction', () => {
     mockDeleteItem.mockResolvedValue(true)
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('ok')
+    expect(mockDeleteFromFilebase).not.toHaveBeenCalled()
+  })
+
+  it('deletes file from filebase when item has fileUrl', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetItemById.mockResolvedValue({ ...mockItem, fileUrl: 'user-1/abc.pdf' })
+    mockDeleteItem.mockResolvedValue(true)
+    const result = await deleteItemAction('item-1')
+    expect(result.status).toBe('ok')
+    expect(mockDeleteFromFilebase).toHaveBeenCalledWith('user-1/abc.pdf')
   })
 
   it('returns INTERNAL_ERROR on unexpected DB failure', async () => {

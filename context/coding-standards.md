@@ -14,6 +14,7 @@
 - Keep components focused - one job per component
 - Extract reusable logic into custom hooks
 - Always define an explicit named interface for component props — never inline prop types
+- No nested ternary operators — extract to a variable, early return, or a small focused component instead
 
 ```tsx
 // ✅ correct
