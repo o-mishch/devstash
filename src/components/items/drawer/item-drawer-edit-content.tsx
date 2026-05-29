@@ -1,5 +1,6 @@
 'use client'
 
+import { type SyntheticEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { X, Check, Tag } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,10 +15,10 @@ import { ItemContentInput, LanguageInput } from '@/components/shared/item-conten
 import { updateItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
-import { baseItemSchema } from '@/lib/utils/validators'
+import { itemFormBaseSchema } from '@/lib/utils/validators'
 import type { ItemDetail } from '@/types/item'
 
-const createDrawerFormSchema = (itemType: string) => baseItemSchema.superRefine((data, ctx) => {
+const createDrawerFormSchema = (itemType: string) => itemFormBaseSchema.superRefine((data, ctx) => {
   if (ITEM_TYPES_WITH_URL.has(itemType) && !data.url) {
     ctx.addIssue({
       code: 'custom',
@@ -62,7 +63,7 @@ export function ItemDrawerEditContent({ item, onClose, onSave, onCancel }: ItemD
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(typeName)
   const showUrl = ITEM_TYPES_WITH_URL.has(typeName)
 
-  const handleFormSubmit = async (e: React.SyntheticEvent) => {
+  const handleFormSubmit = async (e: SyntheticEvent) => {
     e.preventDefault()
     void form.handleSubmit(async (data: DrawerFormValues) => {
       const tagArray = (data.tags || '')

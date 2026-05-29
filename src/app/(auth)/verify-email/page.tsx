@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { resendVerification } from '@/lib/emails/verification'
@@ -56,7 +57,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
 interface ErrorCardProps {
   title: string
   description: string
-  footer?: React.ReactNode
+  footer?: ReactNode
 }
 
 function ErrorCard({ title, description, footer }: ErrorCardProps) {
@@ -70,7 +71,11 @@ function ErrorCard({ title, description, footer }: ErrorCardProps) {
   )
 }
 
-function ResendButton({ email }: { email: string }) {
+interface ResendButtonProps {
+  email: string
+}
+
+function ResendButton({ email }: ResendButtonProps) {
   async function resend() {
     'use server'
     await resendVerification(email)

@@ -9,7 +9,7 @@ export function validatePassword(password: string, confirmPassword?: string): st
   return null
 }
 
-export const baseItemSchema = z.object({
+export const itemFormBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
   content: z.string().optional(),

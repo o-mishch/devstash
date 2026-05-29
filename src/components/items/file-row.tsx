@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate, formatBytes } from '@/lib/utils/format'
+import { getBaseUrl } from '@/lib/utils/url'
 import {
   ALLOWED_IMAGE_EXTS,
   FILE_ICON_CODE_EXTS,
@@ -37,11 +38,12 @@ export function FileRow({ item }: FileRowProps) {
 
   function handleCopy(e: MouseEvent) {
     e.stopPropagation()
-    navigator.clipboard.writeText(`${location.origin}/api/download/${item.id}`).then(() => toast.success('Copied to clipboard'))
+    navigator.clipboard.writeText(`${getBaseUrl()}/api/download/${item.id}`).then(() => toast.success('Copied to clipboard'))
   }
 
   function handleDownload(e: MouseEvent) {
     e.stopPropagation()
+    // Programmatic anchor is the only way to trigger a named file download in the browser
     const a = document.createElement('a')
     a.href = `/api/download/${item.id}`
     a.download = item.fileName ?? item.title

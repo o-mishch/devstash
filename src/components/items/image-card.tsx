@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useItemDrawer } from '@/context/item-drawer-context'
+import { getBaseUrl } from '@/lib/utils/url'
 import type { Item } from '@/types/item'
 
 interface ImageCardProps {
@@ -19,7 +20,7 @@ export function ImageCard({ item }: ImageCardProps) {
   function handleCopy(e: MouseEvent) {
     e.stopPropagation()
     navigator.clipboard
-      .writeText(`${location.origin}/api/download/${item.id}`)
+      .writeText(`${getBaseUrl()}/api/download/${item.id}`)
       .then(() => toast.success('Copied to clipboard'))
   }
 

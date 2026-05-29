@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { WithChildren } from '@/types/common'
 import { Archive, FolderPlus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,7 +35,7 @@ async function CreateItemDialogAsync() {
   return <CreateItemDialog itemTypes={sidebarData.itemTypes} />
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({ children }: WithChildren) {
   return (
     <div className="flex h-screen flex-col bg-background">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">

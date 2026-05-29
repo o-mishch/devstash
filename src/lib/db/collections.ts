@@ -5,6 +5,7 @@ import type { Prisma } from '@/generated/prisma/client'
 
 const COLLECTION_INCLUDE = {
   items: {
+    take: 50,
     select: {
       item: {
         select: {

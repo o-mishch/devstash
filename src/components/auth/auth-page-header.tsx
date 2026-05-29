@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react'
 import Link from 'next/link'
+import type { WithChildren } from '@/types/common'
 import { Archive, CircleCheck, CircleX, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
@@ -8,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 // Shared base
 // ---------------------------------------------------------------------------
 
-export function AuthPageBase({ children }: { children: React.ReactNode }) {
+export function AuthPageBase({ children }: WithChildren) {
   return (
     <div className="w-full max-w-sm space-y-6">
       <div className="flex justify-center">
@@ -28,8 +30,8 @@ export function AuthPageBase({ children }: { children: React.ReactNode }) {
 
 interface AuthFormLayoutProps {
   title: string
-  description: React.ReactNode
-  children: React.ReactNode
+  description: ReactNode
+  children: ReactNode
 }
 
 export function AuthFormLayout({ title, description, children }: AuthFormLayoutProps) {
@@ -79,9 +81,9 @@ const DEFAULT_ACTION: StatusAction = { label: 'Back to sign in', href: '/sign-in
 interface AuthStatusPageProps {
   variant: Variant
   title: string
-  description: React.ReactNode
+  description: ReactNode
   action?: StatusAction
-  footer?: React.ReactNode
+  footer?: ReactNode
 }
 
 export function AuthStatusPage({
@@ -114,7 +116,11 @@ export function AuthStatusPage({
   )
 }
 
-export function MissingTokenPage({ noun = 'token' }: { noun?: string }) {
+interface MissingTokenPageProps {
+  noun?: string
+}
+
+export function MissingTokenPage({ noun = 'token' }: MissingTokenPageProps) {
   return (
     <AuthStatusPage
       variant="error"
@@ -124,7 +130,13 @@ export function MissingTokenPage({ noun = 'token' }: { noun?: string }) {
   )
 }
 
-export function ExpiredTokenPage({ noun = 'link', action, footer }: { noun?: string; action?: StatusAction, footer?: React.ReactNode }) {
+interface ExpiredTokenPageProps {
+  noun?: string
+  action?: StatusAction
+  footer?: ReactNode
+}
+
+export function ExpiredTokenPage({ noun = 'link', action, footer }: ExpiredTokenPageProps) {
   return (
     <AuthStatusPage
       variant="error"
@@ -135,4 +147,3 @@ export function ExpiredTokenPage({ noun = 'link', action, footer }: { noun?: str
     />
   )
 }
-
