@@ -4,21 +4,13 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
-import { PlainTextFallback } from '@/components/shared/plain-text-fallback'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
 
-const MarkdownEditor = dynamic(
-  () => import('@/components/ui/markdown-editor').then(m => m.MarkdownEditor),
-  { ssr: false }
-)
-
-const CodeEditor = dynamic(
-  () => import('@/components/ui/code-editor').then(m => m.CodeEditor),
-  { ssr: false }
-)
+import { CodeEditor, MarkdownEditor } from './dynamic-editors'
 
 function useMonacoLanguageList() {
   const [languages, setLanguages] = useState<string[]>([])
@@ -91,7 +83,7 @@ function CodeEditorInput({ value, onChange, language, contentEditorClassName, co
   }, [onChange])
 
   if (isLoading) {
-    const fallback = <PlainTextFallback content={value} />
+    const fallback = <Skeleton className="h-40 w-full" />
     if (contentEditorWrapperClassName) {
       return <div className={contentEditorWrapperClassName}>{fallback}</div>
     }
@@ -100,7 +92,7 @@ function CodeEditorInput({ value, onChange, language, contentEditorClassName, co
 
   if (resolvedLang !== null || !language) {
     const editor = (
-      <Suspense fallback={<PlainTextFallback content={value} />}>
+      <Suspense fallback={<Skeleton className="h-40 w-full" />}>
         <CodeEditor
           value={value}
           onChange={handleChange}
@@ -143,7 +135,7 @@ export function ItemContentInput({
 }: ItemContentInputProps) {
   if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
     return (
-      <Suspense fallback={<PlainTextFallback content={value} />}>
+      <Suspense fallback={<Skeleton className="h-40 w-full" />}>
         <MarkdownEditor value={value} onChange={onChange} className={contentEditorClassName} />
       </Suspense>
     )

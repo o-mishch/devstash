@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import { ItemDrawerContext } from '@/context/item-drawer-context'
 import { ItemDetailDrawer } from './drawer/item-detail-drawer'
+import { EditorPreloader } from '@/components/shared/editor-preloader'
 import type { WithChildren } from '@/types/common'
 import type { Item } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
@@ -31,6 +32,7 @@ export function ItemDrawerProvider({ children, collections }: ItemDrawerProvider
         onOpenChange={setOpen}
         collections={collections}
       />
+      <EditorPreloader />
     </ItemDrawerContext.Provider>
   )
 }

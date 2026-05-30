@@ -1,12 +1,18 @@
 # Current Feature
 
+[Enter Feature Name]
+
 ## Status
 
 Not Started
 
 ## Goals
 
+- [List goals here]
+
 ## Notes
+
+- [Add any notes here]
 
 ---
 
@@ -59,3 +65,4 @@ Not Started
 - **Optimizing Item Drawer Loading** - Created `PlainTextFallback` component matching the editor chrome (macOS dots header, monospace `<pre>`) as a Suspense boundary fallback; removed `loading: () => <Skeleton />` from `CodeEditor` and `MarkdownViewer` dynamic imports; wrapped both editors in `<Suspense fallback={<PlainTextFallback content={value} />}>`; `CodeEditorInput` and `CodeEditorView` sub-components handle Monaco language resolution with `PlainTextFallback` during the async `useMonacoLanguage` check; eliminates skeleton flash and layout shift when opening item drawers. (Completed)
 - **Virtualized Item Lists** - Installed `@tanstack/react-virtual`; `useVirtualContainer` hook (src/hooks/) owns ResizeObserver + window-resize listener, scroll-margin calculation, optional column tracking, and a stable `getScrollElement` callback — all shared across virtualizers; `VirtualImageGrid` virtualizes the image gallery with aspect-ratio row heights; `VirtualItemGrid` virtualizes `ItemCard` grids (fixed 80px rows, 1/2/3 responsive columns at 768/1024px); `VirtualFileList` virtualizes `FileRow` lists (single column, ~64px estimated rows); `ItemsGrid` (items page) and `CollectionItemsGrid` (collections detail page) route to the appropriate virtual component per type; mixed-type collections fall back to a non-virtualized grid since row heights vary across `ImageCard`/`ItemCard`; fixed a `scrollMargin` positioning bug where `virtualRow.start` includes the margin so `top` must subtract it back. (Completed)
 - **Collection Management** - Implemented edit, delete, and favorite functionality for collections. Added action buttons to `/collections/[id]` and a dropdown menu to `CollectionCard` instances across the dashboard and collections index. Developed modals for editing collection metadata and confirming deletion, ensuring deletion only unlinks items without deleting them. (Completed)
+- **Optimizing Item Drawer Loading: Preload Editors** - Created `EditorPreloader` utilizing `requestIdleCallback` to fetch Next.js dynamic bundles (`CodeEditor`, `MarkdownEditor`, `MarkdownViewer`) and initialize Monaco Editor in the background. Extracted dynamic imports into a shared `dynamic-editors.tsx` to ensure component references match exactly across the preloader and UI, completely eliminating `next/dynamic` suspense boundaries on first open. Removed `PlainTextFallback` and refactored `useMonacoLanguage` to use the native `@monaco-editor/react` `useMonaco` hook for synchronous language resolution without `window.` hacks, ensuring the drawer opens with absolute zero latency. (Completed)

@@ -1,20 +1,11 @@
 'use client'
 
 import { Suspense } from 'react'
-import dynamic from 'next/dynamic'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
-import { PlainTextFallback } from '@/components/shared/plain-text-fallback'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
-
-const MarkdownViewer = dynamic(
-  () => import('@/components/ui/markdown-viewer').then(m => m.MarkdownViewer)
-)
-
-const CodeEditor = dynamic(
-  () => import('@/components/ui/code-editor').then(m => m.CodeEditor),
-  { ssr: false }
-)
+import { CodeEditor, MarkdownViewer } from './dynamic-editors'
 
 
 interface CodeEditorViewProps {
@@ -25,11 +16,11 @@ interface CodeEditorViewProps {
 function CodeEditorView({ content, language }: CodeEditorViewProps) {
   const { resolvedLang, isLoading } = useMonacoLanguage(language)
 
-  if (isLoading) return <PlainTextFallback content={content} />
+  if (isLoading) return <Skeleton className="h-40 w-full" />
 
   if (resolvedLang !== null || !language) {
     return (
-      <Suspense fallback={<PlainTextFallback content={content} />}>
+      <Suspense fallback={<Skeleton className="h-40 w-full" />}>
         <CodeEditor
           value={content}
           language={resolvedLang}
@@ -40,7 +31,16 @@ function CodeEditorView({ content, language }: CodeEditorViewProps) {
     )
   }
 
-  return <PlainTextFallback content={content} />
+  return (
+    <div className="flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset">
+      <div className="flex items-center px-4 py-2 border-b border-white/10 bg-[#2D2D2D]">
+        <EditorWindowDots />
+      </div>
+      <pre className="flex-1 min-h-0 overflow-auto p-3 text-xs leading-relaxed whitespace-pre text-white/90 font-mono">
+        {content}
+      </pre>
+    </div>
+  )
 }
 
 interface ItemContentViewProps {
@@ -78,5 +78,14 @@ export function ItemContentView({ itemType, content, language }: ItemContentView
     return <CodeEditorView content={content} language={language} />
   }
 
-  return <PlainTextFallback content={content} />
+  return (
+    <div className="flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset">
+      <div className="flex items-center px-4 py-2 border-b border-white/10 bg-[#2D2D2D]">
+        <EditorWindowDots />
+      </div>
+      <pre className="flex-1 min-h-0 overflow-auto p-3 text-xs leading-relaxed whitespace-pre text-white/90 font-mono">
+        {content}
+      </pre>
+    </div>
+  )
 }
