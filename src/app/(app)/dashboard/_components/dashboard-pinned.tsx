@@ -2,6 +2,7 @@ import { Pin } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ItemRow } from '@/components/dashboard/item-row'
 import { getPinnedItems } from '@/lib/db/items'
+import { itemToLightItem } from '@/types/item'
 
 interface DashboardPinnedProps {
   userId: string
@@ -21,7 +22,7 @@ export async function DashboardPinned({ userId }: DashboardPinnedProps) {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-3">
-          {pinned.map((item) => <ItemRow key={item.id} item={item} />)}
+          {pinned.map((item) => <ItemRow key={item.id} item={itemToLightItem(item)} />)}
         </div>
       </CardContent>
     </Card>

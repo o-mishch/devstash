@@ -1,47 +1,35 @@
 'use client'
 
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { useVirtualContainer } from '@/hooks/use-virtual-container'
+import { useItemsStore } from '@/context/items-store-context'
 import { FileRow } from './file-row'
-import type { Item } from '@/types/item'
+import { VirtualGrid } from './virtual-grid'
 
 // FileRow is py-3 flex items-center — height is 24px padding + ~32px content
-const ROW_HEIGHT = 56
+const CARD_HEIGHT = 56
 const GAP = 8 // gap-2
 
 interface VirtualFileListProps {
-  items: Item[]
+  pageKey: string
+  onFetchMore: () => Promise<void>
 }
 
-export function VirtualFileList({ items }: VirtualFileListProps) {
-  const { containerRef, scrollMargin, getScrollElement } = useVirtualContainer()
-
-  const virtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement,
-    estimateSize: () => ROW_HEIGHT + GAP,
-    overscan: 5,
-    scrollMargin,
-  })
+export function VirtualFileList({ pageKey, onFetchMore }: VirtualFileListProps) {
+  const { state } = useItemsStore()
+  const items = state.pageKey === pageKey ? state.items : []
+  const hasMore = state.pageKey === pageKey ? state.hasMore : false
+  const loading = state.pageKey === pageKey ? state.loading : false
 
   return (
-    <div ref={containerRef} className="w-full">
-      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-        {virtualizer.getVirtualItems().map((virtualRow) => (
-          <div
-            key={virtualRow.index}
-            style={{
-              position: 'absolute',
-              top: virtualRow.start - scrollMargin,
-              left: 0,
-              right: 0,
-              paddingBottom: GAP,
-            }}
-          >
-            <FileRow item={items[virtualRow.index]} />
-          </div>
-        ))}
-      </div>
-    </div>
+    <VirtualGrid
+      items={items}
+      hasMore={hasMore}
+      loading={loading}
+      onFetchMore={onFetchMore}
+      getColumns={() => 1}
+      itemHeight={CARD_HEIGHT}
+      gap={GAP}
+      overscan={5}
+      renderItem={(item) => <FileRow key={item.id} item={item} />}
+    />
   )
 }

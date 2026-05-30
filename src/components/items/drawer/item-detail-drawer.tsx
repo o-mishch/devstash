@@ -1,36 +1,65 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
+import { apiFetch } from '@/lib/api-fetch'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
-import type { Item } from '@/types/item'
+import type { Item, LightItem } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDetailDrawerProps {
-  item: Item | null
+  item: LightItem | Item | null
   open: boolean
   onOpenChange: (open: boolean) => void
   collections: CollectionWithTypes[]
+  onItemSaved: (item: Item) => void
+  onItemDeleted: (id: string) => void
 }
 
-export function ItemDetailDrawer({ item, open, onOpenChange, collections }: ItemDetailDrawerProps) {
+export function ItemDetailDrawer({
+  item,
+  open,
+  onOpenChange,
+  collections,
+  onItemSaved,
+  onItemDeleted,
+}: ItemDetailDrawerProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [savedItem, setSavedItem] = useState<Item | null>(null)
-  const [prevItemId, setPrevItemId] = useState<string | null>(null)
+  const [fullItem, setFullItem] = useState<Item | null>(null)
   const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
 
-  const currentId = item?.id ?? null
-  if (currentId !== prevItemId) {
-    setPrevItemId(currentId)
-    setSavedItem(null)
-    setEditingItemId(null)
-  }
+  const itemId = item?.id ?? null
+  const propIsLight = item !== null && !('content' in item)
 
-  const displayItem = savedItem ?? item
-  const editing = editingItemId !== null && editingItemId === displayItem?.id
+  // Reset local state whenever a different item is opened
+  useEffect(() => {
+    setSavedItem(null)
+    setFullItem(null)
+    setEditingItemId(null)
+  }, [itemId])
+
+  // Fetch the full item in the background when opened with a LightItem
+  useEffect(() => {
+    if (!itemId || !propIsLight) return
+
+    const controller = new AbortController()
+
+    apiFetch<Item>(`/api/items/${itemId}`).then((result) => {
+      if (!controller.signal.aborted && result.status === 'ok' && result.data) {
+        setFullItem(result.data)
+      }
+    })
+
+    return () => controller.abort()
+  }, [itemId, propIsLight])
+
+  const displayItem = savedItem ?? fullItem ?? item
+  const isLight = displayItem !== null && !('content' in displayItem)
+  const editing = editingItemId !== null && editingItemId === displayItem?.id && !isLight
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -51,17 +80,26 @@ export function ItemDetailDrawer({ item, open, onOpenChange, collections }: Item
           <DrawerSkeleton />
         ) : editing ? (
           <ItemDrawerEditContent
-            item={displayItem}
+            item={displayItem as Item}
             collections={collections}
             onClose={() => onOpenChange(false)}
-            onSave={(updated: Item) => { setSavedItem(updated); setEditingItemId(null) }}
+            onSave={(updated: Item) => {
+              setSavedItem(updated)
+              setEditingItemId(null)
+              onItemSaved(updated)
+            }}
             onCancel={() => setEditingItemId(null)}
           />
         ) : (
           <ItemDrawerViewContent
             item={displayItem}
+            isLight={isLight}
             onClose={() => onOpenChange(false)}
-            onEdit={() => setEditingItemId(displayItem?.id ?? null)}
+            onEdit={() => !isLight && setEditingItemId(displayItem.id)}
+            onDeleted={() => {
+              onItemDeleted(displayItem.id)
+              onOpenChange(false)
+            }}
           />
         )}
       </SheetContent>

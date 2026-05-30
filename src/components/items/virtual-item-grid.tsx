@@ -1,12 +1,10 @@
 'use client'
 
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { useVirtualContainer } from '@/hooks/use-virtual-container'
+import { useItemsStore } from '@/context/items-store-context'
 import { ItemCard } from './item-card'
-import type { Item } from '@/types/item'
+import { VirtualGrid } from './virtual-grid'
 
 const CARD_HEIGHT = 80 // h-20
-const GAP = 12 // gap-3
 
 function getColumns(width: number): number {
   if (width < 768) return 1
@@ -15,51 +13,25 @@ function getColumns(width: number): number {
 }
 
 interface VirtualItemGridProps {
-  items: Item[]
+  pageKey: string
+  onFetchMore: () => Promise<void>
 }
 
-export function VirtualItemGrid({ items }: VirtualItemGridProps) {
-  const { containerRef, scrollMargin, cols, getScrollElement } = useVirtualContainer(getColumns)
-
-  const rowHeight = CARD_HEIGHT + GAP
-  const rowCount = Math.ceil(items.length / cols)
-
-  const virtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement,
-    estimateSize: () => rowHeight,
-    overscan: 3,
-    scrollMargin,
-  })
+export function VirtualItemGrid({ pageKey, onFetchMore }: VirtualItemGridProps) {
+  const { state } = useItemsStore()
+  const items = state.pageKey === pageKey ? state.items : []
+  const hasMore = state.pageKey === pageKey ? state.hasMore : false
+  const loading = state.pageKey === pageKey ? state.loading : false
 
   return (
-    <div ref={containerRef} className="w-full">
-      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const startIdx = virtualRow.index * cols
-          const rowItems = items.slice(startIdx, startIdx + cols)
-
-          return (
-            <div
-              key={virtualRow.index}
-              style={{
-                position: 'absolute',
-                top: virtualRow.start - scrollMargin,
-                left: 0,
-                right: 0,
-                height: CARD_HEIGHT,
-                display: 'grid',
-                gridTemplateColumns: `repeat(${cols}, 1fr)`,
-                gap: GAP,
-              }}
-            >
-              {rowItems.map((item) => (
-                <ItemCard key={item.id} item={item} />
-              ))}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <VirtualGrid
+      items={items}
+      hasMore={hasMore}
+      loading={loading}
+      onFetchMore={onFetchMore}
+      getColumns={getColumns}
+      itemHeight={CARD_HEIGHT}
+      renderItem={(item) => <ItemCard key={item.id} item={item} />}
+    />
   )
 }

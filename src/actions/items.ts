@@ -4,13 +4,21 @@ import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth } from '@/lib/session'
 import { parseOrFail } from '@/lib/utils/validators'
-import { updateItem as dbUpdateItem, deleteItem as dbDeleteItem, getItemById as dbGetItemById, createItem as dbCreateItem } from '@/lib/db/items'
+import {
+  updateItem as dbUpdateItem,
+  deleteItem as dbDeleteItem,
+  getItemById as dbGetItemById,
+  createItem as dbCreateItem,
+  getRecentItemsPage,
+  getItemsByTypePage,
+  getItemsByCollectionPage,
+} from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/cache'
 import { createLogger } from '@/lib/logger'
 import { deleteFromFilebase } from '@/lib/filebase'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import type { ApiBody } from '@/types/api'
-import type { Item } from '@/types/item'
+import type { Item, ItemsPage } from '@/types/item'
 
 const log = createLogger('items')
 
@@ -115,6 +123,29 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
       return ApiResponse.OK()
     } catch (error) {
       log.error('deleteItemAction failed', error)
+      return ApiResponse.INTERNAL_ERROR()
+    }
+  })
+}
+
+export async function fetchMoreItemsAction(query: import('@/types/item').FetchItemsQuery, cursor?: string): Promise<ApiBody<ItemsPage | null>> {
+  return withAuth(async (userId) => {
+    try {
+      let page: ItemsPage
+      switch (query.type) {
+        case 'recent':
+          page = await getRecentItemsPage(userId, cursor)
+          break
+        case 'type':
+          page = await getItemsByTypePage(userId, query.typeName, cursor)
+          break
+        case 'collection':
+          page = await getItemsByCollectionPage(userId, query.collectionId, cursor)
+          break
+      }
+      return ApiResponse.OK(page)
+    } catch (error) {
+      log.error('fetchMoreItemsAction failed', error)
       return ApiResponse.INTERNAL_ERROR()
     }
   })

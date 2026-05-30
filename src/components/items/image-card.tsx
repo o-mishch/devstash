@@ -7,10 +7,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from '@/components/shared/copy-button'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { getBaseUrl } from '@/lib/utils/url'
-import type { Item } from '@/types/item'
+import type { LightItem } from '@/types/item'
 
 interface ImageCardProps {
-  item: Item
+  item: LightItem
   priority?: boolean
 }
 

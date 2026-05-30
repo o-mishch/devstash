@@ -16,15 +16,17 @@ vi.mock('@/lib/cache', () => ({
     pinnedItems: (userId: string) => ({ tag: `user:${userId}:pinned-items`, revalidate: 60 }),
     recentItems: (userId: string) => ({ tag: `user:${userId}:recent-items`, revalidate: 60 }),
     itemsByType: (userId: string, type: string) => ({ tag: `user:${userId}:items:${type}`, revalidate: 60 }),
+    itemsByCollection: (userId: string, id: string) => ({ tag: `user:${userId}:collection:${id}:items`, revalidate: 60 }),
     itemStats: (userId: string) => ({ tag: `user:${userId}:item-stats`, revalidate: 60 }),
   },
 }))
 
 import { prisma } from '@/lib/prisma'
-import { compareBySystemTypeOrder, getItemTypeBySlug, getSidebarItemTypes, deleteItem } from './items'
+import { compareBySystemTypeOrder, getItemTypeBySlug, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage } from './items'
 
 const mockFindFirst = prisma.itemType.findFirst as ReturnType<typeof vi.fn>
 const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>
+const mockItemFindMany = prisma.item.findMany as ReturnType<typeof vi.fn>
 const mockGroupBy = prisma.item.groupBy as ReturnType<typeof vi.fn>
 const mockDeleteMany = prisma.item.deleteMany as ReturnType<typeof vi.fn>
 
@@ -124,6 +126,105 @@ describe('getSidebarItemTypes', () => {
     const prompt = result.find((t) => t.name === 'prompt')
     expect(snippet?.count).toBe(5)
     expect(prompt?.count).toBe(0)
+  })
+})
+
+// ── *Page cursor pagination ──────────────────────────────────────────────────
+
+function makeLightRow(id: string, description?: string, content?: string) {
+  return {
+    id,
+    title: `Item ${id}`,
+    createdAt: new Date('2024-01-01'),
+    description: description ?? null,
+    content: content ?? null,
+    url: null,
+    fileName: null,
+    fileSize: null,
+    fileUrl: null,
+    itemType: { id: 'type-1', name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true },
+    tags: [{ name: 'react' }],
+  }
+}
+
+function makeRows(count: number) {
+  return Array.from({ length: count }, (_, i) => makeLightRow(`item-${i + 1}`))
+}
+
+describe('getRecentItemsPage', () => {
+  it('returns first page using cache when no cursor', async () => {
+    mockItemFindMany.mockResolvedValue(makeRows(5))
+    const result = await getRecentItemsPage('user-1')
+    expect(result.items).toHaveLength(5)
+    expect(result.hasMore).toBe(false)
+    expect(result.nextCursor).toBeNull()
+  })
+
+  it('detects hasMore and sets nextCursor when 21 rows returned', async () => {
+    mockItemFindMany.mockResolvedValue(makeRows(21))
+    const result = await getRecentItemsPage('user-1')
+    expect(result.items).toHaveLength(20)
+    expect(result.hasMore).toBe(true)
+    expect(result.nextCursor).toBe('item-20')
+  })
+
+  it('queries with skip+cursor when cursor provided (bypasses cache)', async () => {
+    mockItemFindMany.mockResolvedValue(makeRows(3))
+    const result = await getRecentItemsPage('user-1', 'cursor-id')
+    const call = mockItemFindMany.mock.calls[0][0]
+    expect(call.skip).toBe(1)
+    expect(call.cursor).toEqual({ id: 'cursor-id' })
+    expect(result.hasMore).toBe(false)
+  })
+
+  it('maps toLightItem: truncates description and content to 150 chars', async () => {
+    const longDesc = 'a'.repeat(200)
+    const longContent = 'b'.repeat(200)
+    mockItemFindMany.mockResolvedValue([makeLightRow('x', longDesc, longContent)])
+    const result = await getRecentItemsPage('user-1')
+    expect(result.items[0].descriptionPreview).toHaveLength(150)
+    expect(result.items[0].contentPreview).toHaveLength(150)
+  })
+
+  it('maps toLightItem: tags extracted from relation', async () => {
+    mockItemFindMany.mockResolvedValue([makeLightRow('x')])
+    const result = await getRecentItemsPage('user-1')
+    expect(result.items[0].tags).toEqual(['react'])
+  })
+})
+
+describe('getItemsByTypePage', () => {
+  it('filters by type name and returns first page via cache', async () => {
+    mockItemFindMany.mockResolvedValue(makeRows(2))
+    const result = await getItemsByTypePage('user-1', 'snippet')
+    const call = mockItemFindMany.mock.calls[0][0]
+    expect(call.where).toMatchObject({ userId: 'user-1', itemType: { name: 'snippet' } })
+    expect(result.items).toHaveLength(2)
+  })
+
+  it('detects hasMore when cursor page has 21 rows', async () => {
+    mockItemFindMany.mockResolvedValue(makeRows(21))
+    const result = await getItemsByTypePage('user-1', 'snippet', 'cursor-id')
+    expect(result.hasMore).toBe(true)
+    expect(result.items).toHaveLength(20)
+  })
+})
+
+describe('getItemsByCollectionPage', () => {
+  it('filters by collectionId and returns first page via cache', async () => {
+    mockItemFindMany.mockResolvedValue(makeRows(4))
+    const result = await getItemsByCollectionPage('user-1', 'col-1')
+    const call = mockItemFindMany.mock.calls[0][0]
+    expect(call.where).toMatchObject({ userId: 'user-1', collections: { some: { collectionId: 'col-1' } } })
+    expect(result.items).toHaveLength(4)
+  })
+
+  it('uses skip+cursor on page 2', async () => {
+    mockItemFindMany.mockResolvedValue(makeRows(1))
+    await getItemsByCollectionPage('user-1', 'col-1', 'cursor-id')
+    const call = mockItemFindMany.mock.calls[0][0]
+    expect(call.skip).toBe(1)
+    expect(call.cursor).toEqual({ id: 'cursor-id' })
   })
 })
 

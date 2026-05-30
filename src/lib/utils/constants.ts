@@ -1,3 +1,5 @@
+export const ITEMS_PAGE_SIZE = 20
+
 export const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
 }

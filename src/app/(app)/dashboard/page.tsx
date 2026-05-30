@@ -1,4 +1,5 @@
 import { getCurrentUserId } from '@/lib/session'
+import { getRecentItemsPage } from '@/lib/db/items'
 import { DashboardStats } from './_components/dashboard-stats'
 import { DashboardCollections } from './_components/dashboard-collections'
 import { DashboardPinned } from './_components/dashboard-pinned'
@@ -8,6 +9,8 @@ export default async function DashboardPage() {
   const userId = await getCurrentUserId()
 
   if (!userId) return null
+
+  const firstPage = await getRecentItemsPage(userId)
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -19,7 +22,7 @@ export default async function DashboardPage() {
       <DashboardStats userId={userId} />
       <DashboardCollections userId={userId} />
       <DashboardPinned userId={userId} />
-      <DashboardRecent userId={userId} />
+      <DashboardRecent firstPage={firstPage} />
     </div>
   )
 }

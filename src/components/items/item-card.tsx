@@ -9,17 +9,17 @@ import { useItemDrawer } from '@/context/item-drawer-context'
 import { getBaseUrl } from '@/lib/utils/url'
 import { formatDate } from '@/lib/utils'
 import { ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
-import type { Item } from '@/types/item'
+import type { LightItem } from '@/types/item'
 
 interface ItemCardProps {
-  item: Item
+  item: LightItem
 }
 
 export function ItemCard({ item }: ItemCardProps) {
   const { itemType } = item
   const { openDrawer } = useItemDrawer()
   const isFile = ITEM_TYPES_WITH_FILE.has(item.itemType.name)
-  const copyValue = isFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.content ?? item.url ?? item.title)
+  const copyValue = isFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.url ?? item.title)
 
   return (
     <Card
@@ -32,8 +32,8 @@ export function ItemCard({ item }: ItemCardProps) {
           <ItemIconWrapper itemType={itemType} wrapperClassName="size-8" iconClassName="size-4" />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{item.title}</p>
-            {item.description && (
-              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+            {item.descriptionPreview && (
+              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.descriptionPreview}</p>
             )}
             <ItemTags tags={item.tags} max={3} className="mt-1.5" />
           </div>

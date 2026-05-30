@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type MouseEvent } from 'react'
+import { useState, type MouseEvent, type KeyboardEvent } from 'react'
 import { X, ChevronsUpDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,7 +28,7 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
     }
   }
 
-  const unselect = (id: string, e: MouseEvent<HTMLButtonElement>) => {
+  const unselect = (id: string, e: MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
     toggleCollection(id)
@@ -39,6 +39,7 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
       <PopoverTrigger
         render={
           <Button
+            render={<div />}
             variant="outline"
             role="combobox"
             className="w-full min-h-9 h-auto justify-between font-normal hover:bg-transparent"
@@ -56,14 +57,20 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
                 className="px-2 py-0.5 text-xs font-medium bg-foreground/10 text-foreground border-foreground/20"
               >
                 {col.name}
-                <button
-                  type="button"
-                  className="ml-1.5 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-foreground/10 p-0.5"
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="ml-1.5 cursor-pointer rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-foreground/10 p-0.5"
                   onClick={(e) => unselect(col.id, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      unselect(col.id, e)
+                    }
+                  }}
                 >
                   <X className="size-3" />
                   <span className="sr-only">Remove {col.name}</span>
-                </button>
+                </div>
               </Badge>
             ))
           )}

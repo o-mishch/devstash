@@ -3,56 +3,12 @@ import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { getCurrentUserId } from '@/lib/session'
 import { getCollectionById } from '@/lib/db/collections'
-import { getItemsByCollection } from '@/lib/db/items'
-import { ItemCard } from '@/components/items/item-card'
-import { ImageCard } from '@/components/items/image-card'
-import { VirtualImageGrid } from '@/components/items/virtual-image-grid'
-import { VirtualItemGrid } from '@/components/items/virtual-item-grid'
-import { VirtualFileList } from '@/components/items/virtual-file-list'
-import { Card, CardContent } from '@/components/ui/card'
-import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
+import { getItemsByCollectionPage } from '@/lib/db/items'
 import { CollectionHeaderActions } from './_components/collection-header-actions'
-import type { Item } from '@/types/item'
+import { CollectionItemsGrid } from './_components/collection-items-grid'
 
 interface CollectionPageProps {
   params: Promise<{ id: string }>
-}
-
-interface CollectionItemsGridProps {
-  items: Item[]
-}
-
-function CollectionItemsGrid({ items }: CollectionItemsGridProps) {
-  if (items.length === 0) {
-    return (
-      <Card className="h-20">
-        <CardContent className="flex h-full items-center justify-center p-4">
-          <p className="text-sm text-muted-foreground">No items in this collection yet.</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const uniqueTypeCount = new Set(items.map((i) => i.itemType.name)).size
-
-  if (uniqueTypeCount === 1) {
-    const typeName = items[0].itemType.name
-    if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) return <VirtualImageGrid items={items} />
-    if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) return <VirtualFileList items={items} />
-    return <VirtualItemGrid items={items} />
-  }
-
-  // Mixed types: render without virtualization (variable row heights)
-  return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => {
-        if (ITEM_TYPES_WITH_IMAGE_GRID.has(item.itemType.name)) {
-          return <ImageCard key={item.id} item={item} />
-        }
-        return <ItemCard key={item.id} item={item} />
-      })}
-    </div>
-  )
 }
 
 export default async function CollectionPage({ params }: CollectionPageProps) {
@@ -61,9 +17,9 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
 
   if (!userId) notFound()
 
-  const [collection, items] = await Promise.all([
+  const [collection, firstPage] = await Promise.all([
     getCollectionById(userId, id),
-    getItemsByCollection(userId, id),
+    getItemsByCollectionPage(userId, id),
   ])
 
   if (!collection) notFound()
@@ -82,13 +38,15 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
             {collection.description && (
               <p className="mt-0.5 text-sm text-muted-foreground">{collection.description}</p>
             )}
-            <p className="mt-1 text-sm text-muted-foreground">{items.length} item{items.length !== 1 ? 's' : ''}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {firstPage.items.length}{firstPage.hasMore ? '+' : ''} item{firstPage.items.length !== 1 ? 's' : ''}
+            </p>
           </div>
           <CollectionHeaderActions collection={collection} />
         </div>
       </div>
 
-      <CollectionItemsGrid items={items} />
+      <CollectionItemsGrid collectionId={id} firstPage={firstPage} />
     </div>
   )
 }
