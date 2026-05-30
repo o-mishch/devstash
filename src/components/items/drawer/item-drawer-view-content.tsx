@@ -9,7 +9,8 @@ import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ItemContentView } from '@/components/shared/item-content-view'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { ItemTags } from '@/components/shared/item-tags'
 import { deleteItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
@@ -192,12 +193,12 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
               Are you sure you want to delete this {itemType.name}? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              {isDeleting ? 'Deleting…' : 'Delete'}
-            </Button>
-          </DialogFooter>
+          <DestructiveDialogFooter
+            onCancel={() => setDeleteDialogOpen(false)}
+            onConfirm={handleDelete}
+            isPending={isDeleting}
+            confirmText="Delete"
+          />
         </DialogContent>
       </Dialog>
     </>

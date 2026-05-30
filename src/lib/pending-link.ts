@@ -1,5 +1,5 @@
-import crypto from 'crypto'
 import { getRedis } from '@/lib/redis'
+import { generateSecureToken } from '@/lib/tokens'
 
 
 export interface PendingLinkData {
@@ -20,7 +20,7 @@ export async function createPendingLink(data: PendingLinkData): Promise<string |
   try {
     const redis = getRedis()
     if (!redis) return null
-    const token = crypto.randomBytes(32).toString('hex')
+    const token = generateSecureToken()
     const key = `pending-link:${token}`
     const ttl = 60 * 15 // 15 minutes
     await redis.set(key, data, { ex: ttl })

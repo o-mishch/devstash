@@ -4,8 +4,12 @@ import { prisma } from '@/lib/prisma'
 export const TOKEN_TTL_MS = 24 * 60 * 60 * 1000
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 
+export function generateSecureToken(): string {
+  return randomBytes(32).toString('hex')
+}
+
 export async function createVerificationToken(email: string): Promise<string> {
-  const token = randomBytes(32).toString('hex')
+  const token = generateSecureToken()
   const expires = new Date(Date.now() + TOKEN_TTL_MS)
 
   await prisma.$transaction([
@@ -18,7 +22,7 @@ export async function createVerificationToken(email: string): Promise<string> {
 
 export async function createPasswordResetToken(email: string): Promise<string> {
   const identifier = `password-reset:${email}`
-  const token = randomBytes(32).toString('hex')
+  const token = generateSecureToken()
   const expires = new Date(Date.now() + PASSWORD_RESET_TTL_MS)
 
   await prisma.$transaction([

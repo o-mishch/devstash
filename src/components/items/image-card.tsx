@@ -1,12 +1,10 @@
 'use client'
 
-import { useState, type CSSProperties, type MouseEvent } from 'react'
+import { useState, type CSSProperties } from 'react'
 import Image from 'next/image'
-import { Copy, Check } from 'lucide-react'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Button } from '@/components/ui/button'
+import { CopyButton } from '@/components/shared/copy-button'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { getBaseUrl } from '@/lib/utils/url'
 import type { Item } from '@/types/item'
@@ -19,12 +17,6 @@ interface ImageCardProps {
 export function ImageCard({ item, priority = false }: ImageCardProps) {
   const { openDrawer } = useItemDrawer()
   const [isLoaded, setIsLoaded] = useState(false)
-  const { isCopied, copy } = useCopyToClipboard()
-
-  function handleCopy(e: MouseEvent) {
-    e.stopPropagation()
-    copy(`${getBaseUrl()}/api/download/${item.id}`)
-  }
 
   return (
     <Card
@@ -51,15 +43,13 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
             <p className="truncate text-sm font-medium text-white drop-shadow-sm" title={item.title}>
               {item.title}
             </p>
-            <Button
-              size="icon"
-              variant="ghost"
+            <CopyButton
+              value={`${getBaseUrl()}/api/download/${item.id}`}
               className="size-7 shrink-0 text-white/70 opacity-0 transition-opacity hover:bg-white/20 hover:text-white group-hover/card:opacity-100 z-30"
-              onClick={handleCopy}
+              iconClassName="size-3.5"
+              stopPropagation
               title="Copy download link"
-            >
-              {isCopied ? <Check className="size-3.5 text-green-400" /> : <Copy className="size-3.5" />}
-            </Button>
+            />
           </div>
         </div>
       </div>

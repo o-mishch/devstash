@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import dynamic from 'next/dynamic'
-import { Copy, Check } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
+import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 
 const MarkdownViewer = dynamic(
@@ -21,7 +20,6 @@ interface MarkdownEditorProps {
 export function MarkdownEditor({ value, onChange, readOnly = false, className }: MarkdownEditorProps) {
   const [activeTabState, setActiveTab] = useState<'write' | 'preview'>('write')
   const activeTab = readOnly ? 'preview' : activeTabState
-  const [isCopied, setIsCopied] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -30,16 +28,6 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 400)}px`
   }, [value, activeTab])
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value || '')
-      setIsCopied(true)
-      setTimeout(() => setIsCopied(false), 2000)
-    } catch {
-      // clipboard write failed silently
-    }
-  }, [value])
 
   return (
     <div className={cn("flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
@@ -80,17 +68,11 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
               Markdown
             </span>
           )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground hover:text-white hover:bg-white/10"
-            onClick={handleCopy}
+          <CopyButton
+            value={value}
+            className="text-muted-foreground hover:text-white hover:bg-white/10"
             title="Copy content"
-          >
-            {isCopied ? <Check className="size-4 text-green-400" /> : <Copy className="size-4" />}
-            <span className="sr-only">Copy content</span>
-          </Button>
+          />
         </div>
       </div>
 
