@@ -10,9 +10,12 @@ import {
   deleteCollection as dbDeleteCollection
 } from '@/lib/db/collections'
 import { invalidateCollectionsCache } from '@/lib/cache'
+import { createLogger } from '@/lib/logger'
 import type { ApiBody } from '@/types/api'
 import type { CollectionWithTypes } from '@/types/collection'
 import type { CreateCollectionInput, UpdateCollectionInput } from '@/lib/db/collections'
+
+const log = createLogger('collections')
 
 export async function createCollectionAction(raw: CreateCollectionInput): Promise<ApiBody<CollectionWithTypes | null>> {
   return withAuth(async (userId) => {
@@ -22,9 +25,10 @@ export async function createCollectionAction(raw: CreateCollectionInput): Promis
     try {
       const created = await dbCreateCollection(userId, result.data)
       invalidateCollectionsCache(userId)
+      log.info(`created "${result.data.name}" user:${userId}`)
       return ApiResponse.CREATED(created)
     } catch (error) {
-      console.error('[createCollectionAction] Error:', error)
+      log.error('createCollectionAction failed', error)
       return ApiResponse.INTERNAL_ERROR()
     }
   })
@@ -42,9 +46,10 @@ export async function updateCollectionAction(collectionId: string, raw: UpdateCo
     try {
       const updated = await dbUpdateCollection(userId, collectionId, result.data)
       invalidateCollectionsCache(userId)
+      log.info(`updated collection:${collectionId} user:${userId}`)
       return ApiResponse.OK(updated)
     } catch (error) {
-      console.error('[updateCollectionAction] Error:', error)
+      log.error('updateCollectionAction failed', error)
       return ApiResponse.INTERNAL_ERROR()
     }
   })
@@ -55,9 +60,10 @@ export async function deleteCollectionAction(collectionId: string): Promise<ApiB
     try {
       await dbDeleteCollection(userId, collectionId)
       invalidateCollectionsCache(userId)
+      log.info(`deleted collection:${collectionId} user:${userId}`)
       return ApiResponse.OK()
     } catch (error) {
-      console.error('[deleteCollectionAction] Error:', error)
+      log.error('deleteCollectionAction failed', error)
       return ApiResponse.INTERNAL_ERROR()
     }
   })

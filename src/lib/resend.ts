@@ -1,4 +1,7 @@
 import { Resend } from 'resend'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('email')
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -10,17 +13,17 @@ interface SendEmailOptions {
   subject: string
   html: string
   idempotencyKey: string
-  logTag: string
+  operation: string
 }
 
-export async function sendEmail({ to, subject, html, idempotencyKey, logTag }: SendEmailOptions): Promise<boolean> {
+export async function sendEmail({ to, subject, html, idempotencyKey, operation }: SendEmailOptions): Promise<boolean> {
   const { error } = await resend.emails.send(
     { from: EMAIL_FROM, to: [to], subject, html },
     { idempotencyKey }
   )
 
   if (error) {
-    console.error(`[${logTag}] failed to send email:`, error.message)
+    log.error(`failed to send "${operation}": ${error.message}`)
     return false
   }
   return true

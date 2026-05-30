@@ -4,6 +4,9 @@ import { ApiResponse, authenticatedRoute } from '@/lib/api'
 import { getItemById } from '@/lib/db/items'
 import { downloadFromFilebase } from '@/lib/filebase'
 import type { RouteContext } from '@/lib/api'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('download')
 
 export const GET = authenticatedRoute(async (_request, context: RouteContext, userId) => {
   const { id } = await context.params
@@ -13,16 +16,14 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, us
   if (!item || !item.fileUrl) return ApiResponse.NOT_FOUND('File not found.')
 
   const start = Date.now()
-  console.log(`⏳ FETCHING from Filebase (S3): ${item.fileUrl} for item ${item.id}`)
-  
   const nodeStream = await downloadFromFilebase(item.fileUrl)
-  
+
   if (!nodeStream) {
-    console.log(`❌ FAILED to fetch from Filebase in ${Date.now() - start}ms: ${item.fileUrl}`)
+    log.warn(`filebase fetch failed for item:${item.id} (${Date.now() - start}ms)`)
     return ApiResponse.NOT_FOUND('File could not be retrieved.')
   }
-  
-  console.log(`✅ FETCHED stream from Filebase in ${Date.now() - start}ms: ${item.fileUrl}`)
+
+  log.info(`stream ready (${Date.now() - start}ms): ${item.fileUrl}`)
 
   const readable = nodeStream as Readable
 
