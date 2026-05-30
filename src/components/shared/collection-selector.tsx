@@ -40,6 +40,7 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
         render={
           <Button
             render={<div />}
+            nativeButton={false}
             variant="outline"
             role="combobox"
             className="w-full min-h-9 h-auto justify-between font-normal hover:bg-transparent"
