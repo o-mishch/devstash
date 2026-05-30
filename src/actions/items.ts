@@ -6,10 +6,13 @@ import { withAuth } from '@/lib/session'
 import { parseOrFail } from '@/lib/utils/validators'
 import { updateItem as dbUpdateItem, deleteItem as dbDeleteItem, getItemById as dbGetItemById, createItem as dbCreateItem } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/cache'
+import { createLogger } from '@/lib/logger'
 import { deleteFromFilebase } from '@/lib/filebase'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import type { ApiBody } from '@/types/api'
 import type { Item } from '@/types/item'
+
+const log = createLogger('items')
 
 const itemMutationSchema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
@@ -62,10 +65,11 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<It
       if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
 
       invalidateItemsCache(userId)
+      log.info(`created "${data.title}" [${data.itemTypeName}] user:${userId}`)
 
       return ApiResponse.CREATED(created)
     } catch (error) {
-      console.error('[createItemAction] Error:', error)
+      log.error('createItemAction failed', error)
       return ApiResponse.INTERNAL_ERROR()
     }
   })
@@ -84,10 +88,11 @@ export async function updateItemAction(
       if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
 
       invalidateItemsCache(userId)
+      log.info(`updated item:${itemId} user:${userId}`)
 
       return ApiResponse.OK(updated)
     } catch (error) {
-      console.error('[updateItemAction] Error:', error)
+      log.error('updateItemAction failed', error)
       return ApiResponse.INTERNAL_ERROR()
     }
   })
@@ -105,10 +110,11 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
       if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
 
       invalidateItemsCache(userId)
+      log.info(`deleted item:${itemId} user:${userId}`)
 
       return ApiResponse.OK()
     } catch (error) {
-      console.error('[deleteItemAction] Error:', error)
+      log.error('deleteItemAction failed', error)
       return ApiResponse.INTERNAL_ERROR()
     }
   })

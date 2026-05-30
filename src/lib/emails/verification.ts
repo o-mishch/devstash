@@ -20,7 +20,7 @@ async function sendVerificationEmail(to: string, token: string): Promise<boolean
     subject: 'Verify your DevStash email',
     html,
     idempotencyKey: `verify-email/${token}`,
-    logTag: 'verification',
+    operation: 'verification',
   })
 }
 

@@ -1,4 +1,7 @@
 import { unstable_cache, revalidatePath, updateTag } from 'next/cache'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('cache')
 
 export interface DataCacheConfig {
   tag: string
@@ -34,10 +37,10 @@ export async function withDataCache<T>(
 ): Promise<T> {
   const cachedFetcher = unstable_cache(
     async () => {
-      console.log('❌ CACHE MISS OR REVALIDATION:', config.tag)
+      log.info(`MISS ${config.tag}`)
       const start = Date.now()
       const result = await fetcher()
-      console.log(`✅ FETCHED ${config.tag} in ${Date.now() - start}ms`)
+      log.info(`FETCHED ${config.tag} in ${Date.now() - start}ms`)
       // Strip Prisma proxies and non-serializable objects to guarantee successful caching
       return JSON.parse(JSON.stringify(result)) as T
     },
@@ -57,12 +60,14 @@ export function invalidateCollectionsCache(userId: string): void {
   updateTag(CacheTags.collectionStats(userId).tag)
   revalidatePath('/dashboard')
   revalidatePath('/collections')
+  log.info(`INVALIDATED collections for user:${userId}`)
 }
 
 // Called after profile mutations (password change, unlink provider).
 export function invalidateProfileCache(userId: string): void {
   updateTag(CacheTags.profile(userId).tag)
   revalidatePath('/profile', 'page')
+  log.info(`INVALIDATED profile for user:${userId}`)
 }
 
 // Called after item mutations (create, update, delete).
@@ -75,4 +80,5 @@ export function invalidateItemsCache(userId?: string): void {
   revalidatePath('/dashboard')
   revalidatePath('/items')
   revalidatePath('/collections', 'layout')
+  log.info(`INVALIDATED items for user:${userId ?? 'all'}`)
 }

@@ -1,5 +1,8 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import type { Readable } from 'stream'
+import { createLogger } from '@/lib/logger'
+
+const log = createLogger('filebase')
 
 let _client: S3Client | null = null
 
@@ -42,7 +45,7 @@ export async function deleteFromFilebase(key: string): Promise<void> {
       Key: key,
     }))
   } catch (err) {
-    console.error('[filebase] delete failed for key:', key, err)
+    log.error(`delete failed: ${key}`, err)
   }
 }
 
@@ -54,7 +57,7 @@ export async function downloadFromFilebase(key: string): Promise<Readable | null
     }))
     return response.Body as Readable
   } catch (err) {
-    console.error('[filebase] download failed for key:', key, err)
+    log.error(`download failed: ${key}`, err)
     return null
   }
 }

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
+import { createLogger } from '@/lib/logger'
 import type { ApiStatus, ApiBody } from '@/types/api'
+
+const log = createLogger('api')
 
 const HTTP_STATUS: Record<ApiStatus, number> = {
   ok: 200,
@@ -91,7 +94,7 @@ export function apiRoute(
       if (isWithHeaders(result)) return toNextResponse(result.body, result.headers)
       return toNextResponse(result)
     } catch (err) {
-      console.error('[API Route Error]:', err)
+      log.error('unhandled route error', err)
       return toNextResponse(ApiResponse.INTERNAL_ERROR())
     }
   }

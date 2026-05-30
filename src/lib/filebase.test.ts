@@ -56,7 +56,7 @@ describe('filebase utility', () => {
       mockSend.mockRejectedValueOnce(new Error('S3 error'))
       
       await expect(deleteFromFilebase('test/key.png')).resolves.not.toThrow()
-      expect(consoleSpy).toHaveBeenCalledWith('[filebase] delete failed for key:', 'test/key.png', expect.any(Error))
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[filebase] delete failed: test/key.png'), expect.any(Error))
       consoleSpy.mockRestore()
     })
   })
@@ -83,7 +83,7 @@ describe('filebase utility', () => {
       const result = await downloadFromFilebase('test/key.png')
       
       expect(result).toBeNull()
-      expect(consoleSpy).toHaveBeenCalledWith('[filebase] download failed for key:', 'test/key.png', expect.any(Error))
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[filebase] download failed: test/key.png'), expect.any(Error))
       consoleSpy.mockRestore()
     })
   })

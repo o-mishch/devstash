@@ -12,7 +12,7 @@ async function sendPasswordResetEmail(to: string, token: string): Promise<boolea
     subject: 'Reset your DevStash password',
     html,
     idempotencyKey: `password-reset/${token}`,
-    logTag: 'password-reset',
+    operation: 'password-reset',
   })
 }
 
