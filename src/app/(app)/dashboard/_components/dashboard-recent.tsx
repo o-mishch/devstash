@@ -1,13 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ItemRow } from '@/components/dashboard/item-row'
-import { getRecentItems } from '@/lib/db/items'
+import { DashboardRecentList } from './dashboard-recent-list'
+import type { ItemsPage } from '@/types/item'
 
 interface DashboardRecentProps {
-  userId: string
+  firstPage: ItemsPage
 }
 
-export async function DashboardRecent({ userId }: DashboardRecentProps) {
-  const recent = await getRecentItems(userId)
+export function DashboardRecent({ firstPage }: DashboardRecentProps) {
+  if (firstPage.items.length === 0) return null
 
   return (
     <Card>
@@ -15,9 +15,7 @@ export async function DashboardRecent({ userId }: DashboardRecentProps) {
         <CardTitle className="text-sm font-semibold">Recent Items</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col gap-3">
-          {recent.map((item) => <ItemRow key={item.id} item={item} />)}
-        </div>
+        <DashboardRecentList firstPage={firstPage} />
       </CardContent>
     </Card>
   )

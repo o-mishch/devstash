@@ -5,10 +5,10 @@ import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate } from '@/lib/utils'
-import type { Item } from '@/types/item'
+import type { LightItem } from '@/types/item'
 
 interface ItemRowProps {
-  item: Item
+  item: LightItem
 }
 
 export function ItemRow({ item }: ItemRowProps) {
@@ -25,8 +25,8 @@ export function ItemRow({ item }: ItemRowProps) {
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{item.title}</p>
-        {item.description && (
-          <p className="truncate text-xs text-muted-foreground">{item.description}</p>
+        {item.descriptionPreview && (
+          <p className="truncate text-xs text-muted-foreground">{item.descriptionPreview}</p>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">

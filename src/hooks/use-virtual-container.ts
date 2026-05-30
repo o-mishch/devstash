@@ -2,6 +2,8 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react'
 
+import debounce from 'lodash.debounce'
+
 interface VirtualContainerResult {
   containerRef: React.RefObject<HTMLDivElement | null>
   scrollMargin: number
@@ -46,13 +48,18 @@ export function useVirtualContainer(getColumns?: (width: number) => number): Vir
 
     measure()
 
-    const ro = new ResizeObserver(measure)
+    const debouncedMeasure = debounce(measure, 100)
+
+    const ro = new ResizeObserver(debouncedMeasure)
     ro.observe(el)
-    window.addEventListener('resize', measure)
+    
+    const scrollEl = el.closest('main')
+    if (scrollEl) {
+      ro.observe(scrollEl)
+    }
 
     return () => {
       ro.disconnect()
-      window.removeEventListener('resize', measure)
     }
   }, [measure])
 

@@ -13,7 +13,7 @@ import {
   FILE_ICON_JSON_EXTS,
   FILE_ICON_TEXT_EXTS,
 } from '@/lib/utils/constants'
-import type { Item } from '@/types/item'
+import type { LightItem } from '@/types/item'
 
 interface FileIconProps {
   fileName: string | null
@@ -30,7 +30,7 @@ function FileTypeIcon({ fileName, className }: FileIconProps) {
 }
 
 interface FileRowProps {
-  item: Item
+  item: LightItem
 }
 
 export function FileRow({ item }: FileRowProps) {

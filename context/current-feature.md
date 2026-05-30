@@ -6,7 +6,11 @@ Not Started
 
 ## Goals
 
+<!-- List goals for the next feature here -->
+
 ## Notes
+
+<!-- Add any relevant notes or spec details here -->
 
 ---
 
@@ -62,3 +66,4 @@ Not Started
 - **Optimizing Item Drawer Loading: Preload Editors** - Created `EditorPreloader` utilizing `requestIdleCallback` to fetch Next.js dynamic bundles (`CodeEditor`, `MarkdownEditor`, `MarkdownViewer`) and initialize Monaco Editor in the background. Extracted dynamic imports into a shared `dynamic-editors.tsx` to ensure component references match exactly across the preloader and UI, completely eliminating `next/dynamic` suspense boundaries on first open. Removed `PlainTextFallback` and refactored `useMonacoLanguage` to use the native `@monaco-editor/react` `useMonaco` hook for synchronous language resolution without `window.` hacks, ensuring the drawer opens with absolute zero latency. (Completed)
 - **Refactor Scan Fixes** - `generateSecureToken()` extracted to `tokens.ts` and shared with `pending-link.ts`; `CopyButton` component created and applied across `ItemCard`, `ImageCard`, `FileRow`, `CodeEditor`, `MarkdownEditor`, and `ItemContentView` (6 call sites); both editors switched from raw `useState + setTimeout` copy state to `useCopyToClipboard`; item delete dialog updated to use `DestructiveDialogFooter` (matching collection delete); `PlainTextView` private component extracted in `item-content-view.tsx` to eliminate duplicate Mac-chrome-plus-pre blocks and add consistent `CopyButton` to all content view paths. (Completed)
 - **Improve Backend Logging** - `createLogger(tag)` factory in `src/lib/logger.ts` returns scoped `{ info, warn, error }` loggers; format `[tag] message` in production, `HH:MM:SS [tag] message` in development; all raw `console.*` calls replaced across `cache.ts`, `api.ts`, `filebase.ts`, `resend.ts`, `actions/items.ts`, `actions/collections.ts`, and `api/download/[id]/route.ts`; cache invalidations now logged (items, collections, profile); item/collection mutations log success with title/id and userId; `SendEmailOptions.logTag` renamed to `operation`; 6 Vitest tests cover format, `error` arg branching, scope isolation, and dev-mode timestamp (Completed)
+- **Infinite Scroll for Item Lists** - Replaced bulk data loading with cursor-based pagination to resolve a 2MB Next.js Data Cache limit crash on 500+ items; implemented `LightItem` type for minimal payload sizes; server-rendered first page with subsequent pages fetched async; utilized `@tanstack/react-virtual` for DOM virtualization combined with `IntersectionObserver` scroll triggers; unified store sync logic in `useInfiniteScrollSync` and centralized server actions via discriminated unions in `fetchMoreItemsAction`. (Completed)

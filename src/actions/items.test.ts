@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
-vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn() }))
 vi.mock('@/lib/cache', () => ({ invalidateItemsCache: vi.fn() }))
 vi.mock('@/lib/filebase', () => ({ deleteFromFilebase: vi.fn() }))
 
@@ -255,5 +255,46 @@ describe('deleteItemAction', () => {
     mockGetItemById.mockRejectedValue(new Error('DB down'))
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('internal_error')
+  })
+})
+
+describe('fetchMoreItemsAction', () => {
+  it('calls getRecentItemsPage when type is recent', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    const mockPage = { items: [], nextCursor: null, hasMore: false }
+    const { getRecentItemsPage } = await import('@/lib/db/items')
+    vi.mocked(getRecentItemsPage).mockResolvedValue(mockPage)
+
+    const { fetchMoreItemsAction } = await import('./items')
+    const result = await fetchMoreItemsAction({ type: 'recent' }, 'cursor-1')
+
+    expect(getRecentItemsPage).toHaveBeenCalledWith('user-1', 'cursor-1')
+    expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
+  })
+
+  it('calls getItemsByTypePage when type is type', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    const mockPage = { items: [], nextCursor: null, hasMore: false }
+    const { getItemsByTypePage } = await import('@/lib/db/items')
+    vi.mocked(getItemsByTypePage).mockResolvedValue(mockPage)
+
+    const { fetchMoreItemsAction } = await import('./items')
+    const result = await fetchMoreItemsAction({ type: 'type', typeName: 'snippet' }, 'cursor-1')
+
+    expect(getItemsByTypePage).toHaveBeenCalledWith('user-1', 'snippet', 'cursor-1')
+    expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
+  })
+
+  it('calls getItemsByCollectionPage when type is collection', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    const mockPage = { items: [], nextCursor: null, hasMore: false }
+    const { getItemsByCollectionPage } = await import('@/lib/db/items')
+    vi.mocked(getItemsByCollectionPage).mockResolvedValue(mockPage)
+
+    const { fetchMoreItemsAction } = await import('./items')
+    const result = await fetchMoreItemsAction({ type: 'collection', collectionId: 'col-1' }, 'cursor-1')
+
+    expect(getItemsByCollectionPage).toHaveBeenCalledWith('user-1', 'col-1', 'cursor-1')
+    expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
   })
 })

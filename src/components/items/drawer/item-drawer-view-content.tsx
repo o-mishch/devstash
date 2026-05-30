@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
 import { Star, Pin, Copy, Check, Pencil, Trash2, ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
@@ -16,10 +16,10 @@ import { deleteItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
-import type { Item } from '@/types/item'
+import type { Item, LightItem } from '@/types/item'
 
 interface FileSectionProps {
-  item: Item
+  item: LightItem | Item
 }
 
 function FileSectionContent({ item }: FileSectionProps) {
@@ -38,8 +38,8 @@ function FileSectionContent({ item }: FileSectionProps) {
             priority
             className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
           />
-          <a 
-            href={`/api/download/${item.id}`} 
+          <a
+            href={`/api/download/${item.id}`}
             download={item.fileName ?? item.title}
             className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100"
             title="Download image"
@@ -70,16 +70,21 @@ function FileSectionContent({ item }: FileSectionProps) {
 }
 
 interface ItemDrawerViewContentProps {
-  item: Item
+  item: LightItem | Item
+  isLight: boolean
   onClose: () => void
   onEdit: () => void
+  onDeleted: () => void
 }
 
-export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewContentProps) {
-  const router = useRouter()
+export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDeleted }: ItemDrawerViewContentProps) {
   const { itemType } = item
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const fullItem = isLight ? null : (item as Item)
+  const description = isLight ? (item as LightItem).descriptionPreview : (item as Item).description
+  const copyValue = fullItem ? (fullItem.content ?? fullItem.url ?? fullItem.title) : (item.url ?? item.title)
 
   const { isCopied, copy } = useCopyToClipboard()
 
@@ -95,8 +100,7 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
 
     toast.success('Item deleted')
     setDeleteDialogOpen(false)
-    onClose()
-    router.refresh()
+    onDeleted()
   }
 
   return (
@@ -109,25 +113,25 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
             <h2 className="text-base font-semibold leading-snug">{item.title}</h2>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               <Badge variant="secondary" className="capitalize">{itemType.name}</Badge>
-              {item.language && <Badge variant="outline">{item.language}</Badge>}
+              {fullItem?.language && <Badge variant="outline">{fullItem.language}</Badge>}
             </div>
           </>
         }
         actionArea={
           <>
-            <Button variant="ghost" size="sm" className={item.isFavorite ? 'text-yellow-500 hover:text-yellow-500' : ''}>
-              <Star className={`size-4 ${item.isFavorite ? 'fill-yellow-500' : ''}`} />
+            <Button variant="ghost" size="sm" disabled={isLight} className={fullItem?.isFavorite ? 'text-yellow-500 hover:text-yellow-500' : ''}>
+              <Star className={`size-4 ${fullItem?.isFavorite ? 'fill-yellow-500' : ''}`} />
               Favorite
             </Button>
-            <Button variant="ghost" size="sm" className={item.isPinned ? 'text-primary' : ''}>
-              <Pin className={`size-4 ${item.isPinned ? 'fill-primary' : ''}`} />
+            <Button variant="ghost" size="sm" disabled={isLight} className={fullItem?.isPinned ? 'text-primary' : ''}>
+              <Pin className={`size-4 ${fullItem?.isPinned ? 'fill-primary' : ''}`} />
               Pin
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => copy(item.content ?? item.url ?? item.title)}>
+            <Button variant="ghost" size="sm" onClick={() => copy(copyValue)}>
               {isCopied ? <Check className="size-4 text-green-400" /> : <Copy className="size-4" />}
               Copy
             </Button>
-            <Button variant="ghost" size="sm" onClick={onEdit}>
+            <Button variant="ghost" size="sm" onClick={onEdit} disabled={isLight}>
               <Pencil className="size-4" />
               Edit
             </Button>
@@ -139,11 +143,15 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
       >
         {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
           <DrawerSection label="Content" className="flex min-h-0 flex-1 flex-col">
-            <ItemContentView
-              itemType={itemType.name}
-              content={item.content}
-              language={item.language}
-            />
+            {isLight ? (
+              <Skeleton className="flex-1 min-h-[120px] w-full rounded-md" />
+            ) : (
+              <ItemContentView
+                itemType={itemType.name}
+                content={fullItem!.content}
+                language={fullItem!.language}
+              />
+            )}
           </DrawerSection>
         )}
 
@@ -154,8 +162,8 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
         )}
 
         <DrawerSection label="Description">
-          {item.description ? (
-            <p className="text-sm leading-relaxed">{item.description}</p>
+          {description ? (
+            <p className="text-sm leading-relaxed">{description}</p>
           ) : (
             <p className="text-sm text-muted-foreground">—</p>
           )}
@@ -182,9 +190,9 @@ export function ItemDrawerViewContent({ item, onClose, onEdit }: ItemDrawerViewC
           )}
         </DrawerSection>
 
-        <DrawerSharedSections item={item} />
+        {fullItem && <DrawerSharedSections item={fullItem} />}
       </DrawerLayout>
-      
+
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>

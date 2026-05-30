@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { getCurrentUserId } from '@/lib/session'
-import { getItemTypeBySlug, getItemsByType } from '@/lib/db/items'
+import { getItemTypeBySlug, getItemsByTypePage } from '@/lib/db/items'
 import { fetchSidebarData } from '@/lib/db/sidebar'
 import { getTypeLabel } from '@/lib/utils'
 import { ItemsGrid } from './_components/items-grid'
@@ -22,9 +22,10 @@ export default async function ItemsPage({ params }: ItemsPageProps) {
 
   if (!itemType) notFound()
 
-  const [{ itemTypes, collections }, items] = await Promise.all([
+  const emptyPage = { items: [], nextCursor: null, hasMore: false }
+  const [{ itemTypes, collections }, firstPage] = await Promise.all([
     fetchSidebarData(userId, null),
-    userId ? getItemsByType(userId, itemType.name) : Promise.resolve([]),
+    userId ? getItemsByTypePage(userId, itemType.name) : Promise.resolve(emptyPage),
   ])
 
   const label = getTypeLabel(itemType.name)
@@ -34,17 +35,17 @@ export default async function ItemsPage({ params }: ItemsPageProps) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">{label}</h1>
-          <p className="text-sm text-muted-foreground capitalize">{itemType.name}s • {items.length}</p>
+          <p className="text-sm text-muted-foreground capitalize">{itemType.name}s</p>
         </div>
-        <CreateItemDialog 
-          itemTypes={itemTypes} 
+        <CreateItemDialog
+          itemTypes={itemTypes}
           collections={collections}
-          initialType={itemType.name} 
-          trigger={<Button size="sm"><Plus className="size-4 mr-1" /> Add {label}</Button>} 
+          initialType={itemType.name}
+          trigger={<Button size="sm"><Plus className="size-4 mr-1" /> Add {label}</Button>}
         />
       </div>
 
-      <ItemsGrid items={items} typeName={itemType.name} />
+      <ItemsGrid firstPage={firstPage} typeName={itemType.name} />
     </div>
   )
 }

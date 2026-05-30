@@ -1,66 +1,36 @@
 'use client'
 
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { useVirtualContainer } from '@/hooks/use-virtual-container'
+import { useItemsStore } from '@/context/items-store-context'
 import { ImageCard } from './image-card'
-import type { Item } from '@/types/item'
+import { VirtualGrid } from './virtual-grid'
 
 const GAP = 16
 
 const getColumns = (width: number) => (width < 640 ? 2 : 3)
 
 interface VirtualImageGridProps {
-  items: Item[]
+  pageKey: string
+  onFetchMore: () => Promise<void>
 }
 
-export function VirtualImageGrid({ items }: VirtualImageGridProps) {
-  const { containerRef, scrollMargin, cols, containerWidth, getScrollElement } = useVirtualContainer(getColumns)
-
-  const itemWidth = containerWidth ? (containerWidth - GAP * (cols - 1)) / cols : 0
-  const itemHeight = Math.round(itemWidth * 9 / 16)
-  const rowHeight = itemHeight + GAP
-  const rowCount = containerWidth ? Math.ceil(items.length / cols) : 0
-
-  const virtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement,
-    estimateSize: () => rowHeight,
-    overscan: 2,
-    scrollMargin,
-  })
+export function VirtualImageGrid({ pageKey, onFetchMore }: VirtualImageGridProps) {
+  const { state } = useItemsStore()
+  const items = state.pageKey === pageKey ? state.items : []
+  const hasMore = state.pageKey === pageKey ? state.hasMore : false
+  const loading = state.pageKey === pageKey ? state.loading : false
 
   return (
-    <div ref={containerRef} className="w-full">
-      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const startIdx = virtualRow.index * cols
-          const rowItems = items.slice(startIdx, startIdx + cols)
-
-          return (
-            <div
-              key={virtualRow.index}
-              style={{
-                position: 'absolute',
-                top: virtualRow.start - scrollMargin,
-                left: 0,
-                right: 0,
-                height: itemHeight,
-                display: 'grid',
-                gridTemplateColumns: `repeat(${cols}, 1fr)`,
-                gap: GAP,
-              }}
-            >
-              {rowItems.map((item, i) => (
-                <ImageCard
-                  key={item.id}
-                  item={item}
-                  priority={virtualRow.index === 0 && i < cols}
-                />
-              ))}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <VirtualGrid
+      items={items}
+      hasMore={hasMore}
+      loading={loading}
+      onFetchMore={onFetchMore}
+      getColumns={getColumns}
+      gap={GAP}
+      itemHeight={(width) => Math.round(((width - GAP * (getColumns(width) - 1)) / getColumns(width)) * (9 / 16))}
+      renderItem={(item, priority) => (
+        <ImageCard key={item.id} item={item} priority={priority} />
+      )}
+    />
   )
 }
