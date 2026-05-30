@@ -1,9 +1,9 @@
 'use client'
 
 import type { MouseEvent } from 'react'
-import { Copy, Check, Download, File, FileCode, FileImage, FileText, FileJson } from 'lucide-react'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { Download, File, FileCode, FileImage, FileText, FileJson } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CopyButton } from '@/components/shared/copy-button'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate, formatBytes } from '@/lib/utils/format'
 import { getBaseUrl } from '@/lib/utils/url'
@@ -35,12 +35,6 @@ interface FileRowProps {
 
 export function FileRow({ item }: FileRowProps) {
   const { openDrawer } = useItemDrawer()
-  const { isCopied, copy } = useCopyToClipboard()
-
-  function handleCopy(e: MouseEvent) {
-    e.stopPropagation()
-    copy(`${getBaseUrl()}/api/download/${item.id}`)
-  }
 
   function handleDownload(e: MouseEvent) {
     e.stopPropagation()
@@ -72,15 +66,11 @@ export function FileRow({ item }: FileRowProps) {
       <p className="hidden w-24 shrink-0 text-right text-sm text-muted-foreground sm:block">
         {formatDate(item.createdAt)}
       </p>
-      <Button
-        size="icon"
-        variant="ghost"
+      <CopyButton
+        value={`${getBaseUrl()}/api/download/${item.id}`}
         className="size-8 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100"
-        onClick={handleCopy}
-        title="Copy"
-      >
-        {isCopied ? <Check className="size-4 text-green-400" /> : <Copy className="size-4" />}
-      </Button>
+        stopPropagation
+      />
       <Button
         size="icon"
         variant="ghost"

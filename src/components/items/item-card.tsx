@@ -1,10 +1,8 @@
 'use client'
 
-import type { CSSProperties, MouseEvent } from 'react'
-import { Copy, Check } from 'lucide-react'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import type { CSSProperties } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { CopyButton } from '@/components/shared/copy-button'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
@@ -20,13 +18,8 @@ interface ItemCardProps {
 export function ItemCard({ item }: ItemCardProps) {
   const { itemType } = item
   const { openDrawer } = useItemDrawer()
-  const { isCopied, copy } = useCopyToClipboard()
-
-  function handleCopy(e: MouseEvent) {
-    e.stopPropagation()
-    const isFile = ITEM_TYPES_WITH_FILE.has(item.itemType.name)
-    copy(isFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.content ?? item.url ?? item.title))
-  }
+  const isFile = ITEM_TYPES_WITH_FILE.has(item.itemType.name)
+  const copyValue = isFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.content ?? item.url ?? item.title)
 
   return (
     <Card
@@ -47,15 +40,12 @@ export function ItemCard({ item }: ItemCardProps) {
           <span className="ml-2 shrink-0 text-xs text-muted-foreground">{formatDate(item.createdAt)}</span>
         </div>
       </CardContent>
-      <Button
-        size="icon"
-        variant="ghost"
+      <CopyButton
+        value={copyValue}
         className="absolute bottom-1 right-1 size-6 opacity-0 transition-opacity group-hover/card:opacity-100"
-        onClick={handleCopy}
-        title="Copy"
-      >
-        {isCopied ? <Check className="size-3 text-green-400" /> : <Copy className="size-3" />}
-      </Button>
+        iconClassName="size-3"
+        stopPropagation
+      />
     </Card>
   )
 }

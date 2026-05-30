@@ -2,9 +2,8 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import Editor from '@monaco-editor/react'
-import { Copy, Check } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
+import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 import type { editor } from 'monaco-editor'
 
@@ -17,21 +16,10 @@ interface CodeEditorProps {
 }
 
 export function CodeEditor({ value, onChange, language, readOnly = false, className }: CodeEditorProps) {
-  const [isCopied, setIsCopied] = useState(false)
   const [editorHeight, setEditorHeight] = useState(100)
   const disposableRef = useRef<{ dispose: () => void } | null>(null)
   
   const monacoLanguage = language || 'plaintext'
-
-  const handleCopy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value || '')
-      setIsCopied(true)
-      setTimeout(() => setIsCopied(false), 2000)
-    } catch {
-      // clipboard write failed silently
-    }
-  }, [value])
 
   const handleEditorDidMount = useCallback((editorInstance: editor.IStandaloneCodeEditor) => {
     const updateHeight = () => {
@@ -75,7 +63,6 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
 
   return (
     <div className={cn("flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
-      {/* macOS Style Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D]">
         <EditorWindowDots />
         
@@ -85,21 +72,14 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
               {language}
             </span>
           )}
-          <Button 
-            type="button"
-            variant="ghost" 
-            size="icon" 
-            className="size-7 text-muted-foreground hover:text-white hover:bg-white/10"
-            onClick={handleCopy}
+          <CopyButton
+            value={value}
+            className="text-muted-foreground hover:text-white hover:bg-white/10"
             title="Copy content"
-          >
-            {isCopied ? <Check className="size-4 text-green-400" /> : <Copy className="size-4" />}
-            <span className="sr-only">Copy content</span>
-          </Button>
+          />
         </div>
       </div>
 
-      {/* Editor Content */}
       <div className="relative w-full" style={{ height: editorHeight }}>
         <Editor
           height="100%"
