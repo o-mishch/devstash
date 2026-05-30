@@ -55,7 +55,7 @@ export async function deleteCollectionAction(collectionId: string): Promise<ApiB
     try {
       await dbDeleteCollection(userId, collectionId)
       invalidateCollectionsCache(userId)
-      return ApiResponse.OK(null)
+      return ApiResponse.OK()
     } catch (error) {
       console.error('[deleteCollectionAction] Error:', error)
       return ApiResponse.INTERNAL_ERROR()
