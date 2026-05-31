@@ -46,14 +46,14 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
 
   return (
     <TooltipProvider delay={300}>
-      <div className="flex h-full flex-col items-center py-2">
+      <div className="flex h-full flex-col items-center py-2 overflow-hidden">
         <Button variant="ghost" size="icon" onClick={onToggle} className="mb-2 text-muted-foreground">
           <PanelRight className="size-4" />
         </Button>
 
         <Separator className="mb-2 w-8" />
 
-        <ScrollArea className="flex-1 w-full">
+        <ScrollArea className="flex-1 min-h-0 w-full">
           <div className="flex flex-col items-center gap-1 px-2">
             {sidebarData.itemTypes.map((t) => (
               <Tooltip key={t.id}>
@@ -121,7 +121,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
   const recentCollections = sidebarData.collections.filter((c) => !c.isFavorite).slice(0, 5)
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
       {onToggle && (
         <>
           <div className="flex h-14 shrink-0 items-center px-3">
@@ -133,7 +133,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
         </>
       )}
 
-      <ScrollArea className="flex-1 py-3">
+      <ScrollArea className="flex-1 min-h-0 py-3">
         <Collapsible open={typesOpen} onOpenChange={setTypesOpen}>
           <CollapsibleTrigger className="flex w-full items-center justify-between rounded-none px-4 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground">
             Types
@@ -274,7 +274,7 @@ export function SidebarContent({ sidebarData, onClose, collapsible = false }: Si
   if (collapsible) {
     return (
       <aside
-        className={`hidden flex-col border-r border-border bg-muted/30 transition-all duration-200 lg:flex ${collapsed ? 'w-14' : 'w-56'}`}
+        className={`hidden flex-col border-r border-border bg-muted/30 transition-all duration-200 lg:flex ${collapsed ? 'w-14' : 'w-56'} overflow-hidden`}
       >
         {collapsed ? (
           <CollapsedSidebar sidebarData={sidebarData} onToggle={() => setCollapsed(false)} />

@@ -22,16 +22,11 @@ export async function createCollectionAction(raw: CreateCollectionInput): Promis
     const result = parseOrFail(collectionFormSchema, raw)
     if (!result.success) return result.response
 
-    try {
-      const created = await dbCreateCollection(userId, result.data)
-      invalidateCollectionsCache(userId)
-      log.info(`created "${result.data.name}" user:${userId}`)
-      return ApiResponse.CREATED(created)
-    } catch (error) {
-      log.error('createCollectionAction failed', error)
-      return ApiResponse.INTERNAL_ERROR()
-    }
-  })
+    const created = await dbCreateCollection(userId, result.data)
+    invalidateCollectionsCache(userId)
+    log.info(`created "${result.data.name}" user:${userId}`)
+    return ApiResponse.CREATED(created)
+  }, 'createCollectionAction')
 }
 
 const updateCollectionSchema = collectionFormSchema.partial().extend({
@@ -43,28 +38,18 @@ export async function updateCollectionAction(collectionId: string, raw: UpdateCo
     const result = parseOrFail(updateCollectionSchema, raw)
     if (!result.success) return result.response
 
-    try {
-      const updated = await dbUpdateCollection(userId, collectionId, result.data)
-      invalidateCollectionsCache(userId)
-      log.info(`updated collection:${collectionId} user:${userId}`)
-      return ApiResponse.OK(updated)
-    } catch (error) {
-      log.error('updateCollectionAction failed', error)
-      return ApiResponse.INTERNAL_ERROR()
-    }
-  })
+    const updated = await dbUpdateCollection(userId, collectionId, result.data)
+    invalidateCollectionsCache(userId)
+    log.info(`updated collection:${collectionId} user:${userId}`)
+    return ApiResponse.OK(updated)
+  }, 'updateCollectionAction')
 }
 
 export async function deleteCollectionAction(collectionId: string): Promise<ApiBody<null>> {
   return withAuth(async (userId) => {
-    try {
-      await dbDeleteCollection(userId, collectionId)
-      invalidateCollectionsCache(userId)
-      log.info(`deleted collection:${collectionId} user:${userId}`)
-      return ApiResponse.OK()
-    } catch (error) {
-      log.error('deleteCollectionAction failed', error)
-      return ApiResponse.INTERNAL_ERROR()
-    }
-  })
+    await dbDeleteCollection(userId, collectionId)
+    invalidateCollectionsCache(userId)
+    log.info(`deleted collection:${collectionId} user:${userId}`)
+    return ApiResponse.OK()
+  }, 'deleteCollectionAction')
 }

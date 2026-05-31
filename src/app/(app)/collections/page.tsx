@@ -2,8 +2,8 @@ import { getCurrentUserId } from '@/lib/session'
 import { getAllCollections } from '@/lib/db/collections'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
+import { EmptyCard } from '@/components/shared/empty-card'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Plus } from 'lucide-react'
 
 export default async function CollectionsPage() {
@@ -23,11 +23,7 @@ export default async function CollectionsPage() {
       </div>
 
       {collections.length === 0 ? (
-        <Card className="h-20">
-          <CardContent className="flex h-full items-center justify-center p-4">
-            <p className="text-sm text-muted-foreground">No collections yet.</p>
-          </CardContent>
-        </Card>
+        <EmptyCard message="No collections yet." />
       ) : (
         <CollectionsGrid collections={collections} />
       )}

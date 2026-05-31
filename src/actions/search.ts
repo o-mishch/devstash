@@ -30,45 +30,40 @@ export async function globalSearchAction(raw: { query: string }): Promise<ApiBod
 
     const { query } = result.data
 
-    try {
-      // Use contains with insensitive mode to leverage pg_trgm GIN indexes for fuzzy substring matching
-      const [itemsData, collectionsData] = await Promise.all([
-        prisma.item.findMany({
-          where: {
-            userId,
-            OR: [
-              { title: { contains: query, mode: 'insensitive' } },
-              { description: { contains: query, mode: 'insensitive' } },
-              { content: { contains: query, mode: 'insensitive' } },
-            ],
-          },
-          select: LIGHT_ITEM_SELECT,
-          take: 20,
-          orderBy: { updatedAt: 'desc' },
-        }),
-        prisma.collection.findMany({
-          where: {
-            userId,
-            OR: [
-              { name: { contains: query, mode: 'insensitive' } },
-              { description: { contains: query, mode: 'insensitive' } },
-            ],
-          },
-          include: COLLECTION_INCLUDE,
-          take: 10,
-          orderBy: { updatedAt: 'desc' },
-        }),
-      ])
+    // Use contains with insensitive mode to leverage pg_trgm GIN indexes for fuzzy substring matching
+    const [itemsData, collectionsData] = await Promise.all([
+      prisma.item.findMany({
+        where: {
+          userId,
+          OR: [
+            { title: { contains: query, mode: 'insensitive' } },
+            { description: { contains: query, mode: 'insensitive' } },
+            { content: { contains: query, mode: 'insensitive' } },
+          ],
+        },
+        select: LIGHT_ITEM_SELECT,
+        take: 20,
+        orderBy: { updatedAt: 'desc' },
+      }),
+      prisma.collection.findMany({
+        where: {
+          userId,
+          OR: [
+            { name: { contains: query, mode: 'insensitive' } },
+            { description: { contains: query, mode: 'insensitive' } },
+          ],
+        },
+        include: COLLECTION_INCLUDE,
+        take: 10,
+        orderBy: { updatedAt: 'desc' },
+      }),
+    ])
 
-      const items = itemsData.map(toLightItem)
-      const collections = collectionsData.map(mapCollection)
+    const items = itemsData.map(toLightItem)
+    const collections = collectionsData.map(mapCollection)
 
-      log.info(`global search query: "${query}" user:${userId}`)
+    log.info(`global search query: "${query}" user:${userId}`)
 
-      return ApiResponse.OK({ items, collections })
-    } catch (error) {
-      log.error('globalSearchAction failed', error)
-      return ApiResponse.INTERNAL_ERROR()
-    }
-  })
+    return ApiResponse.OK({ items, collections })
+  }, 'globalSearchAction')
 }

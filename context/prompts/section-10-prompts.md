@@ -26,3 +26,7 @@ Link the "View all collections" in the sidebar to /collections and link all coll
 
 /feature load Add buttons on /collections/lid] to edit, delete, and favorite. Do not implement favorites yet, just the icon/button. Add a modal for editing the metadata. Add a confirmation on delete. Items should NOT be deleted; they just will not exist in that collection anymore.
 On the cards at/collections and dashboard, have the 3 dots icon show a dropdown with edit, delete, and favorite. Clicking anywhere else in the card will go to that collection page.
+
+
+/feature load Create a settings page. Add a link for settings in the user icon dropdown at the bottom of the sidebar. The URL should be /settings and should be protected.
+Move the Account actions, which include the delete account and forgot password, from the profile to the settings page!

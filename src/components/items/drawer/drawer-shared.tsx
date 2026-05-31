@@ -18,11 +18,11 @@ interface DrawerContainerProps {
 function DrawerContainer({ header, actions, children, style }: DrawerContainerProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden" style={style}>
-      <div className="flex items-start gap-3 px-5 pt-5 pb-4">{header}</div>
-      <Separator />
-      <div className="flex items-center gap-0.5 px-2 py-1.5">{actions}</div>
-      <Separator />
-      <div className="flex-1 min-h-0 flex flex-col gap-5 px-5 py-4 overflow-hidden">
+      <div className="flex shrink-0 items-start gap-3 px-5 pt-5 pb-4">{header}</div>
+      <Separator className="shrink-0" />
+      <div className="flex shrink-0 items-center gap-0.5 px-2 py-1.5">{actions}</div>
+      <Separator className="shrink-0" />
+      <div className="flex-1 min-h-0 flex flex-col gap-5 px-5 py-4 overflow-y-auto">
         {children}
       </div>
     </div>

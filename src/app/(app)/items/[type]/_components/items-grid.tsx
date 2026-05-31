@@ -6,7 +6,7 @@ import { ItemsStoreActionType } from '@/context/items-store-context'
 import { VirtualImageGrid } from '@/components/items/virtual-image-grid'
 import { VirtualItemGrid } from '@/components/items/virtual-item-grid'
 import { VirtualFileList } from '@/components/items/virtual-file-list'
-import { Card, CardContent } from '@/components/ui/card'
+import { EmptyCard } from '@/components/shared/empty-card'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 import { fetchMoreItemsAction } from '@/actions/items'
 import type { ItemsPage } from '@/types/item'
@@ -40,13 +40,7 @@ export function ItemsGrid({ firstPage, typeName }: ItemsGridProps) {
   }, [state.pageKey, state.cursor, typeName, pageKey, dispatch])
 
   if (items.length === 0) {
-    return (
-      <Card className="h-20">
-        <CardContent className="flex h-full items-center justify-center p-4">
-          <p className="text-sm text-muted-foreground">No {typeName}s yet.</p>
-        </CardContent>
-      </Card>
-    )
+    return <EmptyCard message={`No ${typeName}s yet.`} />
   }
 
   if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {

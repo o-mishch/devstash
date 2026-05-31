@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
-import { getCurrentUserId } from '@/lib/session'
+import { requireUserId } from '@/lib/session'
 import { getCollectionById } from '@/lib/db/collections'
 import { getItemsByCollectionPage } from '@/lib/db/items'
 import { CollectionHeaderActions } from './_components/collection-header-actions'
@@ -13,9 +13,7 @@ interface CollectionPageProps {
 
 export default async function CollectionPage({ params }: CollectionPageProps) {
   const { id } = await params
-  const userId = await getCurrentUserId()
-
-  if (!userId) notFound()
+  const userId = await requireUserId()
 
   const [collection, firstPage] = await Promise.all([
     getCollectionById(userId, id),

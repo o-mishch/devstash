@@ -1,19 +1,14 @@
 'use client'
 
-import { useState } from 'react'
 import Image from 'next/image'
-import { Star, Pin, Copy, Check, Pencil, Trash2, ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
-import { toast } from 'sonner'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { ItemTags } from '@/components/shared/item-tags'
-import { deleteItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
+import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import type { Item, LightItem } from '@/types/item'
@@ -79,136 +74,84 @@ interface ItemDrawerViewContentProps {
 
 export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDeleted }: ItemDrawerViewContentProps) {
   const { itemType } = item
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-
   const fullItem = isLight ? null : (item as Item)
   const description = isLight ? (item as LightItem).descriptionPreview : (item as Item).description
-  const copyValue = fullItem ? (fullItem.content ?? fullItem.url ?? fullItem.title) : (item.url ?? item.title)
-
-  const { isCopied, copy } = useCopyToClipboard()
-
-  async function handleDelete() {
-    setIsDeleting(true)
-    const result = await deleteItemAction(item.id)
-    setIsDeleting(false)
-
-    if (result.status !== 'ok') {
-      toast.error(result.message ?? 'Failed to delete item')
-      return
-    }
-
-    toast.success('Item deleted')
-    setDeleteDialogOpen(false)
-    onDeleted()
-  }
 
   return (
-    <>
-      <DrawerLayout
-        itemType={itemType}
-        onClose={onClose}
-        titleArea={
-          <>
-            <h2 className="text-base font-semibold leading-snug">{item.title}</h2>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <Badge variant="secondary" className="capitalize">{itemType.name}</Badge>
-              {fullItem?.language && <Badge variant="outline">{fullItem.language}</Badge>}
-            </div>
-          </>
-        }
-        actionArea={
-          <>
-            <Button variant="ghost" size="sm" disabled={isLight} className={fullItem?.isFavorite ? 'text-yellow-500 hover:text-yellow-500' : ''}>
-              <Star className={`size-4 ${fullItem?.isFavorite ? 'fill-yellow-500' : ''}`} />
-              Favorite
-            </Button>
-            <Button variant="ghost" size="sm" disabled={isLight} className={fullItem?.isPinned ? 'text-primary' : ''}>
-              <Pin className={`size-4 ${fullItem?.isPinned ? 'fill-primary' : ''}`} />
-              Pin
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => copy(copyValue)}>
-              {isCopied ? <Check className="size-4 text-green-400" /> : <Copy className="size-4" />}
-              Copy
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onEdit} disabled={isLight}>
-              <Pencil className="size-4" />
-              Edit
-            </Button>
-            <Button variant="ghost" size="icon-sm" className="ml-auto text-destructive hover:text-destructive" onClick={() => setDeleteDialogOpen(true)}>
-              <Trash2 className="size-4" />
-            </Button>
-          </>
-        }
-      >
-        {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
-          <DrawerSection label="Content" className="flex min-h-0 flex-1 flex-col">
-            {isLight ? (
-              <Skeleton className="flex-1 min-h-[120px] w-full rounded-md" />
-            ) : (
+    <DrawerLayout
+      itemType={itemType}
+      onClose={onClose}
+      titleArea={
+        <>
+          <h2 className="text-base font-semibold leading-snug">{item.title}</h2>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <Badge variant="secondary" className="capitalize">{itemType.name}</Badge>
+            {fullItem?.language && <Badge variant="outline">{fullItem.language}</Badge>}
+          </div>
+        </>
+      }
+      actionArea={
+        <ItemDrawerActionBar
+          item={item}
+          isLight={isLight}
+          fullItem={fullItem}
+          onEdit={onEdit}
+          onDeleted={onDeleted}
+        />
+      }
+    >
+      {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
+        <DrawerSection label="Content" className="flex flex-col shrink-0">
+          {isLight ? (
+            <Skeleton className="w-full rounded-md min-h-[72px] max-h-[clamp(72px,30vh,400px)]" />
+          ) : (
+            <div className="overflow-hidden rounded-lg flex flex-col min-h-[72px] max-h-[clamp(72px,30vh,400px)]">
               <ItemContentView
                 itemType={itemType.name}
                 content={fullItem!.content}
                 language={fullItem!.language}
               />
-            )}
-          </DrawerSection>
-        )}
+            </div>
+          )}
+        </DrawerSection>
+      )}
 
-        {ITEM_TYPES_WITH_FILE.has(itemType.name) && (
-          <DrawerSection label={itemType.name === 'image' ? 'Image' : 'File'}>
-            <FileSectionContent item={item} />
-          </DrawerSection>
-        )}
+      {ITEM_TYPES_WITH_FILE.has(itemType.name) && (
+        <DrawerSection label={itemType.name === 'image' ? 'Image' : 'File'}>
+          <FileSectionContent item={item} />
+        </DrawerSection>
+      )}
 
-        <DrawerSection label="Description">
-          {description ? (
-            <p className="text-sm leading-relaxed">{description}</p>
+      <DrawerSection label="Description">
+        {description ? (
+          <p className="text-sm leading-relaxed">{description}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">—</p>
+        )}
+      </DrawerSection>
+
+      {ITEM_TYPES_WITH_URL.has(itemType.name) && (
+        <DrawerSection label="URL">
+          {item.url ? (
+            <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all">
+              {item.url}
+              <ExternalLink className="size-3 shrink-0" />
+            </a>
           ) : (
             <p className="text-sm text-muted-foreground">—</p>
           )}
         </DrawerSection>
+      )}
 
-        {ITEM_TYPES_WITH_URL.has(itemType.name) && (
-          <DrawerSection label="URL">
-            {item.url ? (
-              <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all">
-                {item.url}
-                <ExternalLink className="size-3 shrink-0" />
-              </a>
-            ) : (
-              <p className="text-sm text-muted-foreground">—</p>
-            )}
-          </DrawerSection>
+      <DrawerSection label="Tags" icon={<Tag className="size-3" />}>
+        {item.tags.length > 0 ? (
+          <ItemTags tags={item.tags} />
+        ) : (
+          <p className="text-sm text-muted-foreground">—</p>
         )}
+      </DrawerSection>
 
-        <DrawerSection label="Tags" icon={<Tag className="size-3" />}>
-          {item.tags.length > 0 ? (
-            <ItemTags tags={item.tags} />
-          ) : (
-            <p className="text-sm text-muted-foreground">—</p>
-          )}
-        </DrawerSection>
-
-        {fullItem && <DrawerSharedSections item={fullItem} />}
-      </DrawerLayout>
-
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete item?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this {itemType.name}? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DestructiveDialogFooter
-            onCancel={() => setDeleteDialogOpen(false)}
-            onConfirm={handleDelete}
-            isPending={isDeleting}
-            confirmText="Delete"
-          />
-        </DialogContent>
-      </Dialog>
-    </>
+      {fullItem && <DrawerSharedSections item={fullItem} />}
+    </DrawerLayout>
   )
 }

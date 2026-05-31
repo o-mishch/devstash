@@ -153,7 +153,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
     >
       <form id="drawer-edit-form" onSubmit={handleFormSubmit} className="contents">
         {showContent && (
-          <DrawerSection label="Content" className="flex min-h-0 flex-1 flex-col space-y-1.5">
+          <DrawerSection label="Content" className="flex flex-col shrink-0 space-y-1.5">
             <Controller
               control={form.control}
               name="content"
@@ -164,9 +164,8 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
                   onChange={field.onChange}
                   language={watchedLanguage}
                   placeholder="Content"
-                  contentEditorClassName="h-full"
-                  contentEditorWrapperClassName="flex-1 min-h-[200px]"
-                  textareaClassName="flex-1 min-h-0 resize-none font-mono text-xs"
+                  contentEditorWrapperClassName="flex flex-col w-full shrink-0 h-[clamp(54px,30vh,400px)]"
+                  textareaClassName="resize-none font-mono text-xs w-full shrink-0 h-[clamp(54px,30vh,400px)]"
                 />
               )}
             />

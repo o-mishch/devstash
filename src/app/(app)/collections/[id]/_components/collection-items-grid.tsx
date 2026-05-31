@@ -8,7 +8,7 @@ import { VirtualItemGrid } from '@/components/items/virtual-item-grid'
 import { VirtualFileList } from '@/components/items/virtual-file-list'
 import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'
-import { Card, CardContent } from '@/components/ui/card'
+import { EmptyCard } from '@/components/shared/empty-card'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 import { fetchMoreItemsAction } from '@/actions/items'
 import type { ItemsPage } from '@/types/item'
@@ -42,13 +42,7 @@ export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItems
   }, [state.pageKey, state.cursor, collectionId, pageKey, dispatch])
 
   if (items.length === 0) {
-    return (
-      <Card className="h-20">
-        <CardContent className="flex h-full items-center justify-center p-4">
-          <p className="text-sm text-muted-foreground">No items in this collection yet.</p>
-        </CardContent>
-      </Card>
-    )
+    return <EmptyCard message="No items in this collection yet." />
   }
 
   const uniqueTypeCount = new Set(items.map((i) => i.itemType.name)).size

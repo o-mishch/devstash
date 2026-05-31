@@ -32,9 +32,7 @@ const itemMutationSchema = z.object({
   collectionIds: z.array(z.string()).default([]),
 })
 
-const updateItemSchema = itemMutationSchema
-
-type UpdateItemInput = z.infer<typeof updateItemSchema>
+type UpdateItemInput = z.infer<typeof itemMutationSchema>
 
 const createItemSchema = itemMutationSchema.extend({
   itemTypeName: z.string().trim().min(1, 'Type is required'),
@@ -68,19 +66,14 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<It
       return ApiResponse.FORBIDDEN('Invalid file reference.')
     }
 
-    try {
-      const created = await dbCreateItem(userId, data)
-      if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
+    const created = await dbCreateItem(userId, data)
+    if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
 
-      invalidateItemsCache(userId)
-      log.info(`created "${data.title}" [${data.itemTypeName}] user:${userId}`)
+    invalidateItemsCache(userId)
+    log.info(`created "${data.title}" [${data.itemTypeName}] user:${userId}`)
 
-      return ApiResponse.CREATED(created)
-    } catch (error) {
-      log.error('createItemAction failed', error)
-      return ApiResponse.INTERNAL_ERROR()
-    }
-  })
+    return ApiResponse.CREATED(created)
+  }, 'createItemAction')
 }
 
 export async function updateItemAction(
@@ -88,65 +81,50 @@ export async function updateItemAction(
   raw: UpdateItemInput
 ): Promise<ApiBody<Item | null>> {
   return withAuth(async (userId) => {
-    const result = parseOrFail(updateItemSchema, raw)
+    const result = parseOrFail(itemMutationSchema, raw)
     if (!result.success) return result.response
 
-    try {
-      const updated = await dbUpdateItem(userId, itemId, result.data)
-      if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
+    const updated = await dbUpdateItem(userId, itemId, result.data)
+    if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
 
-      invalidateItemsCache(userId)
-      log.info(`updated item:${itemId} user:${userId}`)
+    invalidateItemsCache(userId)
+    log.info(`updated item:${itemId} user:${userId}`)
 
-      return ApiResponse.OK(updated)
-    } catch (error) {
-      log.error('updateItemAction failed', error)
-      return ApiResponse.INTERNAL_ERROR()
-    }
-  })
+    return ApiResponse.OK(updated)
+  }, 'updateItemAction')
 }
 
 export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
   return withAuth(async (userId) => {
-    try {
-      const existing = await dbGetItemById(userId, itemId)
-      if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
+    const existing = await dbGetItemById(userId, itemId)
+    if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
 
-      const deleted = await dbDeleteItem(userId, itemId)
-      if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
+    const deleted = await dbDeleteItem(userId, itemId)
+    if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
 
-      if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
+    if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
 
-      invalidateItemsCache(userId)
-      log.info(`deleted item:${itemId} user:${userId}`)
+    invalidateItemsCache(userId)
+    log.info(`deleted item:${itemId} user:${userId}`)
 
-      return ApiResponse.OK()
-    } catch (error) {
-      log.error('deleteItemAction failed', error)
-      return ApiResponse.INTERNAL_ERROR()
-    }
-  })
+    return ApiResponse.OK()
+  }, 'deleteItemAction')
 }
 
 export async function fetchMoreItemsAction(query: FetchItemsQuery, cursor?: string): Promise<ApiBody<ItemsPage | null>> {
   return withAuth(async (userId) => {
-    try {
-      let page: ItemsPage
-      switch (query.type) {
-        case 'recent':
-          page = await getRecentItemsPage(userId, cursor)
-          break
-        case 'type':
-          page = await getItemsByTypePage(userId, query.typeName, cursor)
-          break
-        case 'collection':
-          page = await getItemsByCollectionPage(userId, query.collectionId, cursor)
-          break
-      }
-      return ApiResponse.OK(page)
-    } catch (error) {
-      log.error('fetchMoreItemsAction failed', error)
-      return ApiResponse.INTERNAL_ERROR()
+    let page: ItemsPage
+    switch (query.type) {
+      case 'recent':
+        page = await getRecentItemsPage(userId, cursor)
+        break
+      case 'type':
+        page = await getItemsByTypePage(userId, query.typeName, cursor)
+        break
+      case 'collection':
+        page = await getItemsByCollectionPage(userId, query.collectionId, cursor)
+        break
     }
-  })
+    return ApiResponse.OK(page)
+  }, 'fetchMoreItemsAction')
 }

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import dynamic from 'next/dynamic'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -134,11 +133,15 @@ export function ItemContentInput({
   textareaClassName
 }: ItemContentInputProps) {
   if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
-    return (
+    const editor = (
       <Suspense fallback={<Skeleton className="h-40 w-full" />}>
         <MarkdownEditor value={value} onChange={onChange} className={contentEditorClassName} />
       </Suspense>
     )
+    if (contentEditorWrapperClassName) {
+      return <div className={contentEditorWrapperClassName}>{editor}</div>
+    }
+    return editor
   }
 
   if (ITEM_TYPES_WITH_CODE_EDITOR.has(itemType)) {
