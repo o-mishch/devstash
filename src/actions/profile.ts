@@ -1,15 +1,14 @@
 'use server'
 
-import bcrypt from 'bcryptjs'
 import { redirect } from 'next/navigation'
-import { BCRYPT_ROUNDS } from '@/auth.config'
 import { signOut } from '@/auth'
-import { prisma } from '@/lib/prisma'
 import { ApiResponse } from '@/lib/api'
 import { withAuth, getCurrentUserId } from '@/lib/session'
 import type { ApiBody } from '@/types/api'
 import { validatePassword } from '@/lib/utils/validators'
-import { updateUserPassword, unlinkUserAccount } from '@/lib/db/profile'
+import { verifyUserPasswordById, changeUserPassword } from '@/lib/auth-service'
+import { getUserAuthMethods, deleteUserById, checkAccountExists, unlinkUserAccount } from '@/lib/db/users'
+import { invalidateProfileCache } from '@/lib/cache'
 
 export async function changePasswordAction(
   _prevState: ApiBody<null> | null,
@@ -23,26 +22,16 @@ export async function changePasswordAction(
     if (!currentPassword || !newPassword || !confirmPassword) {
       return ApiResponse.BAD_REQUEST('All fields are required.')
     }
-    
+
     const error = validatePassword(newPassword, confirmPassword)
     if (error) return ApiResponse.BAD_REQUEST(error)
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { password: true },
-    })
-
-    if (!user?.password) {
-      return ApiResponse.BAD_REQUEST('Your account does not have a password.')
-    }
-
-    const valid = await bcrypt.compare(currentPassword, user.password)
+    const valid = await verifyUserPasswordById(userId, currentPassword)
     if (!valid) {
-      return ApiResponse.BAD_REQUEST('Current password is incorrect.')
+      return ApiResponse.BAD_REQUEST('Current password is incorrect or not set.')
     }
 
-    const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
-    await updateUserPassword(userId, hashed)
+    await changeUserPassword(userId, newPassword)
 
     return ApiResponse.OK()
   })
@@ -50,13 +39,7 @@ export async function changePasswordAction(
 
 export async function unlinkProviderAction(accountId: string): Promise<ApiBody<null>> {
   return withAuth(async (userId) => {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        password: true,
-        accounts: { select: { id: true } },
-      },
-    })
+    const user = await getUserAuthMethods(userId)
 
     if (!user) return ApiResponse.UNAUTHORIZED('Not authenticated.')
 
@@ -65,14 +48,12 @@ export async function unlinkProviderAction(accountId: string): Promise<ApiBody<n
       return ApiResponse.BAD_REQUEST('Cannot remove your only sign-in method.')
     }
 
-    const account = await prisma.account.findFirst({
-      where: { id: accountId, userId },
-      select: { id: true },
-    })
+    const account = await checkAccountExists(accountId, userId)
 
     if (!account) return ApiResponse.NOT_FOUND('Account not found.')
 
     await unlinkUserAccount(userId, accountId)
+    invalidateProfileCache(userId)
 
     return ApiResponse.OK()
   })
@@ -82,7 +63,7 @@ export async function deleteAccountAction(): Promise<void> {
   const userId = await getCurrentUserId()
   if (!userId) redirect('/sign-in')
 
-  await prisma.user.delete({ where: { id: userId } })
+  await deleteUserById(userId)
   await signOut({ redirect: false })
   redirect('/')
 }

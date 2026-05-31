@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { redirect } from 'next/navigation'
-import { prisma } from '@/lib/prisma'
+import { getVerificationToken, deleteVerificationToken, verifyUserEmailAndToken } from '@/lib/db/users'
 import { resendVerification } from '@/lib/emails/verification'
 import { AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 
@@ -15,7 +15,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     return <MissingTokenPage noun="verification token" />
   }
 
-  const record = await prisma.verificationToken.findUnique({ where: { token } })
+  const record = await getVerificationToken(token)
 
   if (!record || record.identifier.startsWith('password-reset:')) {
     return (
@@ -27,7 +27,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
   }
 
   if (record.expires < new Date()) {
-    await prisma.verificationToken.delete({ where: { token } })
+    await deleteVerificationToken(token)
     return (
       <ExpiredTokenPage
         noun="verification link"
@@ -36,13 +36,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     )
   }
 
-  await prisma.$transaction([
-    prisma.user.update({
-      where: { email: record.identifier },
-      data: { emailVerified: new Date() },
-    }),
-    prisma.verificationToken.delete({ where: { token } }),
-  ])
+  await verifyUserEmailAndToken(record.identifier, token)
 
   return (
     <AuthStatusPage

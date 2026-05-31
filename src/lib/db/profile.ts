@@ -1,7 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
 import { compareBySystemTypeOrder } from './items'
-import { invalidateProfileCache } from '@/lib/cache'
 
 export interface LinkedAccount {
   id: string
@@ -87,15 +86,4 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
   )
 }
 
-export async function updateUserPassword(userId: string, hashed: string): Promise<void> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: { password: hashed },
-  })
-  invalidateProfileCache(userId)
-}
 
-export async function unlinkUserAccount(userId: string, accountId: string): Promise<void> {
-  await prisma.account.delete({ where: { id: accountId, userId } })
-  invalidateProfileCache(userId)
-}

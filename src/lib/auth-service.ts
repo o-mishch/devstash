@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { BCRYPT_ROUNDS } from '@/auth.config'
-import { prisma } from '@/lib/prisma'
+import { getUserAuthInfoByEmail, getUserAuthMethods, createUser, updateUserPassword } from '@/lib/db/users'
+import { invalidateProfileCache } from '@/lib/cache'
 import {
   emailVerificationEnabled,
   sendRegistrationVerification,
@@ -14,6 +15,39 @@ export type { VerificationResult }
 export type ApplyResetResult = 'ok' | 'invalid-token' | 'oauth-only'
 
 /**
+ * Validates a user's password.
+ * Used by auth actions to prevent importing bcrypt directly in the web layer.
+ */
+export async function validateUserPassword(email: string, password: string) {
+  const user = await getUserAuthInfoByEmail(email)
+  if (!user?.password) return null
+
+  const valid = await bcrypt.compare(password, user.password)
+  if (!valid) return null
+
+  return user
+}
+
+/**
+ * Verifies a user's password by their ID.
+ */
+export async function verifyUserPasswordById(userId: string, password: string): Promise<boolean> {
+  const user = await getUserAuthMethods(userId)
+  if (!user?.password) return false
+
+  return bcrypt.compare(password, user.password)
+}
+
+/**
+ * Hashes a new password and updates the user's record.
+ */
+export async function changeUserPassword(userId: string, newPassword: string): Promise<void> {
+  const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS)
+  await updateUserPassword(userId, hashed)
+  invalidateProfileCache(userId)
+}
+
+/**
  * Creates a new user account and triggers email verification if enabled.
  * Silently mirrors a successful result for existing emails — prevents enumeration.
  */
@@ -23,17 +57,15 @@ export async function registerUser(
   password: string
 ): Promise<VerificationResult> {
   const verificationEnabled = emailVerificationEnabled()
-  const existing = await prisma.user.findUnique({ where: { email } })
+  const existing = await getUserAuthInfoByEmail(email)
 
   if (!existing) {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS)
-    await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-        emailVerified: verificationEnabled ? undefined : new Date(),
-      },
+    await createUser({
+      name,
+      email,
+      password: hashedPassword,
+      emailVerified: verificationEnabled ? undefined : new Date(),
     })
 
     if (verificationEnabled) {
@@ -49,7 +81,7 @@ export async function registerUser(
  * Always resolves without exposing whether the email exists — prevents enumeration.
  */
 export async function triggerPasswordReset(email: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { email }, select: { password: true } })
+  const user = await getUserAuthInfoByEmail(email)
   if (user?.password) {
     await sendPasswordResetRequest(email)
   }
@@ -66,15 +98,13 @@ export async function applyPasswordReset(
   const record = await consumePasswordResetToken(token)
   if (!record) return 'invalid-token'
 
-  const user = await prisma.user.findUnique({
-    where: { email: record.email },
-    select: { id: true, password: true },
-  })
+  const user = await getUserAuthInfoByEmail(record.email)
 
   if (!user?.password) return 'oauth-only'
 
   const hashed = await bcrypt.hash(password, BCRYPT_ROUNDS)
-  await prisma.user.update({ where: { id: user.id }, data: { password: hashed } })
+  await updateUserPassword(user.id, hashed)
+  invalidateProfileCache(user.id)
 
   return 'ok'
 }

@@ -3,11 +3,12 @@ import type { JWT } from 'next-auth/jwt'
 import type { AdapterUser } from 'next-auth/adapters'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import Credentials from 'next-auth/providers/credentials'
-import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { authConfig } from '@/auth.config'
 import { emailVerificationEnabled } from '@/lib/emails/verification'
 import { createPendingLink, PendingLinkData } from '@/lib/pending-link'
+import { checkUserExistsById, getUserWithGithubAccount } from '@/lib/db/users'
+import { validateUserPassword } from '@/lib/auth-service'
 
 interface AuthorizedUser {
   id: string
@@ -30,7 +31,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     async jwt({ token, user }: { token: JWT; user?: AdapterUser | User }): Promise<JWT | null> {
       if (user) token.id = user.id
       if (token.id) {
-        const exists = await prisma.user.findUnique({ where: { id: token.id as string }, select: { id: true } })
+        const exists = await checkUserExistsById(token.id as string)
         if (!exists) {
           console.warn('[jwt] user not found by token.id, invalidating session:', token.id)
           return null
@@ -43,16 +44,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       if (account?.provider !== 'github' || !user.email) return true
 
       // Check if there's an existing user with this email but no linked GitHub account
-      const existingUser = await prisma.user.findUnique({
-        where: { email: user.email },
-        select: {
-          id: true,
-          accounts: {
-            where: { provider: 'github' },
-            select: { id: true },
-          },
-        },
-      })
+      const existingUser = await getUserWithGithubAccount(user.email)
 
       // No conflict: new user or GitHub already linked
       if (!existingUser || existingUser.accounts.length > 0) return true
@@ -92,15 +84,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       async authorize(credentials): Promise<AuthorizedUser | null> {
         if (!credentials?.email || !credentials?.password) return null
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-          select: { id: true, email: true, name: true, image: true, password: true, emailVerified: true },
-        })
+        const user = await validateUserPassword(credentials.email as string, credentials.password as string)
 
-        if (!user?.password) return null
-
-        const isValid = await bcrypt.compare(credentials.password as string, user.password)
-        if (!isValid) return null
+        if (!user) return null
 
         if (emailVerificationEnabled() && !user.emailVerified) return null
 

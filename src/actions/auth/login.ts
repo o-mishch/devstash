@@ -6,7 +6,7 @@ import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 import { rateLimitAction, getActionIP } from '@/lib/rate-limit'
 import { emailVerificationEnabled } from '@/lib/emails/verification'
-import { prisma } from '@/lib/prisma'
+import { getUserEmailVerified } from '@/lib/db/users'
 
 interface SignInData {
   email: string
@@ -30,7 +30,7 @@ export async function signInWithCredentials(
   if (rl) return rl
 
   if (emailVerificationEnabled()) {
-    const user = await prisma.user.findUnique({ where: { email }, select: { emailVerified: true } })
+    const user = await getUserEmailVerified(email)
     if (user && !user.emailVerified) {
       return ApiResponse.FORBIDDEN({ email }, 'Please verify your email before signing in.')
     }
