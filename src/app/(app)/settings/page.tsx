@@ -6,6 +6,7 @@ import { getCurrentUserId } from '@/lib/session'
 import { getProfileData } from '@/lib/db/profile'
 import { ChangePasswordForm } from '../profile/_components/change-password-form'
 import { DeleteAccountDialog } from '../profile/_components/delete-account-dialog'
+import { EditorPreferencesForm } from './_components/editor-preferences-form'
 
 export default async function SettingsPage() {
   const userId = await getCurrentUserId()
@@ -45,6 +46,8 @@ export default async function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+      
+      <EditorPreferencesForm />
     </div>
   )
 }

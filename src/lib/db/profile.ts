@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
 import { compareBySystemTypeOrder } from './items'
+import type { EditorPreferences } from '@/types/editor-preferences'
 
 export interface LinkedAccount {
   id: string
@@ -13,6 +14,7 @@ interface ProfileUser {
   email: string
   image: string | null
   hasPassword: boolean
+  editorPreferences: EditorPreferences | null
   accounts: LinkedAccount[]
   createdAt: Date
 }
@@ -42,6 +44,7 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
         email: true,
         image: true,
         password: true,
+        editorPreferences: true,
         createdAt: true,
         accounts: { select: { id: true, provider: true } },
       },
@@ -72,6 +75,7 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
       email: user.email,
       image: user.image,
       hasPassword: !!user.password,
+      editorPreferences: user.editorPreferences as unknown as EditorPreferences | null,
       accounts: user.accounts.map((a) => ({ id: a.id, provider: a.provider })),
       createdAt: user.createdAt,
     },
@@ -86,4 +90,9 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
   )
 }
 
-
+export async function updateEditorPreferences(userId: string, preferences: EditorPreferences): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { editorPreferences: preferences as any },
+  })
+}

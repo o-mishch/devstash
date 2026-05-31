@@ -6,6 +6,8 @@ import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 import type { editor } from 'monaco-editor'
+import { useEditorPreferences } from '@/components/providers/editor-preferences-provider'
+import { monokaiTheme, githubDarkTheme } from '@/lib/utils/monaco-themes'
 
 interface CodeEditorProps {
   value: string
@@ -17,12 +19,13 @@ interface CodeEditorProps {
 
 export function CodeEditor({ value, onChange, language, readOnly = false, className }: CodeEditorProps) {
   const monacoLanguage = language || 'plaintext'
+  const { preferences } = useEditorPreferences()
 
   const editorOptions = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     readOnly,
-    minimap: { enabled: false },
+    minimap: { enabled: preferences.minimap },
     scrollBeyondLastLine: false,
-    wordWrap: "on",
+    wordWrap: preferences.wordWrap,
     lineNumbers: "on",
     padding: { top: 16, bottom: 16 },
     automaticLayout: true,
@@ -33,11 +36,17 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
       useShadows: false,
     },
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-    fontSize: 14,
+    fontSize: preferences.fontSize,
+    tabSize: preferences.tabSize,
     renderLineHighlight: "none",
     hideCursorInOverviewRuler: true,
     overviewRulerBorder: false,
-  }), [readOnly])
+  }), [readOnly, preferences])
+
+  const handleEditorWillMount = (monaco: any) => {
+    monaco.editor.defineTheme('monokai', monokaiTheme as any)
+    monaco.editor.defineTheme('github-dark', githubDarkTheme as any)
+  }
 
   return (
     <div className={cn("flex flex-col flex-1 min-h-0 rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
@@ -65,8 +74,9 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
             language={monacoLanguage}
             value={value}
             onChange={onChange}
-            theme="vs-dark"
+            theme={preferences.theme}
             options={editorOptions}
+            beforeMount={handleEditorWillMount}
           />
         </div>
       </div>

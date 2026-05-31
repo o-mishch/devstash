@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
+import { useEditorPreferences } from '@/components/providers/editor-preferences-provider'
 
 const MarkdownViewer = dynamic(
   () => import('./markdown-viewer').then(m => m.MarkdownViewer)
@@ -20,9 +21,31 @@ interface MarkdownEditorProps {
 export function MarkdownEditor({ value, onChange, readOnly = false, className }: MarkdownEditorProps) {
   const [activeTabState, setActiveTab] = useState<'write' | 'preview'>('write')
   const activeTab = readOnly ? 'preview' : activeTabState
+  const { preferences } = useEditorPreferences()
+  
+  const getThemeBg = () => {
+    switch(preferences.theme) {
+      case 'monokai': return '#272822'
+      case 'github-dark': return '#24292e'
+      default: return '#1E1E1E'
+    }
+  }
+
+  const getThemeText = () => {
+    switch(preferences.theme) {
+      case 'monokai': return '#F8F8F2'
+      case 'github-dark': return '#e1e4e8'
+      default: return 'rgba(255, 255, 255, 0.9)'
+    }
+  }
+
+  const bgStyle = { backgroundColor: getThemeBg() }
 
   return (
-    <div className={cn("flex flex-col flex-1 min-h-0 rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
+    <div 
+      className={cn("flex flex-col flex-1 min-h-0 rounded-lg border text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}
+      style={bgStyle}
+    >
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D] shrink-0">
         <EditorWindowDots />
 
@@ -74,7 +97,14 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
             value={value}
             onChange={(e) => onChange?.(e.target.value)}
             placeholder="Write markdown..."
-            className="absolute inset-0 w-full h-full resize-none overflow-y-auto bg-[#1E1E1E] text-white/90 text-sm font-mono outline-none border-0 p-4 leading-relaxed placeholder:text-white/30"
+            className="absolute inset-0 w-full h-full resize-none overflow-y-auto font-mono outline-none border-0 p-4 leading-relaxed placeholder:text-white/30"
+            style={{
+              fontSize: `${preferences.fontSize}px`,
+              tabSize: preferences.tabSize,
+              whiteSpace: preferences.wordWrap === 'on' ? 'pre-wrap' : 'pre',
+              backgroundColor: getThemeBg(),
+              color: getThemeText(),
+            }}
           />
         ) : (
           <div className="absolute inset-0 overflow-y-auto">
