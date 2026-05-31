@@ -20,7 +20,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
 
   return (
     <Card
-      className="group/card relative cursor-pointer overflow-hidden transition-colors hover:bg-accent"
+      className="group/card relative cursor-pointer overflow-hidden p-0 transition-colors hover:bg-accent"
       style={{ '--item-color': item.itemType.color } as CSSProperties}
       onClick={() => openDrawer(item)}
     >

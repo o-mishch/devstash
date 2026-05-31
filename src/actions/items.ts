@@ -18,7 +18,7 @@ import { createLogger } from '@/lib/logger'
 import { deleteFromFilebase } from '@/lib/filebase'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import type { ApiBody } from '@/types/api'
-import type { Item, ItemsPage } from '@/types/item'
+import type { Item, FetchItemsQuery, ItemsPage } from '@/types/item'
 
 const log = createLogger('items')
 
@@ -128,7 +128,7 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
   })
 }
 
-export async function fetchMoreItemsAction(query: import('@/types/item').FetchItemsQuery, cursor?: string): Promise<ApiBody<ItemsPage | null>> {
+export async function fetchMoreItemsAction(query: FetchItemsQuery, cursor?: string): Promise<ApiBody<ItemsPage | null>> {
   return withAuth(async (userId) => {
     try {
       let page: ItemsPage

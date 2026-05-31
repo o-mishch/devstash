@@ -32,7 +32,11 @@ export function ItemDrawerProvider({ children, collections }: ItemDrawerProvider
     dispatch({ type: ItemsStoreActionType.RemoveItem, id })
   }, [dispatch])
 
-  const contextValue = useMemo(() => ({ openDrawer }), [openDrawer])
+  const closeDrawer = useCallback(() => {
+    setOpen(false)
+  }, [])
+
+  const contextValue = useMemo(() => ({ openDrawer, closeDrawer }), [openDrawer, closeDrawer])
   const storeContextValue = useMemo(() => ({ state: storeState, dispatch }), [storeState, dispatch])
 
   return (

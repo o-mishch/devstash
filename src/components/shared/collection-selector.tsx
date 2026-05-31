@@ -37,6 +37,7 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
+        nativeButton={false}
         render={
           <Button
             render={<div />}

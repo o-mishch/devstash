@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { WithChildren } from '@/types/common'
-import { Archive, Search } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Archive } from 'lucide-react'
+import { GlobalSearch } from '@/components/shared/global-search'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
 import { ItemDrawerProvider } from '@/components/items/item-drawer-provider'
@@ -34,35 +34,32 @@ export default async function DashboardLayout({ children }: WithChildren) {
   const sidebarData = await getSidebarData()
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
-        <MobileDrawerAsync />
+    <ItemDrawerProvider collections={sidebarData.collections}>
+      <div className="flex h-screen flex-col bg-background">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+          <MobileDrawerAsync />
 
-        <Link href="/dashboard" className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity">
-          <Archive className="size-4 text-primary" />
-          <span className="text-base font-semibold tracking-tight">DevStash</span>
-        </Link>
+          <Link href="/dashboard" className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity">
+            <Archive className="size-4 text-primary" />
+            <span className="text-base font-semibold tracking-tight">DevStash</span>
+          </Link>
 
-        <div className="relative mx-auto min-w-0 flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search items..." className="pl-8" readOnly />
-        </div>
+          <GlobalSearch collections={sidebarData.collections} />
 
-        <div className="flex shrink-0 items-center gap-2">
-          <CollectionCreateDialog />
-          <CreateItemDialog itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
-        </div>
-      </header>
+          <div className="flex shrink-0 items-center gap-2">
+            <CollectionCreateDialog />
+            <CreateItemDialog itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
+          </div>
+        </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        <SidebarAsync />
+        <div className="flex flex-1 overflow-hidden">
+          <SidebarAsync />
 
-        <main className="flex flex-1 flex-col overflow-auto">
-          <ItemDrawerProvider collections={sidebarData.collections}>
+          <main className="flex flex-1 flex-col overflow-auto">
             {children}
-          </ItemDrawerProvider>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
+    </ItemDrawerProvider>
   )
 }

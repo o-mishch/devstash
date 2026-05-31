@@ -5,10 +5,12 @@ import type { Item, LightItem } from '@/types/item'
 
 interface DrawerContextValue {
   openDrawer: (item: LightItem | Item) => void
+  closeDrawer: () => void
 }
 
 const DrawerContext = createContext<DrawerContextValue>({
   openDrawer: () => {},
+  closeDrawer: () => {},
 })
 
 export { DrawerContext }

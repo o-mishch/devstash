@@ -14,6 +14,7 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, us
 
   const item = await getItemById(userId, id)
   if (!item || !item.fileUrl) return ApiResponse.NOT_FOUND('File not found.')
+  if (item.fileUrl.startsWith('http')) return ApiResponse.NOT_FOUND('File not found.')
 
   const start = Date.now()
   const nodeStream = await downloadFromFilebase(item.fileUrl)
@@ -46,7 +47,7 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, us
     headers: {
       'Content-Type': contentType,
       'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-      'Cache-Control': 'private, max-age=3600',
+      'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
     },
   })
 })

@@ -3,7 +3,7 @@ import { withDataCache, CacheTags } from '@/lib/cache'
 import type { CollectionWithTypes, CollectionStats } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
 
-const COLLECTION_INCLUDE = {
+export const COLLECTION_INCLUDE = {
   items: {
     take: 50,
     select: {
@@ -20,7 +20,7 @@ const COLLECTION_INCLUDE = {
 
 type CollectionRow = Prisma.CollectionGetPayload<{ include: typeof COLLECTION_INCLUDE }>
 
-function mapCollection(col: CollectionRow): CollectionWithTypes {
+export function mapCollection(col: CollectionRow): CollectionWithTypes {
   const typeCounts = new Map<string, { count: number; type: CollectionWithTypes['types'][number] }>()
 
   for (const ic of col.items) {

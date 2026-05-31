@@ -31,7 +31,7 @@ function ImageGridSkeleton() {
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
       {[...Array(SKELETON_COUNT)].map((_, i) => (
-        <Card key={i} className="overflow-hidden rounded-lg">
+        <Card key={i} className="overflow-hidden rounded-lg p-0">
           <Skeleton className="aspect-video w-full rounded-none" />
         </Card>
       ))}

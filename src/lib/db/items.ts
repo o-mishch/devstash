@@ -14,7 +14,7 @@ const ITEM_INCLUDE = {
   collections: { include: { collection: { select: { id: true, name: true } } } }
 } as const
 
-const LIGHT_ITEM_SELECT = {
+export const LIGHT_ITEM_SELECT = {
   id: true,
   title: true,
   createdAt: true,
@@ -30,7 +30,7 @@ const LIGHT_ITEM_SELECT = {
 
 type LightItemWithRelations = Prisma.ItemGetPayload<{ select: typeof LIGHT_ITEM_SELECT }>
 
-function toLightItem(item: LightItemWithRelations): LightItem {
+export function toLightItem(item: LightItemWithRelations): LightItem {
   return {
     id: item.id,
     title: item.title,

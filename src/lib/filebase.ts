@@ -9,7 +9,7 @@ let _client: S3Client | null = null
 function getClient(): S3Client {
   if (!_client) {
     _client = new S3Client({
-      endpoint: 'https://s3.filebase.io', // The correct endpoint for your account
+      endpoint: 'https://s3.filebase.io',
       region: 'us-east-1',
       credentials: {
         accessKeyId: process.env.FILEBASE_KEY!,
@@ -57,6 +57,11 @@ export async function downloadFromFilebase(key: string): Promise<Readable | null
     }))
     return response.Body as Readable
   } catch (err) {
+    // NoSuchKey is expected when a file was deleted from storage but the DB record remains.
+    if (err instanceof Error && err.name === 'NoSuchKey') {
+      log.warn(`file not found in storage: ${key}`)
+      return null
+    }
     log.error(`download failed: ${key}`, err)
     return null
   }

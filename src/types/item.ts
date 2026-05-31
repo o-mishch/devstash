@@ -6,7 +6,7 @@ export interface ItemType {
   isSystem: boolean
 }
 
-export interface ItemCollection {
+interface ItemCollection {
   id: string
   name: string
 }
