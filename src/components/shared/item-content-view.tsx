@@ -14,9 +14,9 @@ interface EditorChromeContainerProps {
   children: ReactNode
 }
 
-function EditorChromeContainer({ minHeight = 'min-h-[72px]', headerRight, children }: EditorChromeContainerProps) {
+function EditorChromeContainer({ minHeight = 'min-h-[120px]', headerRight, children }: EditorChromeContainerProps) {
   return (
-    <div className={`flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset ${minHeight} h-full`}>
+    <div className={`flex flex-col flex-1 min-h-0 rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset ${minHeight}`}>
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D] shrink-0">
         <EditorWindowDots />
         {headerRight}
@@ -41,9 +41,13 @@ function PlainTextView({ content }: PlainTextViewProps) {
         />
       }
     >
-      <pre className="flex-1 min-h-0 overflow-auto p-3 text-xs leading-relaxed whitespace-pre text-white/90 font-mono">
-        {content}
-      </pre>
+      <div className="flex-1 min-h-0 relative">
+        <div className="absolute inset-0 overflow-auto">
+          <pre className="p-3 text-xs leading-relaxed whitespace-pre text-white/90 font-mono min-h-full">
+            {content}
+          </pre>
+        </div>
+      </div>
     </EditorChromeContainer>
   )
 }
@@ -55,7 +59,7 @@ interface MarkdownContentViewProps {
 function MarkdownContentView({ content }: MarkdownContentViewProps) {
   return (
     <EditorChromeContainer
-      minHeight="min-h-[72px]"
+      minHeight="min-h-[120px]"
       headerRight={
         <div className="flex items-center gap-1">
           <span className="text-xs text-white/50 px-2 py-0.5 rounded bg-black/20 uppercase font-mono">
@@ -69,14 +73,16 @@ function MarkdownContentView({ content }: MarkdownContentViewProps) {
         </div>
       }
     >
-      <div className="flex-1 min-h-0 overflow-auto">
-        <Suspense fallback={
-          <pre className="p-4 text-sm font-mono text-white/90 whitespace-pre-wrap leading-relaxed h-full">
-            {content}
-          </pre>
-        }>
-          <MarkdownViewer value={content} />
-        </Suspense>
+      <div className="flex-1 min-h-0 relative">
+        <div className="absolute inset-0 overflow-auto">
+          <Suspense fallback={
+            <pre className="p-4 text-sm font-mono text-white/90 whitespace-pre-wrap leading-relaxed h-full">
+              {content}
+            </pre>
+          }>
+            <MarkdownViewer value={content} />
+          </Suspense>
+        </div>
       </div>
     </EditorChromeContainer>
   )

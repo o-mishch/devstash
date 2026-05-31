@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
+import { useMemo } from 'react'
 import Editor from '@monaco-editor/react'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
@@ -16,29 +16,7 @@ interface CodeEditorProps {
 }
 
 export function CodeEditor({ value, onChange, language, readOnly = false, className }: CodeEditorProps) {
-  const [editorHeight, setEditorHeight] = useState(100)
-  const disposableRef = useRef<{ dispose: () => void } | null>(null)
-  
   const monacoLanguage = language || 'plaintext'
-
-  const handleEditorDidMount = useCallback((editorInstance: editor.IStandaloneCodeEditor) => {
-    const updateHeight = () => {
-      const contentHeight = editorInstance.getContentHeight()
-      // Make sure we have a reasonable max height of 400px
-      setEditorHeight(Math.min(Math.max(contentHeight + 32, 100), 400))
-    }
-
-    disposableRef.current = editorInstance.onDidContentSizeChange(updateHeight)
-    updateHeight()
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (disposableRef.current) {
-        disposableRef.current.dispose()
-      }
-    }
-  }, [])
 
   const editorOptions = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     readOnly,
@@ -62,8 +40,8 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
   }), [readOnly])
 
   return (
-    <div className={cn("flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D]">
+    <div className={cn("flex flex-col flex-1 min-h-0 rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D] shrink-0">
         <EditorWindowDots />
         
         <div className="flex items-center gap-2">
@@ -80,16 +58,17 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
         </div>
       </div>
 
-      <div className="relative w-full" style={{ height: editorHeight }}>
-        <Editor
-          height="100%"
-          language={monacoLanguage}
-          value={value}
-          onChange={onChange}
-          theme="vs-dark"
-          onMount={handleEditorDidMount}
-          options={editorOptions}
-        />
+      <div className="relative w-full flex-1 min-h-0">
+        <div className="absolute inset-0">
+          <Editor
+            height="100%"
+            language={monacoLanguage}
+            value={value}
+            onChange={onChange}
+            theme="vs-dark"
+            options={editorOptions}
+          />
+        </div>
       </div>
     </div>
   )

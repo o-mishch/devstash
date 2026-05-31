@@ -74,8 +74,8 @@ interface ItemDrawerViewContentProps {
 
 export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDeleted }: ItemDrawerViewContentProps) {
   const { itemType } = item
-  const fullItem = isLight ? null : (item as Item)
-  const description = isLight ? (item as LightItem).descriptionPreview : (item as Item).description
+  const fullItem = 'content' in item ? item : null
+  const description = 'descriptionPreview' in item ? item.descriptionPreview : item.description
 
   return (
     <DrawerLayout
@@ -101,11 +101,11 @@ export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDelete
       }
     >
       {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
-        <DrawerSection label="Content" className="flex flex-col shrink-0">
+        <DrawerSection label="Content" className="flex flex-col flex-1 min-h-0">
           {isLight ? (
-            <Skeleton className="w-full rounded-md min-h-[72px] max-h-[clamp(72px,30vh,400px)]" />
+            <Skeleton className="w-full rounded-md flex-1 h-0 min-h-[120px]" />
           ) : (
-            <div className="overflow-hidden rounded-lg flex flex-col min-h-[72px] max-h-[clamp(72px,30vh,400px)]">
+            <div className="overflow-hidden rounded-lg flex flex-col flex-1 h-0 min-h-[120px]">
               <ItemContentView
                 itemType={itemType.name}
                 content={fullItem!.content}

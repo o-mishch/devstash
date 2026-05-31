@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, Suspense } from 'react'
+import { useState, Suspense } from 'react'
 import dynamic from 'next/dynamic'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
@@ -20,18 +20,10 @@ interface MarkdownEditorProps {
 export function MarkdownEditor({ value, onChange, readOnly = false, className }: MarkdownEditorProps) {
   const [activeTabState, setActiveTab] = useState<'write' | 'preview'>('write')
   const activeTab = readOnly ? 'preview' : activeTabState
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 400)}px`
-  }, [value, activeTab])
 
   return (
-    <div className={cn("flex flex-col rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D]">
+    <div className={cn("flex flex-col flex-1 min-h-0 rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D] shrink-0">
         <EditorWindowDots />
 
         <div className="flex items-center gap-1">
@@ -76,23 +68,26 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
         </div>
       </div>
 
-      {activeTab === 'write' ? (
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange?.(e.target.value)}
-          placeholder="Write markdown..."
-          className="w-full min-h-[100px] resize-none overflow-y-auto bg-[#1E1E1E] text-white/90 text-sm font-mono outline-none border-0 p-4 leading-relaxed placeholder:text-white/30"
-        />
-      ) : (
-        <Suspense fallback={
-          <pre className="p-4 text-sm font-mono text-white/90 whitespace-pre-wrap leading-relaxed">
-            {value}
-          </pre>
-        }>
-          <MarkdownViewer value={value} />
-        </Suspense>
-      )}
+      <div className="relative flex-1 min-h-0">
+        {activeTab === 'write' ? (
+          <textarea
+            value={value}
+            onChange={(e) => onChange?.(e.target.value)}
+            placeholder="Write markdown..."
+            className="absolute inset-0 w-full h-full resize-none overflow-y-auto bg-[#1E1E1E] text-white/90 text-sm font-mono outline-none border-0 p-4 leading-relaxed placeholder:text-white/30"
+          />
+        ) : (
+          <div className="absolute inset-0 overflow-y-auto">
+            <Suspense fallback={
+              <pre className="p-4 text-sm font-mono text-white/90 whitespace-pre-wrap leading-relaxed h-full">
+                {value}
+              </pre>
+            }>
+              <MarkdownViewer value={value} />
+            </Suspense>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

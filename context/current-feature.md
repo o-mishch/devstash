@@ -6,7 +6,11 @@ Not Started
 
 ## Goals
 
+<!-- List the goals for the current feature here -->
+
 ## Notes
+
+<!-- Add any notes or design decisions here -->
 
 ---
 
@@ -64,3 +68,4 @@ Not Started
 - **Improve Backend Logging** - `createLogger(tag)` factory in `src/lib/logger.ts` returns scoped `{ info, warn, error }` loggers; format `[tag] message` in production, `HH:MM:SS [tag] message` in development; all raw `console.*` calls replaced across `cache.ts`, `api.ts`, `filebase.ts`, `resend.ts`, `actions/items.ts`, `actions/collections.ts`, and `api/download/[id]/route.ts`; cache invalidations now logged (items, collections, profile); item/collection mutations log success with title/id and userId; `SendEmailOptions.logTag` renamed to `operation`; 6 Vitest tests cover format, `error` arg branching, scope isolation, and dev-mode timestamp (Completed)
 - **Infinite Scroll for Item Lists** - Replaced bulk data loading with cursor-based pagination to resolve a 2MB Next.js Data Cache limit crash on 500+ items; implemented `LightItem` type for minimal payload sizes; server-rendered first page with subsequent pages fetched async; utilized `@tanstack/react-virtual` for DOM virtualization combined with `IntersectionObserver` scroll triggers; unified store sync logic in `useInfiniteScrollSync` and centralized server actions via discriminated unions in `fetchMoreItemsAction`. (Completed)
 - **Global Search / Command Palette** - `GlobalSearch` client component (cmdk `<Command shouldFilter={false}>`) in the app top bar; Cmd+K / Ctrl+K keyboard shortcut opens palette and closes the item drawer; click-outside handled via `containerRef`; hybrid search architecture — local filter against `ItemsStoreContext` loaded `LightItem`s and sidebar collections, plus debounced (300ms) `globalSearchAction` remote search; results deduplicated by ID with remote taking precedence; `CommandPrimitive.Loading` shown during in-flight requests; grouped results: Items (type icon, description preview) and Collections (color dot, item count); selecting an item navigates to its type page and opens the drawer, selecting a collection navigates to `/collections/[id]`; backend uses `fullTextSearchPostgres` preview feature + `pg_trgm` GIN indexes on `items(title, description, content)` and `collections(name, description)` via raw SQL migration; `LIGHT_ITEM_SELECT`, `toLightItem`, `COLLECTION_INCLUDE`, `mapCollection` exported from DB helpers for reuse; `closeDrawer` added to `ItemDrawerContext`; `ItemDrawerProvider` hoisted to wrap the full layout so the header can call it; `filebase.ts` `http` URL guard moved to the download route (correct layer); 4 Vitest tests cover auth, validation, success, and DB error paths. (Completed)
+- **Settings Page** - Created a protected `/settings` route; added a Settings link in the sidebar user dropdown; moved Account Actions (Change Password, Delete Account) from the Profile page to the new Settings page; ensured proper type-safety and resolved UI anomalies. (Completed)

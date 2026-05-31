@@ -22,8 +22,10 @@ function DrawerContainer({ header, actions, children, style }: DrawerContainerPr
       <Separator className="shrink-0" />
       <div className="flex shrink-0 items-center gap-0.5 px-2 py-1.5">{actions}</div>
       <Separator className="shrink-0" />
-      <div className="flex-1 min-h-0 flex flex-col gap-5 px-5 py-4 overflow-y-auto">
-        {children}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex flex-col gap-5 px-5 py-4 min-h-full">
+          {children}
+        </div>
       </div>
     </div>
   )

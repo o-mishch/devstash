@@ -94,7 +94,7 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
         <div className="py-2">
           <Tooltip>
             <TooltipTrigger render={<span />}>
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
+              <Button render={<Link href="/settings" />} variant="ghost" size="icon" className="text-muted-foreground">
                 <Settings className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -249,6 +249,10 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
             <DropdownMenuItem onClick={() => router.push('/profile')}>
               <User className="size-4" />
               Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push('/settings')}>
+              <Settings className="size-4" />
+              Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => signOutAction()} className="text-red-500 focus:text-red-500">

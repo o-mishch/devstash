@@ -8,8 +8,7 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { formatDate, PROVIDER_LABELS } from '@/lib/utils'
 import { getCurrentUserId } from '@/lib/session'
 import { getProfileData } from '@/lib/db/profile'
-import { ChangePasswordForm } from './_components/change-password-form'
-import { DeleteAccountDialog } from './_components/delete-account-dialog'
+
 import { ConnectedAccounts } from './_components/connected-accounts'
 
 export default async function ProfilePage() {
@@ -67,13 +66,6 @@ export default async function ProfilePage() {
               <CalendarDays className="size-4 shrink-0" />
               <span>Member since {formatDate(user.createdAt)}</span>
             </div>
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center gap-2">
-            {user.hasPassword && <ChangePasswordForm />}
-            <DeleteAccountDialog />
           </div>
         </CardContent>
       </Card>
