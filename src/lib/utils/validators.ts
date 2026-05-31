@@ -1,5 +1,6 @@
 import { z, ZodType } from 'zod'
 import type { ApiBody } from '@/types/api'
+import { EDITOR_THEMES } from '@/types/editor-preferences'
 
 type ParseResult<T> =
   | { success: true; data: T }
@@ -42,4 +43,12 @@ export const itemFormBaseSchema = z.object({
   language: z.string().optional(),
   tags: z.string().optional(),
   collectionIds: z.array(z.string()),
+})
+
+export const editorPreferencesSchema = z.object({
+  fontSize: z.number().min(8).max(100),
+  tabSize: z.number().min(1).max(16),
+  wordWrap: z.enum(['on', 'off']),
+  minimap: z.boolean(),
+  theme: z.enum(EDITOR_THEMES),
 })

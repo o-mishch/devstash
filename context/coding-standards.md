@@ -90,6 +90,7 @@ Example v4 configuration:
 ## Database
 
 - Use Prisma ORM for all database operations
+- All Prisma operations (`prisma.*`) must be placed in `src/lib/db/` to maintain SOLID principles (separation of concerns). Server Actions and Services should import from `src/lib/db/` rather than calling Prisma directly.
 - Always use `prisma migrate dev` for schema changes (not `db push`)
 - Run `prisma migrate status` before committing to verify migrations are in sync
 - Production deployments must run `prisma migrate deploy` before the app starts

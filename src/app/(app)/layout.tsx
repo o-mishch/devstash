@@ -10,7 +10,8 @@ import { CollectionCreateDialog } from '@/components/dashboard/collection-create
 import { cache } from 'react'
 import { auth } from '@/auth'
 import { fetchSidebarData } from '@/lib/db/sidebar'
-
+import { getProfileData } from '@/lib/db/profile'
+import { EditorPreferencesProvider } from '@/components/providers/editor-preferences-provider'
 const getSidebarData = cache(async () => {
   const session = await auth()
   const userId = session?.user?.id ?? null
@@ -32,9 +33,14 @@ async function MobileDrawerAsync() {
 
 export default async function DashboardLayout({ children }: WithChildren) {
   const sidebarData = await getSidebarData()
+  const session = await auth()
+  const userId = session?.user?.id
+  const profileData = userId ? await getProfileData(userId) : null
+  const initialPreferences = profileData?.user.editorPreferences || null
 
   return (
-    <ItemDrawerProvider collections={sidebarData.collections}>
+    <EditorPreferencesProvider initialPreferences={initialPreferences}>
+      <ItemDrawerProvider collections={sidebarData.collections}>
       <div className="flex h-screen flex-col bg-background">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
           <MobileDrawerAsync />
@@ -61,5 +67,6 @@ export default async function DashboardLayout({ children }: WithChildren) {
         </div>
       </div>
     </ItemDrawerProvider>
+    </EditorPreferencesProvider>
   )
 }

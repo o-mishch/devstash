@@ -12,6 +12,7 @@ type RateLimitKey =
   | 'resendVerification'
   | 'resendVerificationIP'
   | 'linkAccount'
+  | 'updateSettings'
 
 interface LimitConfig {
   attempts: number
@@ -27,6 +28,7 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   resendVerification:   { attempts: 3,  window: '15 m' }, // keyed by IP + email
   resendVerificationIP: { attempts: 10, window: '15 m' }, // keyed by IP (broad guard before body parse)
   linkAccount:          { attempts: 5,  window: '15 m' }, // keyed by IP
+  updateSettings:       { attempts: 60, window: '1 m'  }, // keyed by IP
 }
 
 interface RouteRateLimitDenied {
