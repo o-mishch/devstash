@@ -1,7 +1,7 @@
 'use client'
 
 import type { MouseEvent } from 'react'
-import { Download, File, FileCode, FileImage, FileText, FileJson } from 'lucide-react'
+import { Download, File, FileCode, FileImage, FileText, FileJson, Pin, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/shared/copy-button'
 import { useItemDrawer } from '@/context/item-drawer-context'
@@ -52,7 +52,13 @@ export function FileRow({ item }: FileRowProps) {
     >
       <FileTypeIcon fileName={item.fileName} className="size-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{item.title}</p>
+        <div className="flex items-center gap-2">
+          <p className="truncate font-medium">{item.title}</p>
+          <div className="flex shrink-0 items-center gap-1">
+            {item.isPinned && <Pin className="size-3.5 fill-primary text-primary" />}
+            {item.isFavorite && <Star className="size-3.5 fill-yellow-500 text-yellow-500" />}
+          </div>
+        </div>
         <p className="truncate text-xs text-muted-foreground sm:hidden">
           {item.fileName ?? '—'} · {item.fileSize ? formatBytes(item.fileSize) : '—'} · {formatDate(item.createdAt)}
         </p>

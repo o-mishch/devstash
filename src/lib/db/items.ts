@@ -213,7 +213,7 @@ async function getPaginatedItems(
   where: Prisma.ItemWhereInput,
   cacheKey: import('@/lib/cache').DataCacheConfig,
   cursor?: string,
-  orderBy: Prisma.ItemOrderByWithRelationInput[] = [{ createdAt: 'desc' }, { id: 'desc' }]
+  orderBy: Prisma.ItemOrderByWithRelationInput[] = [{ isPinned: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
 ): Promise<ItemsPage> {
   const take = ITEMS_PAGE_SIZE + 1
   const query = { where, orderBy, take, select: LIGHT_ITEM_SELECT }
