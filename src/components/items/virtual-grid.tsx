@@ -39,6 +39,7 @@ export function VirtualGrid<T>({
   const rowHeight = resolvedItemHeight + gap
   const rowCount = cols > 0 ? Math.ceil(items.length / cols) : 0
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement,

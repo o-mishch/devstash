@@ -52,24 +52,17 @@ export function toLightItem(item: LightItemWithRelations): LightItem {
 
 const PINNED_LIMIT = 20
 
-function clampLimit(value: number, min = 1, max = 100): number {
-  return Math.min(Math.max(Math.floor(value), min), max)
-}
-
 export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<Item[]> {
   return withDataCache(CacheTags.pinnedItems(userId), async () => {
     const items = await prisma.item.findMany({
       where: { userId, isPinned: true },
       orderBy: { updatedAt: 'desc' },
-      take: clampLimit(limit, 1, PINNED_LIMIT),
+      take: Math.min(Math.max(Math.floor(limit), 1), PINNED_LIMIT),
       include: ITEM_INCLUDE,
     })
     return items.map(toItem)
   })
 }
-
-
-
 
 
 export async function getItemStats(userId: string): Promise<ItemStats> {
@@ -83,14 +76,14 @@ export async function getItemStats(userId: string): Promise<ItemStats> {
 }
 
 export async function getItemById(userId: string, itemId: string): Promise<Item | null> {
-  const item = await prisma.item.findFirst({
-    where: { id: itemId, userId },
-    include: ITEM_INCLUDE,
+  return withDataCache(CacheTags.itemById(userId, itemId), async () => {
+    const item = await prisma.item.findFirst({
+      where: { id: itemId, userId },
+      include: ITEM_INCLUDE,
+    })
+    if (!item) return null
+    return toItem(item)
   })
-
-  if (!item) return null
-
-  return toItem(item)
 }
 
 export interface CreateItemInput {
@@ -144,10 +137,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
         }))
       }
     },
-    include: {
-      ...ITEM_INCLUDE,
-      collections: { include: { collection: { select: { id: true, name: true } } } },
-    },
+    include: ITEM_INCLUDE,
   })
 
   return toItem(created)
@@ -190,10 +180,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
         }))
       }
     },
-    include: {
-      ...ITEM_INCLUDE,
-      collections: { include: { collection: { select: { id: true, name: true } } } },
-    },
+    include: ITEM_INCLUDE,
   })
 
   return toItem(updated)
@@ -250,6 +237,17 @@ export async function getItemsByTypePage(userId: string, typeName: string, curso
 
 export async function getItemsByCollectionPage(userId: string, collectionId: string, cursor?: string): Promise<ItemsPage> {
   return getPaginatedItems({ userId, collections: { some: { collectionId } } }, CacheTags.itemsByCollection(userId, collectionId), cursor)
+}
+
+export async function getFavoriteItemTypeCounts(userId: string): Promise<Record<string, number>> {
+  return withDataCache(CacheTags.favoriteItemTypeCounts(userId), async () => {
+    const rows = await prisma.item.groupBy({
+      by: ['itemTypeId'],
+      where: { userId, isFavorite: true },
+      _count: true,
+    })
+    return Object.fromEntries(rows.map((r) => [r.itemTypeId, r._count]))
+  })
 }
 
 export async function getFavoriteItemsPage(userId: string, cursor?: string): Promise<ItemsPage> {

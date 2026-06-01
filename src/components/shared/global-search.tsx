@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
 import { useRouter } from 'next/navigation'
 import { Search, X } from 'lucide-react'
-import debounce from 'lodash.debounce'
 import {
   Command,
   CommandList,
@@ -14,10 +13,11 @@ import {
 } from '@/components/ui/command'
 import { useItemsStore } from '@/context/items-store-context'
 import { useItemDrawer } from '@/context/item-drawer-context'
-import { globalSearchAction, type SearchResult } from '@/actions/search'
 import type { CollectionWithTypes } from '@/types/collection'
-import type { LightItem } from '@/types/item'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
+
+import { useGlobalSearch } from '@/hooks/use-global-search'
+import { useGlobalSearchShortcuts } from '@/hooks/use-global-search-shortcuts'
 
 interface GlobalSearchProps {
   collections: CollectionWithTypes[]
@@ -26,8 +26,6 @@ interface GlobalSearchProps {
 export function GlobalSearch({ collections }: GlobalSearchProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [remoteResults, setRemoteResults] = useState<SearchResult>({ items: [], collections: [] })
   
   const { state: itemsStore } = useItemsStore()
   const { openDrawer, closeDrawer } = useItemDrawer()
@@ -36,93 +34,8 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        inputRef.current?.focus()
-        setOpen(true)
-        closeDrawer()
-      }
-      if (e.key === 'Escape') {
-        setOpen(false)
-        inputRef.current?.blur()
-      }
-    }
-    document.addEventListener('keydown', down)
-    return () => document.removeEventListener('keydown', down)
-  }, [closeDrawer])
-
-  useEffect(() => {
-    const click = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', click)
-    return () => document.removeEventListener('mousedown', click)
-  }, [])
-
-  // Debounced search for backend
-  const debouncedSearch = useMemo(
-    () =>
-      debounce(async (q: string) => {
-        if (!q.trim()) {
-          setRemoteResults({ items: [], collections: [] })
-          setLoading(false)
-          return
-        }
-        setLoading(true)
-        const res = await globalSearchAction({ query: q })
-        if (res.status === 'ok' && res.data) {
-          setRemoteResults(res.data)
-        }
-        setLoading(false)
-      }, 300),
-    []
-  )
-
-  useEffect(() => {
-    debouncedSearch(query)
-    return () => debouncedSearch.cancel()
-  }, [query, debouncedSearch])
-
-  // Local filtering
-  const lowerQuery = query.toLowerCase()
-  
-  const localItems = useMemo(() => {
-    if (!lowerQuery) return itemsStore.items.slice(0, 10)
-    return itemsStore.items.filter(
-      (item) =>
-        item.title.toLowerCase().includes(lowerQuery) ||
-        item.descriptionPreview?.toLowerCase().includes(lowerQuery) ||
-        item.tags.some(t => t.toLowerCase().includes(lowerQuery))
-    )
-  }, [itemsStore.items, lowerQuery])
-
-  const localCollections = useMemo(() => {
-    if (!lowerQuery) return collections.slice(0, 10)
-    return collections.filter(
-      (col) =>
-        col.name.toLowerCase().includes(lowerQuery) ||
-        col.description?.toLowerCase().includes(lowerQuery)
-    )
-  }, [collections, lowerQuery])
-
-  // Merge local and remote
-  const displayItems = useMemo(() => {
-    const map = new Map<string, LightItem>()
-    localItems.forEach((i) => map.set(i.id, i))
-    remoteResults.items.forEach((i) => map.set(i.id, i))
-    return Array.from(map.values())
-  }, [localItems, remoteResults.items])
-
-  const displayCollections = useMemo(() => {
-    const map = new Map<string, CollectionWithTypes>()
-    localCollections.forEach((c) => map.set(c.id, c))
-    remoteResults.collections.forEach((c) => map.set(c.id, c))
-    return Array.from(map.values())
-  }, [localCollections, remoteResults.collections])
+  useGlobalSearchShortcuts({ inputRef, containerRef, setOpen, closeDrawer })
+  const { loading, displayItems, displayCollections } = useGlobalSearch(query, itemsStore.items, collections)
 
   const handleSelect = useCallback((type: 'item' | 'collection', id: string) => {
     setOpen(false)

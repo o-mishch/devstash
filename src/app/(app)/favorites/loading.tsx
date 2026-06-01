@@ -23,9 +23,12 @@ function SectionSkeleton({ rows }: { rows: number }) {
 export default function FavoritesLoading() {
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex flex-col gap-1">
-        <Skeleton className="h-7 w-28" />
-        <Skeleton className="h-4 w-48" />
+      <div className="flex items-center gap-3">
+        <Skeleton className="size-9 shrink-0 rounded-lg" />
+        <div className="flex flex-col gap-1">
+          <Skeleton className="h-7 w-28" />
+          <Skeleton className="h-4 w-36" />
+        </div>
       </div>
       <div className="flex flex-col gap-6">
         <SectionSkeleton rows={6} />

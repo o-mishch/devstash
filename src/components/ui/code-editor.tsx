@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import Editor from '@monaco-editor/react'
+import Editor, { type BeforeMount } from '@monaco-editor/react'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
@@ -43,9 +43,9 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
     overviewRulerBorder: false,
   }), [readOnly, preferences])
 
-  const handleEditorWillMount = (monaco: any) => {
-    monaco.editor.defineTheme('monokai', monokaiTheme as any)
-    monaco.editor.defineTheme('github-dark', githubDarkTheme as any)
+  const handleEditorWillMount: BeforeMount = (monaco) => {
+    monaco.editor.defineTheme('monokai', monokaiTheme as editor.IStandaloneThemeData)
+    monaco.editor.defineTheme('github-dark', githubDarkTheme as editor.IStandaloneThemeData)
   }
 
   return (

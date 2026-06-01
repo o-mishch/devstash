@@ -2,8 +2,7 @@
 
 import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
-import { withAuth } from '@/lib/session'
-import { parseOrFail } from '@/lib/utils/validators'
+import { withAuth, withValidatedAuth } from '@/lib/session'
 import {
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
@@ -16,8 +15,8 @@ import {
   toggleItemFavorite as dbToggleItemFavorite,
   toggleItemPinned as dbToggleItemPinned,
 } from '@/lib/db/items'
-import { invalidateItemsCache } from '@/lib/cache'
 import { createLogger } from '@/lib/logger'
+import { invalidateItemsCache } from '@/lib/cache'
 import { deleteFromFilebase } from '@/lib/filebase'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import type { ApiBody } from '@/types/api'
@@ -59,12 +58,7 @@ const createItemSchema = itemMutationSchema.extend({
 type CreateItemInput = z.infer<typeof createItemSchema>
 
 export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Item | null>> {
-  return withAuth(async (userId) => {
-    const result = parseOrFail(createItemSchema, raw)
-    if (!result.success) return result.response
-
-    const { data } = result
-
+  return withValidatedAuth(createItemSchema, raw, async (userId, data: CreateItemInput) => {
     if (data.fileUrl && !data.fileUrl.startsWith(`${userId}/`)) {
       return ApiResponse.FORBIDDEN('Invalid file reference.')
     }
@@ -74,7 +68,6 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<It
 
     invalidateItemsCache(userId)
     log.info(`created "${data.title}" [${data.itemTypeName}] user:${userId}`)
-
     return ApiResponse.CREATED(created)
   }, 'createItemAction')
 }
@@ -83,16 +76,12 @@ export async function updateItemAction(
   itemId: string,
   raw: UpdateItemInput
 ): Promise<ApiBody<Item | null>> {
-  return withAuth(async (userId) => {
-    const result = parseOrFail(itemMutationSchema, raw)
-    if (!result.success) return result.response
-
-    const updated = await dbUpdateItem(userId, itemId, result.data)
+  return withValidatedAuth(itemMutationSchema, raw, async (userId, data: UpdateItemInput) => {
+    const updated = await dbUpdateItem(userId, itemId, data)
     if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
 
     invalidateItemsCache(userId)
     log.info(`updated item:${itemId} user:${userId}`)
-
     return ApiResponse.OK(updated)
   }, 'updateItemAction')
 }
@@ -105,11 +94,10 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
     const deleted = await dbDeleteItem(userId, itemId)
     if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
 
+    invalidateItemsCache(userId)
     if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
 
-    invalidateItemsCache(userId)
     log.info(`deleted item:${itemId} user:${userId}`)
-
     return ApiResponse.OK()
   }, 'deleteItemAction')
 }

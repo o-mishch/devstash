@@ -127,9 +127,8 @@ export async function updateCollection(userId: string, collectionId: string, inp
   return mapCollection(col)
 }
 
-export async function deleteCollection(userId: string, collectionId: string): Promise<boolean> {
+export async function deleteCollection(userId: string, collectionId: string): Promise<void> {
   await prisma.collection.delete({
     where: { id: collectionId, userId },
   })
-  return true
 }

@@ -1,21 +1,20 @@
 'use client'
 
-import { type SyntheticEvent } from 'react'
+import { useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { X, Check, Tag } from 'lucide-react'
+import { X, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { CollectionSelector } from '@/components/shared/collection-selector'
-import { ItemContentInput, LanguageInput } from '@/components/shared/item-content-input'
+import { LanguageInput } from '@/components/shared/item-content-input'
+import { ItemFormFields } from '@/components/items/item-form-fields'
 import { updateItemAction } from '@/actions/items'
-import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
-import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
+import { DrawerLayout, DrawerSharedSections } from './drawer-shared'
+import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
 import type { Item } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
@@ -45,7 +44,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
   const { itemType } = item
   const typeName = itemType.name
 
-  const formSchema = createDrawerFormSchema(typeName)
+  const formSchema = useMemo(() => createDrawerFormSchema(typeName), [typeName])
 
   const form = useForm<DrawerFormValues>({
     resolver: zodResolver(formSchema),
@@ -63,38 +62,33 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
   const watchedLanguage = useWatch({ control: form.control, name: 'language' })
   const saving = form.formState.isSubmitting
 
-  const showContent = ITEM_TYPES_WITH_CONTENT.has(typeName)
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(typeName)
-  const showUrl = ITEM_TYPES_WITH_URL.has(typeName)
 
-  const handleFormSubmit = async (e: SyntheticEvent) => {
-    e.preventDefault()
-    void form.handleSubmit(async (data: DrawerFormValues) => {
-      const tagArray = (data.tags || '')
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
+  const handleSubmit = form.handleSubmit(async (data: DrawerFormValues) => {
+    const tagArray = (data.tags || '')
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
 
-      const result = await updateItemAction(item.id, {
-        title: data.title.trim(),
-        description: data.description?.trim() || null,
-        content: data.content || null,
-        url: data.url?.trim() || null,
-        language: data.language?.trim() || null,
-        tags: tagArray,
-        collectionIds: data.collectionIds,
-      })
+    const result = await updateItemAction(item.id, {
+      title: data.title.trim(),
+      description: data.description?.trim() || null,
+      content: data.content || null,
+      url: data.url?.trim() || null,
+      language: data.language?.trim() || null,
+      tags: tagArray,
+      collectionIds: data.collectionIds,
+    })
 
-      if (result.status !== 'ok' || !result.data) {
-        toast.error(result.message ?? 'Failed to save item')
-        return
-      }
+    if (result.status !== 'ok' || !result.data) {
+      toast.error(result.message ?? 'Failed to save item')
+      return
+    }
 
-      toast.success('Item saved')
-      router.refresh()
-      onSave(result.data)
-    })(e)
-  }
+    toast.success('Item saved')
+    router.refresh()
+    onSave(result.data)
+  })
 
   return (
     <DrawerLayout
@@ -144,84 +138,22 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
             <X className="size-4" />
             Cancel
           </Button>
-          <Button size="sm" onClick={handleFormSubmit} disabled={saving}>
+          <Button size="sm" onClick={handleSubmit} disabled={saving}>
             <Check className="size-4" />
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </>
       }
     >
-      <form id="drawer-edit-form" onSubmit={handleFormSubmit} className="contents">
-        {showContent && (
-          <DrawerSection label="Content" className="flex flex-col flex-1 min-h-0 space-y-1.5">
-            <Controller
-              control={form.control}
-              name="content"
-              render={({ field }) => (
-                <ItemContentInput
-                  itemType={typeName}
-                  value={field.value || ''}
-                  onChange={field.onChange}
-                  language={watchedLanguage}
-                  placeholder="Content"
-                  contentEditorClassName="flex-1 min-h-0"
-                  contentEditorWrapperClassName="flex flex-col w-full flex-1 h-0 min-h-[120px]"
-                  textareaClassName="resize-none font-mono text-xs w-full flex-1 h-0 min-h-[120px]"
-                />
-              )}
-            />
-            {form.formState.errors.content && <p className="text-red-500 text-[10px]">{form.formState.errors.content.message}</p>}
-          </DrawerSection>
-        )}
+      <ItemFormFields
+        form={form}
+        itemType={typeName}
+        watchedLanguage={watchedLanguage}
+        collections={collections}
+        variant="drawer"
+      />
 
-        <DrawerSection label="Description" className="space-y-1.5">
-          <Textarea
-            {...form.register('description')}
-            placeholder="Optional description"
-            className="min-h-[3rem] resize-none"
-          />
-          {form.formState.errors.description && <p className="text-red-500 text-[10px]">{form.formState.errors.description.message}</p>}
-        </DrawerSection>
-
-        {showUrl && (
-          <DrawerSection label="URL" className="space-y-1.5">
-            <Input
-              {...form.register('url')}
-              placeholder="https://..."
-              type="url"
-            />
-            {form.formState.errors.url && <p className="text-red-500 text-[10px]">{form.formState.errors.url.message}</p>}
-          </DrawerSection>
-        )}
-
-        <DrawerSection label="Tags" icon={<Tag className="size-3" />} className="space-y-1.5">
-          <Input
-            {...form.register('tags')}
-            placeholder="react, hooks, typescript"
-          />
-          <p className="text-xs text-muted-foreground">Comma-separated</p>
-          {form.formState.errors.tags && <p className="text-red-500 text-[10px]">{form.formState.errors.tags.message}</p>}
-        </DrawerSection>
-
-        {collections.length > 0 && (
-          <DrawerSection label="Collections" className="space-y-1.5">
-            <Controller
-              control={form.control}
-              name="collectionIds"
-              render={({ field }) => (
-                <CollectionSelector
-                  collections={collections}
-                  selectedIds={field.value}
-                  onChange={field.onChange}
-                />
-              )}
-            />
-            {form.formState.errors.collectionIds && <p className="text-red-500 text-[10px]">{form.formState.errors.collectionIds.message}</p>}
-          </DrawerSection>
-        )}
-
-        <DrawerSharedSections item={item} />
-      </form>
+      <DrawerSharedSections item={item} />
     </DrawerLayout>
   )
 }

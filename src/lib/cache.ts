@@ -19,15 +19,17 @@ const CacheRevalidate = {
 export const CacheTags = {
   pinnedItems: (userId: string) => ({ tag: `user:${userId}:pinned-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   favoriteItems: (userId: string) => ({ tag: `user:${userId}:favorite-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
+  favoriteItemTypeCounts: (userId: string) => ({ tag: `user:${userId}:favorite-item-type-counts`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   recentItems: (userId: string) => ({ tag: `user:${userId}:recent-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   itemsByType: (userId: string, type: string) => ({ tag: `user:${userId}:items:${type}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   itemStats: (userId: string) => ({ tag: `user:${userId}:item-stats`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   sidebarTypes: (userId: string) => ({ tag: `user:${userId}:sidebar-types`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  allCollections: (userId: string) => ({ tag: `user:${userId}:collections`, revalidate: CacheRevalidate.collections }),
+  allCollections: (userId: string) => ({ tag: `user:${userId}:collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   favoriteCollections: (userId: string) => ({ tag: `user:${userId}:favorite-collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
-  collectionById: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}`, revalidate: CacheRevalidate.collections }),
+  collectionById: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
+  itemById: (userId: string, itemId: string) => ({ tag: `user:${userId}:item:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   itemsByCollection: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}:items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  collectionStats: (userId: string) => ({ tag: `user:${userId}:collection-stats`, revalidate: CacheRevalidate.collections }),
+  collectionStats: (userId: string) => ({ tag: `user:${userId}:collection-stats`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   profile: (userId: string) => ({ tag: `user:${userId}:profile`, revalidate: CacheRevalidate.profile }),
   itemTypeBySlug: (slug: string) => ({ tag: `item-type:slug:${slug}`, revalidate: CacheRevalidate.itemTypes }),
   systemItemTypes: () => ({ tag: `system-item-types`, revalidate: CacheRevalidate.itemTypes }),
@@ -57,12 +59,14 @@ export async function withDataCache<T>(
 }
 
 // Called after collection mutations (create, update, delete).
+// Pass collectionId when a specific collection is mutated to clear its detail-page cache.
+// Called after collection mutations (create, update, delete).
+// The group tag `collections-${userId}` sweeps all collection cache entries automatically —
+// no need to enumerate specific tags here when adding new collection caches.
 export function invalidateCollectionsCache(userId: string): void {
-  updateTag(CacheTags.allCollections(userId).tag)
-  updateTag(CacheTags.favoriteCollections(userId).tag)
-  updateTag(CacheTags.collectionStats(userId).tag)
+  updateTag(`collections-${userId}`)
   revalidatePath('/dashboard')
-  revalidatePath('/collections')
+  revalidatePath('/collections', 'layout')
   revalidatePath('/favorites')
   log.info(`INVALIDATED collections for user:${userId}`)
 }

@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/resend'
 import { getBaseUrl } from '@/lib/utils/url'
 import { createVerificationToken, TOKEN_TTL_MS } from '@/lib/tokens'
+import { buildEmailTemplate } from './template-builder'
 import verificationHtml from './verification.html'
 
 const RATE_LIMIT_MS = 55 * 60 * 1000
@@ -13,7 +14,8 @@ export type VerificationResult = 'sent' | 'failed' | 'skipped'
 
 async function sendVerificationEmail(to: string, token: string): Promise<boolean> {
   const verifyUrl = `${getBaseUrl()}/verify-email?token=${token}`
-  const html = verificationHtml.replace('{{VERIFY_URL}}', verifyUrl)
+  const bodyHtml = verificationHtml.replace('{{VERIFY_URL}}', verifyUrl)
+  const html = buildEmailTemplate('Verify your DevStash email', bodyHtml)
 
   return sendEmail({
     to,

@@ -106,13 +106,15 @@ describe('updateEditorPreferencesAction', () => {
 
   it('returns VALIDATION_ERROR when theme is invalid', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
-    const result = await updateEditorPreferencesAction({ ...validPreferences, theme: 'light' as any })
+    // @ts-expect-error testing invalid input
+    const result = await updateEditorPreferencesAction({ ...validPreferences, theme: 'light' })
     expect(result.status).toBe('validation_error')
   })
 
   it('returns VALIDATION_ERROR when wordWrap is invalid', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
-    const result = await updateEditorPreferencesAction({ ...validPreferences, wordWrap: 'auto' as any })
+    // @ts-expect-error testing invalid input
+    const result = await updateEditorPreferencesAction({ ...validPreferences, wordWrap: 'auto' })
     expect(result.status).toBe('validation_error')
   })
 

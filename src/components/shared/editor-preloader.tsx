@@ -7,15 +7,13 @@ export function EditorPreloader() {
   const [shouldLoad, setShouldLoad] = useState(false)
 
   useEffect(() => {
-    // Justification: We use the browser's native window.requestIdleCallback because Next.js and React 
-    // do not provide a framework-level alternative to run low-priority background prefetching after paint.
-    const requestIdleCallback = typeof window !== 'undefined' && window.requestIdleCallback 
-      ? window.requestIdleCallback 
-      : ((cb: any) => setTimeout(cb, 1000))
-    
-    requestIdleCallback(() => {
-      setShouldLoad(true)
-    })
+    // requestIdleCallback is not provided by Next.js or React — use the browser native API
+    // directly (falls back to setTimeout for Safari < 16.4).
+    if ('requestIdleCallback' in globalThis) {
+      requestIdleCallback(() => setShouldLoad(true))
+    } else {
+      setTimeout(() => setShouldLoad(true), 1000)
+    }
   }, [])
 
   if (!shouldLoad) return null

@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 import { useMonaco, loader } from '@monaco-editor/react'
+import type { Monaco } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
 
-function resolveLanguageSync(monaco: any, language: string) {
+function resolveLanguageSync(monaco: Monaco, language: string) {
   const langs = monaco.languages.getLanguages()
   const target = language.toLowerCase().trim()
   
@@ -10,7 +11,6 @@ function resolveLanguageSync(monaco: any, language: string) {
     if (l.id === target) return true
     if (l.aliases && l.aliases.some(a => a.toLowerCase() === target)) return true
     if (l.extensions && l.extensions.some(e => e.toLowerCase() === `.${target}`)) return true
-    if (l.aliases && l.aliases.some(a => a.toLowerCase().replace(/^\./, '') === target)) return true
     return false
   })
 
@@ -22,6 +22,8 @@ export function useMonacoLanguage(language?: string | null) {
 
   useEffect(() => {
     if (language && !monaco) {
+      // Fire-and-forget: eagerly kick off Monaco initialization so it's ready
+      // when the editor mounts. Errors are surfaced by the Editor component itself.
       loader.init().catch(() => {})
     }
   }, [language, monaco])

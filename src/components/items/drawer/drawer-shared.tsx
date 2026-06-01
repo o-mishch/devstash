@@ -129,44 +129,72 @@ export function DrawerSharedSections({ item }: DrawerSharedSectionsProps) {
   )
 }
 
+export function DrawerSharedSectionsSkeleton() {
+  return (
+    <>
+      <section className="shrink-0">
+        <Skeleton className="mb-2 h-3 w-20" />
+        <div className="flex flex-wrap gap-1.5">
+          <Skeleton className="h-6 w-24 rounded-md" />
+          <Skeleton className="h-6 w-20 rounded-md" />
+        </div>
+      </section>
+      <section className="shrink-0">
+        <Skeleton className="mb-2 h-3 w-14" />
+        <div className="space-y-1.5">
+          <div className="flex justify-between">
+            <Skeleton className="h-4 w-14" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+          <div className="flex justify-between">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+        </div>
+      </section>
+    </>
+  )
+}
+
 export function DrawerSkeleton() {
   return (
     <DrawerContainer
       header={
         <>
           <Skeleton className="mt-0.5 size-9 shrink-0 rounded-full" />
-          <div className="flex-1 space-y-2">
+          <div className="min-w-0 flex-1 space-y-2">
             <Skeleton className="h-5 w-2/3" />
-            <Skeleton className="h-4 w-1/4" />
+            <Skeleton className="h-5 w-16 rounded-full" />
           </div>
         </>
       }
       actions={
-        <div className="flex items-center gap-1 w-full">
-          <Skeleton className="h-8 w-24" />
-          <Skeleton className="h-8 w-16" />
-          <Skeleton className="h-8 w-16" />
-          <Skeleton className="h-8 w-16" />
-          <Skeleton className="ml-auto h-8 w-8" />
+        <div className="flex items-center gap-0.5 w-full">
+          <Skeleton className="h-8 w-20 rounded-md" />
+          <Skeleton className="h-8 w-12 rounded-md" />
+          <Skeleton className="h-8 w-16 rounded-md" />
+          <Skeleton className="h-8 w-14 rounded-md" />
+          <Skeleton className="ml-auto h-8 w-8 rounded-md" />
         </div>
       }
     >
-      <div className="flex flex-1 min-h-0 flex-col space-y-2">
-        <Skeleton className="h-3 w-16 shrink-0" />
-        <Skeleton className="flex-1 min-h-0 w-full rounded-md" />
-      </div>
-      <div className="shrink-0 space-y-2">
-        <Skeleton className="h-3 w-24" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-3/4" />
-      </div>
-      <div className="shrink-0 space-y-2">
-        <Skeleton className="h-3 w-12" />
+      <section className="flex flex-col flex-1 min-h-0">
+        <Skeleton className="mb-2 h-3 w-16 shrink-0" />
+        <Skeleton className="flex-1 min-h-[120px] w-full rounded-md" />
+      </section>
+      <section className="shrink-0">
+        <Skeleton className="mb-2 h-3 w-24" />
+        <Skeleton className="h-4 w-2/3" />
+      </section>
+      <section className="shrink-0">
+        <Skeleton className="mb-2 h-3 w-10" />
         <div className="flex gap-1.5">
-          <Skeleton className="h-6 w-14" />
-          <Skeleton className="h-6 w-14" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-5 w-12 rounded-full" />
+          <Skeleton className="h-5 w-20 rounded-full" />
         </div>
-      </div>
+      </section>
+      <DrawerSharedSectionsSkeleton />
     </DrawerContainer>
   )
 }

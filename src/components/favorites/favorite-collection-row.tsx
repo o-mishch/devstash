@@ -13,7 +13,6 @@ export function FavoriteCollectionRow({ collection }: FavoriteCollectionRowProps
   return (
     <Link
       href={`/collections/${collection.id}`}
-      id={`favorite-collection-${collection.id}`}
       className="group flex w-full items-center gap-3 rounded px-3 py-1.5 text-left transition-colors hover:bg-accent"
     >
       <FolderOpen
@@ -23,7 +22,14 @@ export function FavoriteCollectionRow({ collection }: FavoriteCollectionRowProps
       <span className="min-w-0 flex-1 truncate text-sm">
         {collection.name}
       </span>
-      <span className="shrink-0 rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+      <span
+        className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px]"
+        style={{
+          color: dotColor,
+          borderColor: `${dotColor}40`,
+          backgroundColor: `${dotColor}10`,
+        }}
+      >
         collection
       </span>
       <span className="w-16 shrink-0 text-right font-mono text-xs text-muted-foreground">

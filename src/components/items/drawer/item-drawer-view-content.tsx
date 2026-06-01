@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
 import { ItemTags } from '@/components/shared/item-tags'
-import { DrawerLayout, DrawerSection, DrawerSharedSections } from './drawer-shared'
+import { DrawerLayout, DrawerSection, DrawerSharedSections, DrawerSharedSectionsSkeleton } from './drawer-shared'
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
@@ -151,7 +151,7 @@ export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDelete
         )}
       </DrawerSection>
 
-      {fullItem && <DrawerSharedSections item={fullItem} />}
+      {isLight ? <DrawerSharedSectionsSkeleton /> : fullItem && <DrawerSharedSections item={fullItem} />}
     </DrawerLayout>
   )
 }

@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { EditorPreferences } from '@/types/editor-preferences'
+import type { Prisma } from '@/generated/prisma/client'
 
 export interface LinkedAccount {
   id: string
@@ -93,6 +94,6 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
 export async function updateEditorPreferences(userId: string, preferences: EditorPreferences): Promise<void> {
   await prisma.user.update({
     where: { id: userId },
-    data: { editorPreferences: preferences as any },
+    data: { editorPreferences: preferences as unknown as Prisma.InputJsonValue },
   })
 }

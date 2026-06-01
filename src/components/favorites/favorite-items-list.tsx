@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useInfiniteScrollSync } from '@/hooks/use-infinite-scroll-sync'
 import { useIntersectionObserver } from '@/hooks/use-intersection-observer'
+import { useItemDrawer } from '@/context/item-drawer-context'
 import { ItemsStoreActionType } from '@/context/items-store-context'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -34,14 +35,19 @@ function groupByType(items: LightItem[]): ItemGroup[] {
 
 interface FavoriteItemsListProps {
   firstPage: ItemsPage
+  itemTypeCounts: Record<string, number>
 }
 
-export function FavoriteItemsList({ firstPage }: FavoriteItemsListProps) {
+export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsListProps) {
+  const { openDrawer } = useItemDrawer()
   const { items, hasMore, loading, state, dispatch } = useInfiniteScrollSync(PAGE_KEY, firstPage)
   const { ref, inView } = useIntersectionObserver({ rootMargin: '200px' })
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
-  const groups = groupByType(items).sort((a, b) => compareBySystemTypeOrder(a.itemType, b.itemType))
+  const groups = useMemo(
+    () => groupByType(items).sort((a, b) => compareBySystemTypeOrder(a.itemType, b.itemType)),
+    [items]
+  )
 
   const toggleGroup = useCallback((typeId: string) => {
     setCollapsed((prev) => {
@@ -86,7 +92,6 @@ export function FavoriteItemsList({ firstPage }: FavoriteItemsListProps) {
             {/* Group header */}
             <button
               type="button"
-              id={`favorites-group-${itemType.id}`}
               aria-expanded={!isCollapsed}
               onClick={() => toggleGroup(itemType.id)}
               className="flex w-full items-center gap-2 rounded px-3 py-1 text-left transition-colors hover:bg-accent/50"
@@ -96,11 +101,22 @@ export function FavoriteItemsList({ firstPage }: FavoriteItemsListProps) {
                 style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }}
               />
               <ItemTypeIcon iconName={itemType.icon} color={itemType.color} className="size-3 shrink-0" />
-              <span className="font-mono text-xs font-medium capitalize text-muted-foreground">
+              <span
+                className="font-mono text-xs font-medium capitalize"
+                style={{ color: itemType.color }}
+              >
                 {itemType.name}
               </span>
-              <span className="font-mono text-xs text-muted-foreground/50">
-                {groupItems.length}
+              <span
+                className="rounded px-1 font-mono text-[10px]"
+                style={{ color: itemType.color, backgroundColor: `${itemType.color}15` }}
+              >
+                {(() => {
+                  const total = itemTypeCounts[itemType.id]
+                  return total !== undefined && groupItems.length < total
+                    ? `${groupItems.length} / ${total}`
+                    : groupItems.length
+                })()}
               </span>
             </button>
 
@@ -108,7 +124,7 @@ export function FavoriteItemsList({ firstPage }: FavoriteItemsListProps) {
             {!isCollapsed && (
               <div className="pl-4">
                 {groupItems.map((item) => (
-                  <FavoriteItemRow key={item.id} item={item} />
+                  <FavoriteItemRow key={item.id} item={item} onOpen={openDrawer} />
                 ))}
               </div>
             )}

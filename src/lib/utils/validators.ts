@@ -45,6 +45,8 @@ export const itemFormBaseSchema = z.object({
   collectionIds: z.array(z.string()),
 })
 
+export type ItemFormBaseValues = z.infer<typeof itemFormBaseSchema>
+
 export const editorPreferencesSchema = z.object({
   fontSize: z.number().min(8).max(100),
   tabSize: z.number().min(1).max(16),
