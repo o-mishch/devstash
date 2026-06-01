@@ -18,11 +18,13 @@ const CacheRevalidate = {
 
 export const CacheTags = {
   pinnedItems: (userId: string) => ({ tag: `user:${userId}:pinned-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
+  favoriteItems: (userId: string) => ({ tag: `user:${userId}:favorite-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   recentItems: (userId: string) => ({ tag: `user:${userId}:recent-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   itemsByType: (userId: string, type: string) => ({ tag: `user:${userId}:items:${type}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   itemStats: (userId: string) => ({ tag: `user:${userId}:item-stats`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   sidebarTypes: (userId: string) => ({ tag: `user:${userId}:sidebar-types`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   allCollections: (userId: string) => ({ tag: `user:${userId}:collections`, revalidate: CacheRevalidate.collections }),
+  favoriteCollections: (userId: string) => ({ tag: `user:${userId}:favorite-collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   collectionById: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}`, revalidate: CacheRevalidate.collections }),
   itemsByCollection: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}:items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   collectionStats: (userId: string) => ({ tag: `user:${userId}:collection-stats`, revalidate: CacheRevalidate.collections }),
@@ -57,9 +59,11 @@ export async function withDataCache<T>(
 // Called after collection mutations (create, update, delete).
 export function invalidateCollectionsCache(userId: string): void {
   updateTag(CacheTags.allCollections(userId).tag)
+  updateTag(CacheTags.favoriteCollections(userId).tag)
   updateTag(CacheTags.collectionStats(userId).tag)
   revalidatePath('/dashboard')
   revalidatePath('/collections')
+  revalidatePath('/favorites')
   log.info(`INVALIDATED collections for user:${userId}`)
 }
 
@@ -80,5 +84,6 @@ export function invalidateItemsCache(userId?: string): void {
   revalidatePath('/dashboard')
   revalidatePath('/items')
   revalidatePath('/collections', 'layout')
+  revalidatePath('/favorites')
   log.info(`INVALIDATED items for user:${userId ?? 'all'}`)
 }

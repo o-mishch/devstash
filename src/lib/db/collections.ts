@@ -63,6 +63,17 @@ export async function getAllCollections(userId: string): Promise<CollectionWithT
   })
 }
 
+export async function getFavoriteCollections(userId: string): Promise<CollectionWithTypes[]> {
+  return withDataCache(CacheTags.favoriteCollections(userId), async () => {
+    const collections = await prisma.collection.findMany({
+      where: { userId, isFavorite: true },
+      orderBy: { updatedAt: 'desc' },
+      include: COLLECTION_INCLUDE,
+    })
+    return collections.map(mapCollection)
+  })
+}
+
 export async function getCollectionById(userId: string, collectionId: string): Promise<CollectionWithTypes | null> {
   return withDataCache(CacheTags.collectionById(userId, collectionId), async () => {
     const col = await prisma.collection.findFirst({

@@ -55,6 +55,7 @@ export type FetchItemsQuery =
   | { type: 'recent' }
   | { type: 'type'; typeName: string }
   | { type: 'collection'; collectionId: string }
+  | { type: 'favorites' }
 
 export interface ItemStats {
   totalItems: number

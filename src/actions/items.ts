@@ -12,6 +12,7 @@ import {
   getRecentItemsPage,
   getItemsByTypePage,
   getItemsByCollectionPage,
+  getFavoriteItemsPage,
 } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/cache'
 import { createLogger } from '@/lib/logger'
@@ -123,6 +124,9 @@ export async function fetchMoreItemsAction(query: FetchItemsQuery, cursor?: stri
         break
       case 'collection':
         page = await getItemsByCollectionPage(userId, query.collectionId, cursor)
+        break
+      case 'favorites':
+        page = await getFavoriteItemsPage(userId, cursor)
         break
     }
     return ApiResponse.OK(page)

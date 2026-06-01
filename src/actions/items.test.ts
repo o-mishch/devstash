@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
-vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn() }))
 vi.mock('@/lib/cache', () => ({ invalidateItemsCache: vi.fn() }))
 vi.mock('@/lib/filebase', () => ({ deleteFromFilebase: vi.fn() }))
 
@@ -295,6 +295,19 @@ describe('fetchMoreItemsAction', () => {
     const result = await fetchMoreItemsAction({ type: 'collection', collectionId: 'col-1' }, 'cursor-1')
 
     expect(getItemsByCollectionPage).toHaveBeenCalledWith('user-1', 'col-1', 'cursor-1')
+    expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
+  })
+
+  it('calls getFavoriteItemsPage when type is favorites', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    const mockPage = { items: [], nextCursor: null, hasMore: false }
+    const { getFavoriteItemsPage } = await import('@/lib/db/items')
+    vi.mocked(getFavoriteItemsPage).mockResolvedValue(mockPage)
+
+    const { fetchMoreItemsAction } = await import('./items')
+    const result = await fetchMoreItemsAction({ type: 'favorites' }, 'cursor-1')
+
+    expect(getFavoriteItemsPage).toHaveBeenCalledWith('user-1', 'cursor-1')
     expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
   })
 })
