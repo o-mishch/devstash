@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
-import { compareBySystemTypeOrder } from './items'
+import { compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { EditorPreferences } from '@/types/editor-preferences'
 
 export interface LinkedAccount {

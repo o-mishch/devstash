@@ -22,7 +22,8 @@ vi.mock('@/lib/cache', () => ({
 }))
 
 import { prisma } from '@/lib/prisma'
-import { compareBySystemTypeOrder, getItemTypeBySlug, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage } from './items'
+import { compareBySystemTypeOrder } from '@/lib/utils/constants'
+import { getItemTypeBySlug, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage } from './items'
 
 const mockFindFirst = prisma.itemType.findFirst as ReturnType<typeof vi.fn>
 const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>

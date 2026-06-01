@@ -2,6 +2,7 @@ import { Star } from 'lucide-react'
 import { getCurrentUserId } from '@/lib/session'
 import { getFavoriteItemsPage } from '@/lib/db/items'
 import { getFavoriteCollections } from '@/lib/db/collections'
+import { compareBySystemTypeOrder } from '@/lib/utils/constants'
 import { FavoriteItemsList } from '@/components/favorites/favorite-items-list'
 import { FavoriteCollectionRow } from '@/components/favorites/favorite-collection-row'
 
@@ -9,10 +10,15 @@ export default async function FavoritesPage() {
   const userId = await getCurrentUserId()
 
   const emptyPage = { items: [], nextCursor: null, hasMore: false }
-  const [firstPage, favoriteCollections] = await Promise.all([
+  const [rawFirstPage, favoriteCollections] = await Promise.all([
     userId ? getFavoriteItemsPage(userId) : Promise.resolve(emptyPage),
     userId ? getFavoriteCollections(userId) : Promise.resolve([]),
   ])
+
+  const firstPage = {
+    ...rawFirstPage,
+    items: [...rawFirstPage.items].sort((a, b) => compareBySystemTypeOrder(a.itemType, b.itemType)),
+  }
 
   const totalFavorites = firstPage.items.length + favoriteCollections.length
   const isEmpty = totalFavorites === 0 && !firstPage.hasMore

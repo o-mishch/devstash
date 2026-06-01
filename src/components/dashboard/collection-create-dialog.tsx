@@ -3,12 +3,12 @@
 import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { FolderPlus, Loader2 } from 'lucide-react'
+import { FolderPlus } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
-import { Button } from '@/components/ui/button'
+import { Button, SubmitButton } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -84,10 +84,9 @@ export function CollectionCreateDialog({ trigger }: CollectionCreateDialogProps)
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              <SubmitButton isPending={isSubmitting}>
                 Create Collection
-              </Button>
+              </SubmitButton>
             </DialogFooter>
           </form>
         </DialogContent>

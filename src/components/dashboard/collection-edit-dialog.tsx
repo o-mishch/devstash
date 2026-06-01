@@ -3,12 +3,11 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
-import { Button } from '@/components/ui/button'
+import { Button, SubmitButton } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -103,10 +102,9 @@ export function CollectionEditDialog({ collection, trigger, open: controlledOpen
               <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              <SubmitButton isPending={isSubmitting}>
                 Save Changes
-              </Button>
+              </SubmitButton>
             </DialogFooter>
           </form>
         </DialogContent>

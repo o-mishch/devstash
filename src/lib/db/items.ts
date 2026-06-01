@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
-import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, SYSTEM_TYPE_ORDER, ITEMS_PAGE_SIZE } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { Item, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
 import type { Prisma } from '@/generated/prisma/client'
 
@@ -252,10 +252,6 @@ export async function getItemTypeBySlug(slug: string) {
       where: { name: { in: candidates } },
     })
   })
-}
-
-export function compareBySystemTypeOrder(a: { name: string }, b: { name: string }): number {
-  return SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name)
 }
 
 async function getSystemItemTypes() {

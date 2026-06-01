@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useInfiniteScrollSync } from '@/hooks/use-infinite-scroll-sync'
 import { useIntersectionObserver } from '@/hooks/use-intersection-observer'
@@ -9,6 +9,7 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FavoriteItemRow } from './favorite-item-row'
 import { fetchMoreItemsAction } from '@/actions/items'
+import { compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { ItemsPage, ItemType, LightItem } from '@/types/item'
 
 const PAGE_KEY = 'favorites:items'
@@ -40,7 +41,7 @@ export function FavoriteItemsList({ firstPage }: FavoriteItemsListProps) {
   const { ref, inView } = useIntersectionObserver({ rootMargin: '200px' })
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
-  const groups = useMemo(() => groupByType(items), [items])
+  const groups = groupByType(items).sort((a, b) => compareBySystemTypeOrder(a.itemType, b.itemType))
 
   const toggleGroup = useCallback((typeId: string) => {
     setCollapsed((prev) => {

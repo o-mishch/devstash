@@ -4,8 +4,7 @@ import Link from 'next/link'
 import { useActionState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button, SubmitButton, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -99,10 +98,9 @@ export function SignInForm({ successMessage }: SignInFormProps) {
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <Button type="submit" disabled={isPending}>
-            {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
+          <SubmitButton isPending={isPending}>
             Sign in
-          </Button>
+          </SubmitButton>
           <Link href="/register" className={buttonVariants({ variant: 'outline' })}>
             Sign up
           </Link>

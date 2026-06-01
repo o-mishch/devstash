@@ -3,13 +3,13 @@
 import { useRef, useState, type SyntheticEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Loader2, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { CollectionSelector } from '@/components/shared/collection-selector'
@@ -360,10 +360,9 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger 
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <SubmitButton isPending={isSubmitting}>
               Create Item
-            </Button>
+            </SubmitButton>
           </DialogFooter>
         </form>
       </DialogContent>
