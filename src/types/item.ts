@@ -43,6 +43,8 @@ export interface LightItem {
   fileUrl: string | null
   fileName: string | null
   fileSize: number | null
+  isFavorite: boolean
+  isPinned: boolean
 }
 
 export interface ItemsPage {
@@ -84,5 +86,7 @@ export function itemToLightItem(item: Item): LightItem {
     fileUrl: item.fileUrl,
     fileName: item.fileName,
     fileSize: item.fileSize,
+    isFavorite: item.isFavorite,
+    isPinned: item.isPinned,
   }
 }

@@ -5,6 +5,10 @@ export async function checkUserExistsById(id: string) {
   return prisma.user.findUnique({ where: { id }, select: { id: true } })
 }
 
+export async function getUserSessionInfo(id: string) {
+  return prisma.user.findUnique({ where: { id }, select: { id: true, password: true } })
+}
+
 export async function createUser(data: Prisma.UserCreateInput | Prisma.UserUncheckedCreateInput) {
   return prisma.user.create({ data })
 }

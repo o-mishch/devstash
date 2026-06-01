@@ -15,7 +15,7 @@ export function AuthPageBase({ children }: WithChildren) {
     <div className="w-full max-w-sm space-y-6">
       <div className="flex justify-center">
         <div className="flex items-center gap-2">
-          <Archive className="size-5 text-primary" />
+          <Archive className="size-5 text-primary" aria-hidden="true" />
           <span className="text-xl font-semibold tracking-tight">DevStash</span>
         </div>
       </div>

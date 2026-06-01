@@ -19,10 +19,11 @@ export function MobileDrawer({ sidebarData }: MobileDrawerProps) {
       <Button
         variant="ghost"
         size="icon"
-        className="shrink-0 lg:hidden"
+        className="size-11 shrink-0 lg:hidden"
         onClick={() => setOpen(true)}
+        aria-label="Open navigation"
       >
-        <Menu className="size-4" />
+        <Menu className="size-5" />
       </Button>
 
       <Sheet open={open} onOpenChange={setOpen}>

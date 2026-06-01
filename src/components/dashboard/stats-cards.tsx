@@ -26,11 +26,11 @@ export function StatsCards({
       {stats.map(({ label, value, icon: Icon, color }) => (
         <Card key={label}>
           <CardContent className="p-4">
-            <div className="flex items-center gap-4">
-              <Icon className="size-8 shrink-0" style={{ color }} />
+            <div className="flex items-center gap-3">
+              <Icon className="size-6 shrink-0 sm:size-8" style={{ color }} aria-hidden="true" />
               <div>
-                <p className="text-2xl font-semibold tabular-nums leading-none">{value}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{label}</p>
+                <p className="text-xl font-semibold tabular-nums leading-none sm:text-2xl">{value}</p>
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">{label}</p>
               </div>
             </div>
           </CardContent>

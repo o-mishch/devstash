@@ -1,6 +1,6 @@
 'use client'
 
-import type { LightItem, Item } from '@/types/item'
+import type { LightItem } from '@/types/item'
 
 export const enum ItemsStoreActionType {
   Reset = 'RESET',
@@ -8,6 +8,7 @@ export const enum ItemsStoreActionType {
   UpdateItem = 'UPDATE_ITEM',
   RemoveItem = 'REMOVE_ITEM',
   SetLoading = 'SET_LOADING',
+  UpdateItemFields = 'UPDATE_ITEM_FIELDS',
 }
 
 export interface ItemsStoreState {
@@ -24,6 +25,7 @@ export type ItemsStoreAction =
   | { type: ItemsStoreActionType.UpdateItem; item: LightItem }
   | { type: ItemsStoreActionType.RemoveItem; id: string }
   | { type: ItemsStoreActionType.SetLoading; loading: boolean }
+  | { type: ItemsStoreActionType.UpdateItemFields; id: string; fields: Partial<LightItem> }
 
 export const itemsStoreInitialState: ItemsStoreState = {
   pageKey: '',
@@ -45,6 +47,18 @@ export function itemsStoreReducer(state: ItemsStoreState, action: ItemsStoreActi
       return { ...state, items: state.items.filter((i) => i.id !== action.id) }
     case ItemsStoreActionType.SetLoading:
       return { ...state, loading: action.loading }
+    case ItemsStoreActionType.UpdateItemFields:
+      return {
+        ...state,
+        items: state.items
+          .map((i) => (i.id === action.id ? { ...i, ...action.fields } : i))
+          .filter((i) => {
+            if (state.pageKey === 'favorites:items' && action.fields.isFavorite === false && i.id === action.id) {
+              return false
+            }
+            return true
+          })
+      }
   }
 }
 

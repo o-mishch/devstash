@@ -13,6 +13,8 @@ import {
   getItemsByTypePage,
   getItemsByCollectionPage,
   getFavoriteItemsPage,
+  toggleItemFavorite as dbToggleItemFavorite,
+  toggleItemPinned as dbToggleItemPinned,
 } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/cache'
 import { createLogger } from '@/lib/logger'
@@ -131,4 +133,24 @@ export async function fetchMoreItemsAction(query: FetchItemsQuery, cursor?: stri
     }
     return ApiResponse.OK(page)
   }, 'fetchMoreItemsAction')
+}
+
+export async function toggleItemFavoriteAction(itemId: string, isFavorite: boolean): Promise<ApiBody<null>> {
+  return withAuth(async (userId) => {
+    const ok = await dbToggleItemFavorite(userId, itemId, isFavorite)
+    if (!ok) return ApiResponse.NOT_FOUND('Item not found.')
+    invalidateItemsCache(userId)
+    log.info(`toggled favorite item:${itemId} isFavorite:${isFavorite} user:${userId}`)
+    return ApiResponse.OK()
+  }, 'toggleItemFavoriteAction')
+}
+
+export async function toggleItemPinnedAction(itemId: string, isPinned: boolean): Promise<ApiBody<null>> {
+  return withAuth(async (userId) => {
+    const ok = await dbToggleItemPinned(userId, itemId, isPinned)
+    if (!ok) return ApiResponse.NOT_FOUND('Item not found.')
+    invalidateItemsCache(userId)
+    log.info(`toggled pinned item:${itemId} isPinned:${isPinned} user:${userId}`)
+    return ApiResponse.OK()
+  }, 'toggleItemPinnedAction')
 }

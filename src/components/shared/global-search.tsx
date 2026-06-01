@@ -44,6 +44,10 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
         setOpen(true)
         closeDrawer()
       }
+      if (e.key === 'Escape') {
+        setOpen(false)
+        inputRef.current?.blur()
+      }
     }
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)

@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Star, Pin, Copy, Check, Pencil, Trash2 } from 'lucide-react'
+import { Star, Pin, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
-import { deleteItemAction } from '@/actions/items'
+import { deleteItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } from '@/actions/items'
+import { useRouter } from 'next/navigation'
+import { ItemsStoreActionType, useItemsStore } from '@/context/items-store-context'
 import type { Item, LightItem } from '@/types/item'
 
 interface ItemDrawerActionBarProps {
@@ -19,43 +21,84 @@ interface ItemDrawerActionBarProps {
 }
 
 export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted }: ItemDrawerActionBarProps) {
+  const router = useRouter()
+  const { dispatch } = useItemsStore()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [optimisticFavorite, setOptimisticFavorite] = useState<boolean | null>(null)
+  const [optimisticPinned, setOptimisticPinned] = useState<boolean | null>(null)
+
+  const isFavorite = optimisticFavorite ?? item.isFavorite
+  const isPinned = optimisticPinned ?? item.isPinned
 
   const copyValue = fullItem
     ? (fullItem.content ?? fullItem.url ?? fullItem.title)
     : (item.url ?? item.title)
-  const { isCopied, copy } = useCopyToClipboard()
+
+  async function handleFavoriteToggle() {
+    const next = !isFavorite
+    setOptimisticFavorite(next)
+    const result = await toggleItemFavoriteAction(item.id, next)
+    if (result.status === 'ok') {
+      dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isFavorite: next } })
+      router.refresh()
+    } else {
+      setOptimisticFavorite(!next)
+      toast.error(result.message ?? 'Failed to toggle favorite')
+    }
+  }
+
+  async function handlePinToggle() {
+    const next = !isPinned
+    setOptimisticPinned(next)
+    const result = await toggleItemPinnedAction(item.id, next)
+    if (result.status === 'ok') {
+      dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isPinned: next } })
+      router.refresh()
+    } else {
+      setOptimisticPinned(!next)
+      toast.error(result.message ?? 'Failed to toggle pin')
+    }
+  }
 
   async function handleDelete() {
     setIsDeleting(true)
     const result = await deleteItemAction(item.id)
     setIsDeleting(false)
 
-    if (result.status !== 'ok') {
+    if (result.status === 'ok') {
+      toast.success('Item deleted')
+      setDeleteDialogOpen(false)
+      onDeleted()
+      router.refresh()
+    } else {
       toast.error(result.message ?? 'Failed to delete item')
-      return
     }
-
-    toast.success('Item deleted')
-    setDeleteDialogOpen(false)
-    onDeleted()
   }
 
   return (
     <>
-      <Button variant="ghost" size="sm" disabled={isLight} className={fullItem?.isFavorite ? 'text-yellow-500 hover:text-yellow-500' : ''}>
-        <Star className={`size-4 ${fullItem?.isFavorite ? 'fill-yellow-500' : ''}`} />
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={isLight}
+        className={isFavorite ? 'text-yellow-500 hover:text-yellow-500' : ''}
+        onClick={handleFavoriteToggle}
+      >
+        <Star className={`size-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
         Favorite
       </Button>
-      <Button variant="ghost" size="sm" disabled={isLight} className={fullItem?.isPinned ? 'text-primary' : ''}>
-        <Pin className={`size-4 ${fullItem?.isPinned ? 'fill-primary' : ''}`} />
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={isLight}
+        className={isPinned ? 'text-primary' : ''}
+        onClick={handlePinToggle}
+      >
+        <Pin className={`size-4 ${isPinned ? 'fill-primary' : ''}`} />
         Pin
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => copy(copyValue)}>
-        {isCopied ? <Check className="size-4 text-green-400" /> : <Copy className="size-4" />}
-        Copy
-      </Button>
+      <CopyButton value={copyValue} text="Copy" />
       <Button variant="ghost" size="sm" onClick={onEdit} disabled={isLight}>
         <Pencil className="size-4" />
         Edit

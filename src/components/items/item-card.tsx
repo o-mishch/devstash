@@ -23,7 +23,7 @@ export function ItemCard({ item }: ItemCardProps) {
 
   return (
     <Card
-      className="group/card relative type-border-l h-20 cursor-pointer overflow-hidden transition-colors hover:bg-accent"
+      className="group/card relative type-border-l min-h-20 cursor-pointer overflow-hidden transition-colors hover:bg-accent"
       style={{ '--item-color': itemType.color } as CSSProperties}
       onClick={() => openDrawer(item)}
     >

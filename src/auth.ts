@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { authConfig } from '@/auth.config'
 import { emailVerificationEnabled } from '@/lib/emails/verification'
 import { createPendingLink, PendingLinkData } from '@/lib/pending-link'
-import { checkUserExistsById, getUserWithGithubAccount } from '@/lib/db/users'
+import { getUserSessionInfo, getUserWithGithubAccount } from '@/lib/db/users'
 import { validateUserPassword } from '@/lib/auth-service'
 
 interface AuthorizedUser {
@@ -31,9 +31,18 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     async jwt({ token, user }: { token: JWT; user?: AdapterUser | User }): Promise<JWT | null> {
       if (user) token.id = user.id
       if (token.id) {
-        const exists = await checkUserExistsById(token.id as string)
-        if (!exists) {
+        const dbUser = await getUserSessionInfo(token.id as string)
+        if (!dbUser) {
           console.warn('[jwt] user not found by token.id, invalidating session:', token.id)
+          return null
+        }
+        // Last 8 chars of the bcrypt hash change on every password update
+        const pwFingerprint = dbUser.password?.slice(-8) ?? ''
+        if (user) {
+          // Sign-in: snapshot the current password fingerprint
+          token.pwHash = pwFingerprint
+        } else if (token.pwHash !== undefined && token.pwHash !== pwFingerprint) {
+          // Refresh: password was rotated after this token was issued — invalidate
           return null
         }
       }

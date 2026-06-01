@@ -12,6 +12,7 @@ interface CopyButtonProps {
   iconClassName?: string
   stopPropagation?: boolean
   title?: string
+  text?: string
 }
 
 export function CopyButton({
@@ -20,6 +21,7 @@ export function CopyButton({
   iconClassName = 'size-4',
   stopPropagation = false,
   title = 'Copy',
+  text,
 }: CopyButtonProps) {
   const { isCopied, copy } = useCopyToClipboard()
 
@@ -29,8 +31,9 @@ export function CopyButton({
   }
 
   return (
-    <Button size="icon" variant="ghost" className={cn('size-7', className)} onClick={handleClick} title={title}>
+    <Button size={text ? 'sm' : 'icon'} variant="ghost" className={cn(!text && 'size-7', className)} onClick={handleClick} title={title}>
       {isCopied ? <Check className={cn(iconClassName, 'text-green-400')} /> : <Copy className={iconClassName} />}
+      {text}
     </Button>
   )
 }

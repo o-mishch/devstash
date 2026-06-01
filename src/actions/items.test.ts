@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
-vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn(), toggleItemFavorite: vi.fn(), toggleItemPinned: vi.fn() }))
 vi.mock('@/lib/cache', () => ({ invalidateItemsCache: vi.fn() }))
 vi.mock('@/lib/filebase', () => ({ deleteFromFilebase: vi.fn() }))
 
@@ -9,14 +9,16 @@ import { deleteFromFilebase } from '@/lib/filebase'
 const mockDeleteFromFilebase = deleteFromFilebase as ReturnType<typeof vi.fn>
 
 import { auth } from '@/auth'
-import { updateItem, deleteItem, getItemById, createItem } from '@/lib/db/items'
-import { updateItemAction, deleteItemAction, createItemAction } from './items'
+import { updateItem, deleteItem, getItemById, createItem, toggleItemFavorite, toggleItemPinned } from '@/lib/db/items'
+import { updateItemAction, deleteItemAction, createItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } from './items'
 
 const mockAuth = auth as ReturnType<typeof vi.fn>
 const mockUpdateItem = updateItem as ReturnType<typeof vi.fn>
 const mockDeleteItem = deleteItem as ReturnType<typeof vi.fn>
 const mockGetItemById = getItemById as ReturnType<typeof vi.fn>
 const mockCreateItem = createItem as ReturnType<typeof vi.fn>
+const mockToggleItemFavorite = toggleItemFavorite as ReturnType<typeof vi.fn>
+const mockToggleItemPinned = toggleItemPinned as ReturnType<typeof vi.fn>
 
 const validInput = {
   title: 'My snippet',
@@ -309,5 +311,65 @@ describe('fetchMoreItemsAction', () => {
 
     expect(getFavoriteItemsPage).toHaveBeenCalledWith('user-1', 'cursor-1')
     expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
+  })
+})
+
+describe('toggleItemFavoriteAction', () => {
+  it('returns UNAUTHORIZED when not signed in', async () => {
+    mockAuth.mockResolvedValue(null)
+    const result = await toggleItemFavoriteAction('item-1', true)
+    expect(result.status).toBe('unauthorized')
+  })
+
+  it('returns NOT_FOUND when item does not exist or belongs to another user', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockToggleItemFavorite.mockResolvedValue(false)
+    const result = await toggleItemFavoriteAction('item-1', true)
+    expect(result.status).toBe('not_found')
+  })
+
+  it('returns OK and invalidates cache on success', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockToggleItemFavorite.mockResolvedValue(true)
+    const result = await toggleItemFavoriteAction('item-1', true)
+    expect(result.status).toBe('ok')
+    expect(mockToggleItemFavorite).toHaveBeenCalledWith('user-1', 'item-1', true)
+  })
+
+  it('returns INTERNAL_ERROR on unexpected DB failure', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockToggleItemFavorite.mockRejectedValue(new Error('DB down'))
+    const result = await toggleItemFavoriteAction('item-1', true)
+    expect(result.status).toBe('internal_error')
+  })
+})
+
+describe('toggleItemPinnedAction', () => {
+  it('returns UNAUTHORIZED when not signed in', async () => {
+    mockAuth.mockResolvedValue(null)
+    const result = await toggleItemPinnedAction('item-1', true)
+    expect(result.status).toBe('unauthorized')
+  })
+
+  it('returns NOT_FOUND when item does not exist or belongs to another user', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockToggleItemPinned.mockResolvedValue(false)
+    const result = await toggleItemPinnedAction('item-1', true)
+    expect(result.status).toBe('not_found')
+  })
+
+  it('returns OK and invalidates cache on success', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockToggleItemPinned.mockResolvedValue(true)
+    const result = await toggleItemPinnedAction('item-1', true)
+    expect(result.status).toBe('ok')
+    expect(mockToggleItemPinned).toHaveBeenCalledWith('user-1', 'item-1', true)
+  })
+
+  it('returns INTERNAL_ERROR on unexpected DB failure', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockToggleItemPinned.mockRejectedValue(new Error('DB down'))
+    const result = await toggleItemPinnedAction('item-1', true)
+    expect(result.status).toBe('internal_error')
   })
 })

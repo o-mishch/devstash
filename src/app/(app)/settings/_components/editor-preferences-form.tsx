@@ -1,7 +1,7 @@
 'use client'
 
 import { useEditorPreferences } from '@/components/providers/editor-preferences-provider'
-import { EDITOR_FONT_SIZE_OPTIONS, EDITOR_TAB_SIZE_OPTIONS, EDITOR_THEME_OPTIONS } from '@/types/editor-preferences'
+import { EDITOR_FONT_SIZE_OPTIONS, EDITOR_TAB_SIZE_OPTIONS, EDITOR_THEME_OPTIONS, type EditorTheme } from '@/types/editor-preferences'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -26,7 +26,7 @@ export function EditorPreferencesForm() {
           </div>
           <Select 
             value={preferences.theme} 
-            onValueChange={(value: any) => updatePreference('theme', value)}
+            onValueChange={(value: EditorTheme | null) => { if (value) updatePreference('theme', value) }}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Theme">

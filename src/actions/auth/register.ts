@@ -1,5 +1,6 @@
 'use server'
 
+import { z } from 'zod'
 import { redirect } from 'next/navigation'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
@@ -18,7 +19,9 @@ export async function registerAction(
     const confirm = (formData.get('confirmPassword') as string) ?? ''
 
     if (!name || !email || !password) return ApiResponse.BAD_REQUEST('All fields are required.')
-    
+
+    if (!z.string().email().safeParse(email).success) return ApiResponse.BAD_REQUEST('Please enter a valid email address.')
+
     const error = validatePassword(password, confirm)
     if (error) return ApiResponse.BAD_REQUEST(error)
 

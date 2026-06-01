@@ -17,9 +17,12 @@ export function ItemRow({ item }: ItemRowProps) {
 
   return (
     <div
-      className="type-border-l flex h-14 cursor-pointer items-center gap-3 overflow-hidden rounded-xl px-2 ring-1 ring-foreground/10 transition-colors hover:bg-accent"
+      role="button"
+      tabIndex={0}
+      className="type-border-l flex h-14 cursor-pointer items-center gap-3 overflow-hidden rounded-xl px-2 ring-1 ring-foreground/10 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       style={{ '--item-color': itemType.color } as CSSProperties}
       onClick={() => openDrawer(item)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrawer(item) } }}
     >
       <ItemIconWrapper itemType={itemType} wrapperClassName="size-7" iconClassName="size-3.5" />
 

@@ -19,28 +19,19 @@ interface ItemDetailDrawerProps {
   onItemDeleted: (id: string) => void
 }
 
-export function ItemDetailDrawer({
+function ItemDetailDrawerInner({
   item,
-  open,
-  onOpenChange,
   collections,
+  onOpenChange,
   onItemSaved,
   onItemDeleted,
-}: ItemDetailDrawerProps) {
+}: Omit<ItemDetailDrawerProps, 'open'>) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [savedItem, setSavedItem] = useState<Item | null>(null)
   const [fullItem, setFullItem] = useState<Item | null>(null)
-  const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
 
   const itemId = item?.id ?? null
   const propIsLight = item !== null && !('content' in item)
-
-  // Reset local state whenever a different item is opened
-  useEffect(() => {
-    setSavedItem(null)
-    setFullItem(null)
-    setEditingItemId(null)
-  }, [itemId])
 
   // Fetch the full item in the background when opened with a LightItem
   useEffect(() => {
@@ -62,6 +53,50 @@ export function ItemDetailDrawer({
   const editing = editingItemId !== null && editingItemId === displayItem?.id && !isLight
 
   return (
+    <>
+      <SheetTitle className="sr-only">{displayItem?.title ?? 'Item details'}</SheetTitle>
+
+      {!displayItem ? (
+        <DrawerSkeleton />
+      ) : editing ? (
+        <ItemDrawerEditContent
+          item={displayItem as Item}
+          collections={collections}
+          onClose={() => onOpenChange(false)}
+          onSave={(updated: Item) => {
+            setSavedItem(updated)
+            setEditingItemId(null)
+            onItemSaved(updated)
+          }}
+          onCancel={() => setEditingItemId(null)}
+        />
+      ) : (
+        <ItemDrawerViewContent
+          item={displayItem}
+          isLight={isLight}
+          onClose={() => onOpenChange(false)}
+          onEdit={() => !isLight && setEditingItemId(displayItem.id)}
+          onDeleted={() => {
+            onItemDeleted(displayItem.id)
+            onOpenChange(false)
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+export function ItemDetailDrawer({
+  item,
+  open,
+  onOpenChange,
+  collections,
+  onItemSaved,
+  onItemDeleted,
+}: ItemDetailDrawerProps) {
+  const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
+
+  return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
@@ -74,32 +109,14 @@ export function ItemDetailDrawer({
           onMouseDown={startResize}
         />
 
-        <SheetTitle className="sr-only">{displayItem?.title ?? 'Item details'}</SheetTitle>
-
-        {!displayItem ? (
-          <DrawerSkeleton />
-        ) : editing ? (
-          <ItemDrawerEditContent
-            item={displayItem as Item}
+        {item && (
+          <ItemDetailDrawerInner
+            key={item.id}
+            item={item}
             collections={collections}
-            onClose={() => onOpenChange(false)}
-            onSave={(updated: Item) => {
-              setSavedItem(updated)
-              setEditingItemId(null)
-              onItemSaved(updated)
-            }}
-            onCancel={() => setEditingItemId(null)}
-          />
-        ) : (
-          <ItemDrawerViewContent
-            item={displayItem}
-            isLight={isLight}
-            onClose={() => onOpenChange(false)}
-            onEdit={() => !isLight && setEditingItemId(displayItem.id)}
-            onDeleted={() => {
-              onItemDeleted(displayItem.id)
-              onOpenChange(false)
-            }}
+            onOpenChange={onOpenChange}
+            onItemSaved={onItemSaved}
+            onItemDeleted={onItemDeleted}
           />
         )}
       </SheetContent>

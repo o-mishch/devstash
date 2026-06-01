@@ -25,7 +25,7 @@ export function FavoriteItemRow({ item }: FavoriteItemRowProps) {
         color={itemType.color}
         className="size-3.5 shrink-0"
       />
-      <span className="min-w-0 flex-1 truncate font-mono text-sm">
+      <span className="min-w-0 flex-1 truncate text-sm">
         {item.title}
       </span>
       <span className="shrink-0 rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">

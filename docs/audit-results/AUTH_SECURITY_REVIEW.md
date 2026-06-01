@@ -1,15 +1,11 @@
 # Authentication Security Audit
 
-**Last Audit Date**: 2026-05-26
-**Auditor**: Auth Security Agent + Context7 Validation Pass
-
----
+**Last Audit Date**: 2026-06-01
+**Auditor**: Auth Security Agent
 
 ## Executive Summary
 
-The authentication implementation is well-structured and demonstrates good security instincts: tokens use cryptographically secure randomness, password hashing uses bcrypt at cost 12, and enumeration prevention is present at the API layer. Three issues require attention before production: password reset does not invalidate existing JWT sessions, no rate limiting exists on any auth endpoint, and passwords have no maximum length cap (bcrypt DoS vector).
-
-The initial audit flagged `proxy.ts` as a critical misconfiguration — this was a **false positive**. Next.js 16 renamed the middleware convention from `middleware.ts` → `proxy.ts` and the named export from `middleware` → `proxy`. The current code is correct for the version in use.
+The DevStash authentication implementation is well-architected and demonstrates good security instincts throughout. Password hashing is strong, token generation is cryptographically secure, anti-enumeration protections are consistently applied, and rate limiting covers the majority of the auth surface. Three genuine issues were found: active sessions are not invalidated after a password reset or profile password change (other sessions remain valid after credential rotation), the `changePasswordAction` has no rate limit (enabling brute-force of the current password), and the inline `resendVerification` Server Action on the `/verify-email` expired-token page bypasses all rate limiting. None of these are immediately critical in isolation, but the session-invalidation gap is high severity because it defeats the security intent of a password rotation.
 
 ---
 
@@ -17,328 +13,254 @@ The initial audit flagged `proxy.ts` as a critical misconfiguration — this was
 
 ### High Severity
 
----
-
-#### Password Reset Does Not Invalidate Existing Sessions
+#### Active Sessions Not Invalidated After Password Reset or Password Change
 
 **Severity**: High
-**File**: `src/actions/auth.ts`, `src/app/api/auth/reset-password/route.ts`
-**Lines (actions)**: 99-106; **Lines (route)**: 30-37
+**Files**: `src/lib/auth-service.ts` (lines 94-110), `src/actions/profile.ts` (lines 13-38)
 
 **Vulnerable Code**:
-
 ```typescript
-// src/actions/auth.ts — resetPasswordAction
-const hashed = await bcrypt.hash(password, 12)
-await prisma.user.update({
-  where: { id: user.id },
-  data: { password: hashed },
-})
+// auth-service.ts — applyPasswordReset
+export async function applyPasswordReset(token: string, password: string): Promise<ApplyResetResult> {
+  const record = await consumePasswordResetToken(token)
+  if (!record) return 'invalid-token'
+  const hashed = await bcrypt.hash(password, BCRYPT_ROUNDS)
+  await updateUserPassword(user.id, hashed)
+  invalidateProfileCache(user.id)
+  return 'ok'
+  // No session invalidation — all existing JWTs remain valid
+}
+
+// profile.ts — changePasswordAction
+await changeUserPassword(userId, newPassword)
 return ApiResponse.OK()
-// No session invalidation
+// No session invalidation — all other active sessions remain valid
 ```
 
-```typescript
-// src/app/api/auth/reset-password/route.ts
-const hashed = await bcrypt.hash(password, 12)
-await prisma.user.update({
-  where: { id: user.id },
-  data: { password: hashed },
-})
-return ApiResponse.OK('Password updated. You can now sign in.')
-// No session invalidation
-```
+**Problem**: After a password reset (forgotten password flow) or a voluntary password change (settings page), all existing JWT sessions for that user remain valid. The JWT callback in `auth.ts` only checks whether the user ID still exists in the database — it does not check a password version, credential change timestamp, or any revocation signal. An attacker who has hijacked a session retains full access even after the victim resets their password.
 
-**Problem**: After a successful password reset, existing JWT sessions issued before the reset remain valid until their natural expiry. The `jwt` callback in `auth.ts` only checks that the user record still exists — it does not verify whether the password was changed after the token was issued. An attacker who previously stole a session token retains full access even after the legitimate user resets their password.
+**Attack Scenario**: An attacker obtains a victim's session JWT (via a stolen cookie from a shared or compromised device). The victim notices suspicious activity and changes their password to lock the attacker out. Because the JWT is never invalidated server-side, the attacker's session continues working until it naturally expires. For the password reset flow specifically, this also means the victim's own stale sessions on other devices remain open after a reset.
 
-The NextAuth v5 docs explicitly acknowledge this as an inherent JWT limitation: *"Expiring a JSON Web Token before its encoded expiry is not possible — doing so requires maintaining a server-side blocklist."* The recommended mitigation is either shorter session TTLs or a DB-backed version check in the `jwt` callback.
-
-**Attack Scenario**: An attacker obtains a victim's session JWT (via any means). The victim notices suspicious activity and resets their password. The attacker's stolen JWT continues to work because the server has no way to invalidate it short of a blocklist or version check.
-
-**Fix**: Add a `passwordChangedAt` timestamp to the `User` model and compare it against a `passwordIssuedAt` claim stored in the JWT. The `jwt` callback already runs on every session retrieval (confirmed by NextAuth source), so this check is applied on every authenticated request without extra round-trips beyond the existing DB lookup.
+**Fix**: Add a `passwordChangedAt` timestamp column to the User model. Embed it in the JWT at sign-in and compare it in the `jwt` callback. Any session issued before the latest password change is rejected.
 
 ```typescript
+// 1. prisma/schema.prisma
+model User {
+  // ...existing fields
+  passwordChangedAt DateTime?
+}
 
-// 1. Add to Prisma schema:
-// passwordChangedAt  DateTime?
-
-// 2. On password update, also set the timestamp:
+// 2. auth-service.ts — set the timestamp whenever the password changes
+// In changeUserPassword and applyPasswordReset, after bcrypt.hash:
 await prisma.user.update({
-  where: { id: user.id },
-  data: {
-    password: hashed,
-    passwordChangedAt: new Date(),
-  },
+  where: { id: userId },
+  data: { password: hashed, passwordChangedAt: new Date() },
 })
 
-// 3. In auth.ts jwt callback, embed the timestamp at sign-in and check on every request:
+// 3. auth.ts — jwt callback
 async jwt({ token, user }) {
   if (user) {
     token.id = user.id
-    token.passwordIssuedAt = Date.now()
+    // Snapshot at sign-in time
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { passwordChangedAt: true },
+    })
+    token.passwordIssuedAt = dbUser?.passwordChangedAt?.getTime() ?? 0
   }
+
   if (token.id) {
     const dbUser = await prisma.user.findUnique({
       where: { id: token.id as string },
       select: { id: true, passwordChangedAt: true },
     })
     if (!dbUser) return null
-    if (
-      dbUser.passwordChangedAt &&
-      token.passwordIssuedAt &&
-      dbUser.passwordChangedAt.getTime() > (token.passwordIssuedAt as number)
-    ) {
-      return null  // invalidate session
+
+    const currentChangedAt = dbUser.passwordChangedAt?.getTime() ?? 0
+    if (currentChangedAt > (token.passwordIssuedAt as number)) {
+      // Password was rotated after this token was issued — invalidate
+      return null
     }
   }
   return token
 },
 ```
 
-Alternative (no schema change): set a shorter session `maxAge` (e.g. 1 hour) so stolen tokens expire quickly. Less precise but zero implementation cost.
-
----
-
-#### No Rate Limiting on Any Auth Endpoint
-
-**Severity**: High
-**Files**: `src/app/api/auth/register/route.ts`, `src/app/api/auth/forgot-password/route.ts`, `src/app/api/auth/resend-verification/route.ts`, `src/actions/auth.ts`
-
-**Problem**: There is no rate limiting on any authentication endpoint:
-
-- `POST /api/auth/register` — unlimited account creation allows spam and free-tier exhaustion.
-- `POST /api/auth/forgot-password` and `forgotPasswordAction` — unlimited reset emails to any address enables email bombing.
-- `POST /api/auth/resend-verification` — same email bombing vector.
-- `signInWithCredentials` (Server Action) — unlimited login attempts enable credential stuffing.
-
-The `resendVerification` function in `src/lib/emails/verification.ts` does implement a 55-minute token-freshness window, which limits resend frequency per email. This is not request-level rate limiting: an attacker can still call the endpoint at high volume across many addresses without any throttle.
-
-**Attack Scenario 1 (brute force)**: An attacker runs a credential-stuffing campaign against `signInWithCredentials`. With no lockout, they can test thousands of password combinations per minute.
-
-**Attack Scenario 2 (email bombing)**: An attacker calls `POST /api/auth/forgot-password` in a loop with a victim's email. Each call deletes the existing token and creates a new one, triggering a new email every time.
-
-**Fix**: Add rate limiting at the infrastructure or application layer. For a Vercel/Neon deployment, Upstash Redis with `@upstash/ratelimit` is a natural fit:
-
-```typescript
-// src/lib/rate-limit.ts
-import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
-
-export const authRatelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(10, '10 m'), // 10 requests per 10 minutes per IP
-})
-
-// In forgot-password route:
-export const POST = apiRoute(async (request) => {
-  const ip = request.headers.get('x-forwarded-for') ?? 'unknown'
-  const { success } = await authRatelimit.limit(ip)
-  if (!success) return ApiResponse.TOO_MANY_REQUESTS('Too many requests. Please try again later.')
-  // ...
-})
-```
-
-For sign-in brute force, also add a per-email counter in addition to per-IP to prevent distributed attacks.
-
 ---
 
 ### Medium Severity
 
----
-
-#### No Maximum Password Length (bcrypt DoS Vector)
+#### `changePasswordAction` Has No Rate Limit
 
 **Severity**: Medium
-**Files**: `src/actions/auth.ts` (lines 77, 139), `src/app/api/auth/register/route.ts` (line 22), `src/actions/profile.ts` (line 24)
+**File**: `src/actions/profile.ts` (lines 13-38)
 
 **Vulnerable Code**:
-
 ```typescript
-// src/actions/auth.ts — registerAction
-if (password.length < 8) return ApiResponse.BAD_REQUEST('Password must be at least 8 characters.')
-// No upper bound check
-
-// src/actions/profile.ts — changePasswordAction
-if (newPassword.length < 8) {
-  return ApiResponse.BAD_REQUEST('New password must be at least 8 characters.')
+export async function changePasswordAction(
+  _prevState: ApiBody<null> | null,
+  formData: FormData
+): Promise<ApiBody<null>> {
+  return withAuth(async (userId) => {
+    // No rate limit applied here
+    const valid = await verifyUserPasswordById(userId, currentPassword)
+    if (!valid) return ApiResponse.BAD_REQUEST('Current password is incorrect or not set.')
+    await changeUserPassword(userId, newPassword)
+    return ApiResponse.OK()
+  })
 }
-// No upper bound check
 ```
 
-**Problem**: bcrypt silently truncates input at 72 bytes. A password longer than 72 bytes has reduced effective entropy. More critically, there is no server-side cap, so an attacker can submit a multi-megabyte string to any endpoint calling `bcrypt.hash()`, causing the server to spend seconds on a single operation. A small number of concurrent requests can saturate the Node.js thread pool.
+**Problem**: An attacker who holds a valid session (e.g., from a shared or briefly stolen device) can submit unlimited password-change attempts against the `currentPassword` check. Each attempt is gated only by the cost of a bcrypt comparison, which the attacker can automate. All other sensitive auth actions (login, register, forgot-password, reset-password, link-account) have rate limits; `changePasswordAction` is the only one that does not.
 
-**Attack Scenario**: An attacker sends 1 MB passwords to `POST /api/auth/register` or `signInWithCredentials`. At bcrypt cost 12, this takes several seconds per call. A handful of concurrent requests can block all server threads.
+**Attack Scenario**: Attacker gains brief access to a victim's session token (e.g., from a browser left open). The victim logs the attacker out remotely, but the attacker still holds the session token. Via the `changePasswordAction` endpoint, the attacker iterates dictionary-guessed `currentPassword` values at volume. A successful hit lets them rotate to a password they control, completing a full account takeover.
 
-**Fix**: Add a maximum length check before any bcrypt call:
+**Fix**: Add a new `changePassword` key to `LIMIT_CONFIG` in `src/lib/rate-limit.ts`, keyed by `userId` so IP rotation provides no benefit:
 
 ```typescript
-const MAX_PASSWORD_LENGTH = 128
+// src/lib/rate-limit.ts — LIMIT_CONFIG
+changePassword: { attempts: 5, window: '15 m' }, // keyed by userId
 
-if (password.length < 8) return ApiResponse.BAD_REQUEST('Password must be at least 8 characters.')
-if (password.length > MAX_PASSWORD_LENGTH) return ApiResponse.BAD_REQUEST('Password must be at most 128 characters.')
+// src/actions/profile.ts
+import { rateLimitAction } from '@/lib/rate-limit'
+
+export async function changePasswordAction(...): Promise<ApiBody<null>> {
+  return withAuth(async (userId) => {
+    const rl = await rateLimitAction('changePassword', userId)
+    if (rl) return rl
+
+    // ...rest of existing logic unchanged
+  })
+}
 ```
-
-Apply consistently in: `registerAction`, `resetPasswordAction`, `changePasswordAction`, `POST /api/auth/register/route.ts`.
 
 ---
 
-#### Email Parameter Reflected in Redirect Without Validation
+#### Inline `resendVerification` Server Action on `/verify-email` Bypasses Rate Limiting
 
 **Severity**: Medium
-**File**: `src/actions/auth.ts`
-**Lines**: 126-127, 167
+**File**: `src/app/(auth)/verify-email/page.tsx` (lines 72-86)
 
 **Vulnerable Code**:
-
 ```typescript
-// forgotPasswordAction
-redirect(`/forgot-password?sent=1&email=${encodeURIComponent(email)}`)
+function ResendButton({ email }: ResendButtonProps) {
+  async function resend() {
+    'use server'
+    await resendVerification(email)  // No rate limit applied
+    redirect('/sign-in?resent=1')
+  }
 
-// registerAction
-redirect(`/register?pending=1&email=${encodeURIComponent(email)}&sent=${verification === 'sent' ? '1' : '0'}`)
+  return (
+    <form action={resend}>
+      <button type="submit" ...>Resend verification email</button>
+    </form>
+  )
+}
 ```
 
-And in the consuming page (`src/app/(auth)/register/page.tsx`):
+**Problem**: This inline Server Action calls `resendVerification` directly with no rate limiting. The canonical `POST /api/auth/resend-verification` endpoint (used from the sign-in page banner) applies both a broad IP bucket and a per-IP+email bucket. This code path, reached when a user lands on `/verify-email` with an expired token, completely bypasses those guards. The `email` value is passed in closure from the SSR render, so the rate-limiting gap is on the Server Action side, not user input.
 
-```tsx
-We sent a verification link to{' '}
-<span className="font-medium text-foreground">{email}</span>.
-```
+**Attack Scenario**: An attacker who knows (or guesses) an unverified user's email can load `/verify-email?token=<any_valid_but_expired_token>`, which renders the expired-token UI with this form. Scripted POST submissions to the Server Action endpoint allow the attacker to flood that user's inbox with verification emails without any throttle.
 
-**Problem**: The raw form `email` value is placed into a redirect URL and then rendered from `searchParams`. JSX escaping prevents XSS, but an attacker can craft a shareable link like `/forgot-password?sent=1&email=your+account+was+compromised+click+here` and send it to a victim. The victim sees attacker-controlled text rendered in trusted UI. There is also no server-side email format validation before the redirect, so arbitrarily long strings are embedded in the URL.
-
-**Fix**: Validate email format server-side before constructing the redirect. Also consider omitting the email from the URL entirely and using a generic confirmation message instead.
+**Fix**: Promote the inline function to module scope so `next/headers` is accessible and apply the same guards as the API route:
 
 ```typescript
-// In registerAction and forgotPasswordAction, add before redirect:
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-if (!emailRegex.test(email)) return ApiResponse.BAD_REQUEST('Invalid email address.')
+// At module scope in verify-email/page.tsx (or extract to a server actions file)
+async function resendAction(email: string) {
+  'use server'
+  const h = await headers()
+  const ip = h.get('x-forwarded-for')?.split(',')[0].trim() ?? '127.0.0.1'
+
+  const ipRl = await rateLimitAction('resendVerificationIP', ip)
+  if (ipRl) return  // fail silently — no enumeration signal
+
+  const emailRl = await rateLimitAction('resendVerification', `${ip}:${email}`)
+  if (emailRl) return
+
+  await resendVerification(email)
+  redirect('/sign-in?resent=1')
+}
+
+// In ResendButton, bind the email and use the module-level action
+function ResendButton({ email }: ResendButtonProps) {
+  const action = resendAction.bind(null, email)
+  return (
+    <form action={action}>
+      <button type="submit" ...>Resend verification email</button>
+    </form>
+  )
+}
 ```
 
 ---
 
 ### Low Severity
 
----
-
-#### `resend-verification` Endpoint Does Not Validate Email Type
+#### Email Supplied by User Is Reflected in Redirect URL Without Format Validation
 
 **Severity**: Low
-**File**: `src/app/api/auth/resend-verification/route.ts`
-**Lines**: 8-10
+**Files**: `src/actions/auth/register.ts` (line 29), `src/app/(auth)/register/page.tsx` (line 21)
 
 **Vulnerable Code**:
-
 ```typescript
-export const POST = apiRoute(async (request: NextRequest) => {
-  const { email } = await request.json()
-  if (!email) {
-    return ApiResponse.BAD_REQUEST('Email is required')
-  }
-  await resendVerification(email)
-  return ApiResponse.OK()
-})
+// register.ts
+redirect(`/register?pending=1&email=${encodeURIComponent(email)}&sent=${...}`)
+
+// register/page.tsx
+<span className="font-medium text-foreground">{email}</span>
 ```
 
-**Problem**: Only truthiness is checked — not that `email` is a string. A non-string value (object, array) passes and is forwarded to a Prisma `findUnique`, which throws. The `apiRoute` wrapper catches the error and returns a 500, but type validation should happen at the boundary.
+**Problem**: The `email` value from the registration form is URL-encoded and placed into a redirect, then rendered from `searchParams` into JSX. React escaping prevents XSS. However, there is no server-side email format validation before the redirect, so a malformed or very long string survives and is embedded in the URL and rendered in the page. A crafted link could produce misleading UI text in a phishing scenario, though only in the context of the user's own browser session (not a reflected attack against other users).
 
-**Fix**:
-
-```typescript
-if (!email || typeof email !== 'string') {
-  return ApiResponse.BAD_REQUEST('Email is required')
-}
-```
-
----
-
-#### `forgotPasswordAction` Missing Email Format Validation
-
-**Severity**: Low
-**File**: `src/actions/auth.ts`
-**Lines**: 113-116
-
-**Problem**: The API route counterpart (`/api/auth/forgot-password/route.ts`) checks `typeof email !== 'string'`, but the Server Action only checks for truthiness. A malformed input that passes the truthy check proceeds to a Prisma query and a `redirect()` that embeds the value in the URL.
-
-**Fix**:
+**Fix**: Add email format validation in `registerAction` before processing:
 
 ```typescript
+// src/actions/auth/register.ts — after extracting fields
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-if (!email || !emailRegex.test(email)) return ApiResponse.BAD_REQUEST('Email is required.')
+if (!emailRegex.test(email)) return ApiResponse.BAD_REQUEST('Please enter a valid email address.')
 ```
-
----
-
-#### `peekPasswordResetToken` TOCTOU Window
-
-**Severity**: Low
-**File**: `src/lib/tokens.ts`, `src/app/(auth)/reset-password/page.tsx`
-**Lines (tokens)**: 32-44; **Lines (page)**: 22-23
-
-**Problem**: Between the page render (which peeks the token to decide whether to show the form) and form submission (which consumes the token), the token remains in the database. This is low risk because `consumePasswordResetToken` is the authoritative gate. However, `peekPasswordResetToken` can delete an expired token without synchronization — a race between a peek (which deletes expired) and a concurrent consume (which also tries to delete) could surface a Prisma error if `delete` throws on not-found.
-
-**Fix**: Change expired-token cleanup in `peekPasswordResetToken` to use `deleteMany` instead of `delete`:
-
-```typescript
-await prisma.verificationToken.deleteMany({ where: { token } })
-```
-
----
-
-### Previously Flagged — Confirmed False Positive
-
----
-
-#### ~~Route Protection Middleware Not Active~~ — NOT AN ISSUE
-
-**Original Severity**: ~~Critical~~
-**File**: `src/proxy.ts`
-
-The initial audit incorrectly flagged this as critical, citing that Next.js requires a file named `middleware.ts` with `export default`. This applied pre-v16 knowledge to a Next.js 16 project.
-
-**Context7 Verification**: Next.js 16 renamed the middleware convention. `middleware.ts` → `proxy.ts` and the named export `middleware` → `proxy` are the correct v16 conventions. Both named export (`export const proxy = ...`) and default export are accepted. The codemod `npx @next/codemod@canary middleware-to-proxy .` performs exactly this migration. The current `src/proxy.ts` with `export const proxy = auth` is correct.
-
-The empty `middleware-manifest.json` is from a stale build artifact, not a misconfiguration. The `authorized` callback in `auth.config.ts` that guards `/dashboard` and `/profile` is active and correctly configured.
 
 ---
 
 ## Passed Checks
 
-The following security controls were correctly implemented and should be preserved:
+The following security measures were verified as correctly implemented:
 
-- **Cryptographically secure token generation**: `randomBytes(32).toString('hex')` provides 256 bits of entropy. Both verification and password reset tokens use this correctly.
-- **Single-use password reset tokens**: `consumePasswordResetToken` deletes the token before returning. There is no window where the same token can be used twice.
-- **Single-use email verification tokens**: `verify-email/page.tsx` deletes the token atomically alongside the `emailVerified` update in a transaction.
-- **Token type segregation**: Password reset tokens use the `password-reset:<email>` identifier prefix. The verification page explicitly rejects tokens with this prefix, preventing cross-contamination.
-- **bcrypt cost factor**: `bcrypt.hash(password, 12)` is used consistently. Cost 12 is appropriate for current hardware.
-- **Password not stored in JWT**: The JWT only contains `id` and standard claims. No password hash or sensitive fields are included.
-- **User enumeration prevention at registration**: Both the API route and Server Action return the same response shape regardless of whether the email already exists.
-- **User enumeration prevention at password reset**: Both the API route and Server Action return the same success message regardless of whether the email exists or has a password set.
-- **Session validation on sensitive actions**: `changePasswordAction` and `deleteAccountAction` call `auth()` and check `session?.user?.id` before any DB operation. User ID is sourced from the session, never from client input.
-- **Current password required for password change**: `changePasswordAction` verifies the existing password with `bcrypt.compare` before allowing an update.
-- **OAuth account protection**: Password reset is blocked for OAuth-only accounts (no password set), returning a non-enumerating error.
-- **JWT callback user existence check**: The `jwt` callback checks whether the user still exists in the database on every token refresh, invalidating sessions for deleted accounts.
-- **No plaintext password logging**: No `console.log` or error message exposes a password value anywhere in the auth code.
-- **Error messages do not leak stack traces**: The `apiRoute` wrapper catches all unhandled errors and returns a generic `internal_error` response.
-- **Token expiry enforcement**: Both `peekPasswordResetToken` and `consumePasswordResetToken` check `record.expires < new Date()` and reject expired tokens.
-- **Password reset TTL is 1 hour**: `PASSWORD_RESET_TTL_MS = 60 * 60 * 1000` is appropriately short.
-- **Resend rate limiting (partial)**: `resendVerification` checks whether the existing token is within a 55-minute freshness window before issuing a new one.
-- **Correct Next.js 16 proxy convention**: `src/proxy.ts` uses the correct v16 file name and `export const proxy` named export to protect `/dashboard` and `/profile`.
+- **Strong password hashing**: bcryptjs with cost factor 12 (`BCRYPT_ROUNDS = 12`). Applied consistently at registration, password reset, and password change.
+- **Password max length enforced**: `MAX_PASSWORD_LENGTH = 128` checked in `validatePassword` and again explicitly in `linkAccountAction`.
+- **Minimum password length enforced**: 8-character minimum applied server-side in `validatePassword`.
+- **Cryptographically secure token generation**: `randomBytes(32).toString('hex')` — 256 bits of entropy — used for all verification, password reset, and pending-link tokens.
+- **Password reset tokens are single-use**: `consumePasswordResetToken` deletes the token from the DB before returning, preventing any reuse.
+- **Password reset tokens expire in 1 hour**: `PASSWORD_RESET_TTL_MS = 60 * 60 * 1000`. Expired tokens are also cleaned up eagerly on attempted use by both `peekPasswordResetToken` and `consumePasswordResetToken`.
+- **Email verification tokens expire in 24 hours** and are deleted on successful use: `verifyUserEmailAndToken` uses a Prisma `$transaction` that atomically updates the user and deletes the token in one operation.
+- **Token namespace collision prevention**: Password-reset tokens use a `password-reset:` identifier prefix. The verify-email page explicitly rejects tokens carrying that prefix, preventing cross-type token reuse.
+- **No email enumeration on registration**: `registerUser` returns `'sent'` for existing emails when verification is enabled — the caller sees no difference.
+- **No email enumeration on forgot password**: `triggerPasswordReset` conditionally sends an email but `forgotPasswordAction` always redirects with the same response regardless of whether the email exists or has a password.
+- **Consistent credential error message**: Both invalid email and invalid password return `'Invalid email or password.'` with no differentiation.
+- **Rate limiting on login**: Keyed by `IP:email` (case-normalized with `.toLowerCase().trim()`), 5 attempts per 15 minutes. Prevents per-account brute force even with IP rotation.
+- **Rate limiting on register, forgot-password, reset-password, resend-verification (API route), and link-account**: All covered with appropriate sliding-window configurations.
+- **Fail-open rate limiting**: Redis/Upstash unavailability does not block legitimate users — `check()` returns `{ success: true }` on any error.
+- **Session validation on all sensitive profile operations**: `withAuth` reads `session.user.id` from the NextAuth JWT and passes it to every mutation — user IDs from client input are never trusted.
+- **Authorization on account unlinking**: `checkAccountExists(accountId, userId)` verifies the account row belongs to the authenticated user before deletion.
+- **Guard against removing last auth method**: `unlinkProviderAction` counts total auth methods and rejects the request if only one remains, both server-side and client-side (button hidden).
+- **Current password required before password change**: `changePasswordAction` calls `verifyUserPasswordById` with bcrypt before allowing the update.
+- **Password required before OAuth account linking**: `linkAccountAction` calls `validateUserPassword` before creating the Account row.
+- **Passwords never logged**: No `console.log` or logger call includes password values anywhere in the auth path.
+- **No stack traces in error responses**: The `apiRoute` wrapper catches all unhandled errors and returns a generic `internal_error` response without internal details.
+- **JWT session with DB presence check**: The `jwt` callback verifies the user ID still exists in the database on every token refresh, ensuring deleted accounts are immediately locked out.
+- **Pending OAuth-link data stored in Redis, not in URL**: The full OAuth token payload is never exposed in a redirect; only an opaque 32-byte hex reference is passed via query string with a 15-minute TTL.
+- **Verification token freshness reuse**: `resendVerification` reuses the existing token if it was issued less than 55 minutes ago, avoiding token thrashing while still allowing resend.
 
 ---
 
 ## Recommendations Summary
 
-Ordered by impact:
+In priority order:
 
-1. **[High] Add rate limiting to all auth endpoints** — at minimum: sign-in (per-IP + per-email), forgot-password (per-IP + per-email), register (per-IP), resend-verification (per-IP). Consider Upstash Ratelimit for serverless compatibility.
+1. **[High] Invalidate sessions after password change and reset** — Add a `passwordChangedAt` column to the `User` model and compare it against a `passwordIssuedAt` claim in the JWT callback. Apply to both `applyPasswordReset` in `auth-service.ts` and `changeUserPassword` (called from `profile.ts`).
 
-2. **[High] Invalidate sessions after password reset** — add `passwordChangedAt` to the User model and compare against a `passwordIssuedAt` claim in the JWT callback. Both `resetPasswordAction` and the reset API route need to set this timestamp. Alternative: shorten session `maxAge` to limit stolen-token exposure window.
+2. **[Medium] Rate-limit `changePasswordAction`** — Add a `changePassword` key to `LIMIT_CONFIG` in `rate-limit.ts`, keyed by `userId`, and apply it inside `changePasswordAction` before the bcrypt verification step.
 
-3. **[Medium] Cap maximum password length at 128 characters** — add `password.length > 128` checks everywhere `bcrypt.hash` is called to prevent the large-input DoS pattern.
+3. **[Medium] Rate-limit the inline `resend` Server Action on `/verify-email`** — Promote the inline Server Action to module scope (or a dedicated server actions file) and apply the same `resendVerificationIP` and `resendVerification` rate-limit checks used by the API route.
 
-4. **[Medium] Validate email format before reflecting in redirects** — add a simple regex check in `registerAction` and `forgotPasswordAction` before constructing the redirect URL.
-
-5. **[Low] Add type validation to `resend-verification` endpoint** — check `typeof email !== 'string'`.
-
-6. **[Low] Add email format validation to `forgotPasswordAction`** — align with the API route equivalent.
+4. **[Low] Add email format validation in `registerAction`** — Validate email format server-side before constructing the redirect URL to prevent malformed values flowing through to the UI.

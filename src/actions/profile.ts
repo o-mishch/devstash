@@ -6,6 +6,7 @@ import { ApiResponse } from '@/lib/api'
 import { withAuth, getCurrentUserId } from '@/lib/session'
 import type { ApiBody } from '@/types/api'
 import { validatePassword } from '@/lib/utils/validators'
+import { rateLimitAction } from '@/lib/rate-limit'
 import { verifyUserPasswordById, changeUserPassword } from '@/lib/auth-service'
 import { getUserAuthMethods, deleteUserById, checkAccountExists, unlinkUserAccount } from '@/lib/db/users'
 import { invalidateProfileCache } from '@/lib/cache'
@@ -15,6 +16,9 @@ export async function changePasswordAction(
   formData: FormData
 ): Promise<ApiBody<null>> {
   return withAuth(async (userId) => {
+    const rl = await rateLimitAction('changePassword', userId)
+    if (rl) return rl
+
     const currentPassword = (formData.get('currentPassword') as string) ?? ''
     const newPassword = (formData.get('newPassword') as string) ?? ''
     const confirmPassword = (formData.get('confirmPassword') as string) ?? ''

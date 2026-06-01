@@ -18,7 +18,7 @@ export async function DashboardCollections({ userId }: DashboardCollectionsProps
           View all
         </Link>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-0">
         <CollectionsGrid collections={collections} />
       </CardContent>
     </Card>

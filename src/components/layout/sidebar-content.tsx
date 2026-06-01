@@ -60,7 +60,7 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
                 <TooltipTrigger render={<span />}>
                   <Link
                     href={getTypeHref(t.name)}
-                    className="flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-muted"
+                    className="flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-muted"
                   >
                     <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
                   </Link>
@@ -77,7 +77,7 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
                     <TooltipTrigger render={<span />}>
                       <Link
                         href={`/collections/${c.id}`}
-                        className="flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-muted"
+                        className="flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-muted"
                       >
                         <Star className="size-4 shrink-0 fill-amber-400 text-amber-400" />
                       </Link>

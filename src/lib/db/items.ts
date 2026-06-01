@@ -24,6 +24,8 @@ export const LIGHT_ITEM_SELECT = {
   fileName: true,
   fileSize: true,
   fileUrl: true,
+  isFavorite: true,
+  isPinned: true,
   itemType: { select: { id: true, name: true, icon: true, color: true, isSystem: true } },
   tags: { select: { name: true } },
 } as const
@@ -43,6 +45,8 @@ export function toLightItem(item: LightItemWithRelations): LightItem {
     fileUrl: item.fileUrl,
     fileName: item.fileName,
     fileSize: item.fileSize,
+    isFavorite: item.isFavorite,
+    isPinned: item.isPinned,
   }
 }
 
@@ -198,6 +202,22 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
 export async function deleteItem(userId: string, itemId: string): Promise<boolean> {
   const result = await prisma.item.deleteMany({
     where: { id: itemId, userId },
+  })
+  return result.count > 0
+}
+
+export async function toggleItemFavorite(userId: string, itemId: string, isFavorite: boolean): Promise<boolean> {
+  const result = await prisma.item.updateMany({
+    where: { id: itemId, userId },
+    data: { isFavorite },
+  })
+  return result.count > 0
+}
+
+export async function toggleItemPinned(userId: string, itemId: string, isPinned: boolean): Promise<boolean> {
+  const result = await prisma.item.updateMany({
+    where: { id: itemId, userId },
+    data: { isPinned },
   })
   return result.count > 0
 }

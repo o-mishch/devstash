@@ -113,7 +113,7 @@ export default async function ProfilePage() {
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               By Type
             </p>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {stats.itemTypeCounts.map((type) => (
                 <div
                   key={type.name}

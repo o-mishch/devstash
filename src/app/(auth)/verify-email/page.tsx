@@ -2,7 +2,22 @@ import type { ReactNode } from 'react'
 import { redirect } from 'next/navigation'
 import { getVerificationToken, deleteVerificationToken, verifyUserEmailAndToken } from '@/lib/db/users'
 import { resendVerification } from '@/lib/emails/verification'
+import { rateLimitAction, getActionIP } from '@/lib/rate-limit'
 import { AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
+
+async function resendVerificationAction(email: string) {
+  'use server'
+  const ip = await getActionIP()
+
+  const ipRl = await rateLimitAction('resendVerificationIP', ip)
+  if (ipRl) return
+
+  const emailRl = await rateLimitAction('resendVerification', `${ip}:${email}`)
+  if (emailRl) return
+
+  await resendVerification(email)
+  redirect('/sign-in?resent=1')
+}
 
 interface VerifyEmailPageProps {
   searchParams: Promise<{ token?: string }>
@@ -70,14 +85,9 @@ interface ResendButtonProps {
 }
 
 function ResendButton({ email }: ResendButtonProps) {
-  async function resend() {
-    'use server'
-    await resendVerification(email)
-    redirect('/sign-in?resent=1')
-  }
-
+  const action = resendVerificationAction.bind(null, email)
   return (
-    <form action={resend}>
+    <form action={action}>
       <button type="submit" className="text-sm text-primary underline-offset-4 hover:underline">
         Resend verification email
       </button>
