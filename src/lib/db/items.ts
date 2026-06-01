@@ -205,15 +205,11 @@ export async function deleteItem(userId: string, itemId: string): Promise<boolea
 async function getPaginatedItems(
   where: Prisma.ItemWhereInput,
   cacheKey: import('@/lib/cache').DataCacheConfig,
-  cursor?: string
+  cursor?: string,
+  orderBy: Prisma.ItemOrderByWithRelationInput[] = [{ createdAt: 'desc' }, { id: 'desc' }]
 ): Promise<ItemsPage> {
   const take = ITEMS_PAGE_SIZE + 1
-  const query = {
-    where,
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] as Prisma.ItemOrderByWithRelationInput[],
-    take,
-    select: LIGHT_ITEM_SELECT,
-  }
+  const query = { where, orderBy, take, select: LIGHT_ITEM_SELECT }
 
   const rows = cursor
     ? await prisma.item.findMany({ ...query, skip: 1, cursor: { id: cursor } })
@@ -236,7 +232,14 @@ export async function getItemsByCollectionPage(userId: string, collectionId: str
   return getPaginatedItems({ userId, collections: { some: { collectionId } } }, CacheTags.itemsByCollection(userId, collectionId), cursor)
 }
 
-
+export async function getFavoriteItemsPage(userId: string, cursor?: string): Promise<ItemsPage> {
+  return getPaginatedItems(
+    { userId, isFavorite: true },
+    CacheTags.favoriteItems(userId),
+    cursor,
+    [{ updatedAt: 'desc' }, { id: 'desc' }]
+  )
+}
 
 export async function getItemTypeBySlug(slug: string) {
   return withDataCache(CacheTags.itemTypeBySlug(slug), () => {

@@ -34,6 +34,7 @@ export const authConfig: NextAuthConfig = {
         nextUrl.pathname.startsWith('/profile') ||
         nextUrl.pathname.startsWith('/settings') ||
         nextUrl.pathname.startsWith('/collections') ||
+        nextUrl.pathname.startsWith('/favorites') ||
         nextUrl.pathname.startsWith('/items')
       const isAuthPage =
         nextUrl.pathname === '/sign-in' || nextUrl.pathname === '/register'
