@@ -77,3 +77,12 @@ export const ItemsStoreContext = createContext<ItemsStoreContextValue>({
 export function useItemsStore() {
   return useContext(ItemsStoreContext)
 }
+
+export function useVirtualGridState(pageKey: string) {
+  const { state } = useItemsStore()
+  return {
+    items: state.pageKey === pageKey ? state.items : [],
+    hasMore: state.pageKey === pageKey ? state.hasMore : false,
+    loading: state.pageKey === pageKey ? state.loading : false,
+  }
+}

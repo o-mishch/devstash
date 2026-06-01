@@ -1,6 +1,6 @@
 'use client'
 
-import { useItemsStore } from '@/context/items-store-context'
+import { useVirtualGridState } from '@/context/items-store-context'
 import { FileRow } from './file-row'
 import { VirtualGrid } from './virtual-grid'
 
@@ -14,10 +14,7 @@ interface VirtualFileListProps {
 }
 
 export function VirtualFileList({ pageKey, onFetchMore }: VirtualFileListProps) {
-  const { state } = useItemsStore()
-  const items = state.pageKey === pageKey ? state.items : []
-  const hasMore = state.pageKey === pageKey ? state.hasMore : false
-  const loading = state.pageKey === pageKey ? state.loading : false
+  const { items, hasMore, loading } = useVirtualGridState(pageKey)
 
   return (
     <VirtualGrid

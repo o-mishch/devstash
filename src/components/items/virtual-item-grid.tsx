@@ -1,6 +1,6 @@
 'use client'
 
-import { useItemsStore } from '@/context/items-store-context'
+import { useVirtualGridState } from '@/context/items-store-context'
 import { ItemCard } from './item-card'
 import { VirtualGrid } from './virtual-grid'
 
@@ -18,10 +18,7 @@ interface VirtualItemGridProps {
 }
 
 export function VirtualItemGrid({ pageKey, onFetchMore }: VirtualItemGridProps) {
-  const { state } = useItemsStore()
-  const items = state.pageKey === pageKey ? state.items : []
-  const hasMore = state.pageKey === pageKey ? state.hasMore : false
-  const loading = state.pageKey === pageKey ? state.loading : false
+  const { items, hasMore, loading } = useVirtualGridState(pageKey)
 
   return (
     <VirtualGrid
