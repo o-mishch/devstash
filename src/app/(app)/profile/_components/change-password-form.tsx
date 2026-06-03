@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { KeyRound } from 'lucide-react'
 import { Button, SubmitButton } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
@@ -27,7 +27,7 @@ export function ChangePasswordForm() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm"><KeyRound className="size-4" />Change Password</Button>} />
+      <DialogTrigger render={<Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"><KeyRound className="mr-1 size-3" />Change password</Button>} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Change Password</DialogTitle>
@@ -35,10 +35,9 @@ export function ChangePasswordForm() {
         <form action={formAction} className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <Label htmlFor="currentPassword">Current password</Label>
-            <Input
+            <PasswordInput
               id="currentPassword"
               name="currentPassword"
-              type="password"
               placeholder="••••••••"
               autoComplete="current-password"
               required
@@ -46,10 +45,9 @@ export function ChangePasswordForm() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="newPassword">New password</Label>
-            <Input
+            <PasswordInput
               id="newPassword"
               name="newPassword"
-              type="password"
               placeholder="••••••••"
               autoComplete="new-password"
               minLength={8}
@@ -58,10 +56,9 @@ export function ChangePasswordForm() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="confirmPassword">Confirm new password</Label>
-            <Input
+            <PasswordInput
               id="confirmPassword"
               name="confirmPassword"
-              type="password"
               placeholder="••••••••"
               autoComplete="new-password"
               minLength={8}

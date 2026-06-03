@@ -8,10 +8,34 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { formatDate, PROVIDER_LABELS } from '@/lib/utils'
 import { getCurrentUserId } from '@/lib/session'
 import { getProfileData } from '@/lib/db/profile'
-
+import { DeleteAccountDialog } from './_components/delete-account-dialog'
 import { ConnectedAccounts } from './_components/connected-accounts'
+import { ProfileToast, type ToastCode } from './_components/profile-toast'
+import { MainEmailSelector } from './_components/main-email-selector'
+import { EditableName } from './_components/editable-name'
 
-export default async function ProfilePage() {
+interface ProfilePageProps {
+  searchParams: Promise<{ toast?: string }>
+}
+
+type ProfileUser = NonNullable<Awaited<ReturnType<typeof getProfileData>>>['user']
+
+function getAccountData(user: ProfileUser) {
+  const accountTypes: string[] = []
+  if (user.hasPassword) accountTypes.push('Email')
+  user.accounts.forEach(({ provider }) => {
+    accountTypes.push(PROVIDER_LABELS[provider] ?? provider)
+  })
+
+  const availableEmails = Array.from(
+    new Set([user.email, ...user.accounts.map((a) => a.email).filter(Boolean) as string[]])
+  )
+
+  return { accountTypes, availableEmails }
+}
+
+export default async function ProfilePage({ searchParams }: ProfilePageProps) {
+  const flash = ((await searchParams).toast) as ToastCode | undefined
   const userId = await getCurrentUserId()
   if (!userId) redirect('/sign-in')
 
@@ -19,83 +43,85 @@ export default async function ProfilePage() {
   if (!data) redirect('/sign-in')
 
   const { user, stats } = data
+  const { accountTypes, availableEmails } = getAccountData(user)
 
-  const accountTypes: string[] = []
-  if (user.hasPassword) accountTypes.push('Email Account')
-  user.accounts.forEach(({ provider }) => {
-    accountTypes.push(`${PROVIDER_LABELS[provider] ?? provider} Account`)
-  })
+  const showEmailSelector = availableEmails.length > 1
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-5 p-6">
+      {/* Header */}
       <div className="flex items-start gap-3">
-        <Link
-          href="/dashboard"
-          className="mt-0.5 text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <Link href="/dashboard" className="mt-0.5 text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="size-5" />
         </Link>
         <div>
           <h1 className="text-xl font-semibold">Profile</h1>
-          <p className="text-sm text-muted-foreground">Manage your account and preferences</p>
+          <p className="text-sm text-muted-foreground">Account security and usage</p>
         </div>
       </div>
 
+      {flash && <ProfileToast code={flash} />}
+
       {/* Account Information */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Account Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-5 space-y-4">
           <div className="flex items-center gap-4">
-            <UserAvatar name={user.name} image={user.image} className="size-14" />
-            <div className="min-w-0">
-              <p className="truncate font-medium">{user.name ?? 'No name set'}</p>
+            <UserAvatar name={user.name} image={user.image} className="size-14 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <EditableName name={user.name} />
               <p className="text-xs text-muted-foreground">{accountTypes.join(' · ')}</p>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 min-w-0">
               <Mail className="size-4 shrink-0" />
-              <span>{user.email}</span>
+              {showEmailSelector ? (
+                <MainEmailSelector currentEmail={user.email} availableEmails={availableEmails} hasPassword={user.hasPassword} />
+              ) : (
+                <span className="truncate">{user.email}</span>
+              )}
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 shrink-0">
               <CalendarDays className="size-4 shrink-0" />
               <span>Member since {formatDate(user.createdAt)}</span>
             </div>
           </div>
+          {showEmailSelector && (
+            <p className="-mt-2 pl-6 text-xs text-muted-foreground/70">
+              {user.hasPassword ? 'Sign-in email · click to change' : 'Display email · click to change'}
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      {/* Connected Accounts */}
+      {/* Sign-in Methods */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Connected Accounts
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ConnectedAccounts hasPassword={user.hasPassword} accounts={user.accounts} />
-        </CardContent>
-      </Card>
-
-      {/* Usage Statistics */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            Usage Statistics
-          </CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Sign-in Methods</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <ConnectedAccounts
+            hasPassword={user.hasPassword}
+            accounts={user.accounts}
+            currentEmail={user.email}
+            availableEmails={availableEmails}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Usage */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Usage</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex items-center gap-3 rounded-lg border border-border p-3">
               <Package className="size-5 text-muted-foreground" />
               <div>
                 <p className="text-xl font-semibold">{stats.totalItems}</p>
-                <p className="text-xs text-muted-foreground">Total Items</p>
+                <p className="text-xs text-muted-foreground">Items</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg border border-border p-3">
@@ -109,27 +135,35 @@ export default async function ProfilePage() {
 
           <Separator />
 
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              By Type
-            </p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {stats.itemTypeCounts.map((type) => (
-                <div
-                  key={type.name}
-                  className="flex items-center justify-between rounded-lg border border-border px-2.5 py-2"
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <ItemTypeIcon iconName={type.icon} color={type.color} className="size-3 shrink-0" />
-                    <span className="text-xs capitalize truncate">{type.name}</span>
-                  </div>
-                  <span className="text-xs font-semibold text-muted-foreground ml-1.5 shrink-0">{type.count}</span>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {stats.itemTypeCounts.map((type) => (
+              <div
+                key={type.name}
+                className="flex items-center justify-between rounded-lg border border-border px-2.5 py-2"
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <ItemTypeIcon iconName={type.icon} color={type.color} className="size-3 shrink-0" />
+                  <span className="text-xs capitalize truncate">{type.name}</span>
                 </div>
-              ))}
-            </div>
+                <span className="text-xs font-semibold text-muted-foreground ml-1.5 shrink-0">{type.count}</span>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
+
+      {/* Danger zone — no card chrome, stands apart */}
+      <div className="rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Delete Account</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Permanently removes your account and all data. This cannot be undone.
+            </p>
+          </div>
+          <DeleteAccountDialog />
+        </div>
+      </div>
     </div>
   )
 }

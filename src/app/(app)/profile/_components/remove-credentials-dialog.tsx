@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Trash2 } from 'lucide-react'
+import { Unlink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -12,20 +12,21 @@ import {
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { deleteAccountAction } from '@/actions/profile'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
+import { removeCredentialsAction } from '@/actions/profile'
 
-export function DeleteAccountDialog() {
+export function RemoveCredentialsDialog() {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  function handleDelete() {
+  function handleRemove() {
     startTransition(async () => {
-      try {
-        localStorage.removeItem('theme')
-        await deleteAccountAction()
-      } catch {
-        toast.error('Failed to delete account. Please try again.')
+      const result = await removeCredentialsAction()
+      if (result.status === 'ok') {
+        toast.success('Password removed. Sign in via a linked account.')
+        setOpen(false)
+      } else {
+        toast.error(result.message ?? 'Failed to remove password.')
       }
     })
   }
@@ -34,25 +35,25 @@ export function DeleteAccountDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button variant="destructive" size="sm">
-            <Trash2 className="mr-1.5 size-4" />
-            Delete Account
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive">
+            <Unlink className="mr-1 size-3" />
+            Unlink
           </Button>
         }
       />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Delete Account</DialogTitle>
+          <DialogTitle>Remove password</DialogTitle>
           <DialogDescription>
-            This action is permanent. All your items, collections, and data will be deleted and
-            cannot be recovered.
+            Your email &amp; password sign-in will be removed. You can still sign in via your
+            linked accounts.
           </DialogDescription>
         </DialogHeader>
         <DestructiveDialogFooter
           onCancel={() => setOpen(false)}
-          onConfirm={handleDelete}
+          onConfirm={handleRemove}
           isPending={isPending}
-          confirmText="Yes, Delete My Account"
+          confirmText="Remove password"
         />
       </DialogContent>
     </Dialog>

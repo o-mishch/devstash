@@ -1,6 +1,7 @@
 'use server'
 
-import { signIn } from '@/auth'
+import { redirect } from 'next/navigation'
+import { signIn, auth } from '@/auth'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 import { withRateLimit } from '@/lib/rate-limit'
@@ -8,6 +9,10 @@ import { getPendingLink, deletePendingLink } from '@/lib/pending-link'
 import { checkProviderAccountExists, createAccount } from '@/lib/db/users'
 import { validateUserPassword } from '@/lib/auth-service'
 import { MAX_PASSWORD_LENGTH } from '@/lib/utils/validators'
+import { invalidateProfileCache } from '@/lib/cache'
+import { z } from 'zod'
+
+const LinkPasswordSchema = z.string().min(1, 'Password is required.').max(MAX_PASSWORD_LENGTH, 'Password is too long.')
 
 export async function linkAccountAction(
   token: string,
@@ -15,14 +20,13 @@ export async function linkAccountAction(
   formData: FormData
 ): Promise<ApiBody<null>> {
   return withRateLimit('linkAccount', async () => {
-    const password = (formData.get('password') as string) ?? ''
-
-    if (!password) return ApiResponse.BAD_REQUEST('Password is required.')
-    if (password.length > MAX_PASSWORD_LENGTH) return ApiResponse.BAD_REQUEST('Password is too long.')
+    const parseResult = LinkPasswordSchema.safeParse(formData.get('password') || '')
+    if (!parseResult.success) return ApiResponse.BAD_REQUEST(parseResult.error.issues[0].message)
+    const password = parseResult.data
 
     const pending = await getPendingLink(token)
     if (!pending) {
-      return ApiResponse.BAD_REQUEST('This link has expired. Please try signing in with GitHub again.')
+      return ApiResponse.BAD_REQUEST('This link has expired. Please try signing in again.')
     }
 
     const user = await validateUserPassword(pending.email, password)
@@ -39,6 +43,7 @@ export async function linkAccountAction(
         type: pending.type,
         provider: pending.provider,
         providerAccountId: pending.providerAccountId,
+        email: pending.providerEmail,
         access_token: pending.access_token,
         refresh_token: pending.refresh_token,
         expires_at: pending.expires_at,
@@ -47,6 +52,7 @@ export async function linkAccountAction(
         id_token: pending.id_token,
         session_state: pending.session_state,
       })
+      invalidateProfileCache(user.id)
     }
 
     await deletePendingLink(token)
@@ -55,4 +61,45 @@ export async function linkAccountAction(
 
     return ApiResponse.OK()
   })
+}
+
+// Used when the user is already signed in and clicked "Add account" from the profile page.
+// The link-intent flow stores the pending link keyed by the user's primary email; we verify
+// the active session matches that email before creating the Account row.
+export async function autoLinkAccountAction(token: string): Promise<void> {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.email) redirect('/sign-in')
+
+  const pending = await getPendingLink(token)
+  if (!pending) {
+    redirect('/profile?toast=expired')
+  }
+
+  // Security: the pending link must be for the signed-in user's account
+  if (pending.email !== session.user.email) {
+    redirect('/profile?toast=mismatch')
+  }
+
+  const alreadyLinked = await checkProviderAccountExists(pending.provider, pending.providerAccountId)
+
+  if (!alreadyLinked) {
+    await createAccount({
+      userId: session.user.id,
+      type: pending.type,
+      provider: pending.provider,
+      providerAccountId: pending.providerAccountId,
+      email: pending.providerEmail,
+      access_token: pending.access_token,
+      refresh_token: pending.refresh_token,
+      expires_at: pending.expires_at,
+      token_type: pending.token_type,
+      scope: pending.scope,
+      id_token: pending.id_token,
+      session_state: pending.session_state,
+    })
+    invalidateProfileCache(session.user.id)
+  }
+
+  await deletePendingLink(token)
+  redirect('/profile?toast=linked')
 }

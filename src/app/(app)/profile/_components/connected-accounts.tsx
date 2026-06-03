@@ -1,40 +1,46 @@
-import type { ComponentType } from 'react'
-import { Mail, Globe } from 'lucide-react'
-import githubSvg from '@/assets/icons/github.svg'
-import { SvgIcon } from '@/components/icons/svg-icon'
-import { PROVIDER_LABELS } from '@/lib/utils'
+import { Mail } from 'lucide-react'
+import { ProviderIcon } from '@/components/shared/provider-icon'
+import { Button } from '@/components/ui/button'
+import { PROVIDER_LABELS, SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils'
+import { linkWithProviderAction } from '@/actions/auth/login'
+import type { OAuthProvider } from '@/lib/utils/constants'
 import type { LinkedAccount } from '@/lib/db/profile'
 import { UnlinkProviderDialog } from './unlink-provider-dialog'
+import { RemoveCredentialsDialog } from './remove-credentials-dialog'
+import { ChangeCredentialEmailDialog } from './change-credential-email-dialog'
+import { ChangePasswordForm } from './change-password-form'
+import { SetPasswordDialog } from './set-password-dialog'
+import { AddProviderSubmitButton } from './add-provider-submit-button'
 
 interface ConnectedAccountsProps {
   hasPassword: boolean
   accounts: LinkedAccount[]
+  currentEmail: string
+  availableEmails: string[]
 }
 
-interface ProviderMeta {
-  Icon: ComponentType<{ className?: string }>
+
+
+interface EmailRowProps {
+  email: string
+  canUnlink: boolean
 }
 
-interface ProviderIconProps {
-  className?: string
-}
-
-function GitHubProviderIcon({ className }: ProviderIconProps) {
-  return <SvgIcon src={githubSvg} className={className} />
-}
-
-const PROVIDER_META: Record<string, ProviderMeta> = {
-  github: { Icon: GitHubProviderIcon },
-}
-
-function EmailRow() {
+function EmailRow({ email, canUnlink }: EmailRowProps) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
-      <div className="flex items-center gap-2.5 text-sm">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+      <div className="flex items-center gap-2.5 text-sm min-w-0">
         <Mail className="size-4 shrink-0 text-muted-foreground" />
-        <span>Email &amp; Password</span>
+        <div className="min-w-0">
+          <span>Email &amp; Password</span>
+          <p className="text-xs text-muted-foreground truncate">{email}</p>
+        </div>
       </div>
-      <span className="text-xs text-muted-foreground">Connected</span>
+      <div className="flex flex-wrap items-center gap-1 sm:shrink-0">
+        <ChangeCredentialEmailDialog currentEmail={email} />
+        <ChangePasswordForm />
+        {canUnlink && <RemoveCredentialsDialog />}
+      </div>
     </div>
   )
 }
@@ -45,31 +51,68 @@ interface ProviderAccountRowProps {
 }
 
 function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
-  const meta = PROVIDER_META[account.provider]
   const label = PROVIDER_LABELS[account.provider] ?? account.provider
-  const Icon = meta?.Icon ?? Globe
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
-      <div className="flex items-center gap-2.5 text-sm">
-        <span className="text-muted-foreground"><Icon className="size-4 shrink-0" /></span>
-        <span>{label}</span>
+      <div className="flex items-center gap-2.5 text-sm min-w-0">
+        <span className="text-muted-foreground shrink-0"><ProviderIcon provider={account.provider} className="size-4" /></span>
+        <div className="min-w-0">
+          <span>{label}</span>
+          {account.email && (
+            <p className="text-xs text-muted-foreground truncate">{account.email}</p>
+          )}
+        </div>
       </div>
       {canUnlink ? (
         <UnlinkProviderDialog accountId={account.id} label={label} />
       ) : (
-        <span className="text-xs text-muted-foreground">Connected</span>
+        <span className="text-xs text-muted-foreground shrink-0">Connected</span>
       )}
     </div>
   )
 }
 
-export function ConnectedAccounts({ hasPassword, accounts }: ConnectedAccountsProps) {
+
+
+interface AddProviderRowProps {
+  provider: OAuthProvider
+}
+
+function AddProviderRow({ provider }: AddProviderRowProps) {
+  const label = PROVIDER_LABELS[provider] ?? provider
+
+  const action = linkWithProviderAction.bind(null, provider)
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2.5">
+      <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+        <ProviderIcon provider={provider} className="size-4 shrink-0" />
+        <span>Add {label}</span>
+      </div>
+      <form action={action}>
+        <AddProviderSubmitButton />
+      </form>
+    </div>
+  )
+}
+
+export function ConnectedAccounts({ hasPassword, accounts, currentEmail, availableEmails }: ConnectedAccountsProps) {
   const totalMethods = (hasPassword ? 1 : 0) + accounts.length
 
   return (
     <div className="space-y-2">
-      {hasPassword && <EmailRow />}
+      {hasPassword ? (
+        <EmailRow email={currentEmail} canUnlink={accounts.length > 0} />
+      ) : (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2.5">
+          <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+            <Mail className="size-4 shrink-0" />
+            <span>Email &amp; Password</span>
+          </div>
+          <SetPasswordDialog suggestedEmails={availableEmails} />
+        </div>
+      )}
       {accounts.map((account) => (
         <ProviderAccountRow
           key={account.id}
@@ -77,6 +120,11 @@ export function ConnectedAccounts({ hasPassword, accounts }: ConnectedAccountsPr
           canUnlink={totalMethods > 1}
         />
       ))}
+      {SUPPORTED_OAUTH_PROVIDERS
+        .filter((provider) => !accounts.some((a) => a.provider === provider))
+        .map((provider) => (
+          <AddProviderRow key={provider} provider={provider} />
+        ))}
     </div>
   )
 }

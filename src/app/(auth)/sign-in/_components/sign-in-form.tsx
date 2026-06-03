@@ -6,14 +6,13 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button, SubmitButton, buttonVariants } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import { signInWithCredentials, signInWithGitHub } from '@/actions/auth/login'
+import { signInWithCredentials, signInWithGitHub, signInWithGoogle } from '@/actions/auth/login'
 import { apiFetch } from '@/lib/api-fetch'
-import githubSvg from '@/assets/icons/github.svg'
-import { SvgIcon } from '@/components/icons/svg-icon'
+import { ProviderIcon } from '@/components/shared/provider-icon'
 
 interface SignInFormProps {
   successMessage?: string
@@ -27,8 +26,18 @@ function GitHubSubmitButton() {
   const { pending } = useFormStatus()
   return (
     <Button type="submit" variant="outline" className="w-full" disabled={pending}>
-      <SvgIcon src={githubSvg} className="size-4" />
+      <ProviderIcon provider="github" className="size-4" />
       {pending ? 'Connecting...' : 'Continue with GitHub'}
+    </Button>
+  )
+}
+
+function GoogleSubmitButton() {
+  const { pending } = useFormStatus()
+  return (
+    <Button type="submit" variant="outline" className="w-full" disabled={pending}>
+      <ProviderIcon provider="google" className="size-4" />
+      {pending ? 'Connecting...' : 'Continue with Google'}
     </Button>
   )
 }
@@ -99,10 +108,9 @@ export function SignInForm({ successMessage }: SignInFormProps) {
               Forgot password?
             </Link>
           </div>
-          <Input
+          <PasswordInput
             id="password"
             name="password"
-            type="password"
             placeholder="••••••••"
             autoComplete="current-password"
             required
@@ -125,9 +133,14 @@ export function SignInForm({ successMessage }: SignInFormProps) {
         <Separator className="flex-1" />
       </div>
 
-      <form action={signInWithGitHub}>
-        <GitHubSubmitButton />
-      </form>
+      <div className="flex flex-col gap-2">
+        <form action={signInWithGitHub}>
+          <GitHubSubmitButton />
+        </form>
+        <form action={signInWithGoogle}>
+          <GoogleSubmitButton />
+        </form>
+      </div>
     </div>
   )
 }

@@ -24,6 +24,18 @@ export async function getUserWithGithubAccount(email: string) {
   })
 }
 
+// Returns the user if they exist but haven't linked the given OAuth provider yet.
+// Returns null if no user with that email exists, or they already have the provider linked.
+export async function getUserWithOAuthConflict(email: string, provider: string) {
+  return prisma.user.findFirst({
+    where: {
+      email,
+      accounts: { none: { provider } },
+    },
+    select: { id: true, email: true, password: true },
+  })
+}
+
 export async function getUserAuthInfoByEmail(email: string) {
   return prisma.user.findUnique({
     where: { email },
@@ -36,7 +48,7 @@ export async function getUserAuthMethods(id: string) {
     where: { id },
     select: {
       password: true,
-      accounts: { select: { id: true } },
+      accounts: { select: { id: true, provider: true } },
     },
   })
 }
@@ -59,6 +71,10 @@ export async function checkAccountExists(accountId: string, userId: string) {
   })
 }
 
+export async function getUserById(id: string) {
+  return prisma.user.findUnique({ where: { id }, select: { id: true, email: true } })
+}
+
 export async function checkProviderAccountExists(provider: string, providerAccountId: string) {
   return prisma.account.findUnique({
     where: {
@@ -68,6 +84,14 @@ export async function checkProviderAccountExists(provider: string, providerAccou
       },
     },
     select: { id: true },
+  })
+}
+
+// Returns the account with its owning userId so callers can detect cross-user conflicts.
+export async function getProviderAccount(provider: string, providerAccountId: string) {
+  return prisma.account.findUnique({
+    where: { provider_providerAccountId: { provider, providerAccountId } },
+    select: { id: true, userId: true },
   })
 }
 
@@ -102,4 +126,8 @@ export async function updateUserPassword(userId: string, hashed: string): Promis
 
 export async function unlinkUserAccount(userId: string, accountId: string): Promise<void> {
   await prisma.account.delete({ where: { id: accountId, userId } })
+}
+
+export async function removeUserPassword(userId: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { password: null } })
 }

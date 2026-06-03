@@ -2,6 +2,7 @@ import type { NextAuthConfig, Session } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import type { NextRequest } from 'next/server'
 import GitHub from 'next-auth/providers/github'
+import Google from 'next-auth/providers/google'
 import Credentials from 'next-auth/providers/credentials'
 
 export const BCRYPT_ROUNDS = 12
@@ -17,6 +18,7 @@ export const authConfig: NextAuthConfig = {
   },
   providers: [
     GitHub,
+    Google,
     Credentials({
       credentials: {
         email: { label: 'Email', type: 'email' },

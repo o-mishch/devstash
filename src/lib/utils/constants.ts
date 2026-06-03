@@ -2,7 +2,11 @@ export const ITEMS_PAGE_SIZE = 20
 
 export const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
+  google: 'Google',
 }
+
+export const SUPPORTED_OAUTH_PROVIDERS = ['github', 'google'] as const
+export type OAuthProvider = (typeof SUPPORTED_OAUTH_PROVIDERS)[number]
 
 export const ITEM_TYPES_WITH_CONTENT = new Set(['snippet', 'command', 'prompt', 'note'])
 export const ITEM_TYPES_WITH_LANGUAGE = new Set(['snippet', 'command'])

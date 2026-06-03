@@ -162,7 +162,7 @@
  *  Very dark near-black with barely perceptible cool blue tint.
  *  Custom oklch — no named Tailwind scale matches this saturation.
  * ------------------------------------------------------------------ */
-.dark[data-theme="github"] {
+.dark[data-theme="github"], .dark [data-theme="github"] {
     --background:          oklch(0.13 0.012 250); /* ≈ #0d1117 */
     --foreground:          var(--color-slate-50);
     --card:                oklch(0.17 0.010 250); /* canvas-subtle */
@@ -196,7 +196,7 @@
  *  JetBrains Darcula  (#2B2B2B)
  *  Warm neutral dark grey, amber/orange accent.
  * ------------------------------------------------------------------ */
-.dark[data-theme="jetbrains"] {
+.dark[data-theme="jetbrains"], .dark [data-theme="jetbrains"] {
     --background:          var(--color-zinc-800); /* ≈ #27272a, Darcula ≈ #2B2B2B */
     --foreground:          var(--color-zinc-100);
     --card:                var(--color-zinc-700);
@@ -230,7 +230,7 @@
  *  Vercel  (#000000)
  *  Pure OLED black, maximum contrast.
  * ------------------------------------------------------------------ */
-.dark[data-theme="vercel"] {
+.dark[data-theme="vercel"], .dark [data-theme="vercel"] {
     --background:          var(--color-black);
     --foreground:          var(--color-white);
     --card:                var(--color-neutral-950);
@@ -264,7 +264,7 @@
  *  Dracula  (#282A36)
  *  Purple-grey hue. Custom oklch — no Tailwind scale matches.
  * ------------------------------------------------------------------ */
-.dark[data-theme="dracula"] {
+.dark[data-theme="dracula"], .dark [data-theme="dracula"] {
     --background:          oklch(0.22 0.018 285); /* ≈ #282A36 */
     --foreground:          oklch(0.95 0 0);
     --card:                oklch(0.27 0.018 285);
@@ -298,7 +298,7 @@
  *  Monokai  (#272822)
  *  Warm olive-grey, pink accent.
  * ------------------------------------------------------------------ */
-.dark[data-theme="monokai"] {
+.dark[data-theme="monokai"], .dark [data-theme="monokai"] {
     --background:          var(--color-stone-800); /* ≈ #292524, Monokai ≈ #272822 */
     --foreground:          var(--color-stone-50);
     --card:                var(--color-stone-700);

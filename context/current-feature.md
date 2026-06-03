@@ -6,11 +6,11 @@ Not Started
 
 ## Goals
 
-<!-- Add goals here -->
+<!-- List the specific, measurable goals for the current feature -->
 
 ## Notes
 
-<!-- Add notes here -->
+<!-- Any implementation details, context, or decisions made during development -->
 
 ---
 
@@ -75,3 +75,4 @@ Not Started
 - **Pinned Items** - Pinned item functionality via `toggleItemPinnedAction` & `toggleItemPinned`, added `{ isPinned: 'desc' }` sorting to `getPaginatedItems`, and implemented static Pin and Star icon indicators across `ItemCard`, `ImageCard`, `FileRow`, and `ItemRow` components. (Completed)
 - **Homepage Mockup** - Static marketing homepage prototype in `prototypes/homepage/` (index.html, styles.css, script.js); hero "chaos to order" section with rAF canvas physics (8 floating icons, bounce + mouse repel + rotation/scale pulse), pulsing CSS arrow, dashboard mockup; fixed nav with scroll-opacity; 6-card features grid with item-type accent colors; AI section with Pro badge, checklist, code editor mockup with AI tags demo; pricing with Free/Pro cards and monthly/yearly toggle ($8→$6/mo, $72/yr); CTA and footer; IntersectionObserver scroll fade-ins; fully responsive (hero stacks vertically, arrow rotates 90° on mobile). (Completed)
 - **Homepage Next.js Conversion** - Converted the static marketing prototype into a responsive Next.js `(marketing)` route. Implemented `HomepageNav` with `IntersectionObserver`, `ChaosCanvas` floating icon physics, `PricingSection` toggle, and `FadeIn` scroll animations. (Completed)
+- **Google OAuth** - Added Google OAuth provider to NextAuth alongside GitHub; handled credentials conflict with a redirect to `/link-account` flow; handled OAuth-only conflict by prompting users to sign in with their existing provider; updated the "Connected Accounts" card on `/profile` to show all linked providers, their icons, and a guarded Unlink button. (Completed)

@@ -24,6 +24,7 @@ const validPreferences: EditorPreferences = {
   wordWrap: 'on',
   minimap: false,
   theme: 'vs-dark',
+  appTheme: 'vscode',
 }
 
 beforeEach(() => vi.clearAllMocks())

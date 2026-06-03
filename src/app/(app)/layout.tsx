@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { WithChildren } from '@/types/common'
+import { APP_THEMES } from '@/types/editor-preferences'
 import { Archive, Home } from 'lucide-react'
 import { GlobalSearch } from '@/components/shared/global-search'
 import { SidebarContent } from '@/components/layout/sidebar-content'
@@ -14,6 +15,7 @@ import { getSession } from '@/lib/session'
 import { fetchSidebarData } from '@/lib/db/sidebar'
 import { getProfileData } from '@/lib/db/profile'
 import { EditorPreferencesProvider } from '@/components/providers/editor-preferences-provider'
+import { ThemeProvider } from 'next-themes'
 
 const getSidebarData = cache(async () => {
   const session = await getSession()
@@ -40,10 +42,13 @@ export default async function DashboardLayout({ children }: WithChildren) {
   const userId = session?.user?.id
   const profileData = userId ? await getProfileData(userId).catch(() => null) : null
   const initialPreferences = profileData?.user.editorPreferences || null
+  const rawTheme = initialPreferences?.appTheme
+  const appTheme = rawTheme && APP_THEMES.includes(rawTheme) && rawTheme !== 'vscode' ? rawTheme : null
 
   return (
-    <EditorPreferencesProvider initialPreferences={initialPreferences}>
-      <ItemDrawerProvider collections={sidebarData.collections}>
+    <ThemeProvider attribute="data-theme" defaultTheme={appTheme || 'vscode'} enableSystem={false}>
+      <EditorPreferencesProvider initialPreferences={initialPreferences}>
+        <ItemDrawerProvider collections={sidebarData.collections}>
         <div className="flex h-screen flex-col bg-background">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
             <MobileDrawerAsync />
@@ -89,5 +94,6 @@ export default async function DashboardLayout({ children }: WithChildren) {
         </div>
       </ItemDrawerProvider>
     </EditorPreferencesProvider>
+    </ThemeProvider>
   )
 }

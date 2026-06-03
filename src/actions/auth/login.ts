@@ -1,12 +1,21 @@
 'use server'
 
-import { signIn, signOut } from '@/auth'
+import { cookies } from 'next/headers'
+import { signIn, signOut, auth, LINK_INTENT_COOKIE } from '@/auth'
 import { AuthError } from 'next-auth'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 import { rateLimitAction, getActionIP } from '@/lib/rate-limit'
 import { emailVerificationEnabled } from '@/lib/emails/verification'
 import { getUserEmailVerified } from '@/lib/db/users'
+import { createLinkIntent } from '@/lib/pending-link'
+import type { OAuthProvider } from '@/lib/utils/constants'
+import { z } from 'zod'
+
+const SignInSchema = z.object({
+  email: z.string().trim().toLowerCase().min(1, 'Email is required.').email('Please enter a valid email address.'),
+  password: z.string().min(1, 'Password is required.'),
+})
 
 interface SignInData {
   email: string
@@ -16,17 +25,49 @@ export async function signInWithGitHub() {
   await signIn('github', { redirectTo: '/dashboard' })
 }
 
+export async function signInWithGoogle() {
+  await signIn('google', { redirectTo: '/dashboard' })
+}
+
+// Used from the profile page to link an additional OAuth provider.
+// Stores the current user's ID in Redis, sets a short-lived httpOnly cookie so the
+// signIn callback in auth.ts can identify this as a link-intent flow (not a sign-in).
+export async function linkWithProviderAction(provider: OAuthProvider): Promise<void> {
+  const session = await auth()
+  if (!session?.user?.id) return
+
+  const intentToken = await createLinkIntent(session.user.id)
+  if (intentToken) {
+    const cookieStore = await cookies()
+    cookieStore.set(LINK_INTENT_COOKIE, intentToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 300, // 5 minutes — matches Redis TTL
+      path: '/',
+    })
+  }
+
+  await signIn(provider, { redirectTo: '/profile' })
+}
+
 export async function signInWithCredentials(
   _prevState: ApiBody<SignInData | null> | null,
   formData: FormData
 ): Promise<ApiBody<SignInData | null>> {
-  const email = (formData.get('email') as string) ?? ''
-  const password = (formData.get('password') as string) ?? ''
+  const parseResult = SignInSchema.safeParse({
+    email: formData.get('email') || '',
+    password: formData.get('password') || '',
+  })
 
-  if (!email) return ApiResponse.BAD_REQUEST('Email is required.')
+  if (!parseResult.success) {
+    return ApiResponse.BAD_REQUEST(parseResult.error.issues[0].message)
+  }
+
+  const { email, password } = parseResult.data
 
   const ip = await getActionIP()
-  const rl = await rateLimitAction('login', `${ip}:${email.toLowerCase().trim()}`)
+  const rl = await rateLimitAction('login', `${ip}:${email}`)
   if (rl) return rl
 
   if (emailVerificationEnabled()) {

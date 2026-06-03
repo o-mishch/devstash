@@ -51,6 +51,7 @@ model Account {
   scope             String?
   id_token          String? @db.Text
   session_state     String?
+  email             String? // OAuth provider email (may differ from User.email)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

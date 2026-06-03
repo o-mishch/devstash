@@ -7,6 +7,7 @@ import type { Prisma } from '@/generated/prisma/client'
 export interface LinkedAccount {
   id: string
   provider: string
+  email: string | null
 }
 
 interface ProfileUser {
@@ -47,7 +48,7 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
         password: true,
         editorPreferences: true,
         createdAt: true,
-        accounts: { select: { id: true, provider: true } },
+        accounts: { select: { id: true, provider: true, email: true } },
       },
     }),
     prisma.item.count({ where: { userId } }),
@@ -77,7 +78,7 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
       image: user.image,
       hasPassword: !!user.password,
       editorPreferences: user.editorPreferences as unknown as EditorPreferences | null,
-      accounts: user.accounts.map((a) => ({ id: a.id, provider: a.provider })),
+      accounts: user.accounts.map((a) => ({ id: a.id, provider: a.provider, email: a.email })),
       createdAt: user.createdAt,
     },
     stats: { totalItems, totalCollections, itemTypeCounts },
@@ -89,6 +90,14 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
     CacheTags.profile(userId),
     () => fetchProfileData(userId)
   )
+}
+
+export async function updateUserEmail(userId: string, email: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { email } })
+}
+
+export async function updateUserName(userId: string, name: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { name } })
 }
 
 export async function updateEditorPreferences(userId: string, preferences: EditorPreferences): Promise<void> {

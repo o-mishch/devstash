@@ -94,7 +94,11 @@ export function ItemDetailDrawer({
   onItemSaved,
   onItemDeleted,
 }: ItemDetailDrawerProps) {
-  const { width, dragging, startResize } = useResizable({ defaultWidth: 560 })
+  const { width, dragging, startResize, onMouseMove, onMouseUp } = useResizable({
+    defaultWidth: 560,
+    maxBoundarySelector: 'main',
+    maxBoundaryGapVw: 0.1, // 10% distance from the sidebar/main boundary
+  })
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -108,6 +112,14 @@ export function ItemDetailDrawer({
           className={`absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize transition-colors ${dragging ? 'bg-primary/40' : 'hover:bg-primary/30'}`}
           onMouseDown={startResize}
         />
+
+        {dragging && (
+          <div 
+            className="fixed inset-0 z-[60] cursor-ew-resize select-none" 
+            onMouseMove={onMouseMove} 
+            onMouseUp={onMouseUp} 
+          />
+        )}
 
         {item && (
           <ItemDetailDrawerInner

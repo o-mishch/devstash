@@ -1,12 +1,23 @@
 import { AuthFormLayout, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 import githubSvg from '@/assets/icons/github.svg'
+import googleSvg from '@/assets/icons/google.svg'
 import { SvgIcon } from '@/components/icons/svg-icon'
 import { getPendingLink } from '@/lib/pending-link'
-import { linkAccountAction } from '@/actions/auth/link'
+import { linkAccountAction, autoLinkAccountAction } from '@/actions/auth/link'
+import { auth } from '@/auth'
+import { PROVIDER_LABELS } from '@/lib/utils'
+import { SubmitButton, buttonVariants } from '@/components/ui/button'
 import { LinkAccountForm } from './_components/link-account-form'
+import { getUserAuthInfoByEmail, getUserAuthMethods } from '@/lib/db/users'
+import Link from 'next/link'
 
 interface LinkAccountPageProps {
   searchParams: Promise<{ token?: string }>
+}
+
+const PROVIDER_ICONS: Record<string, { src: string; alt: string }> = {
+  github: { src: githubSvg as string, alt: 'GitHub' },
+  google: { src: googleSvg as string, alt: 'Google' },
 }
 
 export default async function LinkAccountPage({ searchParams }: LinkAccountPageProps) {
@@ -27,24 +38,89 @@ export default async function LinkAccountPage({ searchParams }: LinkAccountPageP
     )
   }
 
+  const providerLabel = PROVIDER_LABELS[pending.provider] ?? pending.provider
+  const providerIcon = PROVIDER_ICONS[pending.provider]
+  const session = await auth()
+  const isAlreadySignedIn = session?.user?.email === pending.email
+
+  // Auto-link flow: user is already authenticated — skip password, just confirm
+  if (isAlreadySignedIn) {
+    const boundAction = autoLinkAccountAction.bind(null, token)
+
+    return (
+      <AuthFormLayout
+        title={`Link your ${providerLabel} account`}
+        description={
+          <span>
+            Link your <strong className="text-foreground">{providerLabel}</strong> account to your
+            DevStash account.
+          </span>
+        }
+      >
+        {providerIcon && (
+          <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            <SvgIcon src={providerIcon.src} className="size-4 shrink-0" />
+            <div className="min-w-0">
+              <span>Signing in via {providerLabel}</span>
+              {pending.providerEmail && (
+                <p className="truncate text-xs">{pending.providerEmail}</p>
+              )}
+            </div>
+          </div>
+        )}
+        <form action={boundAction}>
+          <SubmitButton className="w-full" isPending={false}>
+            Link {providerLabel} account
+          </SubmitButton>
+        </form>
+      </AuthFormLayout>
+    )
+  }
+
+  const existingUser = await getUserAuthInfoByEmail(pending.email)
+  const hasPassword = !!existingUser?.password
+
+  if (existingUser && !hasPassword) {
+    const authMethods = await getUserAuthMethods(existingUser.id)
+    const existingProviders = authMethods?.accounts.map((a) => PROVIDER_LABELS[a.provider] ?? a.provider).join(' or ') ?? 'another provider'
+
+    return (
+      <AuthFormLayout
+        title="Account already exists"
+        description={
+          <span>
+            An account already exists for <strong className="text-foreground">{pending.email}</strong> via {existingProviders}. Please sign in with {existingProviders} to link your {providerLabel} account.
+          </span>
+        }
+      >
+        <Link href="/sign-in" className={buttonVariants({ className: 'w-full' })}>
+          Return to sign in
+        </Link>
+      </AuthFormLayout>
+    )
+  }
+
+  // Password flow: user is not signed in — verify credentials before linking
   const boundAction = linkAccountAction.bind(null, token)
 
   return (
     <AuthFormLayout
-      title="Link your GitHub account"
+      title={`Link your ${providerLabel} account`}
       description={
         <span>
           A DevStash account already exists for{' '}
           <strong className="text-foreground">{pending.email}</strong>. Enter your password to link
-          your GitHub account to it.
+          your {providerLabel} account to it.
         </span>
       }
     >
-      <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-        <SvgIcon src={githubSvg} className="size-4 shrink-0" />
-        <span>Signing in via GitHub</span>
-      </div>
-      <LinkAccountForm action={boundAction} />
+      {providerIcon && (
+        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          <SvgIcon src={providerIcon.src} className="size-4 shrink-0" />
+          <span>Signing in via {providerLabel}</span>
+        </div>
+      )}
+      <LinkAccountForm action={boundAction} providerLabel={providerLabel} />
     </AuthFormLayout>
   )
 }

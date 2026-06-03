@@ -1,80 +1,80 @@
 ---
 name: cleanup
-description: Clean up project housekeeping tasks (add "run" to execute fixes)
-argument-hint: run|check|improve
+description: Clean up project housekeeping tasks, find issues, or review code quality
+argument-hint: check|run|improve
 ---
 
-Review the codebase for cleanup tasks:
+You are an expert AI developer assistant performing housekeeping and cleanup on this project. 
 
-1. Make sure that the history in @context/current-feature.md is in order from oldest to newest
-2. Find unnecessary console.log statements in src/
-3. Find unused imports
-4. Check for stale TODO comments
-5. Find orphaned/unused files
-6. Check that context files match actual project state
-7. Check if the .env._production has the same variables (not always the same value) as the .env. If something is missing, tell me.
-8. Find `@ts-ignore` comments that might be stale
+**Current Mode: $ARGUMENTS**
 
-**Mode: $ARGUMENTS**
+## Mode Selection
 
-If no argument is provided, respond with the following usage guide and stop — do not run any checks:
+If no argument is provided, stop immediately and reply ONLY with this usage guide:
 
----
-
-**Usage:** `/cleanup [argument]`
-
-| Argument | Description |
-| --- | --- |
-| `check` *(default)* | Scan the codebase and report all findings — no changes made |
-| `run` | Report findings, then ask which items to fix before making any changes |
-| `improve` | Code quality review across clarity, architecture, naming, SOLID, and overengineering |
+> **Usage:** `/cleanup [argument]`
+> 
+> | Argument | Description |
+> | --- | --- |
+> | `check` *(default)* | Scan the codebase for housekeeping items and report findings — **no changes made** |
+> | `run` | Same as `check`, but you will ask the user which items to automatically fix before proceeding |
+> | `improve` | Run a code quality review across recently changed files (clarity, architecture, SOLID, etc.) |
 
 ---
 
-If the argument is "check":
+## 🧹 Check & Run Modes (`check`, `run`, `fix`)
 
-- Only report findings, don't modify anything
-- List what WOULD be cleaned up
+If the argument is `check`, `run`, or `fix`, evaluate the codebase for the following routine housekeeping tasks:
 
-If the argument is "run" or "fix":
+1. **Context files**: Check if `context/current-feature.md`'s history section is ordered from oldest to newest. Also, verify that other context files match the actual project state.
+2. **Leftover debugging**: Find unnecessary `console.log` statements in `src/`.
+3. **Dead code**: Find unused imports and orphaned/unused files.
+4. **Stale comments**: Check for stale `TODO` or `FIXME` comments.
+5. **Type overrides**: Find `@ts-ignore` or `@ts-expect-error` comments that might no longer be necessary.
+6. **Environment variables**: Verify that `.env.production` has the same variables (not necessarily values) as `.env.example` or `.env`. Report any missing variables.
 
-- First, report all findings with numbered items
-- Then ask: "Which items would you like me to fix? (enter numbers like 1,3,5 or 'all' or 'none')"
-- Wait for user response before making any changes
-- Only fix the items the user specifies
-- Report what you changed
+### Output Formatting
+- First, list all findings as a numbered list.
+- If the argument is `check`: **Stop here.** Do not modify anything.
+- If the argument is `run` or `fix`: 
+  - After listing the findings, ask: *"Which items would you like me to fix? (enter numbers like 1,3,5 or 'all' or 'none')"*
+  - **Wait for user response.**
+  - Once the user replies, fix only the specified items.
+  - Finally, provide a summary report as a markdown table with columns: **#**, **Item**, **Status** (Fixed / Skipped / Error), **Notes**.
 
-At the end of "run" mode, provide a summary report as a markdown table with columns: **#**, **Item**, **Status** (Fixed / Skipped), **Notes**.
+---
 
-If the argument is "improve":
+## 🛠️ Improve Mode (`improve`)
 
-**Scope:** Only review files that are currently uncommitted (modified, added, or deleted according to `git status`). For each changed file, also include files that are directly related (e.g. files that import or are imported by the changed files, shared types, or utilities they call) — but do NOT scan the entire codebase. Run `git diff --name-only HEAD` (and `git ls-files --others --exclude-standard` for untracked files) to get the list of files to review.
+If the argument is `improve`, focus exclusively on code quality and architectural review.
 
-Review the scoped files from a code quality perspective. Evaluate each of the following dimensions and report findings grouped by severity (Major / Minor):
+### 1. Scope
+Only review files that are currently uncommitted (modified, added, or deleted according to `git status`). 
+- Run `git diff --name-only HEAD` and `git ls-files --others --exclude-standard` to get the list.
+- Also include directly related files (e.g. files that import or are imported by the changed files, shared types, or utilities they call) to understand the context.
+- **DO NOT scan the entire codebase.**
+- Always list the scoped files at the beginning of your response.
 
-1. **Clarity & KISS** — logic that is harder to read than it needs to be; unnecessary abstraction; anything a new developer would stumble on
-2. **Architecture & separation of concerns** — wrong layer doing wrong job; data fetching mixed with rendering; business logic leaking into UI
-3. **Naming** — misleading, vague, or inconsistent names for variables, functions, files, types
-4. **SOLID principles** — single-responsibility violations, unnecessary coupling, things that are hard to extend without modification
-5. **Overdecomposition / overengineering** — abstractions that add complexity without payoff; files or components that don't justify their existence
-6. **Regressions** — any pattern that looks like it could silently break existing behavior if changed
-7. **SSR vs Client rendering** — components marked `'use client'` that may not need to be; opportunities to push client boundaries down; data fetching done client-side that could be done on the server
+### 2. Evaluation Criteria
+Review the scoped files along these dimensions. Group your findings by severity (**Major** vs **Minor**):
 
-For the SSR check specifically, after listing all other findings, produce a dedicated **SSR Conversion Opportunities** table with these columns:
+1. **Clarity & KISS:** Logic that is overly complex or hard to read; unnecessary abstractions.
+2. **Architecture & Separation of Concerns:** Wrong layer doing the wrong job (e.g. data fetching mixed with complex rendering, business logic leaking into UI).
+3. **Naming:** Misleading, vague, or inconsistent names for variables, functions, files, or types.
+4. **SOLID Principles:** Single-responsibility violations, unnecessary coupling, rigidity.
+5. **Overengineering:** Abstractions that add complexity without payoff; components that don't justify their existence.
+6. **Regressions:** Patterns that look like they could silently break existing behavior.
+7. **SSR vs. Client Rendering:** Components marked `'use client'` that may not need to be; opportunities to push client boundaries down; client-side data fetching that could run on the server.
 
-| File | Current | Can Convert? | Pros | Cons | Verdict |
+### 3. Output Requirements
+- **SSR Conversion Opportunities Table:** After listing all other findings, you MUST produce a dedicated table for SSR optimization:
+  | File | Current | Can Convert? | Pros | Cons | Verdict |
+  - *Current:* `'use client'` or `server` (no directive)
+  - *Can Convert?:* `Yes`, `Partial`, or `No` *(Use `Partial` when only part of it needs interactivity—suggesting a split)*
+  - *Pros / Cons:* e.g. smaller JS bundle, no loading state, needs interactivity, browser APIs used
+  - *Verdict:* `Convert`, `Convert with refactor`, `Keep client`, `Split component`
 
-- **Current**: `'use client'` or `server` (no directive)
-- **Can Convert?**: Yes / Partial / No
-- **Pros**: e.g. smaller JS bundle, no loading state, SEO, faster LCP
-- **Cons**: e.g. needs interactivity, uses browser APIs, depends on a client-only library, requires event handlers or hooks
-- **Verdict**: one of — `Convert`, `Convert with refactor`, `Keep client`, `Split component`
-
-Rules for this mode:
-
-- Always list the files being reviewed at the top so the scope is clear
-- Minor improvements (renaming, small restructures, comment removal): report findings, then ask which to fix — same flow as "run" mode
-- Major refactoring (moving files, restructuring layers, merging/splitting components): describe the purpose and concrete benefits first, then ask for confirmation before touching anything
-- Never make major changes without explicit user approval
-- Avoid suggesting changes that are purely stylistic preference with no real benefit
-- For the SSR table: flag a component as `Partial` when only part of it needs interactivity — the fix is usually to split it so the server shell renders static content and a small client island handles the interactive part
+- **Rules of Engagement:**
+  - Avoid purely stylistic preference suggestions.
+  - **Minor improvements** (renaming, restructures, comment removal): Report findings, then ask which to fix (same flow as "run" mode).
+  - **Major refactoring** (moving files, restructuring layers, merging/splitting components): Describe the purpose and concrete benefits first, then ask for explicit user approval before touching anything.

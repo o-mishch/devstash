@@ -7,9 +7,10 @@ import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
 interface LinkAccountFormProps {
   action: (_prev: ApiBody<null> | null, formData: FormData) => Promise<ApiBody<null>>
+  providerLabel: string
 }
 
-export function LinkAccountForm({ action }: LinkAccountFormProps) {
+export function LinkAccountForm({ action, providerLabel }: LinkAccountFormProps) {
   const { formAction, isPending } = useActionStateWithToast(action)
 
   return (
@@ -17,7 +18,7 @@ export function LinkAccountForm({ action }: LinkAccountFormProps) {
       <AuthFormField id="password" name="password" label="Your DevStash password" type="password" placeholder="••••••••" autoComplete="current-password" autoFocus required />
 
       <SubmitButton className="w-full" isPending={isPending}>
-        Link GitHub account
+        Link {providerLabel} account
       </SubmitButton>
     </form>
   )

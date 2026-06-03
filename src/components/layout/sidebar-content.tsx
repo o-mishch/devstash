@@ -52,6 +52,7 @@ interface CollapsedSidebarProps {
 
 function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
 
   return (
@@ -112,14 +113,36 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
 
         <Separator className="mt-2 w-8" />
         <div className="py-2">
-          <Tooltip>
-            <TooltipTrigger render={<span />}>
-              <Button render={<Link href="/settings" />} nativeButton={false} variant="ghost" size="icon" className="text-muted-foreground">
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger render={
+                <DropdownMenuTrigger render={
+                  <Button variant="ghost" size="icon" className="text-muted-foreground cursor-pointer" />
+                } />
+              }>
                 <Settings className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">Settings</TooltipContent>
-          </Tooltip>
+              </TooltipTrigger>
+              <TooltipContent side="right">Settings</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent side="right" align="end" className="w-52">
+              <DropdownMenuItem onClick={() => router.push('/profile')}>
+                <User className="size-4" />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push('/settings')}>
+                <Settings className="size-4" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => {
+                localStorage.removeItem('theme')
+                signOutAction()
+              }} className="text-red-500 focus:text-red-500">
+                <LogOut className="size-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </TooltipProvider>
@@ -182,7 +205,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
         <Collapsible open={typesOpen} onOpenChange={setTypesOpen}>
           <CollapsibleTrigger className="flex w-full items-center justify-between rounded-none px-4 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground">
             Types
-            <ChevronDown className={cn('size-3 transition-transform duration-150', !typesOpen && '-rotate-90')} />
+            <ChevronDown className={cn('size-3 transition-transform duration-300 ease-in-out', !typesOpen && '-rotate-90')} />
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-0.5 px-2">
             {sidebarData.itemTypes.map((t) => (
@@ -208,7 +231,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
         <Collapsible open={collectionsOpen} onOpenChange={setCollectionsOpen}>
           <CollapsibleTrigger className="flex w-full items-center justify-between rounded-none px-4 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground">
             Collections
-            <ChevronDown className={cn('size-3 transition-transform duration-150', !collectionsOpen && '-rotate-90')} />
+            <ChevronDown className={cn('size-3 transition-transform duration-300 ease-in-out', !collectionsOpen && '-rotate-90')} />
           </CollapsibleTrigger>
           <CollapsibleContent>
             {favoriteCollections.length > 0 && (
@@ -300,7 +323,11 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => { signOutAction(); onClose?.() }} className="text-red-500 focus:text-red-500">
+            <DropdownMenuItem onClick={() => { 
+              localStorage.removeItem('theme')
+              signOutAction()
+              onClose?.() 
+            }} className="text-red-500 focus:text-red-500">
               <LogOut className="size-4" />
               Sign out
             </DropdownMenuItem>

@@ -23,7 +23,7 @@ export async function updateEditorPreferencesAction(
       await updateEditorPreferences(userId, parsed.data)
       await invalidateProfileCache(userId)
       logger.info(`Editor preferences updated for user ${userId}`)
-      
+
       return ApiResponse.OK()
     }, 'updateSettings')
   })
