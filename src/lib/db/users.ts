@@ -1,9 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma/client'
 
-export async function checkUserExistsById(id: string) {
-  return prisma.user.findUnique({ where: { id }, select: { id: true } })
-}
+
 
 export async function getUserSessionInfo(id: string) {
   return prisma.user.findUnique({ where: { id }, select: { id: true, password: true } })

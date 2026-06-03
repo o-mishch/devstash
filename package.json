@@ -64,7 +64,6 @@
     }
   },
   "devDependencies": {
-    "@svgr/webpack": "^8.1.0",
     "@tailwindcss/postcss": "^4",
     "@types/lodash.debounce": "^4.0.9",
     "@types/mime-types": "^3.0.1",

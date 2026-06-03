@@ -16,6 +16,28 @@ export const PRO_ITEM_TYPE_NAMES = new Set(['file', 'image'])
 
 export const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
 
+// Colors and icon names match the DB seed — fixed for system types
+export const SYSTEM_TYPE_COLORS: Record<string, string> = {
+  snippet: '#3b82f6',
+  prompt:  '#8b5cf6',
+  command: '#f97316',
+  note:    '#fde047',
+  file:    '#6b7280',
+  image:   '#ec4899',
+  link:    '#10b981',
+}
+
+// Maps type name → Lucide icon name (key in ICON_MAP from item-type-icon.tsx)
+export const SYSTEM_TYPE_ICON_NAMES: Record<string, string> = {
+  snippet: 'Code',
+  prompt:  'Sparkles',
+  command: 'Terminal',
+  note:    'StickyNote',
+  file:    'File',
+  image:   'Image',
+  link:    'Link',
+}
+
 export function compareBySystemTypeOrder(a: { name: string }, b: { name: string }): number {
   return SYSTEM_TYPE_ORDER.indexOf(a.name) - SYSTEM_TYPE_ORDER.indexOf(b.name)
 }

@@ -30,3 +30,11 @@ On the cards at/collections and dashboard, have the 3 dots icon show a dropdown 
 
 /feature load Create a settings page. Add a link for settings in the user icon dropdown at the bottom of the sidebar. The URL should be /settings and should be protected.
 Move the Account actions, which include the delete account and forgot password, from the profile to the settings page!
+
+
+Create a spec file at @context/features called homepage-spec.md to take the mockup in the @prototypes/homepage folder and create the actual app homepage from it. Here are some guidelines to add to the spec:
+- Page broken up into server components and client components where needed for interactivity
+- Use Tailwind/ShadCN like the rest of the project
+- Keep code clean and dry.
+- Make buttons and links go to the correct places
+Look at the spec files in the @context/features folder for reference. Keep it concise but complete

@@ -58,6 +58,33 @@ export function ItemFormFields({ form, itemType, watchedLanguage, collections, v
 
   return (
     <>
+      {showContent && (
+        <Field
+          name="content"
+          label="Content"
+          error={form.formState.errors.content?.message}
+          className={variant === 'drawer' ? 'flex flex-col flex-1 min-h-0 space-y-1.5' : undefined}
+        >
+          <Controller
+            control={form.control}
+            name="content"
+            render={({ field }) => (
+              <ItemContentInput
+                id={variant === 'dialog' ? 'content' : undefined}
+                itemType={itemType}
+                value={field.value || ''}
+                onChange={field.onChange}
+                language={watchedLanguage}
+                placeholder={variant === 'drawer' ? 'Content' : 'Paste your content here...'}
+                contentEditorClassName={variant === 'drawer' ? 'flex-1 min-h-0' : 'h-64'}
+                contentEditorWrapperClassName={variant === 'drawer' ? 'flex flex-col w-full flex-1 h-0 min-h-[120px]' : undefined}
+                textareaClassName={variant === 'drawer' ? 'resize-none font-mono text-xs w-full flex-1 h-0 min-h-[120px]' : 'min-h-[100px] font-mono text-sm'}
+              />
+            )}
+          />
+        </Field>
+      )}
+
       <Field
         name="description"
         label="Description"
@@ -110,33 +137,6 @@ export function ItemFormFields({ form, itemType, watchedLanguage, collections, v
                 value={field.value || ''}
                 onChange={field.onChange}
                 placeholder="e.g. typescript, bash"
-              />
-            )}
-          />
-        </Field>
-      )}
-
-      {showContent && (
-        <Field
-          name="content"
-          label="Content"
-          error={form.formState.errors.content?.message}
-          className={variant === 'drawer' ? 'flex flex-col flex-1 min-h-0 space-y-1.5' : undefined}
-        >
-          <Controller
-            control={form.control}
-            name="content"
-            render={({ field }) => (
-              <ItemContentInput
-                id={variant === 'dialog' ? 'content' : undefined}
-                itemType={itemType}
-                value={field.value || ''}
-                onChange={field.onChange}
-                language={watchedLanguage}
-                placeholder={variant === 'drawer' ? 'Content' : 'Paste your content here...'}
-                contentEditorClassName={variant === 'drawer' ? 'flex-1 min-h-0' : 'h-64'}
-                contentEditorWrapperClassName={variant === 'drawer' ? 'flex flex-col w-full flex-1 h-0 min-h-[120px]' : undefined}
-                textareaClassName={variant === 'drawer' ? 'resize-none font-mono text-xs w-full flex-1 h-0 min-h-[120px]' : 'min-h-[100px] font-mono text-sm'}
               />
             )}
           />

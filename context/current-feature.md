@@ -6,7 +6,11 @@ Not Started
 
 ## Goals
 
+<!-- Add goals here -->
+
 ## Notes
+
+<!-- Add notes here -->
 
 ---
 
@@ -70,3 +74,4 @@ Not Started
 - **Favorite Toggle Buttons** - Added favorite toggle actions for Collections and Items; collection cards on the dashboard and collections page use interactive Star buttons; Item Drawer Star button added with instant UI cache updates; Favorites page handles un-favoriting seamlessly via client-store self-filtering; UI converted to server/client components where necessary to isolate interactivity. (Completed)
 - **Pinned Items** - Pinned item functionality via `toggleItemPinnedAction` & `toggleItemPinned`, added `{ isPinned: 'desc' }` sorting to `getPaginatedItems`, and implemented static Pin and Star icon indicators across `ItemCard`, `ImageCard`, `FileRow`, and `ItemRow` components. (Completed)
 - **Homepage Mockup** - Static marketing homepage prototype in `prototypes/homepage/` (index.html, styles.css, script.js); hero "chaos to order" section with rAF canvas physics (8 floating icons, bounce + mouse repel + rotation/scale pulse), pulsing CSS arrow, dashboard mockup; fixed nav with scroll-opacity; 6-card features grid with item-type accent colors; AI section with Pro badge, checklist, code editor mockup with AI tags demo; pricing with Free/Pro cards and monthly/yearly toggle ($8→$6/mo, $72/yr); CTA and footer; IntersectionObserver scroll fade-ins; fully responsive (hero stacks vertically, arrow rotates 90° on mobile). (Completed)
+- **Homepage Next.js Conversion** - Converted the static marketing prototype into a responsive Next.js `(marketing)` route. Implemented `HomepageNav` with `IntersectionObserver`, `ChaosCanvas` floating icon physics, `PricingSection` toggle, and `FadeIn` scroll animations. (Completed)

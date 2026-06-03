@@ -12,15 +12,27 @@ import { Card, CardContent } from '@/components/ui/card'
 
 export function AuthPageBase({ children }: WithChildren) {
   return (
-    <div className="w-full max-w-sm space-y-6">
-      <div className="flex justify-center">
-        <div className="flex items-center gap-2">
-          <Archive className="size-5 text-primary" aria-hidden="true" />
-          <span className="text-xl font-semibold tracking-tight">DevStash</span>
-        </div>
+    <>
+      {/* Ambient glow blobs and dot grid to match marketing homepage */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        {/* Dot grid */}
+        <div className="absolute inset-0 [background-image:radial-gradient(rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:24px_24px]" />
+        
+        {/* Glow blobs */}
+        <div className="absolute left-1/2 top-[-10%] h-[500px] w-[700px] -translate-x-1/2 rounded-full bg-blue-500/10 blur-3xl" />
+        <div className="absolute right-1/4 top-[10%] h-[300px] w-[400px] rounded-full bg-cyan-500/10 blur-3xl" />
       </div>
-      {children}
-    </div>
+
+      <div className="w-full max-w-sm space-y-6">
+        <div className="flex justify-center">
+          <div className="flex items-center gap-2">
+            <Archive className="size-5 text-blue-400" aria-hidden="true" />
+            <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">DevStash</span>
+          </div>
+        </div>
+        {children}
+      </div>
+    </>
   )
 }
 
@@ -37,7 +49,7 @@ interface AuthFormLayoutProps {
 export function AuthFormLayout({ title, description, children }: AuthFormLayoutProps) {
   return (
     <AuthPageBase>
-      <Card>
+      <Card className="border-white/10 bg-card/50 backdrop-blur-sm shadow-xl">
         <CardContent className="space-y-6 p-6">
           <div className="flex flex-col items-center gap-2 text-center">
             <h1 className="text-2xl font-bold">{title}</h1>
@@ -97,7 +109,7 @@ export function AuthStatusPage({
 
   return (
     <AuthPageBase>
-      <Card>
+      <Card className="border-white/10 bg-card/50 backdrop-blur-sm shadow-xl">
         <CardContent className="flex flex-col items-center gap-5 p-8 text-center">
           <div className={cn('flex size-14 items-center justify-center rounded-full', iconWrapperVariants[variant])}>
             <Icon className={cn('size-7', iconVariants[variant])} />

@@ -83,8 +83,8 @@ function PopoverDescription({
 export {
   Popover,
   PopoverContent,
-  PopoverDescription,
+  PopoverTrigger,
   PopoverHeader,
   PopoverTitle,
-  PopoverTrigger,
+  PopoverDescription,
 }

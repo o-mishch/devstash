@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     rules: {
       '*.html': { loaders: ['raw-loader'], as: '*.js' },
-      '*.svg': { loaders: ['@svgr/webpack'], as: '*.js' },
+      '*.svg': { loaders: ['raw-loader'], as: '*.js' },
     },
   },
   experimental: {

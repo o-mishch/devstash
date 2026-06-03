@@ -94,7 +94,7 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
         <div className="py-2">
           <Tooltip>
             <TooltipTrigger render={<span />}>
-              <Button render={<Link href="/settings" />} variant="ghost" size="icon" className="text-muted-foreground">
+              <Button render={<Link href="/settings" />} nativeButton={false} variant="ghost" size="icon" className="text-muted-foreground">
                 <Settings className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -202,7 +202,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                       className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     >
                       <span
-                        className="type-dot size-2 shrink-0 rounded-full"
+                        className="size-2 shrink-0 rounded-full bg-[var(--item-color)]"
                         style={{ '--item-color': c.dominantColor ?? '#6b7280' } as CSSProperties}
                       />
                       <span className="flex-1 truncate">{c.name}</span>

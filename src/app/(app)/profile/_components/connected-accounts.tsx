@@ -1,23 +1,10 @@
-'use client'
-
-import { useState, useTransition } from 'react'
 import type { ComponentType } from 'react'
-import { toast } from 'sonner'
-import { Mail, Unlink, Globe } from 'lucide-react'
-import { GitHubIcon } from '@/components/icons/github'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { unlinkProviderAction } from '@/actions/profile'
-import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
+import { Mail, Globe } from 'lucide-react'
+import githubSvg from '@/assets/icons/github.svg'
+import { SvgIcon } from '@/components/icons/svg-icon'
 import { PROVIDER_LABELS } from '@/lib/utils'
 import type { LinkedAccount } from '@/lib/db/profile'
+import { UnlinkProviderDialog } from './unlink-provider-dialog'
 
 interface ConnectedAccountsProps {
   hasPassword: boolean
@@ -28,8 +15,16 @@ interface ProviderMeta {
   Icon: ComponentType<{ className?: string }>
 }
 
+interface ProviderIconProps {
+  className?: string
+}
+
+function GitHubProviderIcon({ className }: ProviderIconProps) {
+  return <SvgIcon src={githubSvg} className={className} />
+}
+
 const PROVIDER_META: Record<string, ProviderMeta> = {
-  github: { Icon: GitHubIcon },
+  github: { Icon: GitHubProviderIcon },
 }
 
 function EmailRow() {
@@ -47,28 +42,12 @@ function EmailRow() {
 interface ProviderAccountRowProps {
   account: LinkedAccount
   canUnlink: boolean
-  onUnlinked: (id: string) => void
 }
 
-function ProviderAccountRow({ account, canUnlink, onUnlinked }: ProviderAccountRowProps) {
-  const [open, setOpen] = useState(false)
-  const [isPending, startTransition] = useTransition()
+function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
   const meta = PROVIDER_META[account.provider]
   const label = PROVIDER_LABELS[account.provider] ?? account.provider
   const Icon = meta?.Icon ?? Globe
-
-  function handleUnlink() {
-    startTransition(async () => {
-      const result = await unlinkProviderAction(account.id)
-      if (result.status === 'ok') {
-        toast.success(`${label} account unlinked.`)
-        setOpen(false)
-        onUnlinked(account.id)
-      } else {
-        toast.error(result.message ?? 'Failed to unlink account.')
-      }
-    })
-  }
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
@@ -77,31 +56,7 @@ function ProviderAccountRow({ account, canUnlink, onUnlinked }: ProviderAccountR
         <span>{label}</span>
       </div>
       {canUnlink ? (
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger
-            render={
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive">
-                <Unlink className="mr-1 size-3" />
-                Unlink
-              </Button>
-            }
-          />
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Unlink {label}</DialogTitle>
-              <DialogDescription>
-                Your {label} account will be disconnected. You can still sign in with your other
-                linked methods.
-              </DialogDescription>
-            </DialogHeader>
-            <DestructiveDialogFooter
-              onCancel={() => setOpen(false)}
-              onConfirm={handleUnlink}
-              isPending={isPending}
-              confirmText={`Unlink ${label}`}
-            />
-          </DialogContent>
-        </Dialog>
+        <UnlinkProviderDialog accountId={account.id} label={label} />
       ) : (
         <span className="text-xs text-muted-foreground">Connected</span>
       )}
@@ -109,14 +64,8 @@ function ProviderAccountRow({ account, canUnlink, onUnlinked }: ProviderAccountR
   )
 }
 
-export function ConnectedAccounts({ hasPassword, accounts: initialAccounts }: ConnectedAccountsProps) {
-  const [accounts, setAccounts] = useState(initialAccounts)
-
+export function ConnectedAccounts({ hasPassword, accounts }: ConnectedAccountsProps) {
   const totalMethods = (hasPassword ? 1 : 0) + accounts.length
-
-  function handleUnlinked(id: string) {
-    setAccounts((prev) => prev.filter((a) => a.id !== id))
-  }
 
   return (
     <div className="space-y-2">
@@ -126,7 +75,6 @@ export function ConnectedAccounts({ hasPassword, accounts: initialAccounts }: Co
           key={account.id}
           account={account}
           canUnlink={totalMethods > 1}
-          onUnlinked={handleUnlinked}
         />
       ))}
     </div>

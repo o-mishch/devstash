@@ -12,7 +12,7 @@ interface CollectionCardProps {
 export function CollectionCard({ collection }: CollectionCardProps) {
   return (
     <Card
-      className="group/card type-border-l relative transition-colors hover:bg-accent"
+      className="group/card relative border-l-2 border-l-[var(--item-color)] transition-colors hover:bg-accent"
       style={{ '--item-color': collection.dominantColor ?? undefined } as CSSProperties}
     >
       <Link href={`/collections/${collection.id}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`View ${collection.name}`} />

@@ -84,65 +84,41 @@
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
+    --background: oklch(0.129 0.042 264.695);
     --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
+    --card: oklch(0.145 0.04 264.695);
     --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
+    --popover: oklch(0.145 0.04 264.695);
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
+    --primary-foreground: oklch(0.129 0.042 264.695);
+    --secondary: oklch(0.205 0.04 264.695);
     --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
+    --muted: oklch(0.205 0.04 264.695);
     --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
+    --accent: oklch(0.205 0.04 264.695);
     --accent-foreground: oklch(0.985 0 0);
     --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
+    --border: oklch(0.269 0.04 264.695);
+    --input: oklch(0.269 0.04 264.695);
     --ring: oklch(0.556 0 0);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
+    --sidebar: oklch(0.145 0.04 264.695);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);
     --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent: oklch(0.205 0.04 264.695);
     --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-border: oklch(0.269 0.04 264.695);
     --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
-  body {
-    @apply bg-background text-foreground;
-    }
-  html {
-    @apply font-sans;
-    }
-  button, [role="button"] {
-    cursor: pointer;
-    }
-}
-
-/* Dynamic item-type color utilities — set --item-color on the parent element */
-@utility type-border-l {
-  border-left-width: 2px;
-  border-left-style: solid;
-  border-left-color: var(--item-color);
-}
-
-@utility type-icon-bg {
-  background-color: color-mix(in srgb, var(--item-color) 12%, transparent);
-}
-
-@utility type-dot {
-  background-color: var(--item-color);
+  }
 }

@@ -1,7 +1,7 @@
 import { Code, Sparkles, Terminal, StickyNote, File, Image, Link } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-const ICON_MAP: Record<string, LucideIcon> = {
+export const ICON_MAP: Record<string, LucideIcon> = {
   Code,
   Sparkles,
   Terminal,
@@ -11,15 +11,15 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Link,
 }
 
-function renderItemIcon(iconName: string, color: string, className: string) {
+function renderItemIcon(iconName: string, color: string | null | undefined, className: string) {
   const Icon = ICON_MAP[iconName]
   if (!Icon) return null
-  return <Icon className={className} style={{ color }} />
+  return <Icon className={className} style={{ color: color ?? undefined }} />
 }
 
 interface ItemTypeIconProps {
   iconName: string
-  color: string
+  color?: string | null
   className?: string
 }
 

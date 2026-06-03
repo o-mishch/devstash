@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useActionState, useEffect } from 'react'
+import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button, SubmitButton, buttonVariants } from '@/components/ui/button'
@@ -11,7 +12,8 @@ import { Separator } from '@/components/ui/separator'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { signInWithCredentials, signInWithGitHub } from '@/actions/auth/login'
 import { apiFetch } from '@/lib/api-fetch'
-import { GitHubIcon } from '@/components/icons/github'
+import githubSvg from '@/assets/icons/github.svg'
+import { SvgIcon } from '@/components/icons/svg-icon'
 
 interface SignInFormProps {
   successMessage?: string
@@ -19,6 +21,16 @@ interface SignInFormProps {
 
 interface ResendResponse {
   email: string
+}
+
+function GitHubSubmitButton() {
+  const { pending } = useFormStatus()
+  return (
+    <Button type="submit" variant="outline" className="w-full" disabled={pending}>
+      <SvgIcon src={githubSvg} className="size-4" />
+      {pending ? 'Connecting...' : 'Continue with GitHub'}
+    </Button>
+  )
 }
 
 export function SignInForm({ successMessage }: SignInFormProps) {
@@ -114,10 +126,7 @@ export function SignInForm({ successMessage }: SignInFormProps) {
       </div>
 
       <form action={signInWithGitHub}>
-        <Button type="submit" variant="outline" className="w-full" disabled={isPending}>
-          <GitHubIcon className="size-4" />
-          Continue with GitHub
-        </Button>
+        <GitHubSubmitButton />
       </form>
     </div>
   )
