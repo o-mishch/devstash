@@ -13,7 +13,7 @@ export function FavoriteItemRow({ item, onOpen }: FavoriteItemRowProps) {
   return (
     <button
       type="button"
-      className="group flex w-full items-center gap-3 rounded px-3 py-1.5 text-left transition-colors hover:bg-accent"
+      className="card-interactive group flex w-full items-center gap-3 rounded px-3 py-1.5 text-left"
       onClick={() => onOpen(item)}
     >
       <ItemTypeIcon

@@ -1,17 +1,68 @@
 'use client'
 
 import { useEditorPreferences } from '@/components/providers/editor-preferences-provider'
-import { EDITOR_FONT_SIZE_OPTIONS, EDITOR_TAB_SIZE_OPTIONS, EDITOR_THEME_OPTIONS, type EditorTheme } from '@/types/editor-preferences'
+import { EDITOR_FONT_SIZE_OPTIONS, EDITOR_TAB_SIZE_OPTIONS, EDITOR_THEME_OPTIONS, APP_THEME_OPTIONS, type EditorTheme, type AppTheme } from '@/types/editor-preferences'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 
 export function EditorPreferencesForm() {
   const { preferences, updatePreference } = useEditorPreferences()
 
   return (
-    <Card>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">App Theme</CardTitle>
+          <CardDescription>
+            Choose the global color palette for the application.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            {APP_THEME_OPTIONS.map((theme) => {
+              const isActive = preferences.appTheme === theme.value;
+              const colors: Record<AppTheme, { bg: string; accent: string }> = {
+                vscode:   { bg: 'var(--color-zinc-950)',     accent: 'var(--color-blue-500)' },
+                github:   { bg: 'oklch(0.13 0.012 250)',    accent: 'var(--color-blue-500)' },  /* #0d1117 */
+                jetbrains:{ bg: 'var(--color-zinc-800)',     accent: 'var(--color-amber-500)' }, /* #27272a ≈ Darcula #2B2B2B */
+                vercel:   { bg: 'var(--color-black)',        accent: 'var(--color-white)' },
+                dracula:  { bg: 'oklch(0.22 0.018 285)',    accent: 'var(--color-purple-500)' }, /* #282A36 */
+                monokai:  { bg: 'var(--color-stone-800)',   accent: 'var(--color-pink-500)' },   /* #292524 ≈ Monokai #272822 */
+              }
+              const { bg, accent } = colors[theme.value]
+              return (
+                <button
+                  key={theme.value}
+                  onClick={() => updatePreference('appTheme', theme.value)}
+                  className={cn(
+                    "flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-all hover:bg-foreground/5",
+                    isActive ? "border-primary" : "border-border"
+                  )}
+                >
+                  <div
+                    className="relative size-10 rounded-full ring-2 ring-border shadow-sm overflow-hidden"
+                    style={{ backgroundColor: bg }}
+                  >
+                    <div
+                      className="absolute bottom-0 right-0 size-4 rounded-tl-full"
+                      style={{ backgroundColor: accent }}
+                    />
+                  </div>
+                  <div className="space-y-0.5 text-center">
+                    <p className="text-xs font-semibold leading-none">{theme.label}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight">{theme.description}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
       <CardHeader>
         <CardTitle className="text-lg">Code Editor</CardTitle>
         <CardDescription>
@@ -114,5 +165,6 @@ export function EditorPreferencesForm() {
         </div>
       </CardContent>
     </Card>
+    </div>
   )
 }

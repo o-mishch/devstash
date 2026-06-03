@@ -19,7 +19,7 @@ export function ItemRow({ item }: ItemRowProps) {
   return (
     <button
       type="button"
-      className="flex h-14 w-full cursor-pointer items-center text-left gap-3 overflow-hidden rounded-xl border-l-2 border-l-[var(--item-color)] px-2 ring-1 ring-foreground/10 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="card-interactive flex h-14 w-full items-center text-left gap-3 overflow-hidden rounded-xl border-l-2 border-l-[var(--item-color)] px-2 ring-1 ring-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       style={{ '--item-color': itemType.color } as CSSProperties}
       onClick={() => openDrawer(item)}
     >

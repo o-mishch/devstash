@@ -1,13 +1,14 @@
 import Link from 'next/link'
 import type { WithChildren } from '@/types/common'
-import { Archive } from 'lucide-react'
+import { Archive, Home } from 'lucide-react'
 import { GlobalSearch } from '@/components/shared/global-search'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
 import { TopbarFavoritesLink } from '@/components/layout/topbar-favorites-link'
 import { ItemDrawerProvider } from '@/components/items/item-drawer-provider'
-import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
+import { MobileCreateMenu } from '@/components/layout/mobile-create-menu'
+import { TopbarCreateButton } from '@/components/layout/topbar-create-button'
 import { cache } from 'react'
 import { getSession } from '@/lib/session'
 import { fetchSidebarData } from '@/lib/db/sidebar'
@@ -47,7 +48,17 @@ export default async function DashboardLayout({ children }: WithChildren) {
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
             <MobileDrawerAsync />
 
-            <Link href="/dashboard" className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity">
+            {/* Mobile: compact Home icon */}
+            <Link
+              href="/dashboard"
+              className="flex shrink-0 items-center justify-center size-9 rounded-lg hover:bg-foreground/5 transition-colors lg:hidden"
+              aria-label="Home"
+            >
+              <Home className="size-5 text-primary" />
+            </Link>
+
+            {/* Desktop: full logo + app name */}
+            <Link href="/dashboard" className="hidden shrink-0 items-center gap-2 hover:opacity-80 transition-opacity lg:flex">
               <Archive className="size-4 text-primary" />
               <span className="text-base font-semibold tracking-tight">DevStash</span>
             </Link>
@@ -56,8 +67,15 @@ export default async function DashboardLayout({ children }: WithChildren) {
 
             <div className="flex shrink-0 items-center gap-2">
               <TopbarFavoritesLink />
-              <CollectionCreateDialog />
-              <CreateItemDialog itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
+
+              {/* Mobile: single + dropdown for new item / new collection */}
+              <MobileCreateMenu itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
+
+              {/* Desktop: separate explicit buttons */}
+              <div className="hidden lg:flex items-center gap-2">
+                <CollectionCreateDialog />
+                <TopbarCreateButton itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
+              </div>
             </div>
           </header>
 

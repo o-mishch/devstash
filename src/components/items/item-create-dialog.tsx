@@ -52,13 +52,16 @@ interface CreateItemDialogProps {
   collections: CollectionWithTypes[]
   initialType?: string
   trigger?: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function CreateItemDialog({ itemTypes, collections, initialType, trigger }: CreateItemDialogProps) {
+export function CreateItemDialog({ itemTypes, collections, initialType, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
   const router = useRouter()
   const defaultItemType = initialType || itemTypes[0]?.name || ''
 
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
   const [itemType, setItemType] = useState(defaultItemType)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -83,11 +86,13 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger 
   const selectedType = itemTypes.find(t => t.name === itemType)
 
   function handleOpenChange(isOpen: boolean) {
-    setOpen(isOpen)
-    if (!isOpen) {
+    setInternalOpen(isOpen)
+    controlledOnOpenChange?.(isOpen)
+    if (isOpen) {
+      setItemType(defaultItemType)
+    } else {
       if (uploadedFile && !savedRef.current) deleteOrphanedFile(uploadedFile)
       savedRef.current = false
-      setItemType(defaultItemType)
       setUploadedFile(null)
       setFileError(null)
       form.reset()
@@ -135,7 +140,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger 
       if (result.status === 'created' || result.status === 'ok') {
         toast.success('Item created successfully')
         savedRef.current = true
-        setOpen(false)
+        handleOpenChange(false)
         router.refresh()
       } else {
         toast.error(result.message || 'Failed to create item')
@@ -152,17 +157,17 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger 
 
   return (
     <>
-      <span onClick={() => setOpen(true)} className="contents">{triggerEl}</span>
+      <span onClick={() => setInternalOpen(true)} className="contents">{triggerEl}</span>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-[500px]">
-          <form onSubmit={handleFormSubmit}>
-            <DialogHeader>
+        <DialogContent className="flex flex-col max-h-[90dvh] sm:max-w-[500px]">
+          <form onSubmit={handleFormSubmit} className="flex flex-col flex-1 min-h-0">
+            <DialogHeader className="shrink-0">
               <DialogTitle>Create New Item</DialogTitle>
               <DialogDescription>
                 Add a new item to your stash.
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="flex-1 overflow-y-auto grid gap-4 py-4 pr-1">
               <div className="grid gap-2">
                 <Label htmlFor="type">Type</Label>
                 <Select value={itemType} onValueChange={handleTypeChange}>
@@ -237,8 +242,8 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger 
                 </div>
               )}
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <DialogFooter className="shrink-0 pt-2">
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
               <SubmitButton isPending={isSubmitting}>

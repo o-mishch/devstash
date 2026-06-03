@@ -1,7 +1,7 @@
 'use client' // required: collapsible sections and sidebar toggle use useState
 
 import { useState, type CSSProperties } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   Star,
@@ -11,6 +11,8 @@ import {
   PanelRight,
   LogOut,
   User,
+  Home,
+  Archive,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -36,12 +38,20 @@ function getTypeHref(name: string) {
   return `/items/${name}s`
 }
 
+function sidebarLinkClass(active: boolean) {
+  return cn(
+    'flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition-colors',
+    active ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
+  )
+}
+
 interface CollapsedSidebarProps {
   sidebarData: SidebarData
   onToggle: () => void
 }
 
 function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
+  const pathname = usePathname()
   const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
 
   return (
@@ -60,7 +70,12 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
                 <TooltipTrigger render={<span />}>
                   <Link
                     href={getTypeHref(t.name)}
-                    className="flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-muted"
+                    className={cn(
+                      'flex size-11 items-center justify-center rounded-lg transition-colors',
+                      pathname === getTypeHref(t.name)
+                        ? 'bg-foreground/10 text-foreground'
+                        : 'hover:bg-foreground/5'
+                    )}
                   >
                     <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
                   </Link>
@@ -77,7 +92,12 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
                     <TooltipTrigger render={<span />}>
                       <Link
                         href={`/collections/${c.id}`}
-                        className="flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-muted"
+                        className={cn(
+                          'flex size-11 items-center justify-center rounded-lg transition-colors',
+                          pathname === `/collections/${c.id}`
+                            ? 'bg-foreground/10 text-foreground'
+                            : 'hover:bg-foreground/5'
+                        )}
                       >
                         <Star className="size-4 shrink-0 fill-amber-400 text-amber-400" />
                       </Link>
@@ -114,6 +134,7 @@ interface ExpandedSidebarProps {
 
 function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
 
@@ -134,6 +155,30 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
       )}
 
       <ScrollArea className="flex-1 min-h-0 py-3">
+        {/* Mobile-only: home navigation at the top of the drawer */}
+        {onClose && !onToggle && (
+          <>
+            <div className="space-y-0.5 px-2 pb-1">
+              <Link
+                href="/dashboard"
+                onClick={onClose}
+                className={sidebarLinkClass(pathname === '/dashboard')}
+              >
+                <Home className="size-4 shrink-0" />
+                <span>Home</span>
+              </Link>
+              <Link
+                href="/collections"
+                onClick={onClose}
+                className={sidebarLinkClass(pathname === '/collections')}
+              >
+                <Archive className="size-4 shrink-0" />
+                <span>All Collections</span>
+              </Link>
+            </div>
+            <Separator className="my-2 mx-4 w-auto" />
+          </>
+        )}
         <Collapsible open={typesOpen} onOpenChange={setTypesOpen}>
           <CollapsibleTrigger className="flex w-full items-center justify-between rounded-none px-4 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground">
             Types
@@ -145,7 +190,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                 key={t.id}
                 href={getTypeHref(t.name)}
                 onClick={onClose}
-                className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className={sidebarLinkClass(pathname === getTypeHref(t.name))}
               >
                 <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
                 <span className="flex-1">{getTypeLabel(t.name)}</span>
@@ -177,7 +222,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                       key={c.id}
                       href={`/collections/${c.id}`}
                       onClick={onClose}
-                      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className={sidebarLinkClass(pathname === `/collections/${c.id}`)}
                     >
                       <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
                       <span className="flex-1 truncate">{c.name}</span>
@@ -199,7 +244,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                       key={c.id}
                       href={`/collections/${c.id}`}
                       onClick={onClose}
-                      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className={sidebarLinkClass(pathname === `/collections/${c.id}`)}
                     >
                       <span
                         className="size-2 shrink-0 rounded-full bg-[var(--item-color)]"
@@ -229,7 +274,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
       <Separator />
       <div className="shrink-0 p-3">
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition-colors hover:bg-muted focus:outline-none">
+          <DropdownMenuTrigger className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition-colors hover:bg-foreground/5 focus:outline-none cursor-pointer">
             <UserAvatar
               name={sidebarData.user?.name}
               image={sidebarData.user?.image}
@@ -246,16 +291,16 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
             <Settings className="size-3.5 shrink-0 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="start" className="w-52">
-            <DropdownMenuItem onClick={() => router.push('/profile')}>
+            <DropdownMenuItem onClick={() => { router.push('/profile'); onClose?.() }}>
               <User className="size-4" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push('/settings')}>
+            <DropdownMenuItem onClick={() => { router.push('/settings'); onClose?.() }}>
               <Settings className="size-4" />
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOutAction()} className="text-red-500 focus:text-red-500">
+            <DropdownMenuItem onClick={() => { signOutAction(); onClose?.() }} className="text-red-500 focus:text-red-500">
               <LogOut className="size-4" />
               Sign out
             </DropdownMenuItem>

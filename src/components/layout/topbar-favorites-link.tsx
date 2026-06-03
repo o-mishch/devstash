@@ -11,7 +11,7 @@ export function TopbarFavoritesLink() {
           <Link
             href="/favorites"
             aria-label="Favorites"
-            className="flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="card-interactive flex size-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
           >
             <Star className="size-4" />
           </Link>

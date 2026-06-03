@@ -12,21 +12,21 @@ interface CollectionCardProps {
 export function CollectionCard({ collection }: CollectionCardProps) {
   return (
     <Card
-      className="group/card relative border-l-2 border-l-[var(--item-color)] transition-colors hover:bg-accent"
+      className="card-interactive group/card relative border-l-2 border-l-[var(--item-color)]"
       style={{ '--item-color': collection.dominantColor ?? undefined } as CSSProperties}
     >
       <Link href={`/collections/${collection.id}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`View ${collection.name}`} />
-      <CardContent className="p-4">
-        <div className="flex items-center gap-1.5 pr-16">
-          <p className="truncate font-medium">{collection.name}</p>
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex items-center gap-1.5 pr-14">
+          <p className="truncate font-medium text-sm">{collection.name}</p>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">{collection.itemCount} items</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{collection.itemCount} items</p>
         {collection.description && (
-          <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
+          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
             {collection.description}
           </p>
         )}
-        <div className="mt-3 flex gap-1.5">
+        <div className="mt-2 flex gap-1.5">
           {collection.types.map((type) => (
             <ItemTypeIcon key={type.id} iconName={type.icon} color={type.color} className="size-3.5" />
           ))}

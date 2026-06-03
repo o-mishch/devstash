@@ -47,7 +47,7 @@ export function FileRow({ item }: FileRowProps) {
 
   return (
     <div
-      className="group/card flex cursor-pointer items-center gap-3 rounded-lg border border-border px-4 py-3 transition-colors hover:bg-accent"
+      className="card-interactive group/card flex items-center gap-3 rounded-lg border border-border px-4 py-3"
       onClick={() => openDrawer(item)}
     >
       <FileTypeIcon fileName={item.fileName} className="size-5 shrink-0 text-muted-foreground" />

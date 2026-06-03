@@ -25,11 +25,14 @@ type FormValues = z.input<typeof collectionFormSchema>
 
 interface CollectionCreateDialogProps {
   trigger?: ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function CollectionCreateDialog({ trigger }: CollectionCreateDialogProps) {
+export function CollectionCreateDialog({ trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CollectionCreateDialogProps) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
 
   const form = useForm<FormValues>({
     resolver: zodResolver(collectionFormSchema),
@@ -39,7 +42,8 @@ export function CollectionCreateDialog({ trigger }: CollectionCreateDialogProps)
   const isSubmitting = form.formState.isSubmitting
 
   function handleOpenChange(isOpen: boolean) {
-    setOpen(isOpen)
+    setInternalOpen(isOpen)
+    controlledOnOpenChange?.(isOpen)
     if (!isOpen) form.reset()
   }
 
@@ -51,7 +55,7 @@ export function CollectionCreateDialog({ trigger }: CollectionCreateDialogProps)
 
     if (result.status === 'created' || result.status === 'ok') {
       toast.success('Collection created')
-      setOpen(false)
+      handleOpenChange(false)
       router.refresh()
     } else {
       toast.error(result.message ?? 'Failed to create collection')
@@ -67,7 +71,7 @@ export function CollectionCreateDialog({ trigger }: CollectionCreateDialogProps)
 
   return (
     <>
-      <span onClick={() => setOpen(true)} style={{ display: 'contents' }}>{triggerEl}</span>
+      <span onClick={() => setInternalOpen(true)} style={{ display: 'contents' }}>{triggerEl}</span>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-[440px]">
           <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -81,7 +85,7 @@ export function CollectionCreateDialog({ trigger }: CollectionCreateDialogProps)
               <CollectionFormFields register={form.register} errors={form.formState.errors} />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
               <SubmitButton isPending={isSubmitting}>

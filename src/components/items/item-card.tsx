@@ -24,12 +24,12 @@ export function ItemCard({ item }: ItemCardProps) {
 
   return (
     <Card
-      className="group/card relative min-h-20 overflow-hidden border-l-2 border-l-[var(--item-color)] transition-colors"
+      className="card-interactive group/card relative min-h-20 overflow-hidden border-l-2 border-l-[var(--item-color)]"
       style={{ '--item-color': itemType.color } as CSSProperties}
     >
       <button
         type="button"
-        className="w-full h-full text-left outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+        className="w-full h-full text-left outline-none focus-visible:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => openDrawer(item)}
       >
         <CardContent className="flex h-full items-center p-4">

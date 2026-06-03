@@ -1,124 +1,347 @@
+/* ============================================================
+ *  IMPORTS
+ * ============================================================ */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @plugin "@tailwindcss/typography";
 
+/* ============================================================
+ *  CUSTOM VARIANTS
+ * ============================================================ */
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+ *  THEME TOKENS
+ *  Maps Shadcn UI semantic tokens → Tailwind design system.
+ *  Radii are derived from the single --radius base value.
+ * ============================================================ */
 @theme inline {
+    /* Typography */
     --font-heading: var(--font-geist-sans);
-    --font-sans: var(--font-geist-sans);
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
+    --font-sans:    var(--font-geist-sans);
+
+    /* Semantic color tokens */
+    --color-background:          var(--background);
+    --color-foreground:          var(--foreground);
+    --color-card:                var(--card);
+    --color-card-foreground:     var(--card-foreground);
+    --color-popover:             var(--popover);
+    --color-popover-foreground:  var(--popover-foreground);
+    --color-primary:             var(--primary);
+    --color-primary-foreground:  var(--primary-foreground);
+    --color-secondary:           var(--secondary);
+    --color-secondary-foreground:var(--secondary-foreground);
+    --color-muted:               var(--muted);
+    --color-muted-foreground:    var(--muted-foreground);
+    --color-accent:              var(--accent);
+    --color-accent-foreground:   var(--accent-foreground);
+    --color-destructive:         var(--destructive);
+    --color-border:              var(--border);
+    --color-input:               var(--input);
+    --color-ring:                var(--ring);
+
+    /* Chart colors */
     --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+
+    /* Sidebar colors */
+    --color-sidebar:                    var(--sidebar);
+    --color-sidebar-foreground:         var(--sidebar-foreground);
+    --color-sidebar-primary:            var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent:             var(--sidebar-accent);
+    --color-sidebar-accent-foreground:  var(--sidebar-accent-foreground);
+    --color-sidebar-border:             var(--sidebar-border);
+    --color-sidebar-ring:               var(--sidebar-ring);
+
+    /* Border radius scale (single --radius base) */
+    --radius-sm:  calc(var(--radius) * 0.6);
+    --radius-md:  calc(var(--radius) * 0.8);
+    --radius-lg:  var(--radius);
+    --radius-xl:  calc(var(--radius) * 1.4);
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ============================================================
+ *  LIGHT MODE  (app is always dark, but :root is required
+ *  as a fallback and for auth/marketing pages)
+ * ============================================================ */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+
+    --background:          var(--color-white);
+    --foreground:          var(--color-zinc-950);
+    --card:                var(--color-white);
+    --card-foreground:     var(--color-zinc-950);
+    --popover:             var(--color-white);
+    --popover-foreground:  var(--color-zinc-950);
+    --primary:             var(--color-zinc-900);
+    --primary-foreground:  var(--color-zinc-50);
+    --secondary:           var(--color-zinc-100);
+    --secondary-foreground:var(--color-zinc-900);
+    --muted:               var(--color-zinc-100);
+    --muted-foreground:    var(--color-zinc-500);
+    --accent:              var(--color-zinc-100);
+    --accent-foreground:   var(--color-zinc-900);
+    --destructive:         var(--color-red-500);
+    --border:              var(--color-zinc-200);
+    --input:               var(--color-zinc-200);
+    --ring:                var(--color-zinc-950);
+
+    --chart-1: var(--color-blue-500);
+    --chart-2: var(--color-cyan-500);
+    --chart-3: var(--color-emerald-500);
+    --chart-4: var(--color-violet-500);
+    --chart-5: var(--color-amber-500);
+
+    --sidebar:                    var(--color-zinc-50);
+    --sidebar-foreground:         var(--color-zinc-950);
+    --sidebar-primary:            var(--color-zinc-900);
+    --sidebar-primary-foreground: var(--color-zinc-50);
+    --sidebar-accent:             var(--color-zinc-100);
+    --sidebar-accent-foreground:  var(--color-zinc-900);
+    --sidebar-border:             var(--color-zinc-200);
+    --sidebar-ring:               var(--color-zinc-400);
 }
 
+/* ============================================================
+ *  DARK MODE THEMES
+ *
+ *  Default (.dark) = VS Code Dark+
+ *  Overrides applied via data-theme attribute set by
+ *  EditorPreferencesProvider on <html>.
+ * ============================================================ */
+
+/* ------------------------------------------------------------------
+ *  VS Code Dark+  (#1E1E1E)  [default dark]
+ * ------------------------------------------------------------------ */
 .dark {
-    --background: oklch(0.129 0.042 264.695);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.145 0.04 264.695);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.145 0.04 264.695);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.129 0.042 264.695);
-    --secondary: oklch(0.205 0.04 264.695);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.205 0.04 264.695);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.205 0.04 264.695);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(0.269 0.04 264.695);
-    --input: oklch(0.269 0.04 264.695);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.145 0.04 264.695);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.205 0.04 264.695);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(0.269 0.04 264.695);
-    --sidebar-ring: oklch(0.556 0 0);
+    --background:          var(--color-zinc-950); /* ≈ #1a1a1a */
+    --foreground:          var(--color-zinc-50);
+    --card:                var(--color-zinc-800); /* sidebar panels ≈ #252526 */
+    --card-foreground:     var(--color-zinc-50);
+    --popover:             var(--color-zinc-800);
+    --popover-foreground:  var(--color-zinc-50);
+    --primary:             var(--color-blue-500); /* VS Code blue accent */
+    --primary-foreground:  var(--color-white);
+    --secondary:           var(--color-zinc-800);
+    --secondary-foreground:var(--color-zinc-50);
+    --muted:               var(--color-zinc-800);
+    --muted-foreground:    var(--color-zinc-400);
+    --accent:              var(--color-zinc-800);
+    --accent-foreground:   var(--color-zinc-50);
+    --destructive:         var(--color-red-900);
+    --border:              var(--color-zinc-700);
+    --input:               var(--color-zinc-700);
+    --ring:                var(--color-blue-500);
+
+    --chart-1: var(--color-blue-500);
+    --chart-2: var(--color-cyan-500);
+    --chart-3: var(--color-emerald-500);
+    --chart-4: var(--color-violet-500);
+    --chart-5: var(--color-amber-500);
+
+    --sidebar:                    var(--color-zinc-800);
+    --sidebar-foreground:         var(--color-zinc-50);
+    --sidebar-primary:            var(--color-blue-500);
+    --sidebar-primary-foreground: var(--color-white);
+    --sidebar-accent:             var(--color-zinc-700);
+    --sidebar-accent-foreground:  var(--color-zinc-50);
+    --sidebar-border:             var(--color-zinc-700);
+    --sidebar-ring:               var(--color-blue-500);
 }
 
+/* ------------------------------------------------------------------
+ *  GitHub Dark  (#0d1117)
+ *  Very dark near-black with barely perceptible cool blue tint.
+ *  Custom oklch — no named Tailwind scale matches this saturation.
+ * ------------------------------------------------------------------ */
+.dark[data-theme="github"] {
+    --background:          oklch(0.13 0.012 250); /* ≈ #0d1117 */
+    --foreground:          var(--color-slate-50);
+    --card:                oklch(0.17 0.010 250); /* canvas-subtle */
+    --card-foreground:     var(--color-slate-50);
+    --popover:             oklch(0.17 0.010 250);
+    --popover-foreground:  var(--color-slate-50);
+    --primary:             var(--color-blue-500);
+    --primary-foreground:  var(--color-white);
+    --secondary:           oklch(0.22 0.008 250);
+    --secondary-foreground:var(--color-slate-50);
+    --muted:               oklch(0.22 0.008 250);
+    --muted-foreground:    var(--color-slate-400);
+    --accent:              oklch(0.22 0.008 250);
+    --accent-foreground:   var(--color-slate-50);
+    --destructive:         var(--color-red-900);
+    --border:              oklch(0.25 0.008 250);
+    --input:               oklch(0.25 0.008 250);
+    --ring:                var(--color-blue-500);
+
+    --sidebar:                    oklch(0.17 0.010 250);
+    --sidebar-foreground:         var(--color-slate-50);
+    --sidebar-primary:            var(--color-blue-500);
+    --sidebar-primary-foreground: var(--color-white);
+    --sidebar-accent:             oklch(0.22 0.008 250);
+    --sidebar-accent-foreground:  var(--color-slate-50);
+    --sidebar-border:             oklch(0.25 0.008 250);
+    --sidebar-ring:               var(--color-blue-500);
+}
+
+/* ------------------------------------------------------------------
+ *  JetBrains Darcula  (#2B2B2B)
+ *  Warm neutral dark grey, amber/orange accent.
+ * ------------------------------------------------------------------ */
+.dark[data-theme="jetbrains"] {
+    --background:          var(--color-zinc-800); /* ≈ #27272a, Darcula ≈ #2B2B2B */
+    --foreground:          var(--color-zinc-100);
+    --card:                var(--color-zinc-700);
+    --card-foreground:     var(--color-zinc-100);
+    --popover:             var(--color-zinc-700);
+    --popover-foreground:  var(--color-zinc-100);
+    --primary:             var(--color-amber-500); /* Darcula amber/orange */
+    --primary-foreground:  var(--color-zinc-950);
+    --secondary:           var(--color-zinc-600);
+    --secondary-foreground:var(--color-zinc-100);
+    --muted:               var(--color-zinc-600);
+    --muted-foreground:    var(--color-zinc-400);
+    --accent:              var(--color-zinc-600);
+    --accent-foreground:   var(--color-zinc-100);
+    --destructive:         var(--color-red-800);
+    --border:              var(--color-zinc-600);
+    --input:               var(--color-zinc-600);
+    --ring:                var(--color-amber-500);
+
+    --sidebar:                    var(--color-zinc-700);
+    --sidebar-foreground:         var(--color-zinc-100);
+    --sidebar-primary:            var(--color-amber-500);
+    --sidebar-primary-foreground: var(--color-zinc-950);
+    --sidebar-accent:             var(--color-zinc-600);
+    --sidebar-accent-foreground:  var(--color-zinc-100);
+    --sidebar-border:             var(--color-zinc-600);
+    --sidebar-ring:               var(--color-amber-500);
+}
+
+/* ------------------------------------------------------------------
+ *  Vercel  (#000000)
+ *  Pure OLED black, maximum contrast.
+ * ------------------------------------------------------------------ */
+.dark[data-theme="vercel"] {
+    --background:          var(--color-black);
+    --foreground:          var(--color-white);
+    --card:                var(--color-neutral-950);
+    --card-foreground:     var(--color-white);
+    --popover:             var(--color-neutral-950);
+    --popover-foreground:  var(--color-white);
+    --primary:             var(--color-white);
+    --primary-foreground:  var(--color-black);
+    --secondary:           var(--color-neutral-900);
+    --secondary-foreground:var(--color-white);
+    --muted:               var(--color-neutral-900);
+    --muted-foreground:    var(--color-neutral-400);
+    --accent:              var(--color-neutral-900);
+    --accent-foreground:   var(--color-white);
+    --destructive:         var(--color-red-900);
+    --border:              var(--color-neutral-900);
+    --input:               var(--color-neutral-900);
+    --ring:                var(--color-neutral-300);
+
+    --sidebar:                    var(--color-neutral-950);
+    --sidebar-foreground:         var(--color-white);
+    --sidebar-primary:            var(--color-white);
+    --sidebar-primary-foreground: var(--color-black);
+    --sidebar-accent:             var(--color-neutral-900);
+    --sidebar-accent-foreground:  var(--color-white);
+    --sidebar-border:             var(--color-neutral-900);
+    --sidebar-ring:               var(--color-neutral-300);
+}
+
+/* ------------------------------------------------------------------
+ *  Dracula  (#282A36)
+ *  Purple-grey hue. Custom oklch — no Tailwind scale matches.
+ * ------------------------------------------------------------------ */
+.dark[data-theme="dracula"] {
+    --background:          oklch(0.22 0.018 285); /* ≈ #282A36 */
+    --foreground:          oklch(0.95 0 0);
+    --card:                oklch(0.27 0.018 285);
+    --card-foreground:     oklch(0.95 0 0);
+    --popover:             oklch(0.27 0.018 285);
+    --popover-foreground:  oklch(0.95 0 0);
+    --primary:             var(--color-purple-500);
+    --primary-foreground:  var(--color-white);
+    --secondary:           oklch(0.30 0.018 285);
+    --secondary-foreground:oklch(0.95 0 0);
+    --muted:               oklch(0.30 0.018 285);
+    --muted-foreground:    oklch(0.65 0 0);
+    --accent:              var(--color-purple-900);
+    --accent-foreground:   var(--color-purple-100);
+    --destructive:         var(--color-red-900);
+    --border:              oklch(0.32 0.018 285);
+    --input:               oklch(0.32 0.018 285);
+    --ring:                var(--color-purple-500);
+
+    --sidebar:                    oklch(0.27 0.018 285);
+    --sidebar-foreground:         oklch(0.95 0 0);
+    --sidebar-primary:            var(--color-purple-500);
+    --sidebar-primary-foreground: var(--color-white);
+    --sidebar-accent:             oklch(0.30 0.018 285);
+    --sidebar-accent-foreground:  oklch(0.95 0 0);
+    --sidebar-border:             oklch(0.32 0.018 285);
+    --sidebar-ring:               var(--color-purple-500);
+}
+
+/* ------------------------------------------------------------------
+ *  Monokai  (#272822)
+ *  Warm olive-grey, pink accent.
+ * ------------------------------------------------------------------ */
+.dark[data-theme="monokai"] {
+    --background:          var(--color-stone-800); /* ≈ #292524, Monokai ≈ #272822 */
+    --foreground:          var(--color-stone-50);
+    --card:                var(--color-stone-700);
+    --card-foreground:     var(--color-stone-50);
+    --popover:             var(--color-stone-700);
+    --popover-foreground:  var(--color-stone-50);
+    --primary:             var(--color-pink-500);  /* Monokai pink/rose */
+    --primary-foreground:  var(--color-white);
+    --secondary:           var(--color-stone-600);
+    --secondary-foreground:var(--color-stone-50);
+    --muted:               var(--color-stone-600);
+    --muted-foreground:    var(--color-stone-400);
+    --accent:              var(--color-pink-950);
+    --accent-foreground:   var(--color-pink-100);
+    --destructive:         var(--color-red-900);
+    --border:              var(--color-stone-600);
+    --input:               var(--color-stone-600);
+    --ring:                var(--color-pink-500);
+
+    --sidebar:                    var(--color-stone-700);
+    --sidebar-foreground:         var(--color-stone-50);
+    --sidebar-primary:            var(--color-pink-500);
+    --sidebar-primary-foreground: var(--color-white);
+    --sidebar-accent:             var(--color-stone-600);
+    --sidebar-accent-foreground:  var(--color-stone-50);
+    --sidebar-border:             var(--color-stone-600);
+    --sidebar-ring:               var(--color-pink-500);
+}
+
+/* ============================================================
+ *  BASE LAYER
+ * ============================================================ */
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
+    * {
+        @apply border-border outline-ring/50;
+    }
+    button, [role="button"] {
+        cursor: pointer;
+    }
+}
+
+@layer utilities {
+    .card-interactive {
+        @apply transition-colors hover:bg-foreground/5;
+    }
 }

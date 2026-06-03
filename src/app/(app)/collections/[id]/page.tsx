@@ -24,24 +24,13 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div>
-        <nav className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
-          <Link href="/collections" className="hover:text-foreground transition-colors">Collections</Link>
-          <ChevronRight className="size-3" />
-          <span className="text-foreground">{collection.name}</span>
+      <div className="flex items-center justify-between">
+        <nav className="flex items-center gap-1 text-sm">
+          <Link href="/collections" className="text-muted-foreground hover:text-foreground transition-colors">Collections</Link>
+          <ChevronRight className="size-3.5 text-muted-foreground" />
+          <span className="font-medium">{collection.name}</span>
         </nav>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-semibold">{collection.name}</h1>
-            {collection.description && (
-              <p className="mt-0.5 text-sm text-muted-foreground">{collection.description}</p>
-            )}
-            <p className="mt-1 text-sm text-muted-foreground">
-              {firstPage.items.length}{firstPage.hasMore ? '+' : ''} item{firstPage.items.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-          <CollectionHeaderActions collection={collection} />
-        </div>
+        <CollectionHeaderActions collection={collection} />
       </div>
 
       <CollectionItemsGrid collectionId={id} firstPage={firstPage} />

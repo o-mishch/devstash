@@ -22,15 +22,15 @@ export function StatsCards({
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
       {stats.map(({ label, value, icon: Icon, color }) => (
         <Card key={label}>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Icon className="size-6 shrink-0 sm:size-8" style={{ color }} aria-hidden="true" />
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Icon className="size-5 shrink-0 sm:size-7" style={{ color }} aria-hidden="true" />
               <div>
-                <p className="text-xl font-semibold tabular-nums leading-none sm:text-2xl">{value}</p>
-                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">{label}</p>
+                <p className="text-lg font-semibold tabular-nums leading-none sm:text-2xl">{value}</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">{label}</p>
               </div>
             </div>
           </CardContent>

@@ -1,6 +1,6 @@
 import { z, ZodType } from 'zod'
 import type { ApiBody } from '@/types/api'
-import { EDITOR_THEMES } from '@/types/editor-preferences'
+import { EDITOR_THEMES, APP_THEMES } from '@/types/editor-preferences'
 
 type ParseResult<T> =
   | { success: true; data: T }
@@ -53,4 +53,5 @@ export const editorPreferencesSchema = z.object({
   wordWrap: z.enum(['on', 'off']),
   minimap: z.boolean(),
   theme: z.enum(EDITOR_THEMES),
+  appTheme: z.enum(APP_THEMES),
 })
