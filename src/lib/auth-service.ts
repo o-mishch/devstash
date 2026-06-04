@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs'
 import { BCRYPT_ROUNDS } from '@/auth.config'
-import { getUserAuthInfoByEmail, getUserAuthMethods, createUser, updateUserPassword } from '@/lib/db/users'
+import { getUserAuthInfoByEmail, getUserAuthMethods, createUser, updateUserPassword, checkProviderAccountExists, createAccount } from '@/lib/db/users'
 import { invalidateProfileCache } from '@/lib/cache'
+import type { PendingLinkData } from '@/lib/pending-link'
 import {
   emailVerificationEnabled,
   sendRegistrationVerification,
@@ -108,3 +109,26 @@ export async function applyPasswordReset(
 
   return 'ok'
 }
+
+export async function linkPendingAccount(userId: string, pending: PendingLinkData) {
+  const alreadyLinked = await checkProviderAccountExists(pending.provider, pending.providerAccountId)
+
+  if (!alreadyLinked) {
+    await createAccount({
+      userId,
+      type: pending.type,
+      provider: pending.provider,
+      providerAccountId: pending.providerAccountId,
+      email: pending.providerEmail,
+      access_token: pending.access_token,
+      refresh_token: pending.refresh_token,
+      expires_at: pending.expires_at,
+      token_type: pending.token_type,
+      scope: pending.scope,
+      id_token: pending.id_token,
+      session_state: pending.session_state,
+    })
+    invalidateProfileCache(userId)
+  }
+}
+

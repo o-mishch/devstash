@@ -132,3 +132,11 @@ export async function deleteCollection(userId: string, collectionId: string): Pr
     where: { id: collectionId, userId },
   })
 }
+
+export async function toggleCollectionFavorite(userId: string, collectionId: string, isFavorite: boolean): Promise<boolean> {
+  const result = await prisma.collection.updateMany({
+    where: { id: collectionId, userId },
+    data: { isFavorite },
+  })
+  return result.count > 0
+}

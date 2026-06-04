@@ -11,18 +11,7 @@ export async function createUser(data: Prisma.UserCreateInput | Prisma.UserUnche
   return prisma.user.create({ data })
 }
 
-export async function getUserWithGithubAccount(email: string) {
-  return prisma.user.findUnique({
-    where: { email },
-    select: {
-      id: true,
-      accounts: {
-        where: { provider: 'github' },
-        select: { id: true },
-      },
-    },
-  })
-}
+
 
 // Returns the user if they exist but haven't linked the given OAuth provider yet.
 // Returns null if no user with that email exists, or they already have the provider linked.

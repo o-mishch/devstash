@@ -124,24 +124,7 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
               </TooltipTrigger>
               <TooltipContent side="right">Settings</TooltipContent>
             </Tooltip>
-            <DropdownMenuContent side="right" align="end" className="w-52">
-              <DropdownMenuItem onClick={() => router.push('/profile')}>
-                <User className="size-4" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push('/settings')}>
-                <Settings className="size-4" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => {
-                localStorage.removeItem('theme')
-                signOutAction()
-              }} className="text-red-500 focus:text-red-500">
-                <LogOut className="size-4" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
+            <UserDropdownMenuContent side="right" align="end" onClose={() => {}} />
           </DropdownMenu>
         </div>
       </div>
@@ -313,25 +296,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
             </div>
             <Settings className="size-3.5 shrink-0 text-muted-foreground" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="w-52">
-            <DropdownMenuItem onClick={() => { router.push('/profile'); onClose?.() }}>
-              <User className="size-4" />
-              Profile
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { router.push('/settings'); onClose?.() }}>
-              <Settings className="size-4" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => { 
-              localStorage.removeItem('theme')
-              signOutAction()
-              onClose?.() 
-            }} className="text-red-500 focus:text-red-500">
-              <LogOut className="size-4" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
+            <UserDropdownMenuContent side="top" align="start" onClose={onClose} />
         </DropdownMenu>
       </div>
     </div>
@@ -362,4 +327,37 @@ export function SidebarContent({ sidebarData, onClose, collapsible = false }: Si
   }
 
   return <ExpandedSidebar sidebarData={sidebarData} onClose={onClose} />
+}
+
+function UserDropdownMenuContent({
+  side,
+  align,
+  onClose
+}: {
+  side: "top" | "right" | "bottom" | "left"
+  align: "start" | "center" | "end"
+  onClose?: () => void
+}) {
+  const router = useRouter()
+  return (
+    <DropdownMenuContent side={side} align={align} className="w-52">
+      <DropdownMenuItem onClick={() => { router.push('/profile'); onClose?.() }}>
+        <User className="size-4" />
+        Profile
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => { router.push('/settings'); onClose?.() }}>
+        <Settings className="size-4" />
+        Settings
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={() => {
+        localStorage.removeItem('theme')
+        signOutAction()
+        onClose?.()
+      }} className="text-red-500 focus:text-red-500">
+        <LogOut className="size-4" />
+        Sign out
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  )
 }

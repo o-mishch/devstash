@@ -8,6 +8,13 @@ export function formatDate(date: Date | string): string {
   return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+export function parseTagString(raw: string | undefined): string[] {
+  return (raw || '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+}
+
 export function getTypeLabel(name: string): string {
   if (!name) return ''
   const capitalized = name.charAt(0).toUpperCase() + name.slice(1)

@@ -5,3 +5,8 @@ export function getBaseUrl(): string {
   if (typeof window !== 'undefined') return window.location.origin
   return process.env.NEXTAUTH_URL || 'http://localhost:3000'
 }
+
+export function getDownloadUrl(itemId: string, absolute = false): string {
+  const path = `/api/download/${itemId}`
+  return absolute ? `${getBaseUrl()}${path}` : path
+}

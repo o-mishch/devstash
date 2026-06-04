@@ -2,14 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { useInfiniteScrollSync } from '@/hooks/use-infinite-scroll-sync'
 import { useIntersectionObserver } from '@/hooks/use-intersection-observer'
 import { useItemDrawer } from '@/context/item-drawer-context'
-import { ItemsStoreActionType } from '@/context/items-store-context'
+import { useInfiniteItemsFetch } from '@/hooks/use-infinite-items-fetch'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FavoriteItemRow } from './favorite-item-row'
-import { fetchMoreItemsAction } from '@/actions/items'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { ItemsPage, ItemType, LightItem } from '@/types/item'
 
@@ -40,7 +38,7 @@ interface FavoriteItemsListProps {
 
 export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsListProps) {
   const { openDrawer } = useItemDrawer()
-  const { items, hasMore, loading, state, dispatch } = useInfiniteScrollSync(PAGE_KEY, firstPage)
+  const { items, hasMore, loading, fetchMore } = useInfiniteItemsFetch(PAGE_KEY, firstPage, { type: 'favorites' })
   const { ref, inView } = useIntersectionObserver({ rootMargin: '200px' })
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
@@ -57,25 +55,6 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
       return next
     })
   }, [])
-
-  const fetchMore = useCallback(async () => {
-    const cursor = state.pageKey === PAGE_KEY ? state.cursor : null
-    if (!cursor) return
-
-    dispatch({ type: ItemsStoreActionType.SetLoading, loading: true })
-    const result = await fetchMoreItemsAction({ type: 'favorites' }, cursor)
-
-    if (result.status === 'ok' && result.data) {
-      dispatch({
-        type: ItemsStoreActionType.AppendPage,
-        items: result.data.items,
-        cursor: result.data.nextCursor,
-        hasMore: result.data.hasMore,
-      })
-    } else {
-      dispatch({ type: ItemsStoreActionType.SetLoading, loading: false })
-    }
-  }, [state.pageKey, state.cursor, dispatch])
 
   useEffect(() => {
     if (inView && hasMore && !loading) {

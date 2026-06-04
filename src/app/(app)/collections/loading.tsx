@@ -1,17 +1,12 @@
 import { Skeleton } from '@/components/ui/skeleton'
+import { PageHeaderSkeleton } from '@/components/shared/skeletons'
 
 const SKELETON_COUNT = 6
 
 export default function CollectionsLoading() {
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1.5">
-          <Skeleton className="h-7 w-32" />
-          <Skeleton className="h-4 w-24" />
-        </div>
-        <Skeleton className="h-8 w-36 rounded-md" />
-      </div>
+      <PageHeaderSkeleton actionWidthClass="w-36" />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {[...Array(SKELETON_COUNT)].map((_, i) => (

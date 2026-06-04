@@ -1,8 +1,8 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { Pin, Star } from 'lucide-react'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
+import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate } from '@/lib/utils'
@@ -28,10 +28,7 @@ export function ItemRow({ item }: ItemRowProps) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium">{item.title}</p>
-          <div className="flex shrink-0 items-center gap-1">
-            {item.isPinned && <Pin className="size-3 fill-primary text-primary" />}
-            {item.isFavorite && <Star className="size-3 fill-yellow-500 text-yellow-500" />}
-          </div>
+          <ItemStatusIcons isPinned={item.isPinned} isFavorite={item.isFavorite} className="size-3" />
         </div>
         {item.descriptionPreview && (
           <p className="truncate text-xs text-muted-foreground">{item.descriptionPreview}</p>

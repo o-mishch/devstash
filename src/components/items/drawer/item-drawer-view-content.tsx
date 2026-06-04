@@ -11,6 +11,7 @@ import { DrawerLayout, DrawerSection, DrawerSharedSections, DrawerSharedSections
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
+import { getDownloadUrl } from '@/lib/utils/url'
 import type { Item, LightItem } from '@/types/item'
 
 interface FileSectionProps {
@@ -25,7 +26,7 @@ function FileSectionContent({ item }: FileSectionProps) {
       <div className="flex justify-center">
         <div className="group relative flex max-w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted/30">
           <Image
-            src={`/api/download/${item.id}`}
+            src={getDownloadUrl(item.id)}
             alt={item.fileName ?? item.title}
             width={0}
             height={0}
@@ -34,7 +35,7 @@ function FileSectionContent({ item }: FileSectionProps) {
             className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
           />
           <a
-            href={`/api/download/${item.id}`}
+            href={getDownloadUrl(item.id)}
             download={item.fileName ?? item.title}
             className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100"
             title="Download image"
@@ -55,7 +56,7 @@ function FileSectionContent({ item }: FileSectionProps) {
           <p className="text-xs text-muted-foreground">{formatBytes(item.fileSize)}</p>
         )}
       </div>
-      <a href={`/api/download/${item.id}`} download={item.fileName ?? item.title}>
+      <a href={getDownloadUrl(item.id)} download={item.fileName ?? item.title}>
         <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0">
           <Download className="size-3.5" />
         </Button>

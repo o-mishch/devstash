@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { deleteCollectionAction } from '@/actions/collections'
+import { useControllableOpen } from '@/hooks/use-controllable-open'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionDeleteDialogProps {
@@ -25,18 +26,12 @@ interface CollectionDeleteDialogProps {
 
 export function CollectionDeleteDialog({ collection, trigger, open: controlledOpen, onOpenChange, onSuccess }: CollectionDeleteDialogProps) {
   const router = useRouter()
-  const [internalOpen, setInternalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   
-  const open = controlledOpen !== undefined ? controlledOpen : internalOpen
-
-  function handleOpenChange(isOpen: boolean) {
-    if (onOpenChange) {
-      onOpenChange(isOpen)
-    } else {
-      setInternalOpen(isOpen)
-    }
-  }
+  const { open, handleOpenChange } = useControllableOpen({
+    open: controlledOpen,
+    onOpenChange,
+  })
 
   async function handleDelete() {
     setIsDeleting(true)

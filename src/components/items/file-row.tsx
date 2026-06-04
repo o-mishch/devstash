@@ -1,12 +1,13 @@
 'use client'
 
 import type { MouseEvent } from 'react'
-import { Download, File, FileCode, FileImage, FileText, FileJson, Pin, Star } from 'lucide-react'
+import { Download, File, FileCode, FileImage, FileText, FileJson } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/shared/copy-button'
+import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate, formatBytes } from '@/lib/utils/format'
-import { getBaseUrl } from '@/lib/utils/url'
+import { getDownloadUrl } from '@/lib/utils/url'
 import {
   ALLOWED_IMAGE_EXTS,
   FILE_ICON_CODE_EXTS,
@@ -40,7 +41,7 @@ export function FileRow({ item }: FileRowProps) {
     e.stopPropagation()
     // Programmatic anchor is the only way to trigger a named file download in the browser
     const a = document.createElement('a')
-    a.href = `/api/download/${item.id}`
+    a.href = getDownloadUrl(item.id)
     a.download = item.fileName ?? item.title
     a.click()
   }
@@ -54,10 +55,7 @@ export function FileRow({ item }: FileRowProps) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate font-medium">{item.title}</p>
-          <div className="flex shrink-0 items-center gap-1">
-            {item.isPinned && <Pin className="size-3.5 fill-primary text-primary" />}
-            {item.isFavorite && <Star className="size-3.5 fill-yellow-500 text-yellow-500" />}
-          </div>
+          <ItemStatusIcons isPinned={item.isPinned} isFavorite={item.isFavorite} />
         </div>
         <p className="truncate text-xs text-muted-foreground sm:hidden">
           {item.fileName ?? '—'} · {item.fileSize ? formatBytes(item.fileSize) : '—'} · {formatDate(item.createdAt)}
@@ -73,7 +71,7 @@ export function FileRow({ item }: FileRowProps) {
         {formatDate(item.createdAt)}
       </p>
       <CopyButton
-        value={`${getBaseUrl()}/api/download/${item.id}`}
+        value={getDownloadUrl(item.id, true)}
         className="size-8 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100"
         stopPropagation
       />

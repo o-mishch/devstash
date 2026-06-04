@@ -4,20 +4,13 @@ import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { KeyRound } from 'lucide-react'
-import { Button, SubmitButton } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+import { SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 import { setInitialPasswordAction } from '@/actions/profile'
+import { ProfileFormDialog } from './profile-form-dialog'
 
 interface SetPasswordDialogProps {
   suggestedEmails: string[]
@@ -36,23 +29,15 @@ export function SetPasswordDialog({ suggestedEmails }: SetPasswordDialogProps) {
   const { formAction, isPending } = useActionStateWithToast(setInitialPasswordAction, { onSuccess })
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
-            <KeyRound className="mr-1 size-3" />
-            Set password
-          </Button>
-        }
-      />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Set a password</DialogTitle>
-          <DialogDescription>
-            Add email &amp; password sign-in to your account.
-          </DialogDescription>
-        </DialogHeader>
-
+    <ProfileFormDialog
+      title="Set a password"
+      description="Add email & password sign-in to your account."
+      triggerText="Set password"
+      triggerIcon={<KeyRound className="mr-1 size-3" />}
+      open={open}
+      onOpenChange={setOpen}
+    >
+      {() => (
         <form action={formAction} className="space-y-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Sign-in email</Label>
@@ -92,7 +77,7 @@ export function SetPasswordDialog({ suggestedEmails }: SetPasswordDialogProps) {
             Set password
           </SubmitButton>
         </form>
-      </DialogContent>
-    </Dialog>
+      )}
+    </ProfileFormDialog>
   )
 }

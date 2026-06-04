@@ -10,6 +10,7 @@ import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-
 import { deleteItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } from '@/actions/items'
 import { useRouter } from 'next/navigation'
 import { ItemsStoreActionType, useItemsStore } from '@/context/items-store-context'
+import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import type { Item, LightItem } from '@/types/item'
 
 interface ItemDrawerActionBarProps {
@@ -25,41 +26,33 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
   const { dispatch } = useItemsStore()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [optimisticFavorite, setOptimisticFavorite] = useState<boolean | null>(null)
-  const [optimisticPinned, setOptimisticPinned] = useState<boolean | null>(null)
+  const { value: isFavorite, toggle: handleFavoriteToggle } = useOptimisticToggle(
+    item.isFavorite,
+    (next) => toggleItemFavoriteAction(item.id, next),
+    {
+      onSuccess: (next) => {
+        dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isFavorite: next } })
+        router.refresh()
+      },
+      errorLabel: 'Failed to toggle favorite',
+    }
+  )
 
-  const isFavorite = optimisticFavorite ?? item.isFavorite
-  const isPinned = optimisticPinned ?? item.isPinned
+  const { value: isPinned, toggle: handlePinToggle } = useOptimisticToggle(
+    item.isPinned,
+    (next) => toggleItemPinnedAction(item.id, next),
+    {
+      onSuccess: (next) => {
+        dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isPinned: next } })
+        router.refresh()
+      },
+      errorLabel: 'Failed to toggle pin',
+    }
+  )
 
   const copyValue = fullItem
     ? (fullItem.content ?? fullItem.url ?? fullItem.title)
     : (item.url ?? item.title)
-
-  async function handleFavoriteToggle() {
-    const next = !isFavorite
-    setOptimisticFavorite(next)
-    const result = await toggleItemFavoriteAction(item.id, next)
-    if (result.status === 'ok') {
-      dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isFavorite: next } })
-      router.refresh()
-    } else {
-      setOptimisticFavorite(!next)
-      toast.error(result.message ?? 'Failed to toggle favorite')
-    }
-  }
-
-  async function handlePinToggle() {
-    const next = !isPinned
-    setOptimisticPinned(next)
-    const result = await toggleItemPinnedAction(item.id, next)
-    if (result.status === 'ok') {
-      dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isPinned: next } })
-      router.refresh()
-    } else {
-      setOptimisticPinned(!next)
-      toast.error(result.message ?? 'Failed to toggle pin')
-    }
-  }
 
   async function handleDelete() {
     setIsDeleting(true)

@@ -7,7 +7,8 @@ import { collectionFormSchema } from '@/lib/utils/validators'
 import {
   createCollection as dbCreateCollection,
   updateCollection as dbUpdateCollection,
-  deleteCollection as dbDeleteCollection
+  deleteCollection as dbDeleteCollection,
+  toggleCollectionFavorite as dbToggleCollectionFavorite
 } from '@/lib/db/collections'
 import { createLogger } from '@/lib/logger'
 import { invalidateCollectionsCache } from '@/lib/cache'
@@ -46,4 +47,14 @@ export async function deleteCollectionAction(collectionId: string): Promise<ApiB
     log.info(`deleted collection:${collectionId} user:${userId}`)
     return ApiResponse.OK()
   }, 'deleteCollectionAction')
+}
+
+export async function toggleCollectionFavoriteAction(collectionId: string, isFavorite: boolean): Promise<ApiBody<null>> {
+  return withAuth(async (userId) => {
+    const ok = await dbToggleCollectionFavorite(userId, collectionId, isFavorite)
+    if (!ok) return ApiResponse.NOT_FOUND('Collection not found.')
+    invalidateCollectionsCache(userId)
+    log.info(`toggled favorite collection:${collectionId} isFavorite:${isFavorite} user:${userId}`)
+    return ApiResponse.OK()
+  }, 'toggleCollectionFavoriteAction')
 }

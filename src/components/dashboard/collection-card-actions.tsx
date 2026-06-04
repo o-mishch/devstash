@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, type MouseEvent } from 'react'
+import { type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Star, MoreHorizontal, Edit2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { updateCollectionAction } from '@/actions/collections'
+import { toggleCollectionFavoriteAction } from '@/actions/collections'
 import { useCollectionDialogs } from './collection-dialog-provider'
+import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionCardActionsProps {
@@ -17,22 +18,19 @@ interface CollectionCardActionsProps {
 export function CollectionCardActions({ collection }: CollectionCardActionsProps) {
   const router = useRouter()
   const { openEdit, openDelete } = useCollectionDialogs()
-  const [optimisticFavorite, setOptimisticFavorite] = useState<boolean | null>(null)
+  const { value: isFavorite, toggle: toggleFavorite } = useOptimisticToggle(
+    collection.isFavorite,
+    (next) => toggleCollectionFavoriteAction(collection.id, next),
+    {
+      onSuccess: () => router.refresh(),
+      errorLabel: 'Failed to toggle favorite',
+    }
+  )
 
-  const isFavorite = optimisticFavorite ?? collection.isFavorite
-
-  async function handleFavoriteToggle(e: MouseEvent) {
+  const handleFavoriteToggle = (e: MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    const next = !isFavorite
-    setOptimisticFavorite(next)
-    const result = await updateCollectionAction(collection.id, { isFavorite: next })
-    if (result.status === 'ok') {
-      router.refresh()
-    } else {
-      setOptimisticFavorite(!next)
-      toast.error('Failed to toggle favorite')
-    }
+    toggleFavorite()
   }
 
   return (

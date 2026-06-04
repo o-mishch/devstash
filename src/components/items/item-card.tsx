@@ -2,9 +2,9 @@
 
 import type { CSSProperties } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Pin, Star } from 'lucide-react'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
+import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { getBaseUrl } from '@/lib/utils/url'
@@ -38,10 +38,7 @@ export function ItemCard({ item }: ItemCardProps) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="truncate font-medium">{item.title}</p>
-                <div className="flex shrink-0 items-center gap-1">
-                  {item.isPinned && <Pin className="size-3.5 fill-primary text-primary" />}
-                  {item.isFavorite && <Star className="size-3.5 fill-yellow-500 text-yellow-500" />}
-                </div>
+                <ItemStatusIcons isPinned={item.isPinned} isFavorite={item.isFavorite} />
               </div>
               {item.descriptionPreview && (
                 <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.descriptionPreview}</p>

@@ -1,4 +1,4 @@
-import type { ReactNode, ElementType } from 'react';
+import type { ReactNode, ElementType, MouseEvent } from 'react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -10,7 +10,7 @@ interface GradientCtaProps {
   children: ReactNode;
   className?: string;
   as?: ElementType;
-  onClick?: (e: any) => void;
+  onClick?: (e: MouseEvent<HTMLElement>) => void;
 }
 
 export function GradientCta({ href, children, className, as, onClick }: GradientCtaProps) {

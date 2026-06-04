@@ -16,6 +16,7 @@ import { updateItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerSharedSections } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
+import { parseTagString } from '@/lib/utils/format'
 import type { Item } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 
@@ -65,10 +66,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(typeName)
 
   const handleSubmit = form.handleSubmit(async (data: DrawerFormValues) => {
-    const tagArray = (data.tags || '')
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
+    const tagArray = parseTagString(data.tags)
 
     const result = await updateItemAction(item.id, {
       title: data.title.trim(),

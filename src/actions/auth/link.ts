@@ -6,10 +6,8 @@ import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 import { withRateLimit } from '@/lib/rate-limit'
 import { getPendingLink, deletePendingLink } from '@/lib/pending-link'
-import { checkProviderAccountExists, createAccount } from '@/lib/db/users'
-import { validateUserPassword } from '@/lib/auth-service'
+import { validateUserPassword, linkPendingAccount } from '@/lib/auth-service'
 import { MAX_PASSWORD_LENGTH } from '@/lib/utils/validators'
-import { invalidateProfileCache } from '@/lib/cache'
 import { z } from 'zod'
 
 const LinkPasswordSchema = z.string().min(1, 'Password is required.').max(MAX_PASSWORD_LENGTH, 'Password is too long.')
@@ -34,26 +32,7 @@ export async function linkAccountAction(
       return ApiResponse.BAD_REQUEST('Incorrect password or account not found.')
     }
 
-    // Idempotent: skip if already linked (e.g. double-submit)
-    const alreadyLinked = await checkProviderAccountExists(pending.provider, pending.providerAccountId)
-
-    if (!alreadyLinked) {
-      await createAccount({
-        userId: user.id,
-        type: pending.type,
-        provider: pending.provider,
-        providerAccountId: pending.providerAccountId,
-        email: pending.providerEmail,
-        access_token: pending.access_token,
-        refresh_token: pending.refresh_token,
-        expires_at: pending.expires_at,
-        token_type: pending.token_type,
-        scope: pending.scope,
-        id_token: pending.id_token,
-        session_state: pending.session_state,
-      })
-      invalidateProfileCache(user.id)
-    }
+    await linkPendingAccount(user.id, pending)
 
     await deletePendingLink(token)
 
@@ -80,25 +59,7 @@ export async function autoLinkAccountAction(token: string): Promise<void> {
     redirect('/profile?toast=mismatch')
   }
 
-  const alreadyLinked = await checkProviderAccountExists(pending.provider, pending.providerAccountId)
-
-  if (!alreadyLinked) {
-    await createAccount({
-      userId: session.user.id,
-      type: pending.type,
-      provider: pending.provider,
-      providerAccountId: pending.providerAccountId,
-      email: pending.providerEmail,
-      access_token: pending.access_token,
-      refresh_token: pending.refresh_token,
-      expires_at: pending.expires_at,
-      token_type: pending.token_type,
-      scope: pending.scope,
-      id_token: pending.id_token,
-      session_state: pending.session_state,
-    })
-    invalidateProfileCache(session.user.id)
-  }
+  await linkPendingAccount(session.user.id, pending)
 
   await deletePendingLink(token)
   redirect('/profile?toast=linked')

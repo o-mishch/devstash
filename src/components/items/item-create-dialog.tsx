@@ -34,6 +34,8 @@ import { createLogger } from '@/lib/logger'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { itemFormBaseSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
+import { parseTagString } from '@/lib/utils/format'
+import { useControllableOpen } from '@/hooks/use-controllable-open'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 import type { FileItemType } from '@/lib/utils/constants'
@@ -60,8 +62,6 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
   const router = useRouter()
   const defaultItemType = initialType || itemTypes[0]?.name || ''
 
-  const [internalOpen, setInternalOpen] = useState(false)
-  const open = controlledOpen ?? internalOpen
   const [itemType, setItemType] = useState(defaultItemType)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -81,23 +81,23 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
   })
 
   const watchedLanguage = useWatch({ control: form.control, name: 'language' })
-  const isSubmitting = form.formState.isSubmitting
   const showFile = ITEM_TYPES_WITH_FILE.has(itemType)
   const selectedType = itemTypes.find(t => t.name === itemType)
 
-  function handleOpenChange(isOpen: boolean) {
-    setInternalOpen(isOpen)
-    controlledOnOpenChange?.(isOpen)
-    if (isOpen) {
-      setItemType(defaultItemType)
-    } else {
+  const { open, handleOpenChange, setInternalOpen } = useControllableOpen({
+    open: controlledOpen,
+    onOpenChange: (isOpen) => {
+      controlledOnOpenChange?.(isOpen)
+      if (isOpen) setItemType(defaultItemType)
+    },
+    onClose: () => {
       if (uploadedFile && !savedRef.current) deleteOrphanedFile(uploadedFile)
       savedRef.current = false
       setUploadedFile(null)
       setFileError(null)
       form.reset()
     }
-  }
+  })
 
   function handleTypeChange(val: string | null) {
     if (!val) return
@@ -118,10 +118,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
         return
       }
 
-      const tagArray = (data.tags || '')
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean)
+      const tagArray = parseTagString(data.tags)
 
       const result = await createItemAction({
         title: data.title,
@@ -246,7 +243,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
               <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
-              <SubmitButton isPending={isSubmitting}>
+              <SubmitButton isPending={form.formState.isSubmitting}>
                 Create Item
               </SubmitButton>
             </DialogFooter>
