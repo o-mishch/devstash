@@ -4,13 +4,22 @@ import { DashboardStats } from './_components/dashboard-stats'
 import { DashboardCollections } from './_components/dashboard-collections'
 import { DashboardPinned } from './_components/dashboard-pinned'
 import { DashboardRecent } from './_components/dashboard-recent'
+import { getItemStats } from '@/lib/db/items'
+import { Button } from '@/components/ui/button'
+import { Plus } from 'lucide-react'
+import Link from 'next/link'
 
 export default async function DashboardPage() {
   const userId = await getCurrentUserId()
 
   if (!userId) return null
 
-  const firstPage = await getRecentItemsPage(userId)
+  const [firstPage, itemStats] = await Promise.all([
+    getRecentItemsPage(userId),
+    getItemStats(userId),
+  ])
+
+  const isEmpty = itemStats.totalItems === 0
 
   return (
     <div className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
@@ -20,9 +29,27 @@ export default async function DashboardPage() {
       </div>
 
       <DashboardStats userId={userId} />
-      <DashboardCollections userId={userId} />
-      <DashboardPinned userId={userId} />
-      <DashboardRecent firstPage={firstPage} />
+
+      {isEmpty ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border p-8 text-center sm:p-12 mt-4 bg-muted/20">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 mb-4">
+            <Plus className="h-6 w-6 text-primary" />
+          </div>
+          <h2 className="text-lg font-semibold">Welcome to DevStash!</h2>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm mb-6">
+            Your dashboard is looking a bit empty. Let's get started by creating your first item.
+          </p>
+          <Link href="/items/snippets">
+            <Button>Create your first item &rarr;</Button>
+          </Link>
+        </div>
+      ) : (
+        <>
+          <DashboardCollections userId={userId} />
+          <DashboardPinned userId={userId} />
+          <DashboardRecent firstPage={firstPage} />
+        </>
+      )}
     </div>
   )
 }

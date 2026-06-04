@@ -47,7 +47,7 @@ export function DrawerLayout({ itemType, onClose, titleArea, actionArea, childre
         <>
           <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0" iconClassName="size-4.5" />
           <div className="min-w-0 flex-1">{titleArea}</div>
-          <Button variant="ghost" size="icon-sm" className="shrink-0" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted" onClick={onClose} title="Close">
             <X className="size-4" />
           </Button>
         </>
@@ -89,70 +89,75 @@ export function DrawerSection({ label, icon, className, children }: DrawerSectio
   )
 }
 
-interface DrawerSharedSectionsProps {
+interface DrawerCollectionsSectionProps {
   item: Item
+  onEdit?: () => void
 }
 
-export function DrawerSharedSections({ item }: DrawerSharedSectionsProps) {
-  let collectionsContent: ReactNode
-  if (item.collections.length > 0) {
-    collectionsContent = (
-      <div className="flex flex-wrap gap-1.5">
-        {item.collections.map((col) => (
-          <Badge key={col.id} variant="outline">{col.name}</Badge>
-        ))}
-      </div>
-    )
-  } else {
-    collectionsContent = <p className="text-sm text-muted-foreground">—</p>
-  }
-
+export function DrawerCollectionsSection({ item, onEdit }: DrawerCollectionsSectionProps) {
   return (
-    <>
-      <DrawerSection label="Collections" icon={<FolderOpen className="size-3" />}>
-        {collectionsContent}
-      </DrawerSection>
-
-      <DrawerSection label="Details" icon={<Calendar className="size-3" />}>
-        <div className="space-y-1 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Created</span>
-            <span>{formatDate(item.createdAt)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Updated</span>
-            <span>{formatDate(item.updatedAt)}</span>
-          </div>
+    <DrawerSection label="Collections" icon={<FolderOpen className="size-3" />}>
+      {item.collections.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {item.collections.map((col) => (
+            <Badge key={col.id} variant="outline">{col.name}</Badge>
+          ))}
         </div>
-      </DrawerSection>
-    </>
+      ) : onEdit ? (
+        <Button variant="outline" size="sm" className="h-7 text-xs border-dashed text-muted-foreground" onClick={onEdit}>
+          Assign collection...
+        </Button>
+      ) : (
+        <p className="text-sm text-muted-foreground">—</p>
+      )}
+    </DrawerSection>
   )
 }
 
-export function DrawerSharedSectionsSkeleton() {
+export function DrawerDetailsSection({ item }: { item: Item }) {
   return (
-    <>
-      <section className="shrink-0">
-        <Skeleton className="mb-2 h-3 w-20" />
-        <div className="flex flex-wrap gap-1.5">
-          <Skeleton className="h-6 w-24 rounded-md" />
-          <Skeleton className="h-6 w-20 rounded-md" />
+    <DrawerSection label="Details" icon={<Calendar className="size-3" />}>
+      <div className="space-y-1 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Created</span>
+          <span>{formatDate(item.createdAt)}</span>
         </div>
-      </section>
-      <section className="shrink-0">
-        <Skeleton className="mb-2 h-3 w-14" />
-        <div className="space-y-1.5">
-          <div className="flex justify-between">
-            <Skeleton className="h-4 w-14" />
-            <Skeleton className="h-4 w-20" />
-          </div>
-          <div className="flex justify-between">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-4 w-20" />
-          </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Updated</span>
+          <span>{formatDate(item.updatedAt)}</span>
         </div>
-      </section>
-    </>
+      </div>
+    </DrawerSection>
+  )
+}
+
+export function DrawerCollectionsSkeleton() {
+  return (
+    <section className="shrink-0">
+      <Skeleton className="mb-2 h-3 w-20" />
+      <div className="flex flex-wrap gap-1.5">
+        <Skeleton className="h-6 w-24 rounded-md" />
+        <Skeleton className="h-6 w-20 rounded-md" />
+      </div>
+    </section>
+  )
+}
+
+export function DrawerDetailsSkeleton() {
+  return (
+    <section className="shrink-0">
+      <Skeleton className="mb-2 h-3 w-14" />
+      <div className="space-y-1.5">
+        <div className="flex justify-between">
+          <Skeleton className="h-4 w-14" />
+          <Skeleton className="h-4 w-20" />
+        </div>
+        <div className="flex justify-between">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-20" />
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -194,7 +199,8 @@ export function DrawerSkeleton() {
           <Skeleton className="h-5 w-20 rounded-full" />
         </div>
       </section>
-      <DrawerSharedSectionsSkeleton />
+      <DrawerCollectionsSkeleton />
+      <DrawerDetailsSkeleton />
     </DrawerContainer>
   )
 }

@@ -1,8 +1,11 @@
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 import { getCurrentUserId } from '@/lib/session'
 import { getItemTypeBySlug, getItemsByTypePage } from '@/lib/db/items'
+import { prisma } from '@/lib/prisma'
 import { getTypeLabel } from '@/lib/utils'
 import { ItemsGrid } from './_components/items-grid'
+import type { ItemsPage } from '@/types/item'
 
 interface ItemsPageProps {
   params: Promise<{ type: string }>
@@ -18,16 +21,24 @@ export default async function ItemsPage({ params }: ItemsPageProps) {
 
   if (!itemType) notFound()
 
-  const emptyPage = { items: [], nextCursor: null, hasMore: false }
-  const firstPage = userId
-    ? await getItemsByTypePage(userId, itemType.name)
-    : emptyPage
+  const emptyPage: ItemsPage = { items: [], nextCursor: null, hasMore: false }
+  let firstPage = emptyPage
+  let totalCount = 0
+
+  if (userId) {
+    const [page, count] = await Promise.all([
+      getItemsByTypePage(userId, itemType.name),
+      prisma.item.count({ where: { userId, itemTypeId: itemType.id } })
+    ])
+    firstPage = page
+    totalCount = count
+  }
 
   const label = getTypeLabel(itemType.name)
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <h1 className="text-xl font-semibold">{label}</h1>
+      <h1 className="text-xl font-semibold">{label} <span className="text-muted-foreground font-normal text-lg">({totalCount})</span></h1>
       <ItemsGrid firstPage={firstPage} typeName={itemType.name} />
     </div>
   )

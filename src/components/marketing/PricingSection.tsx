@@ -30,6 +30,12 @@ const PRO_FEATURES = [
   { included: true, text: 'Data export (JSON/ZIP)' },
 ];
 
+const PRICING = {
+  free: '0 PLN',
+  monthly: '30 PLN',
+  yearly: '270 PLN',
+};
+
 interface FeatureRowProps {
   included: boolean;
   text: string;
@@ -41,7 +47,7 @@ function FeatureRow({ included, text }: FeatureRowProps) {
       <span className={included ? 'font-bold text-emerald-400' : 'text-muted-foreground'}>
         {included ? '✓' : '✕'}
       </span>
-      <span className={included ? 'text-foreground' : 'text-muted-foreground'}>{text}</span>
+      <span className={included ? 'text-foreground' : 'text-foreground/60'}>{text}</span>
     </li>
   );
 }
@@ -109,7 +115,7 @@ export function PricingSection() {
               <div className="mb-6">
                 <div className="mb-2 text-sm font-medium text-muted-foreground">Free</div>
                 <div className="flex items-end gap-1">
-                  <span className="text-5xl font-bold">$0</span>
+                  <span className="text-5xl font-bold">{PRICING.free}</span>
                   <span className="mb-1 text-muted-foreground">/month</span>
                 </div>
               </div>
@@ -160,12 +166,9 @@ export function PricingSection() {
                 <div className="relative mb-6">
                   <div className="mb-2 text-sm font-medium text-muted-foreground">Pro</div>
                   <div className="flex items-end gap-1">
-                    <span className="text-5xl font-bold">{isYearly ? '$6' : '$8'}</span>
-                    <span className="mb-1 text-muted-foreground">/month</span>
+                    <span className="text-5xl font-bold">{isYearly ? PRICING.yearly : PRICING.monthly}</span>
+                    <span className="mb-1 text-muted-foreground">/{isYearly ? 'year' : 'month'}</span>
                   </div>
-                  {isYearly && (
-                    <p className="mt-1 text-sm text-muted-foreground">Billed as $72/year</p>
-                  )}
                 </div>
 
                 <ul className="relative mb-8 flex flex-1 flex-col gap-3">

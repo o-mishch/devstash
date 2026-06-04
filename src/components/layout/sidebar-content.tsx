@@ -199,11 +199,11 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                 className={sidebarLinkClass(pathname === getTypeHref(t.name))}
               >
                 <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
-                <span className="flex-1">{getTypeLabel(t.name)}</span>
                 {PRO_ITEM_TYPE_NAMES.has(t.name) && (
-                  <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60">PRO</Badge>
+                  <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60 mr-1.5">PRO</Badge>
                 )}
-                <span className="text-xs tabular-nums">{t.count}</span>
+                <span className="flex-1">{getTypeLabel(t.name)}</span>
+                <span className="text-xs tabular-nums pr-2">{t.count}</span>
               </Link>
             ))}
           </CollapsibleContent>
@@ -232,7 +232,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                     >
                       <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
                       <span className="flex-1 truncate">{c.name}</span>
-                      <span className="text-xs tabular-nums">{c.itemCount}</span>
+                      <span className="text-xs tabular-nums pr-2">{c.itemCount}</span>
                     </Link>
                   ))}
                 </div>
@@ -257,7 +257,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
                         style={{ '--item-color': c.dominantColor ?? '#6b7280' } as CSSProperties}
                       />
                       <span className="flex-1 truncate">{c.name}</span>
-                      <span className="text-xs tabular-nums">{c.itemCount}</span>
+                      <span className="text-xs tabular-nums pr-2">{c.itemCount}</span>
                     </Link>
                   ))}
                 </div>

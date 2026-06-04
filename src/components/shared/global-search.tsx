@@ -53,7 +53,9 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
     }
   }, [router, displayItems, openDrawer])
 
-  const showList = open && (query.trim().length > 0 || displayItems.length > 0 || displayCollections.length > 0)
+  const hasQuery = query.trim().length > 0
+  const hasResults = displayItems.length > 0 || displayCollections.length > 0
+  const showList = open && (hasQuery || hasResults)
 
   return (
     <div ref={containerRef} className="relative mx-auto min-w-0 flex-1 max-w-sm">
@@ -82,8 +84,8 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
             <X className="size-4" />
           </button>
         ) : (
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1 opacity-50">
-            <kbd className="pointer-events-none inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1">
+            <kbd className="pointer-events-none inline-flex h-5 items-center gap-1 rounded border border-border/50 bg-muted-foreground/10 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
               <span className="text-xs">⌘</span>K
             </kbd>
           </div>

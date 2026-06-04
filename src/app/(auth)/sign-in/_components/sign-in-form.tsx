@@ -6,6 +6,7 @@ import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button, SubmitButton, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -112,16 +113,18 @@ export function SignInForm({ successMessage }: SignInFormProps) {
             id="password"
             name="password"
             placeholder="••••••••"
-            autoComplete="current-password"
+            autoComplete="off"
             required
           />
         </div>
+
+
 
         <div className="grid grid-cols-2 gap-2">
           <SubmitButton isPending={isPending}>
             Sign in
           </SubmitButton>
-          <Link href="/register" className={buttonVariants({ variant: 'outline' })}>
+          <Link href="/register" className={cn(buttonVariants({ variant: 'secondary' }), "border border-border/50")}>
             Sign up
           </Link>
         </div>

@@ -34,19 +34,19 @@ export function CollectionCardActions({ collection }: CollectionCardActionsProps
   }
 
   return (
-    <div className="absolute right-2 top-2 z-20 flex items-center gap-0.5">
+    <div className="absolute right-2 top-2 z-20 flex items-center gap-1">
       <Button
         variant="ghost"
         size="icon"
-        className={`size-8 transition-opacity ${isFavorite ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'} ${isFavorite ? 'text-yellow-400 hover:text-yellow-400' : 'text-muted-foreground hover:text-foreground'}`}
+        className={`size-8 rounded-full transition-all bg-background/50 backdrop-blur-sm hover:bg-background/80 ${isFavorite ? 'opacity-100 text-yellow-500 hover:text-yellow-500' : 'opacity-0 group-hover/card:opacity-100 text-muted-foreground hover:text-foreground'}`}
         onClick={handleFavoriteToggle}
         title={isFavorite ? 'Remove favorite' : 'Add to favorites'}
       >
-        <Star className={`size-4 ${isFavorite ? 'fill-yellow-400' : ''}`} />
+        <Star className={`size-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger render={
-          <Button variant="ghost" size="icon" className="size-8 h-8 w-8 text-muted-foreground hover:text-foreground">
+          <Button variant="ghost" size="icon" className="size-8 rounded-full bg-background/50 backdrop-blur-sm hover:bg-background/80 text-muted-foreground hover:text-foreground opacity-0 group-hover/card:opacity-100 transition-all" title="More options">
             <MoreHorizontal className="size-4" />
             <span className="sr-only">Open menu</span>
           </Button>

@@ -79,7 +79,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         onClick={handleFavoriteToggle}
       >
         <Star className={`size-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
-        Favorite
+        {isFavorite ? 'Starred' : 'Favorite'}
       </Button>
       <Button
         variant="ghost"

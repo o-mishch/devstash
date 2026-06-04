@@ -38,3 +38,11 @@ Create a spec file at @context/features called homepage-spec.md to take the mock
 - Keep code clean and dry.
 - Make buttons and links go to the correct places
 Look at the spec files in the @context/features folder for reference. Keep it concise but complete
+
+
+run 
+ui-reviewer.md
+use Antigravity optimization (browser_subagent), etc.
+Use the UI reviewer to check the website's user interface and provide feedback.
+Check the homepage and the dashboard pages (items, collections), view item in drawl, create new item and collection, assign item to collection, add to favorite and pin item, favorit page, User profile page, user settings page, etc.
+Use the user demo@devstash.io/12345678 to access protected areas

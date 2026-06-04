@@ -5,6 +5,8 @@ import { ChaosCanvas } from '@/components/marketing/ChaosCanvas';
 import { PricingSection } from '@/components/marketing/PricingSection';
 import { FadeIn } from '@/components/marketing/FadeIn';
 import { GradientCta } from '@/components/marketing/GradientCta';
+import { SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants';
+import { ItemTypeIcon } from '@/components/shared/item-type-icon';
 
 // ─── Hero Text ────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,9 @@ function HeroText() {
               See Features
             </a>
           </div>
+          <div className="mt-16 flex flex-col items-center justify-center gap-4 border-t border-white/5 pt-8 opacity-60">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Trusted by 500+ developers</p>
+          </div>
         </div>
       </section>
     </FadeIn>
@@ -63,19 +68,19 @@ function HeroText() {
 // ─── Hero Visual ──────────────────────────────────────────────────────────────
 
 const MOCKUP_TYPES = [
-  { color: '#3b82f6', label: 'Snippets', active: true },
-  { color: '#f59e0b', label: 'Prompts' },
-  { color: '#06b6d4', label: 'Commands' },
-  { color: '#22c55e', label: 'Notes' },
-  { color: '#ec4899', label: 'Images' },
-  { color: '#6366f1', label: 'Links' },
+  { color: SYSTEM_TYPE_COLORS.snippet, iconName: SYSTEM_TYPE_ICON_NAMES.snippet, label: 'Snippets', active: true },
+  { color: SYSTEM_TYPE_COLORS.prompt, iconName: SYSTEM_TYPE_ICON_NAMES.prompt, label: 'Prompts' },
+  { color: SYSTEM_TYPE_COLORS.command, iconName: SYSTEM_TYPE_ICON_NAMES.command, label: 'Commands' },
+  { color: SYSTEM_TYPE_COLORS.note, iconName: SYSTEM_TYPE_ICON_NAMES.note, label: 'Notes' },
+  { color: SYSTEM_TYPE_COLORS.image, iconName: SYSTEM_TYPE_ICON_NAMES.image, label: 'Images' },
+  { color: SYSTEM_TYPE_COLORS.link, iconName: SYSTEM_TYPE_ICON_NAMES.link, label: 'Links' },
 ];
 
 const MOCKUP_CARDS = [
-  { color: '#3b82f6', title: 'useAuth hook',      sub: 'React · TypeScript' },
-  { color: '#f59e0b', title: 'GPT-4 Code Review', sub: 'AI · Prompt' },
-  { color: '#06b6d4', title: 'git reset --hard',  sub: 'Git · Terminal' },
-  { color: '#22c55e', title: 'Deploy checklist',  sub: 'Markdown · Note' },
+  { color: SYSTEM_TYPE_COLORS.snippet, title: 'useAuth hook',      sub: 'React · TypeScript' },
+  { color: SYSTEM_TYPE_COLORS.prompt, title: 'GPT-4 Code Review', sub: 'AI · Prompt' },
+  { color: SYSTEM_TYPE_COLORS.command, title: 'git reset --hard',  sub: 'Git · Terminal' },
+  { color: SYSTEM_TYPE_COLORS.note, title: 'Deploy checklist',  sub: 'Markdown · Note' },
 ];
 
 function HeroVisual() {
@@ -111,7 +116,7 @@ function HeroVisual() {
                         t.active ? 'bg-accent text-foreground' : 'text-muted-foreground'
                       }`}
                     >
-                      <span className="h-2 w-2 flex-shrink-0 rounded-full" style={{ background: t.color }} />
+                      <ItemTypeIcon iconName={t.iconName} color={t.color} className="size-3 flex-shrink-0" />
                       {t.label}
                     </div>
                   ))}
@@ -418,8 +423,8 @@ function Footer() {
             </div>
             <div className="flex flex-col gap-3">
               <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Legal</h4>
-              <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Privacy</a>
-              <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Terms</a>
+              <Link href="/privacy" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Privacy</Link>
+              <Link href="/terms" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Terms</Link>
             </div>
           </div>
 

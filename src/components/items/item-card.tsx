@@ -24,7 +24,7 @@ export function ItemCard({ item }: ItemCardProps) {
 
   return (
     <Card
-      className="card-interactive group/card relative min-h-20 overflow-hidden border-l-2 border-l-[var(--item-color)]"
+      className="card-interactive group/card relative min-h-20 overflow-hidden border-l-2 border-l-[var(--item-color)] hover:shadow-md hover:-translate-y-1 transition-all"
       style={{ '--item-color': itemType.color } as CSSProperties}
     >
       <button

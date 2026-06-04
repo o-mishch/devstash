@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
 import { ItemTags } from '@/components/shared/item-tags'
-import { DrawerLayout, DrawerSection, DrawerSharedSections, DrawerSharedSectionsSkeleton } from './drawer-shared'
+import { DrawerLayout, DrawerSection, DrawerCollectionsSection, DrawerDetailsSection, DrawerCollectionsSkeleton, DrawerDetailsSkeleton } from './drawer-shared'
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
@@ -148,11 +148,23 @@ export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDelete
         {item.tags.length > 0 ? (
           <ItemTags tags={item.tags} />
         ) : (
-          <p className="text-sm text-muted-foreground">—</p>
+          <Button variant="outline" size="sm" className="h-7 text-xs border-dashed text-muted-foreground" onClick={onEdit}>
+            Add tags...
+          </Button>
         )}
       </DrawerSection>
 
-      {isLight ? <DrawerSharedSectionsSkeleton /> : fullItem && <DrawerSharedSections item={fullItem} />}
+      {isLight ? (
+        <>
+          <DrawerCollectionsSkeleton />
+          <DrawerDetailsSkeleton />
+        </>
+      ) : fullItem && (
+        <>
+          <DrawerCollectionsSection item={fullItem} onEdit={onEdit} />
+          <DrawerDetailsSection item={fullItem} />
+        </>
+      )}
     </DrawerLayout>
   )
 }

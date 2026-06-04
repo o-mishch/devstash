@@ -158,13 +158,13 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="flex flex-col max-h-[90dvh] sm:max-w-[500px]">
           <form onSubmit={handleFormSubmit} className="flex flex-col flex-1 min-h-0">
-            <DialogHeader className="shrink-0">
+            <DialogHeader className="shrink-0 pb-4 border-b border-border/50">
               <DialogTitle>Create New Item</DialogTitle>
               <DialogDescription>
-                Add a new item to your stash.
+                Add a new item to your stash. <span className="text-red-500/80">*</span> Indicates a required field.
               </DialogDescription>
             </DialogHeader>
-            <div className="flex-1 overflow-y-auto grid gap-4 py-4 pr-1">
+            <div className="flex-1 overflow-y-auto grid gap-6 py-5 px-1 pr-3 scrollbar-thin">
               <div className="grid gap-2">
                 <Label htmlFor="type">Type</Label>
                 <Select value={itemType} onValueChange={handleTypeChange}>
