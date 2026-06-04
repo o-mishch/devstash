@@ -8,7 +8,7 @@ import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 import type { editor } from 'monaco-editor'
-import { useEditorPreferences } from '@/components/providers/editor-preferences-provider'
+import { useEditorPreferences } from '@/providers/editor-preferences-provider'
 import { monokaiTheme, githubDarkTheme } from '@/lib/utils/monaco-themes'
 
 interface CodeEditorProps {

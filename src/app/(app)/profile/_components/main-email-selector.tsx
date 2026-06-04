@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button, SubmitButton } from '@/components/ui/button'
 import { updateMainEmailAction } from '@/actions/profile'
+import { WarningBanner } from '@/components/shared/warning-banner'
 
 interface MainEmailSelectorProps {
   currentEmail: string
@@ -108,9 +109,9 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword }
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5 text-sm text-yellow-600 dark:text-yellow-400">
+          <WarningBanner>
             After confirming, use <strong>{pendingEmail}</strong> to sign in next time.
-          </div>
+          </WarningBanner>
 
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setPendingEmail(null)} disabled={isPending}>

@@ -25,13 +25,20 @@ export function EditorPreferencesProvider({ children, initialPreferences }: Edit
   )
   const { setTheme } = useTheme()
 
+  // Sync the DB-stored theme to next-themes on mount.
+  // Handles the case where localStorage was cleared but DB preference still exists.
+  useEffect(() => {
+    setTheme(preferences.appTheme)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function updatePreference<K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) {
     const prev = preferences
     const next = { ...prev, [key]: value }
     setPreferences(next)
-    
+
     if (key === 'appTheme') {
-      setTheme(value !== 'vscode' ? (value as string) : 'vscode')
+      setTheme(value as string)
     }
 
     try {
@@ -40,7 +47,7 @@ export function EditorPreferencesProvider({ children, initialPreferences }: Edit
         toast.error(res.message || 'Failed to save preferences')
         setPreferences(prev)
         if (key === 'appTheme') {
-          setTheme(prev.appTheme !== 'vscode' ? (prev.appTheme as string) : 'vscode')
+          setTheme(prev.appTheme)
         }
       } else {
         toast.success('Preferences saved')
@@ -49,7 +56,7 @@ export function EditorPreferencesProvider({ children, initialPreferences }: Edit
       toast.error('Failed to save preferences')
       setPreferences(prev)
       if (key === 'appTheme') {
-        setTheme(prev.appTheme !== 'vscode' ? (prev.appTheme as string) : 'vscode')
+        setTheme(prev.appTheme)
       }
     }
   }

@@ -1,21 +1,19 @@
 import Link from 'next/link'
 import type { WithChildren } from '@/types/common'
-import { APP_THEMES } from '@/types/editor-preferences'
-import { Archive, Home } from 'lucide-react'
+import { Archive, Home, Star } from 'lucide-react'
 import { GlobalSearch } from '@/components/shared/global-search'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
-import { TopbarFavoritesLink } from '@/components/layout/topbar-favorites-link'
-import { ItemDrawerProvider } from '@/components/items/item-drawer-provider'
+import { ItemDrawerProvider } from '@/providers/item-drawer-provider'
 import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
 import { MobileCreateMenu } from '@/components/layout/mobile-create-menu'
 import { TopbarCreateButton } from '@/components/layout/topbar-create-button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cache } from 'react'
 import { getSession } from '@/lib/session'
 import { fetchSidebarData } from '@/lib/db/sidebar'
 import { getProfileData } from '@/lib/db/profile'
-import { EditorPreferencesProvider } from '@/components/providers/editor-preferences-provider'
-import { ThemeProvider } from '@/components/providers/theme-provider'
+import { EditorPreferencesProvider } from '@/providers/editor-preferences-provider'
 
 const getSidebarData = cache(async () => {
   const session = await getSession()
@@ -42,12 +40,8 @@ export default async function DashboardLayout({ children }: WithChildren) {
   const userId = session?.user?.id
   const profileData = userId ? await getProfileData(userId).catch(() => null) : null
   const initialPreferences = profileData?.user.editorPreferences || null
-  const rawTheme = initialPreferences?.appTheme
-  const appTheme = rawTheme && APP_THEMES.includes(rawTheme) && rawTheme !== 'vscode' ? rawTheme : null
-
   return (
-    <ThemeProvider attribute="data-theme" defaultTheme={appTheme || 'vscode'} enableSystem={false}>
-      <EditorPreferencesProvider initialPreferences={initialPreferences}>
+    <EditorPreferencesProvider initialPreferences={initialPreferences}>
         <ItemDrawerProvider collections={sidebarData.collections}>
         <div className="flex h-screen flex-col bg-background">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
@@ -71,7 +65,20 @@ export default async function DashboardLayout({ children }: WithChildren) {
             <GlobalSearch collections={sidebarData.collections} />
 
             <div className="flex shrink-0 items-center gap-2">
-              <TopbarFavoritesLink />
+              <TooltipProvider delay={400}>
+                <Tooltip>
+                  <TooltipTrigger render={
+                    <Link
+                      href="/favorites"
+                      aria-label="Favorites"
+                      className="card-interactive flex size-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+                    >
+                      <Star className="size-4" />
+                    </Link>
+                  } />
+                  <TooltipContent>Favorites</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
               {/* Mobile: single + dropdown for new item / new collection */}
               <MobileCreateMenu itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
@@ -94,6 +101,5 @@ export default async function DashboardLayout({ children }: WithChildren) {
         </div>
         </ItemDrawerProvider>
       </EditorPreferencesProvider>
-    </ThemeProvider>
   )
 }

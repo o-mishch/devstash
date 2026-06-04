@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { deleteAccountAction } from '@/actions/profile'
+import { THEME_STORAGE_KEY } from '@/lib/utils/constants'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
 export function DeleteAccountDialog() {
@@ -22,7 +23,7 @@ export function DeleteAccountDialog() {
   function handleDelete() {
     startTransition(async () => {
       try {
-        localStorage.removeItem('theme')
+        localStorage.removeItem(THEME_STORAGE_KEY)
         await deleteAccountAction()
       } catch {
         toast.error('Failed to delete account. Please try again.')

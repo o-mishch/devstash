@@ -15,10 +15,15 @@ export async function createUser(data: Prisma.UserCreateInput | Prisma.UserUnche
 
 // Returns the user if they exist but haven't linked the given OAuth provider yet.
 // Returns null if no user with that email exists, or they already have the provider linked.
+// Matches on User.email OR any linked Account.email so that a user whose primary email
+// differs from their OAuth provider email is still detected as a conflict.
 export async function getUserWithOAuthConflict(email: string, provider: string) {
   return prisma.user.findFirst({
     where: {
-      email,
+      OR: [
+        { email },
+        { accounts: { some: { email } } },
+      ],
       accounts: { none: { provider } },
     },
     select: { id: true, email: true, password: true },

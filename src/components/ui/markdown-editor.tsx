@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
-import { useEditorPreferences } from '@/components/providers/editor-preferences-provider'
+import { useEditorPreferences } from '@/providers/editor-preferences-provider'
+import { EDITOR_THEME_COLORS } from '@/types/editor-preferences'
 
 const MarkdownViewer = dynamic(
   () => import('./markdown-viewer').then(m => m.MarkdownViewer)
@@ -23,23 +24,8 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
   const activeTab = readOnly ? 'preview' : activeTabState
   const { preferences } = useEditorPreferences()
   
-  const getThemeBg = () => {
-    switch(preferences.theme) {
-      case 'monokai': return '#272822'
-      case 'github-dark': return '#24292e'
-      default: return '#1E1E1E'
-    }
-  }
-
-  const getThemeText = () => {
-    switch(preferences.theme) {
-      case 'monokai': return '#F8F8F2'
-      case 'github-dark': return '#e1e4e8'
-      default: return 'rgba(255, 255, 255, 0.9)'
-    }
-  }
-
-  const bgStyle = { backgroundColor: getThemeBg() }
+  const { bg: themeBg, text: themeText } = EDITOR_THEME_COLORS[preferences.theme]
+  const bgStyle = { backgroundColor: themeBg }
 
   return (
     <div 
@@ -102,8 +88,8 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
               fontSize: `${preferences.fontSize}px`,
               tabSize: preferences.tabSize,
               whiteSpace: preferences.wordWrap === 'on' ? 'pre-wrap' : 'pre',
-              backgroundColor: getThemeBg(),
-              color: getThemeText(),
+              backgroundColor: themeBg,
+              color: themeText,
             }}
           />
         ) : (

@@ -235,6 +235,12 @@ export async function getItemsByTypePage(userId: string, typeName: string, curso
   return getPaginatedItems({ userId, itemType: { name: typeName } }, CacheTags.itemsByType(userId, typeName), cursor)
 }
 
+export async function getItemCountByType(userId: string, itemTypeId: string): Promise<number> {
+  return withDataCache(CacheTags.itemsByType(userId, `${itemTypeId}:count`), () =>
+    prisma.item.count({ where: { userId, itemTypeId } })
+  )
+}
+
 export async function getItemsByCollectionPage(userId: string, collectionId: string, cursor?: string): Promise<ItemsPage> {
   return getPaginatedItems({ userId, collections: { some: { collectionId } } }, CacheTags.itemsByCollection(userId, collectionId), cursor)
 }

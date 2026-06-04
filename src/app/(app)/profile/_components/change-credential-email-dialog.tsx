@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, type SubmitEvent as ReactSubmitEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Pencil } from 'lucide-react'
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { changeCredentialEmailAction } from '@/actions/profile'
 import { ProfileFormDialog } from './profile-form-dialog'
+import { WarningBanner } from '@/components/shared/warning-banner'
 
 interface ChangeCredentialEmailDialogProps {
   currentEmail: string
@@ -25,7 +26,7 @@ export function ChangeCredentialEmailDialog({ currentEmail }: ChangeCredentialEm
   }
 
   function createSubmitHandler(closeDialog: () => void) {
-    return (e: React.FormEvent<HTMLFormElement>) => {
+    return (e: ReactSubmitEvent<HTMLFormElement>) => {
       e.preventDefault()
       const data = new FormData(e.currentTarget)
       const email = (data.get('email') as string ?? '').trim().toLowerCase()
@@ -68,9 +69,9 @@ export function ChangeCredentialEmailDialog({ currentEmail }: ChangeCredentialEm
     >
       {({ closeDialog }) => (
         <>
-          <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5 text-sm text-yellow-600 dark:text-yellow-400">
+          <WarningBanner>
             After saving, use your <strong>new email</strong> to sign in next time.
-          </div>
+          </WarningBanner>
 
           <form onSubmit={createSubmitHandler(closeDialog)} className="space-y-4">
             <div className="space-y-1.5">

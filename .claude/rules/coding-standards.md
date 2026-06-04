@@ -10,6 +10,17 @@ description: TypeScript, React, Next.js, Tailwind v4, database, and code quality
 - No `any` types - use proper typing or `unknown`
 - Define interfaces for all props, API responses, and data models
 - Use type inference where obvious, explicit types where helpful
+- Never use `const enum` — incompatible with `isolatedModules: true` (Next.js SWC). Use an `as const` object for dot-notation at call sites, and string literals in the discriminated union type:
+
+```typescript
+export const MyActionType = { Foo: 'FOO', Bar: 'BAR' } as const
+
+// Union: use string literals (avoids namespace conflict with the const object)
+type MyAction = { type: 'FOO'; payload: string } | { type: 'BAR' }
+
+// Call sites use dot-notation as before:
+dispatch({ type: MyActionType.Foo, payload: '...' })
+```
 
 ## React
 
@@ -75,6 +86,8 @@ Example v4 configuration:
 - Server Actions: `src/actions/[feature].ts`
 - Types: `src/types/[feature].ts`
 - Lib/Utils: `src/lib/[utility].ts`
+- Context definitions (`createContext`, hooks, reducers, types — no JSX): `src/context/[name]-context.tsx`
+- Provider components (React components that render `<Context.Provider>`): `src/providers/[name]-provider.tsx`
 
 ## Naming
 

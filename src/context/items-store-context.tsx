@@ -1,15 +1,16 @@
 'use client'
 
+import { createContext, useContext, type Dispatch } from 'react'
 import type { LightItem } from '@/types/item'
 
-export const enum ItemsStoreActionType {
-  Reset = 'RESET',
-  AppendPage = 'APPEND_PAGE',
-  UpdateItem = 'UPDATE_ITEM',
-  RemoveItem = 'REMOVE_ITEM',
-  SetLoading = 'SET_LOADING',
-  UpdateItemFields = 'UPDATE_ITEM_FIELDS',
-}
+export const ItemsStoreActionType = {
+  Reset: 'RESET',
+  AppendPage: 'APPEND_PAGE',
+  UpdateItem: 'UPDATE_ITEM',
+  RemoveItem: 'REMOVE_ITEM',
+  SetLoading: 'SET_LOADING',
+  UpdateItemFields: 'UPDATE_ITEM_FIELDS',
+} as const
 
 export interface ItemsStoreState {
   pageKey: string
@@ -20,12 +21,12 @@ export interface ItemsStoreState {
 }
 
 export type ItemsStoreAction =
-  | { type: ItemsStoreActionType.Reset; pageKey: string; items: LightItem[]; cursor: string | null; hasMore: boolean }
-  | { type: ItemsStoreActionType.AppendPage; items: LightItem[]; cursor: string | null; hasMore: boolean }
-  | { type: ItemsStoreActionType.UpdateItem; item: LightItem }
-  | { type: ItemsStoreActionType.RemoveItem; id: string }
-  | { type: ItemsStoreActionType.SetLoading; loading: boolean }
-  | { type: ItemsStoreActionType.UpdateItemFields; id: string; fields: Partial<LightItem> }
+  | { type: 'RESET'; pageKey: string; items: LightItem[]; cursor: string | null; hasMore: boolean }
+  | { type: 'APPEND_PAGE'; items: LightItem[]; cursor: string | null; hasMore: boolean }
+  | { type: 'UPDATE_ITEM'; item: LightItem }
+  | { type: 'REMOVE_ITEM'; id: string }
+  | { type: 'SET_LOADING'; loading: boolean }
+  | { type: 'UPDATE_ITEM_FIELDS'; id: string; fields: Partial<LightItem> }
 
 export const itemsStoreInitialState: ItemsStoreState = {
   pageKey: '',
@@ -61,8 +62,6 @@ export function itemsStoreReducer(state: ItemsStoreState, action: ItemsStoreActi
       }
   }
 }
-
-import { createContext, useContext, type Dispatch } from 'react'
 
 export interface ItemsStoreContextValue {
   state: ItemsStoreState

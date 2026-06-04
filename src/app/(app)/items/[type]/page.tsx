@@ -1,8 +1,6 @@
 import { notFound } from 'next/navigation'
-import { Suspense } from 'react'
 import { getCurrentUserId } from '@/lib/session'
-import { getItemTypeBySlug, getItemsByTypePage } from '@/lib/db/items'
-import { prisma } from '@/lib/prisma'
+import { getItemTypeBySlug, getItemsByTypePage, getItemCountByType } from '@/lib/db/items'
 import { getTypeLabel } from '@/lib/utils'
 import { ItemsGrid } from './_components/items-grid'
 import type { ItemsPage } from '@/types/item'
@@ -28,7 +26,7 @@ export default async function ItemsPage({ params }: ItemsPageProps) {
   if (userId) {
     const [page, count] = await Promise.all([
       getItemsByTypePage(userId, itemType.name),
-      prisma.item.count({ where: { userId, itemTypeId: itemType.id } })
+      getItemCountByType(userId, itemType.id)
     ])
     firstPage = page
     totalCount = count

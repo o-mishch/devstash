@@ -14,6 +14,7 @@ import { AuthFormField } from '@/components/auth/auth-form-field'
 import { signInWithCredentials, signInWithGitHub, signInWithGoogle } from '@/actions/auth/login'
 import { apiFetch } from '@/lib/api-fetch'
 import { ProviderIcon } from '@/components/shared/provider-icon'
+import { WarningBanner } from '@/components/shared/warning-banner'
 
 interface SignInFormProps {
   successMessage?: string
@@ -23,22 +24,17 @@ interface ResendResponse {
   email: string
 }
 
-function GitHubSubmitButton() {
-  const { pending } = useFormStatus()
-  return (
-    <Button type="submit" variant="outline" className="w-full" disabled={pending}>
-      <ProviderIcon provider="github" className="size-4" />
-      {pending ? 'Connecting...' : 'Continue with GitHub'}
-    </Button>
-  )
+interface OAuthSubmitButtonProps {
+  provider: string
+  label: string
 }
 
-function GoogleSubmitButton() {
+function OAuthSubmitButton({ provider, label }: OAuthSubmitButtonProps) {
   const { pending } = useFormStatus()
   return (
     <Button type="submit" variant="outline" className="w-full" disabled={pending}>
-      <ProviderIcon provider="google" className="size-4" />
-      {pending ? 'Connecting...' : 'Continue with Google'}
+      <ProviderIcon provider={provider} className="size-4" />
+      {pending ? 'Connecting...' : `Continue with ${label}`}
     </Button>
   )
 }
@@ -81,8 +77,8 @@ export function SignInForm({ successMessage }: SignInFormProps) {
   return (
     <div className="flex flex-col gap-4">
       {state?.status === 'forbidden' && (
-        <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm">
-          <p className="font-medium text-yellow-600 dark:text-yellow-400">Email not verified</p>
+        <WarningBanner>
+          <p className="font-medium">Email not verified</p>
           <p className="mt-0.5 text-muted-foreground">
             Please check your inbox or{' '}
             <button
@@ -94,7 +90,7 @@ export function SignInForm({ successMessage }: SignInFormProps) {
             </button>
             .
           </p>
-        </div>
+        </WarningBanner>
       )}
 
       <form action={formAction} className="flex flex-col gap-4">
@@ -138,10 +134,10 @@ export function SignInForm({ successMessage }: SignInFormProps) {
 
       <div className="flex flex-col gap-2">
         <form action={signInWithGitHub}>
-          <GitHubSubmitButton />
+          <OAuthSubmitButton provider="github" label="GitHub" />
         </form>
         <form action={signInWithGoogle}>
-          <GoogleSubmitButton />
+          <OAuthSubmitButton provider="google" label="Google" />
         </form>
       </div>
     </div>

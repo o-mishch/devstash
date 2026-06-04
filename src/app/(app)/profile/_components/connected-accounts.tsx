@@ -1,11 +1,11 @@
-import { Mail } from 'lucide-react'
+import { Mail, Unlink } from 'lucide-react'
 import { ProviderIcon } from '@/components/shared/provider-icon'
 import { PROVIDER_LABELS, SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils'
 import { linkWithProviderAction } from '@/actions/auth/login'
+import { removeCredentialsAction, unlinkProviderAction } from '@/actions/profile'
 import type { OAuthProvider } from '@/lib/utils/constants'
 import type { LinkedAccount } from '@/lib/db/profile'
-import { UnlinkProviderDialog } from './unlink-provider-dialog'
-import { RemoveCredentialsDialog } from './remove-credentials-dialog'
+import { ProfileActionDialog } from './profile-action-dialog'
 import { ChangeCredentialEmailDialog } from './change-credential-email-dialog'
 import { ChangePasswordForm } from './change-password-form'
 import { SetPasswordDialog } from './set-password-dialog'
@@ -36,7 +36,16 @@ function EmailRow({ email, canUnlink }: EmailRowProps) {
         </div>
         {canUnlink && (
           <div className="sm:hidden shrink-0">
-            <RemoveCredentialsDialog />
+            <ProfileActionDialog
+              title="Remove password"
+              description="Your email & password sign-in will be removed. You can still sign in via your linked accounts."
+              triggerText="Unlink"
+              triggerIcon={<Unlink className="mr-1 size-3" />}
+              confirmText="Remove password"
+              action={removeCredentialsAction}
+              successMessage="Password removed. Sign in via a linked account."
+              errorMessage="Failed to remove password."
+            />
           </div>
         )}
       </div>
@@ -45,7 +54,16 @@ function EmailRow({ email, canUnlink }: EmailRowProps) {
         <ChangePasswordForm />
         {canUnlink && (
           <div className="hidden sm:block">
-            <RemoveCredentialsDialog />
+            <ProfileActionDialog
+              title="Remove password"
+              description="Your email & password sign-in will be removed. You can still sign in via your linked accounts."
+              triggerText="Unlink"
+              triggerIcon={<Unlink className="mr-1 size-3" />}
+              confirmText="Remove password"
+              action={removeCredentialsAction}
+              successMessage="Password removed. Sign in via a linked account."
+              errorMessage="Failed to remove password."
+            />
           </div>
         )}
       </div>
@@ -73,7 +91,16 @@ function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
         </div>
       </div>
       {canUnlink ? (
-        <UnlinkProviderDialog accountId={account.id} label={label} />
+        <ProfileActionDialog
+          title={`Unlink ${label}`}
+          description={`Your ${label} account will be disconnected. You can still sign in with your other linked methods.`}
+          triggerText="Unlink"
+          triggerIcon={<Unlink className="mr-1 size-3" />}
+          confirmText={`Unlink ${label}`}
+          action={unlinkProviderAction.bind(null, account.id)}
+          successMessage={`${label} account unlinked.`}
+          errorMessage="Failed to unlink account."
+        />
       ) : (
         <span className="text-xs text-muted-foreground shrink-0">Connected</span>
       )}

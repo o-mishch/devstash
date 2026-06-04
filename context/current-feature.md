@@ -6,8 +6,8 @@ Not Started
 
 ## Goals
 
-<!-- List the specific, measurable goals for the current feature -->
+<!-- Add goals here -->
 
 ## Notes
 
-<!-- Any implementation details, context, or decisions made during development -->
+<!-- Add notes here -->
