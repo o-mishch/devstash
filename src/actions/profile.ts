@@ -3,10 +3,9 @@
 import { redirect } from 'next/navigation'
 import { signOut } from '@/auth'
 import { ApiResponse } from '@/lib/api'
-import { withAuth, getCurrentUserId } from '@/lib/session'
+import { withAuth, withAuthAndRateLimit, getCurrentUserId } from '@/lib/session'
 import type { ApiBody } from '@/types/api'
-import { validatePassword } from '@/lib/utils/validators'
-import { rateLimitAction } from '@/lib/rate-limit'
+import { validatePassword, parseOrFail, EmailSchema } from '@/lib/utils/validators'
 import { verifyUserPasswordById, changeUserPassword } from '@/lib/auth-service'
 import { getUserAuthMethods, getUserAuthInfoByEmail, deleteUserById, checkAccountExists, unlinkUserAccount, removeUserPassword } from '@/lib/db/users'
 import { getProfileData, updateUserEmail, updateUserName } from '@/lib/db/profile'
@@ -14,16 +13,15 @@ import { invalidateProfileCache } from '@/lib/cache'
 import { z } from 'zod'
 
 const NameSchema = z.string().trim().min(1, 'Name is required.').max(64, 'Name is too long.')
-const EmailSchema = z.string().trim().toLowerCase().min(1, 'Email is required.').email('Please enter a valid email address.')
 
 export async function updateNameAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
   return withAuth(async (userId) => {
-    const parseResult = NameSchema.safeParse(formData.get('name'))
-    if (!parseResult.success) return ApiResponse.BAD_REQUEST(parseResult.error.issues[0].message)
-    const name = parseResult.data
+    const result = parseOrFail(NameSchema, formData.get('name'))
+    if (!result.success) return result.response
+    const name = result.data
 
     await updateUserName(userId, name)
     invalidateProfileCache(userId)
@@ -36,10 +34,7 @@ export async function changePasswordAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
-    const rl = await rateLimitAction('changePassword', userId)
-    if (rl) return rl
-
+  return withAuthAndRateLimit('changePassword', async (userId) => {
     const currentPassword = (formData.get('currentPassword') as string) ?? ''
     const newPassword = (formData.get('newPassword') as string) ?? ''
     const confirmPassword = (formData.get('confirmPassword') as string) ?? ''
@@ -66,13 +61,10 @@ export async function setInitialPasswordAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
-    const rl = await rateLimitAction('changePassword', userId)
-    if (rl) return rl
-
-    const parseResult = EmailSchema.safeParse(formData.get('email'))
-    if (!parseResult.success) return ApiResponse.BAD_REQUEST(parseResult.error.issues[0].message)
-    const selectedEmail = parseResult.data
+  return withAuthAndRateLimit('changePassword', async (userId) => {
+    const result = parseOrFail(EmailSchema, formData.get('email'))
+    if (!result.success) return result.response
+    const selectedEmail = result.data
 
     const newPassword = (formData.get('newPassword') as string) ?? ''
     const confirmPassword = (formData.get('confirmPassword') as string) ?? ''
@@ -105,13 +97,10 @@ export async function changeCredentialEmailAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
-    const rl = await rateLimitAction('changePassword', userId)
-    if (rl) return rl
-
-    const parseResult = EmailSchema.safeParse(formData.get('email'))
-    if (!parseResult.success) return ApiResponse.BAD_REQUEST(parseResult.error.issues[0].message)
-    const newEmail = parseResult.data
+  return withAuthAndRateLimit('changeCredentials', async (userId) => {
+    const result = parseOrFail(EmailSchema, formData.get('email'))
+    if (!result.success) return result.response
+    const newEmail = result.data
 
     const password = (formData.get('password') as string) ?? ''
     if (!password) return ApiResponse.BAD_REQUEST('Password is required.')
@@ -172,9 +161,9 @@ export async function unlinkProviderAction(accountId: string): Promise<ApiBody<n
 // Allows switching the primary email to any email owned via a linked OAuth account.
 export async function updateMainEmailAction(newEmailRaw: string): Promise<ApiBody<null>> {
   return withAuth(async (userId) => {
-    const parseResult = EmailSchema.safeParse(newEmailRaw)
-    if (!parseResult.success) return ApiResponse.BAD_REQUEST('Invalid email.')
-    const newEmail = parseResult.data
+    const result = parseOrFail(EmailSchema, newEmailRaw)
+    if (!result.success) return result.response
+    const newEmail = result.data
 
     const data = await getProfileData(userId)
     if (!data) return ApiResponse.UNAUTHORIZED('Not authenticated.')

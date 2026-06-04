@@ -7,7 +7,7 @@ import type { ApiBody } from '@/types/api'
 import { withRateLimit } from '@/lib/rate-limit'
 import { getPendingLink, deletePendingLink } from '@/lib/pending-link'
 import { validateUserPassword, linkPendingAccount } from '@/lib/auth-service'
-import { MAX_PASSWORD_LENGTH } from '@/lib/utils/validators'
+import { MAX_PASSWORD_LENGTH, parseOrFail } from '@/lib/utils/validators'
 import { z } from 'zod'
 
 const LinkPasswordSchema = z.string().min(1, 'Password is required.').max(MAX_PASSWORD_LENGTH, 'Password is too long.')
@@ -18,9 +18,9 @@ export async function linkAccountAction(
   formData: FormData
 ): Promise<ApiBody<null>> {
   return withRateLimit('linkAccount', async () => {
-    const parseResult = LinkPasswordSchema.safeParse(formData.get('password') || '')
-    if (!parseResult.success) return ApiResponse.BAD_REQUEST(parseResult.error.issues[0].message)
-    const password = parseResult.data
+    const result = parseOrFail(LinkPasswordSchema, formData.get('password') || '')
+    if (!result.success) return result.response
+    const password = result.data
 
     const pending = await getPendingLink(token)
     if (!pending) {

@@ -6,7 +6,7 @@ import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 import { withRateLimit } from '@/lib/rate-limit'
 import { registerUser, type VerificationResult } from '@/lib/auth-service'
-import { validatePassword } from '@/lib/utils/validators'
+import { validatePassword, parseOrFail, EmailSchema } from '@/lib/utils/validators'
 
 export async function registerAction(
   _prevState: ApiBody<null> | null,
@@ -14,13 +14,14 @@ export async function registerAction(
 ): Promise<ApiBody<null>> {
   return withRateLimit('register', async () => {
     const name = (formData.get('name') as string) ?? ''
-    const email = (formData.get('email') as string) ?? ''
     const password = (formData.get('password') as string) ?? ''
     const confirm = (formData.get('confirmPassword') as string) ?? ''
 
-    if (!name || !email || !password) return ApiResponse.BAD_REQUEST('All fields are required.')
+    const emailResult = parseOrFail(EmailSchema, formData.get('email'))
+    if (!emailResult.success) return emailResult.response
+    const email = emailResult.data
 
-    if (!z.string().email().safeParse(email).success) return ApiResponse.BAD_REQUEST('Please enter a valid email address.')
+    if (!name || !password) return ApiResponse.BAD_REQUEST('All fields are required.')
 
     const error = validatePassword(password, confirm)
     if (error) return ApiResponse.BAD_REQUEST(error)

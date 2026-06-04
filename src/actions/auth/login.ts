@@ -11,9 +11,10 @@ import { getUserEmailVerified } from '@/lib/db/users'
 import { createLinkIntent } from '@/lib/pending-link'
 import type { OAuthProvider } from '@/lib/utils/constants'
 import { z } from 'zod'
+import { parseOrFail, EmailSchema } from '@/lib/utils/validators'
 
 const SignInSchema = z.object({
-  email: z.string().trim().toLowerCase().min(1, 'Email is required.').email('Please enter a valid email address.'),
+  email: EmailSchema,
   password: z.string().min(1, 'Password is required.'),
 })
 
@@ -55,16 +56,14 @@ export async function signInWithCredentials(
   _prevState: ApiBody<SignInData | null> | null,
   formData: FormData
 ): Promise<ApiBody<SignInData | null>> {
-  const parseResult = SignInSchema.safeParse({
+  const result = parseOrFail(SignInSchema, {
     email: formData.get('email') || '',
     password: formData.get('password') || '',
   })
 
-  if (!parseResult.success) {
-    return ApiResponse.BAD_REQUEST(parseResult.error.issues[0].message)
-  }
+  if (!result.success) return result.response
 
-  const { email, password } = parseResult.data
+  const { email, password } = result.data
 
   const ip = await getActionIP()
   const rl = await rateLimitAction('login', `${ip}:${email}`)

@@ -4,7 +4,7 @@ import { getRedis, RATE_LIMIT_NS } from '@/lib/redis'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 
-type RateLimitKey =
+export type RateLimitKey =
   | 'login'
   | 'register'
   | 'forgotPassword'
@@ -14,6 +14,7 @@ type RateLimitKey =
   | 'linkAccount'
   | 'updateSettings'
   | 'changePassword'
+  | 'changeCredentials'
 
 interface LimitConfig {
   attempts: number
@@ -31,6 +32,7 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   linkAccount:          { attempts: 5,  window: '15 m' }, // keyed by IP
   updateSettings:       { attempts: 60, window: '1 m'  }, // keyed by IP
   changePassword:       { attempts: 5,  window: '15 m' }, // keyed by userId
+  changeCredentials:    { attempts: 5,  window: '15 m' }, // keyed by userId — email/password changes
 }
 
 interface RouteRateLimitDenied {

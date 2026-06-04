@@ -1,10 +1,11 @@
 import { notFound } from 'next/navigation'
 import { auth } from '@/auth'
-import { ApiResponse } from '@/lib/api-response'
+import { ApiResponse } from '@/lib/api'
 import { createLogger } from '@/lib/logger'
 import { z } from 'zod'
 import { parseOrFail } from '@/lib/utils/validators'
 import type { ApiBody } from '@/types/api'
+import { rateLimitAction, type RateLimitKey } from '@/lib/rate-limit'
 
 const log = createLogger('session')
 
@@ -39,6 +40,18 @@ export async function withAuth<T>(
     log.error(`${context ?? 'action'} failed`, error)
     return ApiResponse.INTERNAL_ERROR() as ApiBody<T>
   }
+}
+
+export async function withAuthAndRateLimit<T>(
+  rateLimitKey: RateLimitKey,
+  fn: (userId: string) => Promise<ApiBody<T>>,
+  context?: string
+): Promise<ApiBody<T>> {
+  return withAuth(async (userId) => {
+    const rl = await rateLimitAction(rateLimitKey, userId)
+    if (rl) return rl as ApiBody<T>
+    return await fn(userId)
+  }, context)
 }
 
 export async function withValidatedAuth<T, Output>(
