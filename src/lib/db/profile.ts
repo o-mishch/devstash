@@ -37,7 +37,7 @@ interface ItemTypeCount {
 type ProfileData = { user: ProfileUser; stats: ProfileStats }
 
 async function fetchProfileData(userId: string): Promise<ProfileData | null> {
-  const [user, totalItems, totalCollections, itemTypes] = await Promise.all([
+  const [user, itemTypes] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -49,10 +49,9 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
         editorPreferences: true,
         createdAt: true,
         accounts: { select: { id: true, provider: true, email: true } },
+        _count: { select: { items: true, collections: true } },
       },
     }),
-    prisma.item.count({ where: { userId } }),
-    prisma.collection.count({ where: { userId } }),
     prisma.itemType.findMany({
       where: { isSystem: true, userId: null },
       include: { _count: { select: { items: { where: { userId } } } } },
@@ -81,7 +80,7 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
       accounts: user.accounts.map((a) => ({ id: a.id, provider: a.provider, email: a.email })),
       createdAt: user.createdAt,
     },
-    stats: { totalItems, totalCollections, itemTypeCounts },
+    stats: { totalItems: user._count.items, totalCollections: user._count.collections, itemTypeCounts },
   }
 }
 

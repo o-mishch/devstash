@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { Item, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
-import type { Prisma } from '@/generated/prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 
 type ItemWithRelations = Prisma.ItemGetPayload<{
   include: { itemType: true; tags: true; collections: { include: { collection: { select: { id: true, name: true } } } } }
@@ -52,25 +52,28 @@ export function toLightItem(item: LightItemWithRelations): LightItem {
 
 const PINNED_LIMIT = 20
 
-export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<Item[]> {
+export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<LightItem[]> {
   return withDataCache(CacheTags.pinnedItems(userId), async () => {
     const items = await prisma.item.findMany({
       where: { userId, isPinned: true },
       orderBy: { updatedAt: 'desc' },
       take: Math.min(Math.max(Math.floor(limit), 1), PINNED_LIMIT),
-      include: ITEM_INCLUDE,
+      select: LIGHT_ITEM_SELECT,
     })
-    return items.map(toItem)
+    return items.map(toLightItem)
   })
 }
 
 
 export async function getItemStats(userId: string): Promise<ItemStats> {
   return withDataCache(CacheTags.itemStats(userId), async () => {
-    const [totalItems, favoriteItems] = await Promise.all([
-      prisma.item.count({ where: { userId } }),
-      prisma.item.count({ where: { userId, isFavorite: true } }),
-    ])
+    const rows = await prisma.item.groupBy({
+      by: ['isFavorite'],
+      where: { userId },
+      _count: true,
+    })
+    const totalItems = rows.reduce((sum, r) => sum + r._count, 0)
+    const favoriteItems = rows.find((r) => r.isFavorite)?._count ?? 0
     return { totalItems, favoriteItems }
   })
 }
@@ -101,10 +104,12 @@ export interface CreateItemInput {
 }
 
 export async function createItem(userId: string, data: CreateItemInput): Promise<Item | null> {
-  const itemType = await prisma.itemType.findFirst({
-    where: { name: data.itemTypeName, OR: [{ userId }, { userId: null }] },
-  })
-  
+  // system types are cached for 1h — avoids a DB round trip on every item creation
+  const systemTypes = await getSystemItemTypes()
+  const itemType =
+    systemTypes.find((t) => t.name === data.itemTypeName) ??
+    (await prisma.itemType.findFirst({ where: { name: data.itemTypeName, userId } }))
+
   if (!itemType) return null
 
   let contentType: 'TEXT' | 'FILE' | 'URL' = 'TEXT'
@@ -154,36 +159,37 @@ export interface UpdateItemInput {
 }
 
 export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<Item | null> {
-  const ownership = await prisma.item.findFirst({ where: { id: itemId, userId }, select: { id: true } })
-  if (!ownership) return null
-
   const validCollectionIds = data.collectionIds.length > 0
     ? await prisma.collection.findMany({ where: { id: { in: data.collectionIds }, userId }, select: { id: true } }).then(rows => rows.map(r => r.id))
     : []
 
-  const updated = await prisma.item.update({
-    where: { id: itemId, userId },
-    data: {
-      title: data.title,
-      description: data.description,
-      content: data.content,
-      url: data.url,
-      language: data.language,
-      tags: {
-        set: [],
-        connectOrCreate: buildTagsConnectOrCreate(data.tags),
+  try {
+    const updated = await prisma.item.update({
+      where: { id: itemId, userId },
+      data: {
+        title: data.title,
+        description: data.description,
+        content: data.content,
+        url: data.url,
+        language: data.language,
+        tags: {
+          set: [],
+          connectOrCreate: buildTagsConnectOrCreate(data.tags),
+        },
+        collections: {
+          deleteMany: {},
+          create: validCollectionIds.map(id => ({
+            collection: { connect: { id } }
+          }))
+        }
       },
-      collections: {
-        deleteMany: {},
-        create: validCollectionIds.map(id => ({
-          collection: { connect: { id } }
-        }))
-      }
-    },
-    include: ITEM_INCLUDE,
-  })
-
-  return toItem(updated)
+      include: ITEM_INCLUDE,
+    })
+    return toItem(updated)
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null
+    throw error
+  }
 }
 
 export async function deleteItem(userId: string, itemId: string): Promise<boolean> {

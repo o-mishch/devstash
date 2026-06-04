@@ -4,8 +4,9 @@ import type { CollectionWithTypes, CollectionStats } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
 
 export const COLLECTION_INCLUDE = {
+  _count: { select: { items: true } },
   items: {
-    take: 50,
+    take: 20,
     select: {
       item: {
         select: {
@@ -46,7 +47,7 @@ export function mapCollection(col: CollectionRow): CollectionWithTypes {
     defaultTypeId: col.defaultTypeId,
     createdAt: col.createdAt,
     updatedAt: col.updatedAt,
-    itemCount: col.items.length,
+    itemCount: col._count.items,
     dominantColor: sortedTypes[0]?.type.color ?? null,
     types: sortedTypes.slice(0, 4).map(({ type }) => type),
   }
@@ -104,10 +105,13 @@ export async function createCollection(userId: string, input: CreateCollectionIn
 
 export async function getCollectionStats(userId: string): Promise<CollectionStats> {
   return withDataCache(CacheTags.collectionStats(userId), async () => {
-    const [totalCollections, favoriteCollections] = await Promise.all([
-      prisma.collection.count({ where: { userId } }),
-      prisma.collection.count({ where: { userId, isFavorite: true } }),
-    ])
+    const rows = await prisma.collection.groupBy({
+      by: ['isFavorite'],
+      where: { userId },
+      _count: true,
+    })
+    const totalCollections = rows.reduce((sum, r) => sum + r._count, 0)
+    const favoriteCollections = rows.find((r) => r.isFavorite)?._count ?? 0
     return { totalCollections, favoriteCollections }
   })
 }
