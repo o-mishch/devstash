@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth, withValidatedAuth } from '@/lib/session'
+import { createToggleAction } from '@/lib/action-utils'
 import {
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
@@ -123,24 +124,8 @@ export async function fetchMoreItemsAction(query: FetchItemsQuery, cursor?: stri
   }, 'fetchMoreItemsAction')
 }
 
-export async function toggleItemFavoriteAction(itemId: string, isFavorite: boolean): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
-    const ok = await dbToggleItemFavorite(userId, itemId, isFavorite)
-    if (!ok) return ApiResponse.NOT_FOUND('Item not found.')
-    invalidateItemsCache(userId)
-    log.info(`toggled favorite item:${itemId} isFavorite:${isFavorite} user:${userId}`)
-    return ApiResponse.OK()
-  }, 'toggleItemFavoriteAction')
-}
+export const toggleItemFavoriteAction = createToggleAction(dbToggleItemFavorite, invalidateItemsCache, 'item')
 
-export async function toggleItemPinnedAction(itemId: string, isPinned: boolean): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
-    const ok = await dbToggleItemPinned(userId, itemId, isPinned)
-    if (!ok) return ApiResponse.NOT_FOUND('Item not found.')
-    invalidateItemsCache(userId)
-    log.info(`toggled pinned item:${itemId} isPinned:${isPinned} user:${userId}`)
-    return ApiResponse.OK()
-  }, 'toggleItemPinnedAction')
-}
+export const toggleItemPinnedAction = createToggleAction(dbToggleItemPinned, invalidateItemsCache, 'item')
 
 

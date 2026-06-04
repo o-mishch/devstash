@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth, withValidatedAuth } from '@/lib/session'
+import { createToggleAction } from '@/lib/action-utils'
 import { collectionFormSchema } from '@/lib/utils/validators'
 import {
   createCollection as dbCreateCollection,
@@ -49,12 +50,4 @@ export async function deleteCollectionAction(collectionId: string): Promise<ApiB
   }, 'deleteCollectionAction')
 }
 
-export async function toggleCollectionFavoriteAction(collectionId: string, isFavorite: boolean): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
-    const ok = await dbToggleCollectionFavorite(userId, collectionId, isFavorite)
-    if (!ok) return ApiResponse.NOT_FOUND('Collection not found.')
-    invalidateCollectionsCache(userId)
-    log.info(`toggled favorite collection:${collectionId} isFavorite:${isFavorite} user:${userId}`)
-    return ApiResponse.OK()
-  }, 'toggleCollectionFavoriteAction')
-}
+export const toggleCollectionFavoriteAction = createToggleAction(dbToggleCollectionFavorite, invalidateCollectionsCache, 'collection')

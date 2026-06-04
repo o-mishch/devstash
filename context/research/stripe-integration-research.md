@@ -6,7 +6,7 @@
 
 ## Research
 
-Analyze the codebase to create a comprehensive Stripe subscription integration plan for DevStash Pro ($8/mo monthly, $72/year annual).
+Analyze the codebase to create a comprehensive Stripe subscription integration plan for DevStash Pro (PLN 30/mo monthly, PLN 270/year annual).
 
 ## Include
 

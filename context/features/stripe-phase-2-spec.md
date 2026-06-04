@@ -1,181 +1,247 @@
-# Stripe Integration - Phase 2: Webhooks, Feature Gating & UI
+# Stripe Integration - Phase 2: Webhooks, Checkout & UI Integration
 
-## Overview
+## 1. Overview & Architecture
+Phase 2 connects DevStash to Stripe's payment infrastructure. It involves creating Checkout Sessions for upgrades, Customer Portals for managing subscriptions, and most importantly, Webhooks to securely and asynchronously update the DevStash database when subscription states change.
 
-Wire up Stripe webhook handler to sync subscription status, add feature gating to server actions and upload route, build billing UI on settings page, and add upgrade success toast. Requires Stripe CLI for local webhook testing.
+**Design Philosophy:**
+- **Webhooks are Mandatory:** Never rely on the `success_url` redirect of a Checkout Session to update your database. Users can close the browser before the redirect finishes. Only trust Stripe Webhooks.
+- **Raw Body Parsing:** Stripe Webhook signatures rely on the exact raw byte stream of the request.
+- **Server Actions over API Routes (Where Possible):** Use Server Actions for Checkout and Portal redirects to simplify Next.js routing, keeping API Routes strictly for the Webhook listener.
 
-## Prerequisites
+---
 
-- Phase 1 complete (Stripe SDK, usage utilities, session `isPro`, checkout/portal API routes)
-- Stripe CLI installed (`brew install stripe/stripe-cli/stripe`)
-- Stripe CLI authenticated (`stripe login`)
-- Webhook forwarding active: `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
-- Copy webhook signing secret from CLI output to `STRIPE_WEBHOOK_SECRET`
+## 2. Configuration & Environment Variables
 
-## Requirements
+Define the following in `.env.local` (and add to deployment platform, e.g., Vercel):
+```env
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_ID_MONTHLY=price_123...
+STRIPE_PRICE_ID_YEARLY=price_456...
+NEXT_PUBLIC_APP_URL=http://localhost:3000 # Required for Stripe success/cancel URLs
+```
 
-- Handle Stripe webhook events to sync subscription status to database
-- Gate item creation behind free tier limits
-- Gate collection creation behind free tier limits
-- Gate file/image uploads behind Pro check
-- Add billing section to settings page
-- Show upgrade success toast after checkout redirect
+---
 
-## Implementation
+## 3. Stripe Checkout & Portal Sessions (Server Actions)
 
-### 1. Create `src/app/api/webhooks/stripe/route.ts`
+Instead of building App Router API endpoints (`/api/stripe/checkout`), we will use Next.js Server Actions to redirect the user. This is cleaner and more idiomatic in Next.js 14/15/16.
 
-POST endpoint that:
-1. Reads raw body with `request.text()` (App Router provides raw body by default)
-2. Verifies signature with `stripe.webhooks.constructEvent()`
-3. Returns 400 on missing or invalid signature
-4. Handles events in a switch statement
-5. Returns `{ received: true }` on success
-
-#### Webhook Events
-
-| Event | Handler | Action |
-|-------|---------|--------|
-| `checkout.session.completed` | `handleCheckoutCompleted` | Set `isPro: true`, store `stripeCustomerId` and `stripeSubscriptionId` |
-| `invoice.paid` | `handleInvoicePaid` | Ensure `isPro: true` on renewal |
-| `invoice.payment_failed` | `handlePaymentFailed` | Log warning only (Stripe retries, don't downgrade) |
-| `customer.subscription.updated` | `handleSubscriptionUpdated` | Set `isPro` based on status (`active`/`trialing` = true, else false) |
-| `customer.subscription.deleted` | `handleSubscriptionDeleted` | Set `isPro: false`, clear `stripeSubscriptionId` |
-
-Key details:
-- `checkout.session.completed` uses `metadata.userId` to find the user
-- All other handlers use `stripeCustomerId` with `updateMany` for idempotency
-- Customer/subscription fields may be string or object - handle both with typeof checks
-
-### 2. Modify `src/actions/items.ts` - `createItem`
-
-Add two checks before existing creation logic:
-1. **Pro type check:** If `input.typeName` is `file` or `image` and user is not Pro, return error: "File and image uploads require a Pro subscription"
-2. **Usage limit check:** Call `canCreateItem(userId, isPro)` and return error if false: "You have reached the free tier limit of 50 items. Upgrade to Pro for unlimited items."
-
-Import `canCreateItem` from `@/lib/usage`.
-
-### 3. Modify `src/actions/collections.ts` - `createCollection`
-
-Add usage limit check before existing creation logic:
-- Call `canCreateCollection(userId, isPro)` and return error if false: "You have reached the free tier limit of 3 collections. Upgrade to Pro for unlimited collections."
-
-Import `canCreateCollection` from `@/lib/usage`.
-
-### 4. Modify `src/app/api/upload/route.ts`
-
-Add Pro check after auth check. Since the upload API route may not have the JWT-enhanced session, query `isPro` directly from the database:
-
+**File: `src/actions/stripe.ts`**
 ```typescript
-const user = await prisma.user.findUnique({
-  where: { id: session.user.id },
-  select: { isPro: true },
-});
+"use server";
 
-if (!user?.isPro) {
-  return NextResponse.json(
-    { error: 'File uploads require a Pro subscription' },
-    { status: 403 }
-  );
+import { auth } from "@/auth";
+import { stripe } from "@/lib/stripe";
+import { redirect } from "next/navigation";
+import prisma from "@/lib/db/prisma";
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+export async function createCheckoutSessionAction(priceId: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+
+  // 🟢 Best Practice: Pass the internal User ID as client_reference_id
+  // This is crucial for linking the webhook event back to our DB.
+  const stripeSession = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    payment_method_types: ["card"],
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${APP_URL}/settings?success=true`,
+    cancel_url: `${APP_URL}/settings?canceled=true`,
+    client_reference_id: session.user.id,
+    customer_email: session.user.email ?? undefined,
+  });
+
+  redirect(stripeSession.url!);
+}
+
+export async function createPortalSessionAction() {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+
+  const user = await prisma.user.findUnique({ where: { id: session.user.id } });
+  if (!user?.stripeCustomerId) throw new Error("No Stripe Customer ID found");
+
+  const portalSession = await stripe.billingPortal.sessions.create({
+    customer: user.stripeCustomerId,
+    return_url: `${APP_URL}/settings`,
+  });
+
+  redirect(portalSession.url);
 }
 ```
 
-### 5. Create `src/components/settings/billing-settings.tsx`
+---
 
-Client component (`'use client'`) that displays:
+## 4. Webhook Implementation (The Critical Component)
 
-**Props:** `isPro: boolean`, `itemCount: number`, `collectionCount: number`
+Webhooks must use standard Next.js App Router API Routes.
 
-**Layout:**
-- Credit card icon + "Billing" heading
-- Card container with current plan badge (Pro/Free)
-- Free users: usage display (`{itemCount}/50 items` and `{collectionCount}/3 collections`)
-- Free users: Two upgrade buttons - "Upgrade $8/mo" (primary) and "Upgrade $72/yr (save 25%)" (outline)
-- Pro users: "Manage Billing" button (outline, opens portal)
+**🔴 Anti-Pattern (DO NOT DO THIS):**
+```typescript
+export async function POST(req: Request) {
+  const body = await req.json(); // FATAL ERROR: This parses the body to an object, destroying the original string required for signature verification.
+  // ...
+}
+```
 
-**Behavior:**
-- Upgrade buttons POST to `/api/stripe/checkout` with `{ plan: 'monthly' | 'yearly' }`
-- Manage Billing button POSTs to `/api/stripe/portal`
-- Both redirect via `window.location.href = data.url`
-- Loading states with `Loader2` spinner on active button
-- All buttons disabled during any loading state
-- Error handling with `toast.error()`
+**🟢 Best Practice:**
+Extract the raw text body using `req.text()`.
 
-### 6. Modify `src/app/settings/page.tsx`
+**File: `src/app/api/webhooks/stripe/route.ts`**
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import { stripe } from "@/lib/stripe";
+import prisma from "@/lib/db/prisma";
 
-- Import `BillingSettings` and `getUserUsage`
-- Fetch usage data: `const usage = await getUserUsage(user.id, session.user.isPro ?? false)`
-- Add `<BillingSettings>` between EditorSettings and AccountSettings sections
-- Pass `isPro`, `itemCount`, and `collectionCount` as props
+export async function POST(req: NextRequest) {
+  const body = await req.text(); // MUST BE RAW TEXT
+  const signature = req.headers.get("stripe-signature");
 
-### 7. Upgrade Success Toast
+  if (!signature) {
+    return NextResponse.json({ error: "No signature found" }, { status: 400 });
+  }
 
-After successful checkout, users redirect to `/settings?upgraded=true`. Handle this in BillingSettings or a wrapper:
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch (err: any) {
+    console.error(`Webhook signature verification failed.`, err.message);
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
 
-- Read `upgraded` param with `useSearchParams()`
-- On mount, if `upgraded === 'true'`, show `toast.success('Welcome to DevStash Pro!')`
-- Clean up URL with `window.history.replaceState({}, '', '/settings')`
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        // Retrieve the client_reference_id we passed in the Checkout creation
+        const userId = session.client_reference_id;
+        if (!userId) throw new Error("No client_reference_id in session");
 
-## New Files
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            isPro: true,
+            stripeCustomerId: session.customer as string,
+            stripeSubscriptionId: session.subscription as string,
+          },
+        });
+        break;
+      }
+      
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object;
+        await prisma.user.updateMany({
+          where: { stripeSubscriptionId: subscription.id },
+          data: {
+            isPro: false,
+            stripeSubscriptionId: null, // Clear it so they can resubscribe cleanly
+          },
+        });
+        break;
+      }
+      
+      // Optionally handle invoice.payment_failed
+    }
+  } catch (error) {
+    console.error("Webhook handler error:", error);
+    // Return 500 to force Stripe to retry
+    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
+  }
 
-| File | Purpose |
-|------|---------|
-| `src/app/api/webhooks/stripe/route.ts` | Handle Stripe webhook events |
-| `src/components/settings/billing-settings.tsx` | Billing UI on settings page |
+  // 🟢 Best Practice: Return a 200 OK quickly to acknowledge receipt
+  return NextResponse.json({ received: true });
+}
+```
 
-## Modified Files
+---
 
-| File | Changes |
-|------|---------|
-| `src/actions/items.ts` | Add Pro type check + usage limit check in `createItem` |
-| `src/actions/collections.ts` | Add usage limit check in `createCollection` |
-| `src/app/api/upload/route.ts` | Add Pro check before file upload |
-| `src/app/settings/page.tsx` | Add BillingSettings section with usage data |
+## 5. Billing Settings UI
 
-## Testing
+Create a Server Component to display billing status securely.
 
-### Stripe CLI Webhook Testing
+**File: `src/components/settings/billing-settings.tsx`**
+- Server Component: Fetch `getUserUsage(session.user.id)` directly (no API calls).
+- **Client-Side Interaction & Feedback (Best Practices):**
+  - **Loading States:** Creating a Stripe Checkout or Portal session takes 1-3 seconds. Wrap the submit buttons in a Client Component that uses `useFormStatus` (or similar state) to show a loading spinner and disable the button while `pending === true`. This prevents double-clicks and provides immediate feedback.
+  - **Redirect Notifications (Toasts):** When Stripe redirects the user back to the application, it includes URL parameters (`?success=true` or `?canceled=true` based on the URLs configured in the server action). Use a client-side hook (e.g., `useEffect` with `useSearchParams`) to detect these and trigger a toast notification.
+    - `success=true` ➡️ Show success toast: *"Subscription successful! Welcome to DevStash Pro."*
+    - `canceled=true` ➡️ Show info toast: *"Checkout canceled. Your subscription has not been changed."*
+    - *Crucial:* Clean up the URL (using `window.history.replaceState`) immediately after showing the toast so it doesn't reappear if the user refreshes the page.
+- If `isPro` is false:
+  - Render Progress Bars using standard Tailwind UI.
+  - Render Client Components containing forms that invoke the Server Actions:
+    ```tsx
+    // Example: Client-side submit button with loading feedback
+    "use client";
+    import { useFormStatus } from "react-dom";
+    import { createCheckoutSessionAction } from "@/actions/stripe";
+
+    function UpgradeButton({ priceId, label }: { priceId: string, label: string }) {
+      const { pending } = useFormStatus();
+      return (
+        <button type="submit" disabled={pending} className="btn-primary">
+          {pending ? "Redirecting to Stripe..." : label}
+        </button>
+      );
+    }
+    
+    // Usage in parent:
+    // <form action={createCheckoutSessionAction.bind(null, process.env.STRIPE_PRICE_ID_MONTHLY!)}>
+    //   <UpgradeButton priceId="..." label="Upgrade to Pro (Monthly)" />
+    // </form>
+    ```
+- If `isPro` is true:
+  - Render a "Manage Subscription" button that invokes `createPortalSessionAction` with the exact same `useFormStatus` loading pattern.
+
+---
+
+## 6. Testing Strategy & Implementation Notes
+
+### Essential Testing Workflow
+
+To properly test webhooks locally, you must run multiple terminal sessions simultaneously.
 
 ```bash
 # Terminal 1: Run dev server
 npm run dev
 
-# Terminal 2: Forward webhooks
+# Terminal 2: Forward webhooks (copy the secret it outputs to .env.local)
 stripe listen --forward-to localhost:3000/api/webhooks/stripe
 
-# Terminal 3: Trigger test events
+# Terminal 3: Trigger test events to simulate Stripe backend activity
 stripe trigger checkout.session.completed
 stripe trigger invoice.paid
 stripe trigger customer.subscription.deleted
 ```
 
-### Manual Testing Checklist
+- **Card Testing:** Use Stripe's standard test cards during a manual checkout flow to validate the UX (toast notifications, loading states):
+  - `4242 4242 4242 4242` ➡️ **Successful payment**
+  - `4000 0000 0000 0002` ➡️ **Card declined** (test graceful failure)
+  - `4000 0000 0000 3220` ➡️ **3D Secure required** (test authentication flow)
 
-- [ ] **Checkout:** Click upgrade buttons, complete with test card `4242 4242 4242 4242`, verify redirect + toast
-- [ ] **Webhook - checkout.session.completed:** User gets `isPro: true`, `stripeCustomerId` and `stripeSubscriptionId` saved
-- [ ] **Webhook - invoice.paid:** User stays `isPro: true`
-- [ ] **Webhook - customer.subscription.deleted:** User set to `isPro: false`, `stripeSubscriptionId` cleared
-- [ ] **Customer Portal:** Pro user clicks "Manage Billing", redirects to Stripe portal, returns to `/settings`
-- [ ] **Feature Gating - Items:** Free user blocked at 50 items with upgrade message
-- [ ] **Feature Gating - Collections:** Free user blocked at 3 collections with upgrade message
-- [ ] **Feature Gating - File/Image:** Free user cannot create file/image items (error message)
-- [ ] **Feature Gating - Upload:** Free user gets 403 on upload route
-- [ ] **Pro Bypass:** Pro user has no limits on items, collections, or uploads
-- [ ] **Session Sync:** After webhook updates `isPro`, page reload reflects new status
-- [ ] **Billing UI:** Free user sees usage counts and upgrade buttons; Pro user sees "Manage Billing"
+### Stripe Sandbox & Dashboard Interactions
 
-### Stripe Test Cards
+- **Product Configuration:** Ensure the "Test Mode" toggle is ON in the top right of the Stripe Dashboard. Navigate to the Product Catalog to create "DevStash Pro" and add its recurring prices. Copy the `price_...` IDs into `.env.local`.
+- **Simulating Cancellations:** To manually test the downgrade flow without writing code, find the test Customer in the Stripe Dashboard, click their active subscription, and select "Cancel Subscription" (Immediate). This fires the `customer.subscription.deleted` webhook to your local server.
+- **Debugging Webhooks:** If local webhooks fail, open the Stripe Dashboard ➡️ Developers ➡️ Webhooks. Click into your local CLI endpoint to view the exact JSON payload Stripe sent and the specific HTTP status/error your Next.js server returned.
 
-| Card | Scenario |
-|------|----------|
-| `4242 4242 4242 4242` | Successful payment |
-| `4000 0000 0000 0002` | Card declined |
-| `4000 0000 0000 3220` | 3D Secure required |
+### Core Scenarios to Validate
+- **Feature Gating:** Verify Free Tier constraints are enforced strictly on both the UI and Server Actions (limits: 50 items, 3 collections, no file uploads).
+- **Pro Bypass:** Confirm Pro users have unbounded access.
+- **State Synchronization:** Ensure that once a webhook updates the DB, a simple page reload reflects the Pro status (via the `jwt` DB-sync callback).
+- **Downgrade Path:** Ensure a subscription deletion cleanly removes Pro status without corrupting the user's data.
 
-## Notes
-
-- Webhook route receives raw body via `request.text()` - no special Next.js config needed
-- `updateMany` in webhook handlers is idempotent for duplicate event delivery
-- Payment failures only log a warning - Stripe retries automatically, downgrade only on `subscription.deleted`
-- PricingSection.tsx on homepage is not modified in this phase (current CTA links to /register which is fine)
-- Run `npm run build` to verify no type errors after all changes
+### Critical Developer Notes
+- **Webhook Parsing:** `request.text()` is strictly required for webhook routes in the App Router to maintain signature integrity.
+- **Idempotency:** Webhook database operations must be idempotent (e.g., using `updateMany`). Stripe may deliver the same event multiple times.
+- **Graceful Failures:** Do not immediately downgrade a user on an `invoice.payment_failed` event; Stripe will handle retries. Only downgrade upon `customer.subscription.deleted`.
+- **Scope:** The public `PricingSection.tsx` on the homepage remains unchanged in this phase (the existing CTA to `/register` is sufficient for now).
+- **Type Safety:** Always run a final `npm run build` to ensure the extended NextAuth `Session` and `JWT` types do not cause production build failures.

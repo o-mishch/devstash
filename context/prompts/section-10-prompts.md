@@ -46,3 +46,10 @@ use Antigravity optimization (browser_subagent), etc.
 Use the UI reviewer to check the website's user interface and provide feedback.
 Check the homepage and the dashboard pages (items, collections), view item in drawl, create new item and collection, assign item to collection, add to favorite and pin item, favorit page, User profile page, user settings page, etc.
 Use the user demo@devstash.io/12345678 to access protected areas
+
+
+Create two feature spec files for Stripe integration - Phase 1 (core infrastructure) and Phase 2 (integration & UI). Use @docs/stripe-integration-plan. 
+MD for reference. Phase 1 should include unit tests for the usage-limits module. Phase 2 covers webhooks, feature gating, and UI components that require Stripe CLI for testing.
+save as:
+context/features/stripe-phase-1-spec.md
+context/features/stripe-phase-2-spec.md

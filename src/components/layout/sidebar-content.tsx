@@ -63,7 +63,7 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
 
         <Separator className="mb-2 w-8" />
 
-        <ScrollArea className="flex-1 min-h-0 w-full">
+        <ScrollArea className="flex-1 min-h-0 w-full [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
           <div className="flex flex-col items-center gap-1 px-2">
             {sidebarData.itemTypes.map((t) => (
               <Tooltip key={t.id}>
@@ -158,7 +158,7 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
         </>
       )}
 
-      <ScrollArea className="flex-1 min-h-0 py-3">
+      <ScrollArea className="flex-1 min-h-0 py-3 [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
         {/* Mobile-only: home navigation at the top of the drawer */}
         {onClose && !onToggle && (
           <>

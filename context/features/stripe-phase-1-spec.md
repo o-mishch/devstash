@@ -1,132 +1,220 @@
-# Stripe Integration - Phase 1: Core Infrastructure
+# Stripe Integration - Phase 1: Core Infrastructure & Usage Limits
 
-## Overview
+## 1. Overview & Architecture
+Phase 1 focuses on establishing a rock-solid, secure foundation for the Stripe integration. Instead of immediately jumping into UI and webhooks, we must first secure the backend. This phase covers Stripe SDK initialization, implementing deterministic usage tracking, modifying NextAuth for real-time state synchronization, and enforcing strict server-side feature gating.
 
-Set up Stripe SDK, usage limit utilities, session/auth changes for `isPro`, checkout flow API, and customer portal API. This phase builds all server-side infrastructure needed before wiring up webhooks and UI.
+**Design Philosophy:**
+- **Zero Trust:** Never trust the client regarding subscription status.
+- **Fail Closed:** If a limits check fails or errors out, assume the user cannot perform the action.
+- **Database as Source of Truth (for App State):** While Stripe is the source of truth for billing, our local database is the source of truth for application access to ensure fast, synchronous authorization.
 
-## Prerequisites
+---
 
-- Stripe Dashboard configured with DevStash Pro product, monthly ($8) and yearly ($72) prices
-- Environment variables set: `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_MONTHLY`, `STRIPE_PRICE_ID_YEARLY`
-- Database already has `isPro`, `stripeCustomerId`, `stripeSubscriptionId` fields on User model
+## 2. Stripe Initialization & Configuration
 
-## Requirements
+### Best Practices & Patterns
+Initialize the Stripe SDK globally to prevent multiple instantiations across serverless functions.
 
-- Install `stripe` npm package
-- Initialize Stripe SDK in `src/lib/stripe.ts`
-- Create usage limit utilities in `src/lib/usage.ts` with unit tests
-- Add `isPro` to NextAuth session and JWT types
-- Update auth callbacks to sync `isPro` from database
-- Create checkout session API route
-- Create customer portal API route
-
-## Implementation
-
-### 1. Install Stripe SDK
-
-```bash
-npm install stripe
-```
-
-### 2. Create `src/lib/stripe.ts`
-
-Initialize the Stripe Node SDK with the secret key.
+**🟢 How to do it (Best Practice):**
+Create a dedicated `src/lib/stripe.ts` file that exports a singleton instance of the Stripe SDK. Provide the API version explicitly to ensure breaking changes from Stripe do not affect the app unexpectedly. Provide `appInfo` for easier debugging in the Stripe dashboard.
 
 ```typescript
-import Stripe from 'stripe';
+// src/lib/stripe.ts
+import Stripe from "stripe";
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error("STRIPE_SECRET_KEY is missing. Please set it in your .env file.");
+}
+
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: "2024-04-10", // Always hardcode the exact API version you tested with
+  appInfo: {
+    name: "DevStash Pro",
+    version: "0.1.0",
+  },
   typescript: true,
 });
 ```
 
-### 3. Create `src/lib/usage.ts`
+**🔴 How NOT to do it (Anti-Pattern):**
+Do not initialize Stripe directly inside individual API routes or server actions, as this creates new instances repeatedly, wasting memory and connections.
+```typescript
+// BAD
+export async function POST() {
+  const stripe = require('stripe')(process.env.STRIPE_SECRET); // Avoid this
+}
+```
 
-Free tier limits and utility functions for checking user usage.
+---
 
-| Constant | Value |
-|----------|-------|
-| `MAX_ITEMS` | 50 |
-| `MAX_COLLECTIONS` | 3 |
+## 3. Usage Limits Module
 
-Functions:
-- `getUserUsage(userId, isPro)` - Returns item/collection counts and whether user can create more
-- `canCreateItem(userId, isPro)` - Quick boolean check for item creation
-- `canCreateCollection(userId, isPro)` - Quick boolean check for collection creation
+We need a robust module to check usage limits before performing mutations.
 
-Pro users bypass all limits (return `true` immediately).
+### Implementation Details
+Create `src/lib/usage.ts`. We will define limits as constants at the top of the file.
 
-### 4. Unit Tests for `src/lib/usage.test.ts`
+```typescript
+// src/lib/usage.ts
+import prisma from "@/lib/db/prisma";
 
-Test cases:
-- `getUserUsage` returns correct counts and `canCreate` booleans
-- `canCreateItem` returns `true` when under limit
-- `canCreateItem` returns `false` when at limit (50 items)
-- `canCreateCollection` returns `true` when under limit
-- `canCreateCollection` returns `false` when at limit (3 collections)
-- Pro users bypass all item limits
-- Pro users bypass all collection limits
-- `getUserUsage` sets `canCreateItem: false` at exactly 50 items
-- `getUserUsage` sets `canCreateCollection: false` at exactly 3 collections
+export const FREE_TIER_ITEM_LIMIT = 50;
+export const FREE_TIER_COLLECTION_LIMIT = 3;
 
-Mock `prisma.item.count` and `prisma.collection.count` for all tests.
+/**
+ * Returns the current usage count for a user.
+ */
+export async function getUserUsage(userId: string) {
+  const [itemsCount, collectionsCount] = await Promise.all([
+    prisma.item.count({ where: { userId } }),
+    prisma.collection.count({ where: { userId } }),
+  ]);
+  return { itemsCount, collectionsCount };
+}
 
-### 5. Modify `src/types/next-auth.d.ts`
+/**
+ * Validates if the user is allowed to create a new item.
+ */
+export async function canCreateItem(userId: string, isPro: boolean): Promise<boolean> {
+  if (isPro) return true;
+  const count = await prisma.item.count({ where: { userId } });
+  return count < FREE_TIER_ITEM_LIMIT;
+}
 
-Add `isPro: boolean` to `Session.user` and `isPro?: boolean` to `JWT`.
+/**
+ * Validates if the user is allowed to create a new collection.
+ */
+export async function canCreateCollection(userId: string, isPro: boolean): Promise<boolean> {
+  if (isPro) return true;
+  const count = await prisma.collection.count({ where: { userId } });
+  return count < FREE_TIER_COLLECTION_LIMIT;
+}
+```
 
-### 6. Modify `src/auth.ts`
+### Testing Strategy (`src/lib/usage.test.ts`)
+We use Vitest. The database *must* be mocked to prevent hitting a real DB during unit tests.
 
-- Make `jwt` callback `async`
-- Query `isPro` from database on every JWT creation (indexed primary key lookup, single boolean field)
-- Pass `isPro` from token to `session.user` in session callback
+**🟢 How to test (Best Practice):**
+```typescript
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { canCreateItem, FREE_TIER_ITEM_LIMIT } from './usage';
+import prisma from './db/prisma';
 
-Trade-off: One small DB query per session validation (`SELECT isPro FROM users WHERE id = ?`). Fast because it's indexed on PK and returns a single boolean. Ensures `session.user.isPro` is always accurate after webhook updates.
+vi.mock('./db/prisma', () => ({
+  default: {
+    item: { count: vi.fn() },
+  },
+}));
 
-### 7. Create `src/app/api/stripe/checkout/route.ts`
+describe('Usage Limits', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
 
-POST endpoint that:
-1. Authenticates user via `auth()`
-2. Accepts `{ plan: 'monthly' | 'yearly' }` in request body (NOT raw priceId from client)
-3. Maps plan to server-side price ID env var
-4. Finds or creates Stripe customer (stores `stripeCustomerId` in DB)
-5. Creates Stripe Checkout Session with `mode: 'subscription'`
-6. Sets `metadata.userId` on checkout session for webhook processing
-7. Returns `{ url }` for client redirect
-8. Success URL: `/settings?upgraded=true`, Cancel URL: `/settings`
+  it('allows Pro users to create items without checking DB', async () => {
+    const result = await canCreateItem('user_1', true);
+    expect(result).toBe(true);
+    expect(prisma.item.count).not.toHaveBeenCalled();
+  });
 
-### 8. Create `src/app/api/stripe/portal/route.ts`
+  it('blocks free users over the limit', async () => {
+    vi.mocked(prisma.item.count).mockResolvedValue(FREE_TIER_ITEM_LIMIT);
+    const result = await canCreateItem('user_2', false);
+    expect(result).toBe(false);
+  });
+});
+```
 
-POST endpoint that:
-1. Authenticates user via `auth()`
-2. Looks up user's `stripeCustomerId` from database
-3. Returns 400 if no billing account found
-4. Creates Stripe Billing Portal session
-5. Returns `{ url }` for client redirect
-6. Return URL: `/settings`
+---
 
-## New Files
+## 4. NextAuth Session Real-Time Synchronization
 
-| File | Purpose |
-|------|---------|
-| `src/lib/stripe.ts` | Stripe SDK initialization |
-| `src/lib/usage.ts` | Free tier usage limit checks |
-| `src/lib/usage.test.ts` | Unit tests for usage utilities |
-| `src/app/api/stripe/checkout/route.ts` | Create Stripe Checkout sessions |
-| `src/app/api/stripe/portal/route.ts` | Create Stripe Customer Portal sessions |
+By default, NextAuth JWTs become stale. If a user upgrades via a Stripe Webhook (which updates the database), their JWT session on the client still says `isPro: false` until they log out and log back in, or until a client-side session update is triggered.
 
-## Modified Files
+### The "DB-Sync JWT" Pattern (Best Practice for NextAuth)
 
-| File | Changes |
-|------|---------|
-| `src/types/next-auth.d.ts` | Add `isPro` to Session and JWT types |
-| `src/auth.ts` | Async JWT callback with `isPro` DB sync, session callback passes `isPro` |
+To fix this seamlessly, we query the DB inside the NextAuth `jwt` callback. Because the JWT callback runs on *every* authenticated request (including Server Actions and API routes), it instantly detects the DB change made by the webhook.
 
-## Notes
+**File: `src/types/next-auth.d.ts`**
+```typescript
+import NextAuth, { DefaultSession } from "next-auth";
 
-- Price IDs stay server-side only (Option B from plan) - client sends `plan: 'monthly' | 'yearly'`, API maps to env var
-- Checkout route validates plan value against allowed strings, not raw price IDs
-- Customer portal requires prior Stripe customer creation (happens during first checkout)
-- No UI changes in this phase - all API routes can be tested with curl/Postman
-- Run `npm run test` to verify usage limit tests pass
-- Run `npm run build` to verify no type errors
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      isPro: boolean;
+    } & DefaultSession["user"];
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    id: string;
+    isPro: boolean;
+  }
+}
+```
+
+**File: `src/auth.ts`**
+```typescript
+callbacks: {
+  async jwt({ token, user }) {
+    if (user) {
+      token.id = user.id;
+    }
+    // 🟢 Best Practice: Always fetch current isPro status from DB to prevent stale JWTs
+    if (token.id) {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: token.id as string },
+        select: { isPro: true },
+      });
+      token.isPro = dbUser?.isPro ?? false;
+    }
+    return token;
+  },
+  async session({ session, token }) {
+    if (session.user) {
+      session.user.id = token.id as string;
+      session.user.isPro = token.isPro as boolean;
+    }
+    return session;
+  }
+}
+```
+
+**🔴 How NOT to do it (Anti-Pattern):**
+Relying purely on `trigger === "update"` from the client side. This requires you to pass the state down to the client, listen for a webhook event (via polling or websockets), and manually call `update()`. It is brittle and prone to race conditions.
+
+---
+
+## 5. Server-Side Feature Gating
+
+Now that `session.user.isPro` is perfectly synchronized, apply strict gating.
+
+**File: `src/actions/items.ts`**
+```typescript
+import { auth } from "@/auth";
+import { canCreateItem } from "@/lib/usage";
+import { ApiBody, ApiResponse } from "@/types/api";
+
+export async function createItemAction(data: any): Promise<ApiBody<any>> {
+  const session = await auth();
+  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED();
+
+  const isPro = session.user.isPro;
+
+  // 1. Feature Gate: File/Image support
+  if ((data.type === 'file' || data.type === 'image') && !isPro) {
+    return ApiResponse.FORBIDDEN("Upgrade to Pro to upload files and images.");
+  }
+
+  // 2. Quantity Limit Gate
+  const canCreate = await canCreateItem(session.user.id, isPro);
+  if (!canCreate) {
+    return ApiResponse.FORBIDDEN("You have reached your free tier limit of 50 items. Please upgrade to Pro.");
+  }
+
+  // Continue with creation...
+}
+```
+
+Apply the identical logic to `src/actions/collections.ts` and the App Router upload route (`src/app/api/upload/route.ts`).
