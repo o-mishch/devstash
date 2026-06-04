@@ -15,6 +15,7 @@ interface ItemDetailDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   collections: CollectionWithTypes[]
+  onFullItemFetched: (item: Item) => void
   onItemSaved: (item: Item) => void
   onItemDeleted: (id: string) => void
 }
@@ -23,6 +24,7 @@ function ItemDetailDrawerInner({
   item,
   collections,
   onOpenChange,
+  onFullItemFetched,
   onItemSaved,
   onItemDeleted,
 }: Omit<ItemDetailDrawerProps, 'open'>) {
@@ -33,7 +35,7 @@ function ItemDetailDrawerInner({
   const itemId = item?.id ?? null
   const propIsLight = item !== null && !('content' in item)
 
-  // Fetch the full item in the background when opened with a LightItem
+  // LightItem has truncated content; fetch the full record without blocking the initial render
   useEffect(() => {
     if (!itemId || !propIsLight) return
 
@@ -42,11 +44,12 @@ function ItemDetailDrawerInner({
     apiFetch<Item>(`/api/items/${itemId}`).then((result) => {
       if (!controller.signal.aborted && result.status === 'ok' && result.data) {
         setFullItem(result.data)
+        onFullItemFetched(result.data)
       }
     })
 
     return () => controller.abort()
-  }, [itemId, propIsLight])
+  }, [itemId, propIsLight, onFullItemFetched])
 
   const displayItem = savedItem ?? fullItem ?? item
   const isLight = displayItem !== null && !('content' in displayItem)
@@ -91,6 +94,7 @@ export function ItemDetailDrawer({
   open,
   onOpenChange,
   collections,
+  onFullItemFetched,
   onItemSaved,
   onItemDeleted,
 }: ItemDetailDrawerProps) {
@@ -127,6 +131,7 @@ export function ItemDetailDrawer({
             item={item}
             collections={collections}
             onOpenChange={onOpenChange}
+            onFullItemFetched={onFullItemFetched}
             onItemSaved={onItemSaved}
             onItemDeleted={onItemDeleted}
           />

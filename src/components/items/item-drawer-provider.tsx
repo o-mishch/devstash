@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useReducer } from 'react'
+import { useState, useCallback, useMemo, useReducer, useRef } from 'react'
 import { DrawerContext } from '@/context/item-drawer-context'
 import { ItemsStoreContext, itemsStoreReducer, itemsStoreInitialState, ItemsStoreActionType } from '@/context/items-store-context'
 import { itemToLightItem } from '@/types/item'
@@ -18,17 +18,25 @@ export function ItemDrawerProvider({ children, collections }: ItemDrawerProvider
   const [storeState, dispatch] = useReducer(itemsStoreReducer, itemsStoreInitialState)
   const [open, setOpen] = useState(false)
   const [openItem, setOpenItem] = useState<LightItem | Item | null>(null)
+  const fullItemCache = useRef<Map<string, Item>>(new Map())
 
   const openDrawer = useCallback((item: LightItem | Item) => {
-    setOpenItem(item)
+    const cached = fullItemCache.current.get(item.id)
+    setOpenItem(cached ?? item)
     setOpen(true)
   }, [])
 
+  const handleFullItemFetched = useCallback((item: Item) => {
+    fullItemCache.current.set(item.id, item)
+  }, [])
+
   const handleItemSaved = useCallback((updated: Item) => {
+    fullItemCache.current.set(updated.id, updated)
     dispatch({ type: ItemsStoreActionType.UpdateItem, item: itemToLightItem(updated) })
   }, [dispatch])
 
   const handleItemDeleted = useCallback((id: string) => {
+    fullItemCache.current.delete(id)
     dispatch({ type: ItemsStoreActionType.RemoveItem, id })
   }, [dispatch])
 
@@ -48,6 +56,7 @@ export function ItemDrawerProvider({ children, collections }: ItemDrawerProvider
           open={open}
           onOpenChange={setOpen}
           collections={collections}
+          onFullItemFetched={handleFullItemFetched}
           onItemSaved={handleItemSaved}
           onItemDeleted={handleItemDeleted}
         />
