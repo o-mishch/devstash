@@ -7,7 +7,7 @@ import { apiFetch } from '@/lib/api-fetch'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
-import type { Item, LightItem } from '@/types/item'
+import type { Item, LightItem, ItemRemainFields } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDetailDrawerProps {
@@ -35,21 +35,22 @@ function ItemDetailDrawerInner({
   const itemId = item?.id ?? null
   const propIsLight = item !== null && !('content' in item)
 
-  // LightItem has truncated content; fetch the full record without blocking the initial render
+  // LightItem has truncated content; fetch the remaining fields without blocking the initial render
   useEffect(() => {
-    if (!itemId || !propIsLight) return
+    if (!itemId || !propIsLight || !item) return
 
     const controller = new AbortController()
 
-    apiFetch<Item>(`/api/items/${itemId}`).then((result) => {
+    apiFetch<ItemRemainFields>(`/api/items/${itemId}/remain-fields`).then((result) => {
       if (!controller.signal.aborted && result.status === 'ok' && result.data) {
-        setFullItem(result.data)
-        onFullItemFetched(result.data)
+        const mergedItem = { ...item, ...result.data } as Item
+        setFullItem(mergedItem)
+        onFullItemFetched(mergedItem)
       }
     })
 
     return () => controller.abort()
-  }, [itemId, propIsLight, onFullItemFetched])
+  }, [itemId, propIsLight, item, onFullItemFetched])
 
   const displayItem = savedItem ?? fullItem ?? item
   const isLight = displayItem !== null && !('content' in displayItem)

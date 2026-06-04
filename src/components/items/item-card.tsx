@@ -24,7 +24,7 @@ export function ItemCard({ item }: ItemCardProps) {
 
   return (
     <Card
-      className="card-interactive group/card relative min-h-20 overflow-hidden border-l-2 border-l-[var(--item-color)] hover:shadow-md hover:-translate-y-1 transition-all"
+      className="card-interactive group/card relative min-h-20 overflow-hidden border-l-2 border-l-[var(--item-color)]"
       style={{ '--item-color': itemType.color } as CSSProperties}
     >
       <button
@@ -40,9 +40,11 @@ export function ItemCard({ item }: ItemCardProps) {
                 <p className="truncate font-medium">{item.title}</p>
                 <ItemStatusIcons isPinned={item.isPinned} isFavorite={item.isFavorite} />
               </div>
-              {item.descriptionPreview && (
+              {item.descriptionPreview ? (
                 <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.descriptionPreview}</p>
-              )}
+              ) : item.contentPreview ? (
+                <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.contentPreview}</p>
+              ) : null}
               <ItemTags tags={item.tags} max={3} className="mt-1.5" />
             </div>
             <span className="ml-2 shrink-0 text-xs text-muted-foreground">{formatDate(item.createdAt)}</span>

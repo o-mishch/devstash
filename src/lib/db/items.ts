@@ -1,25 +1,34 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
-import type { Item, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
+import type { Item, ItemStats, SidebarItemType, LightItem, ItemsPage, ItemRemainFields } from '@/types/item'
 import { Prisma } from '@/generated/prisma/client'
 
-type ItemWithRelations = Prisma.ItemGetPayload<{
-  include: { itemType: true; tags: true; collections: { include: { collection: { select: { id: true, name: true } } } } }
-}>
-
-const ITEM_INCLUDE = {
-  itemType: true,
-  tags: true,
-  collections: { include: { collection: { select: { id: true, name: true } } } }
+const ITEM_SELECT = {
+  id: true,
+  title: true,
+  content: true,
+  fileUrl: true,
+  fileName: true,
+  fileSize: true,
+  url: true,
+  description: true,
+  isFavorite: true,
+  isPinned: true,
+  language: true,
+  createdAt: true,
+  updatedAt: true,
+  itemType: { select: { id: true, name: true, icon: true, color: true, isSystem: true } },
+  tags: { select: { name: true } },
+  collections: { select: { collection: { select: { id: true, name: true } } } },
 } as const
+
+type ItemWithRelations = Prisma.ItemGetPayload<{ select: typeof ITEM_SELECT }>
 
 export const LIGHT_ITEM_SELECT = {
   id: true,
   title: true,
   createdAt: true,
-  description: true,
-  content: true,
   url: true,
   fileName: true,
   fileSize: true,
@@ -32,14 +41,30 @@ export const LIGHT_ITEM_SELECT = {
 
 type LightItemWithRelations = Prisma.ItemGetPayload<{ select: typeof LIGHT_ITEM_SELECT }>
 
-export function toLightItem(item: LightItemWithRelations): LightItem {
+interface ItemPreview {
+  id: string
+  descriptionPreview: string | null
+  contentPreview: string | null
+}
+
+export async function fetchItemPreviews(ids: string[]): Promise<Map<string, ItemPreview>> {
+  if (ids.length === 0) return new Map()
+  const rows = await prisma.$queryRaw<ItemPreview[]>`
+    SELECT id, LEFT(description, 150) AS "descriptionPreview", LEFT(content, 150) AS "contentPreview"
+    FROM items
+    WHERE id IN (${Prisma.join(ids)})
+  `
+  return new Map(rows.map((r) => [r.id, r]))
+}
+
+export function toLightItem(item: LightItemWithRelations, preview?: ItemPreview): LightItem {
   return {
     id: item.id,
     title: item.title,
     createdAt: item.createdAt,
     itemType: item.itemType,
-    descriptionPreview: item.description ? item.description.slice(0, 150) : null,
-    contentPreview: item.content ? item.content.slice(0, 150) : null,
+    descriptionPreview: preview?.descriptionPreview ?? null,
+    contentPreview: preview?.contentPreview ?? null,
     url: item.url,
     tags: item.tags.map((t) => t.name),
     fileUrl: item.fileUrl,
@@ -54,13 +79,23 @@ const PINNED_LIMIT = 20
 
 export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<LightItem[]> {
   return withDataCache(CacheTags.pinnedItems(userId), async () => {
-    const items = await prisma.item.findMany({
-      where: { userId, isPinned: true },
-      orderBy: { updatedAt: 'desc' },
-      take: Math.min(Math.max(Math.floor(limit), 1), PINNED_LIMIT),
-      select: LIGHT_ITEM_SELECT,
-    })
-    return items.map(toLightItem)
+    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), PINNED_LIMIT)
+    const [items, previewRows] = await Promise.all([
+      prisma.item.findMany({
+        where: { userId, isPinned: true },
+        orderBy: { updatedAt: 'desc' },
+        take: safeLimit,
+        select: LIGHT_ITEM_SELECT,
+      }),
+      prisma.$queryRaw<ItemPreview[]>`
+        SELECT id, LEFT(description, 150) AS "descriptionPreview"
+        FROM items WHERE user_id = ${userId} AND is_pinned = true
+        ORDER BY updated_at DESC
+        LIMIT ${safeLimit}
+      `,
+    ])
+    const previews = new Map(previewRows.map((r) => [r.id, r]))
+    return items.map((i) => toLightItem(i, previews.get(i.id)))
   })
 }
 
@@ -82,10 +117,34 @@ export async function getItemById(userId: string, itemId: string): Promise<Item 
   return withDataCache(CacheTags.itemById(userId, itemId), async () => {
     const item = await prisma.item.findFirst({
       where: { id: itemId, userId },
-      include: ITEM_INCLUDE,
+      select: ITEM_SELECT,
     })
     if (!item) return null
     return toItem(item)
+  })
+}
+
+export const ITEM_REMAIN_FIELDS_SELECT = {
+  id: true,
+  content: true,
+  description: true,
+  language: true,
+  updatedAt: true,
+  collections: { select: { collection: { select: { id: true, name: true } } } },
+} as const
+
+export async function getItemRemainFields(userId: string, itemId: string): Promise<ItemRemainFields | null> {
+  return withDataCache(CacheTags.itemById(userId, itemId), async () => {
+    const row = await prisma.item.findUnique({
+      where: { id: itemId, userId },
+      select: ITEM_REMAIN_FIELDS_SELECT,
+    })
+    if (!row) return null
+
+    return {
+      ...row,
+      collections: row.collections.map((ic) => ic.collection),
+    }
   })
 }
 
@@ -142,7 +201,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
         }))
       }
     },
-    include: ITEM_INCLUDE,
+    select: ITEM_SELECT,
   })
 
   return toItem(created)
@@ -183,7 +242,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
           }))
         }
       },
-      include: ITEM_INCLUDE,
+      select: ITEM_SELECT,
     })
     return toItem(updated)
   } catch (error) {
@@ -224,13 +283,21 @@ async function getPaginatedItems(
   const take = ITEMS_PAGE_SIZE + 1
   const query = { where, orderBy, take, select: LIGHT_ITEM_SELECT }
 
-  const rows = cursor
-    ? await prisma.item.findMany({ ...query, skip: 1, cursor: { id: cursor } })
-    : await withDataCache(cacheKey, () => prisma.item.findMany(query))
+  async function loadPage(c?: string): Promise<ItemsPage> {
+    const rows = c
+      ? await prisma.item.findMany({ ...query, skip: 1, cursor: { id: c } })
+      : await prisma.item.findMany(query)
+    const hasMore = rows.length > ITEMS_PAGE_SIZE
+    const page = rows.slice(0, ITEMS_PAGE_SIZE)
+    const previews = await fetchItemPreviews(page.map((r) => r.id))
+    return {
+      items: page.map((r) => toLightItem(r, previews.get(r.id))),
+      nextCursor: hasMore ? page[page.length - 1].id : null,
+      hasMore,
+    }
+  }
 
-  const hasMore = rows.length > ITEMS_PAGE_SIZE
-  const page = rows.slice(0, ITEMS_PAGE_SIZE)
-  return { items: page.map(toLightItem), nextCursor: hasMore ? page[page.length - 1].id : null, hasMore }
+  return cursor ? loadPage(cursor) : withDataCache(cacheKey, () => loadPage())
 }
 
 export async function getRecentItemsPage(userId: string, cursor?: string): Promise<ItemsPage> {
@@ -280,6 +347,7 @@ export async function getItemTypeBySlug(slug: string) {
 
     return prisma.itemType.findFirst({
       where: { name: { in: candidates } },
+      select: { id: true, name: true, icon: true, color: true, isSystem: true },
     })
   })
 }
@@ -287,7 +355,8 @@ export async function getItemTypeBySlug(slug: string) {
 async function getSystemItemTypes() {
   return withDataCache(CacheTags.systemItemTypes(), async () => {
     const types = await prisma.itemType.findMany({
-      where: { isSystem: true, userId: null }
+      where: { isSystem: true, userId: null },
+      select: { id: true, name: true, icon: true, color: true, isSystem: true },
     })
     return types.sort(compareBySystemTypeOrder)
   })
@@ -329,7 +398,6 @@ function toItem(item: ItemWithRelations): Item {
   return {
     id: item.id,
     title: item.title,
-    contentType: item.contentType,
     content: item.content,
     url: item.url,
     description: item.description,

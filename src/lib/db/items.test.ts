@@ -2,6 +2,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     item: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn() },
     itemType: { findFirst: vi.fn(), findMany: vi.fn() },
   },
@@ -30,6 +31,7 @@ const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>
 const mockItemFindMany = prisma.item.findMany as ReturnType<typeof vi.fn>
 const mockGroupBy = prisma.item.groupBy as ReturnType<typeof vi.fn>
 const mockDeleteMany = prisma.item.deleteMany as ReturnType<typeof vi.fn>
+const mockQueryRaw = prisma.$queryRaw as ReturnType<typeof vi.fn>
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -132,17 +134,17 @@ describe('getSidebarItemTypes', () => {
 
 // ── *Page cursor pagination ──────────────────────────────────────────────────
 
-function makeLightRow(id: string, description?: string, content?: string) {
+function makeLightRow(id: string) {
   return {
     id,
     title: `Item ${id}`,
     createdAt: new Date('2024-01-01'),
-    description: description ?? null,
-    content: content ?? null,
     url: null,
     fileName: null,
     fileSize: null,
     fileUrl: null,
+    isFavorite: false,
+    isPinned: false,
     itemType: { id: 'type-1', name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true },
     tags: [{ name: 'react' }],
   }
@@ -178,13 +180,11 @@ describe('getRecentItemsPage', () => {
     expect(result.hasMore).toBe(false)
   })
 
-  it('maps toLightItem: truncates description and content to 150 chars', async () => {
-    const longDesc = 'a'.repeat(200)
-    const longContent = 'b'.repeat(200)
-    mockItemFindMany.mockResolvedValue([makeLightRow('x', longDesc, longContent)])
+  it('uses preview data from fetchItemPreviews', async () => {
+    mockItemFindMany.mockResolvedValue([makeLightRow('x')])
+    mockQueryRaw.mockResolvedValueOnce([{ id: 'x', descriptionPreview: 'preview desc' }])
     const result = await getRecentItemsPage('user-1')
-    expect(result.items[0].descriptionPreview).toHaveLength(150)
-    expect(result.items[0].contentPreview).toHaveLength(150)
+    expect(result.items[0].descriptionPreview).toBe('preview desc')
   })
 
   it('maps toLightItem: tags extracted from relation', async () => {

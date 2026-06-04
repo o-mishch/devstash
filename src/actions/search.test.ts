@@ -3,6 +3,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     item: { findMany: vi.fn() },
     collection: { findMany: vi.fn() },
   },
@@ -40,8 +41,6 @@ describe('globalSearchAction', () => {
       {
         id: 'item-1',
         title: 'Test Item',
-        description: null,
-        content: null,
         createdAt: new Date('2024-01-01T00:00:00Z'),
         itemType: { id: 'type-1', name: 'snippet', icon: 'code', color: 'blue', isSystem: true },
         tags: [{ name: 'react' }],
@@ -49,6 +48,8 @@ describe('globalSearchAction', () => {
         fileUrl: null,
         fileName: null,
         fileSize: null,
+        isFavorite: false,
+        isPinned: false,
       }
     ])
 
@@ -58,9 +59,7 @@ describe('globalSearchAction', () => {
         name: 'Test Collection',
         description: null,
         isFavorite: false,
-        defaultTypeId: null,
         createdAt: new Date('2024-01-01T00:00:00Z'),
-        updatedAt: new Date('2024-01-01T00:00:00Z'),
         _count: { items: 2 },
         items: [
           {

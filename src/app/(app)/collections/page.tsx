@@ -16,10 +16,8 @@ export default async function CollectionsPage({ searchParams }: { searchParams: 
     collections.sort((a, b) => b.name.localeCompare(a.name))
   } else if (sort === 'oldest') {
     collections.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-  } else {
-    // 'recent' is the default from getAllCollections (updatedAt desc)
-    collections.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   }
+  // 'recent' (default): getAllCollections already orders by updatedAt desc at the DB level
 
   return (
     <div className="flex flex-col gap-6 p-6">

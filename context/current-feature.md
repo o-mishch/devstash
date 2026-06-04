@@ -8,6 +8,6 @@ Not Started
 
 <!-- Add goals here -->
 
-## Notes
+## Notes & Implementation Strategy
 
 <!-- Add notes here -->

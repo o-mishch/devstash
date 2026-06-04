@@ -14,7 +14,6 @@ interface ItemCollection {
 export interface Item {
   id: string
   title: string
-  contentType: string
   content: string | null
   url: string | null
   description: string | null
@@ -45,6 +44,15 @@ export interface LightItem {
   fileSize: number | null
   isFavorite: boolean
   isPinned: boolean
+}
+
+export interface ItemRemainFields {
+  id: string
+  content: string | null
+  description: string | null
+  language: string | null
+  updatedAt: Date
+  collections: { id: string; name: string }[]
 }
 
 export interface ItemsPage {
@@ -80,7 +88,7 @@ export function itemToLightItem(item: Item): LightItem {
     createdAt: item.createdAt,
     itemType: item.itemType,
     descriptionPreview: item.description ? item.description.slice(0, 150) : null,
-    contentPreview: item.content ? item.content.slice(0, 150) : null,
+    contentPreview: item.content,
     url: item.url,
     tags: item.tags,
     fileUrl: item.fileUrl,

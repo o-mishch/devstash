@@ -1,4 +1,5 @@
 import { unstable_cache, revalidatePath, revalidateTag as _revalidateTag } from 'next/cache'
+import { cache } from 'react'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('cache')
@@ -39,11 +40,22 @@ export const CacheTags = {
   systemItemTypes: () => ({ tag: `system-item-types`, revalidate: CacheRevalidate.itemTypes }),
 } as const
 
+// React.cache is scoped per-request. We use it to create a per-request Map
+// which allows us to deduplicate unstable_cache calls across different components
+// in the same render pass, using the string config.tag as the key.
+const getRequestCache = cache(() => new Map<string, Promise<any>>())
+
 export async function withDataCache<T>(
   config: DataCacheConfig,
   fetcher: () => Promise<T>
 ): Promise<T> {
-  const cachedFetcher = unstable_cache(
+  const requestCache = getRequestCache()
+
+  if (requestCache.has(config.tag)) {
+    return requestCache.get(config.tag)!
+  }
+
+  const promise = unstable_cache(
     async () => {
       log.info(`MISS ${config.tag}`)
       const start = Date.now()
@@ -57,9 +69,10 @@ export async function withDataCache<T>(
       revalidate: config.revalidate,
       tags: config.tags ? [config.tag, ...config.tags] : [config.tag]
     }
-  )
+  )()
 
-  return cachedFetcher()
+  requestCache.set(config.tag, promise)
+  return promise
 }
 
 // Called after collection mutations (create, update, delete).

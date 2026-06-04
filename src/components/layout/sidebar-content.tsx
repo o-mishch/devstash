@@ -52,7 +52,6 @@ interface CollapsedSidebarProps {
 
 function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
   const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
 
   return (
@@ -139,7 +138,6 @@ interface ExpandedSidebarProps {
 }
 
 function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProps) {
-  const router = useRouter()
   const pathname = usePathname()
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)

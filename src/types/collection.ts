@@ -5,9 +5,7 @@ export interface CollectionWithTypes {
   name: string
   description: string | null
   isFavorite: boolean
-  defaultTypeId: string | null
   createdAt: Date
-  updatedAt: Date
   itemCount: number
   dominantColor: string | null
   types: ItemType[]

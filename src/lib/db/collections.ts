@@ -3,7 +3,12 @@ import { withDataCache, CacheTags } from '@/lib/cache'
 import type { CollectionWithTypes, CollectionStats } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
 
-export const COLLECTION_INCLUDE = {
+export const COLLECTION_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  isFavorite: true,
+  createdAt: true,
   _count: { select: { items: true } },
   items: {
     take: 20,
@@ -19,7 +24,7 @@ export const COLLECTION_INCLUDE = {
   },
 } as const
 
-type CollectionRow = Prisma.CollectionGetPayload<{ include: typeof COLLECTION_INCLUDE }>
+type CollectionRow = Prisma.CollectionGetPayload<{ select: typeof COLLECTION_SELECT }>
 
 export function mapCollection(col: CollectionRow): CollectionWithTypes {
   const typeCounts = new Map<string, { count: number; type: CollectionWithTypes['types'][number] }>()
@@ -44,9 +49,7 @@ export function mapCollection(col: CollectionRow): CollectionWithTypes {
     name: col.name,
     description: col.description,
     isFavorite: col.isFavorite,
-    defaultTypeId: col.defaultTypeId,
     createdAt: col.createdAt,
-    updatedAt: col.updatedAt,
     itemCount: col._count.items,
     dominantColor: sortedTypes[0]?.type.color ?? null,
     types: sortedTypes.slice(0, 4).map(({ type }) => type),
@@ -58,7 +61,7 @@ export async function getAllCollections(userId: string): Promise<CollectionWithT
     const collections = await prisma.collection.findMany({
       where: { userId },
       orderBy: { updatedAt: 'desc' },
-      include: COLLECTION_INCLUDE,
+      select: COLLECTION_SELECT,
     })
     return collections.map(mapCollection)
   })
@@ -69,7 +72,7 @@ export async function getFavoriteCollections(userId: string): Promise<Collection
     const collections = await prisma.collection.findMany({
       where: { userId, isFavorite: true },
       orderBy: { updatedAt: 'desc' },
-      include: COLLECTION_INCLUDE,
+      select: COLLECTION_SELECT,
     })
     return collections.map(mapCollection)
   })
@@ -79,7 +82,7 @@ export async function getCollectionById(userId: string, collectionId: string): P
   return withDataCache(CacheTags.collectionById(userId, collectionId), async () => {
     const col = await prisma.collection.findFirst({
       where: { id: collectionId, userId },
-      include: COLLECTION_INCLUDE,
+      select: COLLECTION_SELECT,
     })
     if (!col) return null
     return mapCollection(col)
@@ -98,7 +101,7 @@ export async function createCollection(userId: string, input: CreateCollectionIn
       description: input.description,
       userId,
     },
-    include: COLLECTION_INCLUDE,
+    select: COLLECTION_SELECT,
   })
   return mapCollection(col)
 }
@@ -126,7 +129,7 @@ export async function updateCollection(userId: string, collectionId: string, inp
   const col = await prisma.collection.update({
     where: { id: collectionId, userId },
     data: input,
-    include: COLLECTION_INCLUDE,
+    select: COLLECTION_SELECT,
   })
   return mapCollection(col)
 }

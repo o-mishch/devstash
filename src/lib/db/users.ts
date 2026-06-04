@@ -94,7 +94,10 @@ export async function createAccount(data: Prisma.AccountCreateInput | Prisma.Acc
 }
 
 export async function getVerificationToken(token: string) {
-  return prisma.verificationToken.findUnique({ where: { token } })
+  return prisma.verificationToken.findUnique({
+    where: { token },
+    select: { identifier: true, token: true, expires: true },
+  })
 }
 
 export async function deleteVerificationToken(token: string) {

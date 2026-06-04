@@ -8,8 +8,6 @@ import { createLogger } from '@/lib/logger'
 import type { ApiBody } from '@/types/api'
 import type { LightItem } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
-import { toLightItem } from '@/lib/db/items'
-import { mapCollection } from '@/lib/db/collections'
 import { globalSearch } from '@/lib/db/search'
 
 const log = createLogger('search')
@@ -31,10 +29,7 @@ export async function globalSearchAction(raw: { query: string }): Promise<ApiBod
     const { query } = result.data
 
     // Use contains with insensitive mode to leverage pg_trgm GIN indexes for fuzzy substring matching
-    const [itemsData, collectionsData] = await globalSearch(query, userId)
-
-    const items = itemsData.map(toLightItem)
-    const collections = collectionsData.map(mapCollection)
+    const [items, collections] = await globalSearch(query, userId)
 
     log.info(`global search query: "${query}" user:${userId}`)
 
