@@ -65,10 +65,6 @@ export async function signInWithCredentials(
 
   const { email, password } = result.data
 
-  const ip = await getActionIP()
-  const rl = await rateLimitAction('login', `${ip}:${email}`)
-  if (rl) return rl
-
   if (emailVerificationEnabled()) {
     const user = await getUserEmailVerified(email)
     if (user && !user.emailVerified) {
@@ -81,8 +77,13 @@ export async function signInWithCredentials(
   } catch (error) {
     if (error instanceof AuthError) {
       switch (error.type) {
-        case 'CredentialsSignin':
+        case 'CredentialsSignin': {
+          // Only count failed attempts — successful logins must not consume the budget
+          const ip = await getActionIP()
+          const rl = await rateLimitAction('login', `${ip}:${email}`)
+          if (rl) return rl
           return ApiResponse.BAD_REQUEST('Invalid email or password.')
+        }
         default:
           return ApiResponse.BAD_REQUEST('Something went wrong. Please try again.')
       }

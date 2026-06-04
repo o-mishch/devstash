@@ -1,10 +1,10 @@
 import { getCurrentUserId } from '@/lib/session'
-import { getRecentItemsPage } from '@/lib/db/items'
+import { getRecentItemsPage, getItemStats } from '@/lib/db/items'
 import { DashboardStats } from './_components/dashboard-stats'
 import { DashboardCollections } from './_components/dashboard-collections'
 import { DashboardPinned } from './_components/dashboard-pinned'
-import { DashboardRecent } from './_components/dashboard-recent'
-import { getItemStats } from '@/lib/db/items'
+import { DashboardRecentList } from './_components/dashboard-recent-list'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import Link from 'next/link'
@@ -47,7 +47,16 @@ export default async function DashboardPage() {
         <>
           <DashboardCollections userId={userId} />
           <DashboardPinned userId={userId} />
-          <DashboardRecent firstPage={firstPage} />
+          {firstPage.items.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold">Recent Items</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DashboardRecentList firstPage={firstPage} />
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>

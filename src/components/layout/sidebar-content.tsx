@@ -31,7 +31,7 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Badge } from '@/components/ui/badge'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { signOutAction } from '@/actions/auth/login'
-import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import { PRO_ITEM_TYPE_NAMES, THEME_STORAGE_KEY } from '@/lib/utils/constants'
 import type { SidebarData } from '@/types/sidebar'
 
 function getTypeHref(name: string) {
@@ -351,7 +351,7 @@ function UserDropdownMenuContent({
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => {
-        localStorage.removeItem('theme')
+        localStorage.removeItem(THEME_STORAGE_KEY)
         signOutAction()
         onClose?.()
       }} className="text-red-500 focus:text-red-500">

@@ -97,7 +97,7 @@ async function handleOAuthConflict(user: User | AdapterUser, account: Account): 
   if (!existingUser) return true
 
   const token = await createPendingLink({
-    email: user.email,
+    email: existingUser.email,
     providerEmail: user.email,
     provider: account.provider,
     providerAccountId: account.providerAccountId,

@@ -1,5 +1,7 @@
 export const ITEMS_PAGE_SIZE = 20
 
+export const THEME_STORAGE_KEY = 'theme'
+
 export const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
   google: 'Google',

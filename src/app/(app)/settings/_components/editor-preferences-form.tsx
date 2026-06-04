@@ -1,7 +1,7 @@
 'use client'
 
-import { useEditorPreferences } from '@/components/providers/editor-preferences-provider'
-import { EDITOR_FONT_SIZE_OPTIONS, EDITOR_TAB_SIZE_OPTIONS, EDITOR_THEME_OPTIONS, APP_THEME_OPTIONS, type EditorTheme, type AppTheme } from '@/types/editor-preferences'
+import { useEditorPreferences } from '@/providers/editor-preferences-provider'
+import { EDITOR_FONT_SIZE_OPTIONS, EDITOR_TAB_SIZE_OPTIONS, EDITOR_THEME_OPTIONS, APP_THEME_OPTIONS, APP_THEME_COLORS, type EditorTheme, type AppTheme } from '@/types/editor-preferences'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -24,15 +24,7 @@ export function EditorPreferencesForm() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {APP_THEME_OPTIONS.map((theme) => {
               const isActive = preferences.appTheme === theme.value;
-              const colors: Record<AppTheme, { bg: string; accent: string }> = {
-                vscode:   { bg: 'var(--color-zinc-950)',     accent: 'var(--color-blue-500)' },
-                github:   { bg: 'oklch(0.13 0.012 250)',    accent: 'var(--color-blue-500)' },  /* #0d1117 */
-                jetbrains:{ bg: 'var(--color-zinc-800)',     accent: 'var(--color-amber-500)' }, /* #27272a ≈ Darcula #2B2B2B */
-                vercel:   { bg: 'var(--color-black)',        accent: 'var(--color-white)' },
-                dracula:  { bg: 'oklch(0.22 0.018 285)',    accent: 'var(--color-purple-500)' }, /* #282A36 */
-                monokai:  { bg: 'var(--color-stone-800)',   accent: 'var(--color-pink-500)' },   /* #292524 ≈ Monokai #272822 */
-              }
-              const { bg, accent } = colors[theme.value]
+              const { bg, accent } = APP_THEME_COLORS[theme.value as AppTheme]
               return (
                 <button
                   key={theme.value}
