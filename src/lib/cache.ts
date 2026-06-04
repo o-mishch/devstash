@@ -1,7 +1,11 @@
-import { unstable_cache, revalidatePath, updateTag } from 'next/cache'
+import { unstable_cache, revalidatePath, revalidateTag as _revalidateTag } from 'next/cache'
 import { createLogger } from '@/lib/logger'
 
 const log = createLogger('cache')
+
+// In some Next.js 15 canary versions, revalidateTag strictly requires a second `profile` argument
+// for the new cacheLife API, even though at runtime 1 argument is valid. We cast it to avoid TS errors.
+const revalidateTag = _revalidateTag as unknown as (tag: string) => void
 
 export interface DataCacheConfig {
   tag: string
@@ -59,12 +63,10 @@ export async function withDataCache<T>(
 }
 
 // Called after collection mutations (create, update, delete).
-// Pass collectionId when a specific collection is mutated to clear its detail-page cache.
-// Called after collection mutations (create, update, delete).
 // The group tag `collections-${userId}` sweeps all collection cache entries automatically —
 // no need to enumerate specific tags here when adding new collection caches.
 export function invalidateCollectionsCache(userId: string): void {
-  updateTag(`collections-${userId}`)
+  revalidateTag(`collections-${userId}`)
   revalidatePath('/dashboard')
   revalidatePath('/collections', 'layout')
   revalidatePath('/favorites')
@@ -73,7 +75,7 @@ export function invalidateCollectionsCache(userId: string): void {
 
 // Called after profile mutations (password change, unlink provider).
 export function invalidateProfileCache(userId: string): void {
-  updateTag(CacheTags.profile(userId).tag)
+  revalidateTag(CacheTags.profile(userId).tag)
   revalidatePath('/profile', 'page')
   log.info(`INVALIDATED profile for user:${userId}`)
 }
@@ -83,7 +85,7 @@ export function invalidateProfileCache(userId: string): void {
 // no need to enumerate specific tags here when adding new item caches.
 export function invalidateItemsCache(userId?: string): void {
   if (userId) {
-    updateTag(`items-${userId}`)
+    revalidateTag(`items-${userId}`)
   }
   revalidatePath('/dashboard')
   revalidatePath('/items')

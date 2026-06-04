@@ -6,7 +6,7 @@ import { Menu, X } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-export function HomepageNav() {
+export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -54,59 +54,64 @@ export function HomepageNav() {
             </li>
           </ul>
 
-          <div className="hidden md:flex items-center gap-3">
-            <Link href="/sign-in" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}>
-              Sign In
-            </Link>
-            <Link
-              href="/register"
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-3 h-7 text-xs font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
-            >
-              Get Started
-            </Link>
-          </div>
+          <div className="flex items-center gap-1.5 sm:gap-3">
+            {isAuthenticated ? (
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-3 sm:px-4 h-7 sm:h-8 text-xs sm:text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
+              >
+                <span className="hidden sm:inline">Go to Dashboard</span>
+                <span className="sm:hidden">Dashboard</span>
+              </Link>
+            ) : (
+              <>
+                <Link href="/sign-in" className="text-xs sm:text-sm font-medium text-muted-foreground hover:text-foreground px-1 sm:px-2">
+                  Sign In
+                </Link>
+                <Link
+                  href="/register"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-3 sm:px-4 h-7 sm:h-8 text-xs sm:text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
 
-          <button
-            className="md:hidden p-2 text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Toggle menu"
-          >
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
+            <button
+              className="md:hidden p-1.5 -mr-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="Toggle menu"
+            >
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          </div>
         </div>
       </div>
 
       {menuOpen && (
-        <div className="md:hidden bg-background border-b border-border px-4 py-4 flex flex-col gap-4">
-          <a
-            href="#features"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        <>
+          <div 
+            className="md:hidden fixed inset-0 top-16 z-40 bg-black/20 backdrop-blur-sm"
             onClick={() => setMenuOpen(false)}
-          >
-            Features
-          </a>
-          <a
-            href="#pricing"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setMenuOpen(false)}
-          >
-            Pricing
-          </a>
-          <Link
-            href="/sign-in"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setMenuOpen(false)}
-          >
-            Sign In
-          </Link>
-          <Link
-            href="/register"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 h-10 px-6 text-sm font-semibold text-white shadow-lg shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 active:scale-95"
-            onClick={() => setMenuOpen(false)}
-          >
-            Get Started
-          </Link>
-        </div>
+            aria-hidden="true"
+          />
+          <div className="md:hidden relative z-50 bg-background border-b border-border px-4 py-4 flex flex-col gap-4 shadow-lg">
+            <a
+              href="#features"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMenuOpen(false)}
+            >
+              Features
+            </a>
+            <a
+              href="#pricing"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMenuOpen(false)}
+            >
+              Pricing
+            </a>
+          </div>
+        </>
       )}
     </nav>
     </>

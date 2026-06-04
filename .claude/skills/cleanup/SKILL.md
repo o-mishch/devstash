@@ -1,10 +1,17 @@
 ---
 name: cleanup
-description: Clean up project housekeeping tasks, find issues, or review code quality
+description: Scans the codebase for housekeeping issues and code quality problems.
+when_to_use: Use when the user says "clean up", "housekeeping", "find dead code", "check for console.logs", "find TODOs", "check env vars", "review code quality", or wants to audit uncommitted code for architecture issues. Modes — check (report only), run (interactive fix), improve (quality review of changed files).
 argument-hint: check|run|improve
+allowed-tools: Bash, Glob, Grep, Read, Edit
 ---
 
-You are an expert AI developer assistant performing housekeeping and cleanup on this project. 
+You are an expert AI developer assistant performing housekeeping and cleanup on this project.
+
+## Uncommitted Changes
+
+- Modified/added files: !`git diff --name-only HEAD 2>/dev/null | head -40 || echo "none"`
+- Untracked files: !`git ls-files --others --exclude-standard 2>/dev/null | head -10 || echo "none"`
 
 **Current Mode: $ARGUMENTS**
 
@@ -26,7 +33,7 @@ If no argument is provided, stop immediately and reply ONLY with this usage guid
 
 If the argument is `check`, `run`, or `fix`, evaluate the codebase for the following routine housekeeping tasks:
 
-1. **Context files**: Check if `context/current-feature.md`'s history section is ordered from oldest to newest. Also, verify that other context files match the actual project state.
+1. **Context files**: Check if `context/history.md` entries are ordered from oldest to newest. Also verify that `context/current-feature.md` status/goals/notes match the actual project state.
 2. **Leftover debugging**: Find unnecessary `console.log` statements in `src/`.
 3. **Dead code**: Find unused imports and orphaned/unused files.
 4. **Stale comments**: Check for stale `TODO` or `FIXME` comments.
@@ -49,11 +56,7 @@ If the argument is `check`, `run`, or `fix`, evaluate the codebase for the follo
 If the argument is `improve`, focus exclusively on code quality and architectural review.
 
 ### 1. Scope
-Only review files that are currently uncommitted (modified, added, or deleted according to `git status`). 
-- Run `git diff --name-only HEAD` and `git ls-files --others --exclude-standard` to get the list.
-- Also include directly related files (e.g. files that import or are imported by the changed files, shared types, or utilities they call) to understand the context.
-- **DO NOT scan the entire codebase.**
-- Always list the scoped files at the beginning of your response.
+The uncommitted files are already listed in the **Uncommitted Changes** section above — use that list as your scope. Also include directly related files (files that import or are imported by the changed files, shared types, or utilities they call) to understand context. **DO NOT scan the entire codebase.** List the scoped files at the beginning of your response.
 
 ### 2. Evaluation Criteria
 Review the scoped files along these dimensions. Group your findings by severity (**Major** vs **Minor**):

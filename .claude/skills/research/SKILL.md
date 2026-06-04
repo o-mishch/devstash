@@ -1,7 +1,10 @@
 ---
 name: research
-description: Run a research task to generate documentation
+description: Runs a named research task from context/research/<name>.md and writes findings to a doc file.
+when_to_use: Only invoked explicitly as /research <name> where a matching prompt file exists at context/research/<name>.md. Never auto-triggered by Claude — the research file name must come from the user.
 argument-hint: <prompt-name>
+disable-model-invocation: true
+allowed-tools: Glob, Grep, Read, Write, Bash, mcp__neon__run_sql, mcp__neon__get_database_tables, mcp__neon__describe_table_schema
 ---
 
 ## Task
@@ -34,5 +37,5 @@ Execute research task: $ARGUMENTS
 - This command produces DOCUMENTATION only
 - Do NOT modify source code files
 - Do NOT create branches or commits
-- Output should go to `/docs/` unless otherwise specified
+- Output should go to `context/` unless otherwise specified in the prompt file
 - Use subagents for thorough exploration if needed

@@ -1,6 +1,5 @@
 import { Mail } from 'lucide-react'
 import { ProviderIcon } from '@/components/shared/provider-icon'
-import { Button } from '@/components/ui/button'
 import { PROVIDER_LABELS, SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils'
 import { linkWithProviderAction } from '@/actions/auth/login'
 import type { OAuthProvider } from '@/lib/utils/constants'
@@ -19,8 +18,6 @@ interface ConnectedAccountsProps {
   availableEmails: string[]
 }
 
-
-
 interface EmailRowProps {
   email: string
   canUnlink: boolean
@@ -29,17 +26,28 @@ interface EmailRowProps {
 function EmailRow({ email, canUnlink }: EmailRowProps) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
-      <div className="flex items-center gap-2.5 text-sm min-w-0">
-        <Mail className="size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0">
-          <span>Email &amp; Password</span>
-          <p className="text-xs text-muted-foreground truncate">{email}</p>
+      <div className="flex items-center justify-between w-full sm:w-auto gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 text-sm min-w-0">
+          <Mail className="size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <span>Email &amp; Password</span>
+            <p className="text-xs text-muted-foreground truncate">{email}</p>
+          </div>
         </div>
+        {canUnlink && (
+          <div className="sm:hidden shrink-0">
+            <RemoveCredentialsDialog />
+          </div>
+        )}
       </div>
-      <div className="flex flex-wrap items-center gap-1 sm:shrink-0">
+      <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
         <ChangeCredentialEmailDialog currentEmail={email} />
         <ChangePasswordForm />
-        {canUnlink && <RemoveCredentialsDialog />}
+        {canUnlink && (
+          <div className="hidden sm:block">
+            <RemoveCredentialsDialog />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -72,8 +80,6 @@ function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
     </div>
   )
 }
-
-
 
 interface AddProviderRowProps {
   provider: OAuthProvider
@@ -121,7 +127,6 @@ export function ConnectedAccounts({ hasPassword, accounts, currentEmail, availab
         />
       ))}
       {SUPPORTED_OAUTH_PROVIDERS
-        .filter((provider) => !accounts.some((a) => a.provider === provider))
         .map((provider) => (
           <AddProviderRow key={provider} provider={provider} />
         ))}

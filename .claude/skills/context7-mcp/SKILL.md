@@ -1,18 +1,8 @@
 ---
 name: context7-mcp
-description: This skill should be used when the user asks about libraries, frameworks, API references, or needs code examples. Activates for setup questions, code generation involving libraries, or mentions of specific frameworks like React, Vue, Next.js, Prisma, Supabase, etc.
+description: Fetches current documentation for any library, framework, SDK, or API using Context7 MCP instead of relying on training data.
+when_to_use: Use any time the user mentions React, Next.js, Prisma, Tailwind, shadcn/ui, NextAuth, Zod, Stripe, Resend, or any other library/framework. Triggers on "how do I use X", "what's the syntax for Y", "configure Z", "write a query/hook/component using library", setup questions, version migration, API references. Prefer this over WebSearch for library docs.
 ---
-
-When the user asks about libraries, frameworks, or needs code examples, use Context7 to fetch current documentation instead of relying on training data.
-
-## When to Use This Skill
-
-Activate this skill when the user:
-
-- Asks setup or configuration questions ("How do I configure Next.js middleware?")
-- Requests code involving libraries ("Write a Prisma query for...")
-- Needs API references ("What are the Supabase auth methods?")
-- Mentions specific frameworks (React, Vue, Svelte, Express, Tailwind, etc.)
 
 ## How to Fetch Documentation
 

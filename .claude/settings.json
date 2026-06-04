@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(npx prisma db push*)",
+      "Bash(prisma db push*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)"
+    ]
+  },
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Next.js 16 SaaS app (DevStash). Neon PostgreSQL with two branches: 'dev' (safe for all work) and 'production' (live user traffic — never touch directly). Always use prisma migrate dev for schema changes, never prisma db push."
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Never use prisma db push — schema changes must go through prisma migrate dev",
+      "Never modify the production Neon branch (br-royal-poetry-ale2q4pb)"
+    ],
+    "hard_deny": [
+      "$defaults",
+      "Never force-push to main branch",
+      "Never run any command against the Neon production branch"
+    ]
+  }
+}

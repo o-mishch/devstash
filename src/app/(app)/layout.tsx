@@ -15,7 +15,7 @@ import { getSession } from '@/lib/session'
 import { fetchSidebarData } from '@/lib/db/sidebar'
 import { getProfileData } from '@/lib/db/profile'
 import { EditorPreferencesProvider } from '@/components/providers/editor-preferences-provider'
-import { ThemeProvider } from 'next-themes'
+import { ThemeProvider } from '@/components/providers/theme-provider'
 
 const getSidebarData = cache(async () => {
   const session = await getSession()
@@ -38,7 +38,7 @@ async function MobileDrawerAsync() {
 
 export default async function DashboardLayout({ children }: WithChildren) {
   const sidebarData = await getSidebarData()
-  const session = await getSession()  // deduped via cache()
+  const session = await getSession()  // deduped by NextAuth's request-level memoization
   const userId = session?.user?.id
   const profileData = userId ? await getProfileData(userId).catch(() => null) : null
   const initialPreferences = profileData?.user.editorPreferences || null
@@ -92,8 +92,8 @@ export default async function DashboardLayout({ children }: WithChildren) {
             </main>
           </div>
         </div>
-      </ItemDrawerProvider>
-    </EditorPreferencesProvider>
+        </ItemDrawerProvider>
+      </EditorPreferencesProvider>
     </ThemeProvider>
   )
 }

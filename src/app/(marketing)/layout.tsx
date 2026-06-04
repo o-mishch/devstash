@@ -1,10 +1,13 @@
 import type { WithChildren } from '@/types/common';
 import { HomepageNav } from '@/components/marketing/HomepageNav';
+import { auth } from '@/auth';
 
-export default function MarketingLayout({ children }: WithChildren) {
+export default async function MarketingLayout({ children }: WithChildren) {
+  const session = await auth();
+
   return (
     <>
-      <HomepageNav />
+      <HomepageNav isAuthenticated={!!session} />
       {children}
     </>
   );

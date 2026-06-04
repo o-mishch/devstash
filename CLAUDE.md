@@ -1,27 +1,43 @@
 # DevStash
 
-Developer knowledge hub for snippets, commands, notes, prompts, files, images, links and custom types.
+Developer knowledge hub — one fast, searchable place for snippets, prompts, commands, notes, files, images, and links.
 
-## Context files
+## Stack
 
-Read the following to get full context of the project:
+- **Framework**: Next.js 16 / React 19 / TypeScript (strict)
+- **Database**: Neon PostgreSQL + Prisma 7 ORM
+- **Auth**: NextAuth v5 — email/password + GitHub + Google OAuth
+- **Styling**: Tailwind CSS v4 (CSS-based config, no `tailwind.config.ts`) + shadcn/ui
+- **Storage**: Cloudflare R2 (file uploads), Upstash Redis (rate limiting + auth tokens)
+- **Email**: Resend SDK
+- **Tests**: Vitest — server actions + utilities only, no component tests
 
-- @context/project-overview.md
-- @context/coding-standards.md
-- @context/ai-interaction.md
-- @context/current-feature.md
+## Item types (system, immutable)
+
+`snippet` · `prompt` · `command` · `note` · `file` · `image` · `link`
+Icons and colors are in `src/lib/utils/constants.ts`. File/Image are Pro-only.
+
+## Route groups
+
+- `/(app)` — protected: `/dashboard`, `/items/[type]`, `/collections/[id]`, `/favorites`, `/profile`, `/settings`
+- `/(auth)` — public: `/sign-in`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/link-account`
+- `/(marketing)` — public homepage at `/`
 
 ## Commands
 
 ```bash
-npm run dev      # start dev server at localhost:3000
-npm run build    # production build
-npm run lint     # run ESLint
+npm run dev       # localhost:3000
+npm run build     # production build
+npm run lint      # ESLint
+npm run test:run  # Vitest single run
 ```
 
 ## Neon Database
 
 - Project: `devstash` (ID: `wandering-lab-34213896`)
-- Default branch: `dev` (ID: `br-dry-scene-al1ir5ie`)
-- **Always use the `dev` branch for all Neon MCP queries and operations**
-- **Never touch the `production` branch** (`br-royal-poetry-ale2q4pb`) unless explicitly told to do so
+- **Always use the `dev` branch** (ID: `br-dry-scene-al1ir5ie`) for all Neon MCP operations
+- **Never touch the `production` branch** (`br-royal-poetry-ale2q4pb`) unless explicitly told to
+
+## Current feature
+
+@context/current-feature.md

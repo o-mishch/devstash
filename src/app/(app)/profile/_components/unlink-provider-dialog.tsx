@@ -16,7 +16,7 @@ export function UnlinkProviderDialog({ accountId, label }: UnlinkProviderDialogP
       triggerText="Unlink"
       triggerIcon={<Unlink className="mr-1 size-3" />}
       confirmText={`Unlink ${label}`}
-      action={() => unlinkProviderAction(accountId)}
+      action={unlinkProviderAction.bind(null, accountId)}
       successMessage={`${label} account unlinked.`}
       errorMessage="Failed to unlink account."
     />
