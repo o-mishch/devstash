@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { signOut } from '@/auth'
 import type { WithChildren } from '@/types/common'
 import { Archive, Home, Star } from 'lucide-react'
 import { GlobalSearch } from '@/components/shared/global-search'
@@ -42,9 +41,7 @@ export default async function DashboardLayout({ children }: WithChildren) {
   const sidebarData = await getSidebarData()
   const session = await getSession()  // deduped by NextAuth's request-level memoization
   const userId = session?.user?.id
-  if (!userId) {
-    await signOut({ redirectTo: '/' })
-  }
+  if (!userId) redirect('/')
   const isPro = session?.user?.isPro ?? false
   // canCreateCollection is derived from already-fetched sidebar data — no extra DB call needed
   const userCanCreateCollection = isPro || sidebarData.collections.length < FREE_TIER_COLLECTION_LIMIT
