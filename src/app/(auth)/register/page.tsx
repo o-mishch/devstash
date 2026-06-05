@@ -2,17 +2,12 @@ import Link from 'next/link'
 import { AuthFormLayout } from '@/components/auth/auth-page-header'
 import { buttonVariants } from '@/components/ui/button'
 import { RegisterForm } from './_components/register-form'
-import { getCurrentUserId } from '@/lib/session'
-import { redirect } from 'next/navigation'
 
 interface RegisterPageProps {
   searchParams: Promise<{ pending?: string; email?: string; sent?: string }>
 }
 
 export default async function RegisterPage({ searchParams }: RegisterPageProps) {
-  const userId = await getCurrentUserId()
-  if (userId) redirect('/dashboard')
-
   const { pending, email, sent } = await searchParams
 
   if (pending === '1') {

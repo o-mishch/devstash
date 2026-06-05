@@ -49,7 +49,10 @@ export function SignInForm({ successMessage }: SignInFormProps) {
 
   useEffect(() => {
     if (!state) return
-    if (state.status !== 'ok' && state.status !== 'forbidden') {
+    if (state.status === 'ok') {
+      toast.success('You successfully logged in.')
+      router.push('/dashboard')
+    } else if (state.status !== 'forbidden') {
       // 'forbidden' renders the "email not verified" banner below — no toast needed
       toast.error(state.message ?? 'Something went wrong. Please try again.')
     }
