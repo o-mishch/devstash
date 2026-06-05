@@ -1,5 +1,7 @@
 import { SignInForm } from './_components/sign-in-form'
 import { AuthFormLayout } from '@/components/auth/auth-page-header'
+import { getCurrentUserId } from '@/lib/session'
+import { redirect } from 'next/navigation'
 
 interface SignInPageProps {
   searchParams: Promise<{ verified?: string; resent?: string }>
@@ -12,6 +14,9 @@ function getSuccessMessage(verified?: string, resent?: string): string | undefin
 }
 
 export default async function SignInPage({ searchParams }: SignInPageProps) {
+  const userId = await getCurrentUserId()
+  if (userId) redirect('/dashboard')
+
   const { verified, resent } = await searchParams
 
   return (

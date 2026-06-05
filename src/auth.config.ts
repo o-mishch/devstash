@@ -50,9 +50,6 @@ export const authConfig: NextAuthConfig = {
         }
         return true
       }
-      if (isAuthPage && isLoggedIn) {
-        return Response.redirect(new URL('/dashboard', nextUrl))
-      }
       return true
     },
     // session callback runs in the middleware (proxy.ts) context, which is what
