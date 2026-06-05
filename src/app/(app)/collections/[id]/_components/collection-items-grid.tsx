@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useInfiniteItemsFetch } from '@/hooks/use-infinite-items-fetch'
 import { VirtualImageGrid } from '@/components/items/virtual-image-grid'
 import { VirtualItemGrid } from '@/components/items/virtual-item-grid'
@@ -19,11 +20,11 @@ export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItems
   const pageKey = `collection:${collectionId}`
   const { items, fetchMore } = useInfiniteItemsFetch(pageKey, firstPage, { type: 'collection', collectionId })
 
+  const uniqueTypeCount = useMemo(() => new Set(items.map((i) => i.itemType.name)).size, [items])
+
   if (items.length === 0) {
     return <EmptyCard message="No items in this collection yet." />
   }
-
-  const uniqueTypeCount = new Set(items.map((i) => i.itemType.name)).size
 
   if (uniqueTypeCount === 1) {
     const typeName = items[0].itemType.name
@@ -35,9 +36,9 @@ export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItems
   // Mixed types: non-virtualized grid (variable row heights)
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-      {items.map((item) => {
+      {items.map((item, index) => {
         if (ITEM_TYPES_WITH_IMAGE_GRID.has(item.itemType.name)) {
-          return <ImageCard key={item.id} item={item} />
+          return <ImageCard key={item.id} item={item} priority={index < 8} />
         }
         return <ItemCard key={item.id} item={item} />
       })}

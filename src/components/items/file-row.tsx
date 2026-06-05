@@ -1,11 +1,11 @@
 'use client'
 
-import type { MouseEvent } from 'react'
-import { Download, File, FileCode, FileImage, FileText, FileJson } from 'lucide-react'
+import { Download, File, FileCode, FileImage, FileText, FileJson, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawer } from '@/context/item-drawer-context'
+import { useRestrictedDownload } from '@/hooks/use-restricted-download'
 import { formatDate, formatBytes } from '@/lib/utils/format'
 import { getDownloadUrl } from '@/lib/utils/url'
 import {
@@ -13,6 +13,7 @@ import {
   FILE_ICON_CODE_EXTS,
   FILE_ICON_JSON_EXTS,
   FILE_ICON_TEXT_EXTS,
+  PRO_ITEM_TYPE_NAMES,
 } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 
@@ -35,16 +36,14 @@ interface FileRowProps {
 }
 
 export function FileRow({ item }: FileRowProps) {
-  const { openDrawer } = useItemDrawer()
-
-  function handleDownload(e: MouseEvent) {
-    e.stopPropagation()
-    // Programmatic anchor is the only way to trigger a named file download in the browser
-    const a = document.createElement('a')
-    a.href = getDownloadUrl(item.id)
-    a.download = item.fileName ?? item.title
-    a.click()
-  }
+  const { openDrawer, isPro } = useItemDrawer()
+  const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
+  const { handleDownload, showError } = useRestrictedDownload(
+    getDownloadUrl(item.id),
+    item.fileName ?? item.title,
+    isRestricted,
+    true
+  )
 
   return (
     <div
@@ -74,6 +73,7 @@ export function FileRow({ item }: FileRowProps) {
         value={getDownloadUrl(item.id, true)}
         className="size-8 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100"
         stopPropagation
+        isRestricted={isRestricted}
       />
       <Button
         size="icon"
@@ -82,7 +82,7 @@ export function FileRow({ item }: FileRowProps) {
         onClick={handleDownload}
         title="Download"
       >
-        <Download className="size-4" />
+        {showError ? <XCircle className="size-4 text-destructive" /> : <Download className="size-4" />}
       </Button>
     </div>
   )

@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
-import type { Item, ItemStats, SidebarItemType, LightItem, ItemsPage, ItemRemainFields } from '@/types/item'
+import type { FullItem, ItemDetails, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
 import { Prisma } from '@/generated/prisma/client'
 
 const ITEM_SELECT = {
@@ -47,14 +47,27 @@ interface ItemPreview {
   contentPreview: string | null
 }
 
+interface RawItemPreviewRow {
+  id: string
+  description_preview?: string
+  content_preview?: string
+}
+
 export async function fetchItemPreviews(ids: string[]): Promise<Map<string, ItemPreview>> {
   if (ids.length === 0) return new Map()
-  const rows = await prisma.$queryRaw<ItemPreview[]>`
-    SELECT id, LEFT(description, 150) AS "descriptionPreview", LEFT(content, 150) AS "contentPreview"
+  const rows = await prisma.$queryRaw<RawItemPreviewRow[]>`
+    SELECT id, LEFT(description, 150) AS description_preview, LEFT(content, 150) AS content_preview
     FROM items
     WHERE id IN (${Prisma.join(ids)})
   `
-  return new Map(rows.map((r) => [r.id, r]))
+  return new Map(rows.map((r) => [
+    r.id,
+    {
+      id: r.id,
+      descriptionPreview: r.description_preview || null,
+      contentPreview: r.content_preview || null,
+    }
+  ]))
 }
 
 export function toLightItem(item: LightItemWithRelations, preview?: ItemPreview): LightItem {
@@ -87,14 +100,21 @@ export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Prom
         take: safeLimit,
         select: LIGHT_ITEM_SELECT,
       }),
-      prisma.$queryRaw<ItemPreview[]>`
-        SELECT id, LEFT(description, 150) AS "descriptionPreview"
+      prisma.$queryRaw<RawItemPreviewRow[]>`
+        SELECT id, LEFT(description, 150) AS description_preview
         FROM items WHERE "userId" = ${userId} AND "isPinned" = true
         ORDER BY "updatedAt" DESC
         LIMIT ${safeLimit}
       `,
     ])
-    const previews = new Map(previewRows.map((r) => [r.id, r]))
+    const previews = new Map(previewRows.map((r) => [
+      r.id,
+      {
+        id: r.id,
+        descriptionPreview: r.description_preview || null,
+        contentPreview: null,
+      }
+    ]))
     return items.map((i) => toLightItem(i, previews.get(i.id)))
   })
 }
@@ -113,18 +133,18 @@ export async function getItemStats(userId: string): Promise<ItemStats> {
   })
 }
 
-export async function getItemById(userId: string, itemId: string): Promise<Item | null> {
+export async function getItemById(userId: string, itemId: string): Promise<FullItem | null> {
   return withDataCache(CacheTags.itemById(userId, itemId), async () => {
     const item = await prisma.item.findFirst({
       where: { id: itemId, userId },
       select: ITEM_SELECT,
     })
     if (!item) return null
-    return toItem(item)
+    return toFullItem(item)
   })
 }
 
-export const ITEM_REMAIN_FIELDS_SELECT = {
+export const ITEM_DETAILS_SELECT = {
   id: true,
   content: true,
   description: true,
@@ -133,11 +153,11 @@ export const ITEM_REMAIN_FIELDS_SELECT = {
   collections: { select: { collection: { select: { id: true, name: true } } } },
 } as const
 
-export async function getItemRemainFields(userId: string, itemId: string): Promise<ItemRemainFields | null> {
+export async function getItemDetails(userId: string, itemId: string): Promise<ItemDetails | null> {
   return withDataCache(CacheTags.itemById(userId, itemId), async () => {
     const row = await prisma.item.findUnique({
       where: { id: itemId, userId },
-      select: ITEM_REMAIN_FIELDS_SELECT,
+      select: ITEM_DETAILS_SELECT,
     })
     if (!row) return null
 
@@ -162,7 +182,7 @@ export interface CreateItemInput {
   collectionIds: string[]
 }
 
-export async function createItem(userId: string, data: CreateItemInput): Promise<Item | null> {
+export async function createItem(userId: string, data: CreateItemInput): Promise<LightItem | null> {
   // system types are cached for 1h — avoids a DB round trip on every item creation
   const systemTypes = await getSystemItemTypes()
   const itemType =
@@ -201,10 +221,15 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
         }))
       }
     },
-    select: ITEM_SELECT,
+    select: LIGHT_ITEM_SELECT,
   })
 
-  return toItem(created)
+  const preview = {
+    id: created.id,
+    contentPreview: data.content ? data.content.slice(0, 150) : null,
+    descriptionPreview: data.description ? data.description.slice(0, 150) : null,
+  }
+  return toLightItem(created, preview)
 }
 
 export interface UpdateItemInput {
@@ -217,7 +242,7 @@ export interface UpdateItemInput {
   collectionIds: string[]
 }
 
-export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<Item | null> {
+export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<FullItem | null> {
   const validCollectionIds = data.collectionIds.length > 0
     ? await prisma.collection.findMany({ where: { id: { in: data.collectionIds }, userId }, select: { id: true } }).then(rows => rows.map(r => r.id))
     : []
@@ -244,7 +269,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
       },
       select: ITEM_SELECT,
     })
-    return toItem(updated)
+    return toFullItem(updated)
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null
     throw error
@@ -394,23 +419,25 @@ export async function getSidebarItemTypes(userId: string | null): Promise<Sideba
   })
 }
 
-function toItem(item: ItemWithRelations): Item {
+function toFullItem(item: ItemWithRelations): FullItem {
   return {
     id: item.id,
     title: item.title,
-    content: item.content,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    itemType: item.itemType,
+    contentPreview: item.content ? item.content.slice(0, 150) : null,
+    descriptionPreview: item.description ? item.description.slice(0, 150) : null,
     url: item.url,
-    description: item.description,
-    language: item.language,
+    tags: item.tags.map((t) => t.name),
+    fileUrl: item.fileUrl,
     fileName: item.fileName,
     fileSize: item.fileSize,
     isFavorite: item.isFavorite,
     isPinned: item.isPinned,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    itemType: item.itemType,
-    fileUrl: item.fileUrl,
-    tags: item.tags.map((t) => t.name),
+    content: item.content,
+    description: item.description,
+    language: item.language,
     collections: item.collections.map((ic) => ic.collection),
   }
 }

@@ -6,8 +6,8 @@ Not Started
 
 ## Goals
 
-<!-- Add bullet points of what success looks like -->
+<!-- Goals for the current feature -->
 
 ## Notes
 
-<!-- Add additional context, constraints, or details from spec -->
+<!-- Any notes or constraints -->

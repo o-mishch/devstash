@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { ExternalLink, Tag, Download, FileIcon } from 'lucide-react'
+import { ExternalLink, Tag, Download, FileIcon, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -9,16 +9,29 @@ import { ItemContentView } from '@/components/shared/item-content-view'
 import { ItemTags } from '@/components/shared/item-tags'
 import { DrawerLayout, DrawerSection, DrawerCollectionsSection, DrawerDetailsSection, DrawerCollectionsSkeleton, DrawerDetailsSkeleton } from './drawer-shared'
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
-import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { getDownloadUrl } from '@/lib/utils/url'
-import type { Item, LightItem } from '@/types/item'
+import { useItemDrawer } from '@/context/item-drawer-context'
+import { useRestrictedDownload } from '@/hooks/use-restricted-download'
+import { isFullItem } from '@/types/item'
+import type { LightItem, FullItem } from '@/types/item'
 
 interface FileSectionProps {
-  item: LightItem | Item
+  item: LightItem | FullItem
 }
 
 function FileSectionContent({ item }: FileSectionProps) {
+  const { isPro, closeDrawer } = useItemDrawer()
+  const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
+  const { handleDownload, showError } = useRestrictedDownload(
+    getDownloadUrl(item.id),
+    item.fileName ?? item.title,
+    isRestricted,
+    false,
+    closeDrawer
+  )
+
   if (!item.fileUrl) return <p className="text-sm text-muted-foreground">—</p>
 
   if (item.itemType.name === 'image') {
@@ -34,14 +47,13 @@ function FileSectionContent({ item }: FileSectionProps) {
             priority
             className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
           />
-          <a
-            href={getDownloadUrl(item.id)}
-            download={item.fileName ?? item.title}
+          <button
+            onClick={handleDownload}
             className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100"
-            title="Download image"
+            title={isRestricted ? "Pro required" : "Download image"}
           >
-            <Download className="size-4 text-foreground" />
-          </a>
+            {showError ? <XCircle className="size-4 text-destructive" /> : <Download className="size-4 text-foreground" />}
+          </button>
         </div>
       </div>
     )
@@ -56,17 +68,15 @@ function FileSectionContent({ item }: FileSectionProps) {
           <p className="text-xs text-muted-foreground">{formatBytes(item.fileSize)}</p>
         )}
       </div>
-      <a href={getDownloadUrl(item.id)} download={item.fileName ?? item.title}>
-        <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0">
-          <Download className="size-3.5" />
-        </Button>
-      </a>
+      <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" onClick={handleDownload} title={isRestricted ? "Pro required" : "Download"}>
+        {showError ? <XCircle className="size-3.5 text-destructive" /> : <Download className="size-3.5" />}
+      </Button>
     </div>
   )
 }
 
 interface ItemDrawerViewContentProps {
-  item: LightItem | Item
+  item: LightItem | FullItem
   isLight: boolean
   onClose: () => void
   onEdit: () => void
@@ -75,8 +85,8 @@ interface ItemDrawerViewContentProps {
 
 export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDeleted }: ItemDrawerViewContentProps) {
   const { itemType } = item
-  const fullItem = 'content' in item ? item : null
-  const description = 'descriptionPreview' in item ? item.descriptionPreview : item.description
+  const fullItem = isFullItem(item) ? item : null
+  const description = isFullItem(item) ? item.description : item.descriptionPreview
 
   return (
     <DrawerLayout

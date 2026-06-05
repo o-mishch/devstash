@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth, withValidatedAuth } from '@/lib/session'
 import { createToggleAction } from '@/lib/action-utils'
-import { canCreateItem } from '@/lib/usage'
+import { canCreateItem, FREE_TIER_ITEM_LIMIT } from '@/lib/usage'
 import {
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
@@ -20,11 +20,13 @@ import {
 import { createLogger } from '@/lib/logger'
 import { invalidateItemsCache } from '@/lib/cache'
 import { deleteFromFilebase } from '@/lib/filebase'
-import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { ApiBody } from '@/types/api'
-import type { Item, FetchItemsQuery, ItemsPage } from '@/types/item'
+import type { LightItem, FullItem, FetchItemsQuery, ItemsPage } from '@/types/item'
 
 const log = createLogger('items')
+
+const PRO_TYPE_NAMES_LABEL = [...PRO_ITEM_TYPE_NAMES].join(' and ')
 
 const itemMutationSchema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
@@ -59,15 +61,15 @@ const createItemSchema = itemMutationSchema.extend({
 
 type CreateItemInput = z.infer<typeof createItemSchema>
 
-export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Item | null>> {
+export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<LightItem | null>> {
   return withValidatedAuth(createItemSchema, raw, async ({ userId, isPro }, data: CreateItemInput) => {
-    if ((data.itemTypeName === 'file' || data.itemTypeName === 'image') && !isPro) {
-      return ApiResponse.FORBIDDEN('Upgrade to Pro to upload files and images.')
+    if (PRO_ITEM_TYPE_NAMES.has(data.itemTypeName) && !isPro) {
+      return ApiResponse.FORBIDDEN(`Upgrade to Pro to upload ${PRO_TYPE_NAMES_LABEL}.`)
     }
 
     const canCreate = await canCreateItem(userId, isPro)
     if (!canCreate) {
-      return ApiResponse.FORBIDDEN('You have reached your free tier limit of 50 items. Please upgrade to Pro.')
+      return ApiResponse.FORBIDDEN(`You have reached your free tier limit of ${FREE_TIER_ITEM_LIMIT} items. Please upgrade to Pro.`)
     }
 
     if (data.fileUrl && !data.fileUrl.startsWith(`${userId}/`)) {
@@ -86,7 +88,7 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<It
 export async function updateItemAction(
   itemId: string,
   raw: UpdateItemInput
-): Promise<ApiBody<Item | null>> {
+): Promise<ApiBody<FullItem | null>> {
   return withValidatedAuth(itemMutationSchema, raw, async ({ userId }, data: UpdateItemInput) => {
     const updated = await dbUpdateItem(userId, itemId, data)
     if (!updated) return ApiResponse.NOT_FOUND('Item not found.')

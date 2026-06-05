@@ -342,6 +342,6 @@
 
 @layer utilities {
     .card-interactive {
-        @apply transition-all duration-200 hover:bg-foreground/5 hover:shadow-md hover:-translate-y-1;
+        @apply cursor-pointer transition-all duration-200 hover:bg-foreground/5 hover:shadow-md hover:-translate-y-1;
     }
 }

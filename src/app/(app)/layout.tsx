@@ -14,6 +14,8 @@ import { getSession } from '@/lib/session'
 import { fetchSidebarData } from '@/lib/db/sidebar'
 import { getProfileData } from '@/lib/db/profile'
 import { EditorPreferencesProvider } from '@/providers/editor-preferences-provider'
+import { UpgradePromptProvider } from '@/providers/upgrade-prompt-provider'
+import { canCreateItem, FREE_TIER_COLLECTION_LIMIT } from '@/lib/usage'
 
 const getSidebarData = cache(async () => {
   const session = await getSession()
@@ -38,11 +40,21 @@ export default async function DashboardLayout({ children }: WithChildren) {
   const sidebarData = await getSidebarData()
   const session = await getSession()  // deduped by NextAuth's request-level memoization
   const userId = session?.user?.id
-  const profileData = userId ? await getProfileData(userId).catch(() => null) : null
+  const isPro = session?.user?.isPro ?? false
+  // canCreateCollection is derived from already-fetched sidebar data — no extra DB call needed
+  const userCanCreateCollection = isPro || sidebarData.collections.length < FREE_TIER_COLLECTION_LIMIT
+  const [profileData, userCanCreateItem] = userId
+    ? await Promise.all([
+        getProfileData(userId).catch(() => null),
+        canCreateItem(userId, isPro),
+      ])
+    : [null, false]
   const initialPreferences = profileData?.user.editorPreferences || null
+
   return (
     <EditorPreferencesProvider initialPreferences={initialPreferences}>
-        <ItemDrawerProvider collections={sidebarData.collections}>
+      <UpgradePromptProvider>
+        <ItemDrawerProvider collections={sidebarData.collections} isPro={isPro}>
         <div className="flex h-screen flex-col bg-background">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
             <MobileDrawerAsync />
@@ -81,12 +93,12 @@ export default async function DashboardLayout({ children }: WithChildren) {
               </TooltipProvider>
 
               {/* Mobile: single + dropdown for new item / new collection */}
-              <MobileCreateMenu itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
+              <MobileCreateMenu itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} canCreateItem={userCanCreateItem} canCreateCollection={userCanCreateCollection} isPro={isPro} />
 
               {/* Desktop: separate explicit buttons */}
               <div className="hidden lg:flex items-center gap-2">
-                <CollectionCreateDialog />
-                <TopbarCreateButton itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
+                <CollectionCreateDialog canCreate={userCanCreateCollection} />
+                <TopbarCreateButton itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} canCreateItem={userCanCreateItem} isPro={isPro} />
               </div>
             </div>
           </header>
@@ -100,6 +112,7 @@ export default async function DashboardLayout({ children }: WithChildren) {
           </div>
         </div>
         </ItemDrawerProvider>
+      </UpgradePromptProvider>
       </EditorPreferencesProvider>
   )
 }

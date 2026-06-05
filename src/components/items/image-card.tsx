@@ -8,6 +8,7 @@ import { CopyButton } from '@/components/shared/copy-button'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { getDownloadUrl } from '@/lib/utils/url'
+import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 
 interface ImageCardProps {
@@ -16,16 +17,17 @@ interface ImageCardProps {
 }
 
 export function ImageCard({ item, priority = false }: ImageCardProps) {
-  const { openDrawer } = useItemDrawer()
+  const { openDrawer, isPro } = useItemDrawer()
+  const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const [isLoaded, setIsLoaded] = useState(false)
 
   return (
     <Card
-      className="card-interactive group/card relative overflow-hidden p-0"
+      className="card-interactive group/card relative h-full overflow-hidden p-0"
       style={{ '--item-color': item.itemType.color } as CSSProperties}
       onClick={() => openDrawer(item)}
     >
-      <div className="relative aspect-video w-full overflow-hidden bg-muted/30">
+      <div className="relative aspect-video w-full h-full overflow-hidden bg-muted/30">
         {!isLoaded && (
           <Skeleton className="absolute inset-0 z-0 h-full w-full rounded-none" />
         )}
@@ -36,8 +38,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
           unoptimized
           priority={priority}
           onLoad={() => setIsLoaded(true)}
-          className={`object-cover transition-all duration-300 group-hover/card:scale-105 z-10 ${isLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
+          className={`object-cover transition-all duration-300 group-hover/card:scale-105 z-10 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
         />
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-12 z-20">
           <div className="flex items-end justify-between gap-2">
@@ -52,7 +53,8 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
               className="size-7 shrink-0 text-white/70 opacity-0 transition-opacity hover:bg-white/20 hover:text-white group-hover/card:opacity-100 z-30"
               iconClassName="size-3.5"
               stopPropagation
-              title="Copy download link"
+              title={isRestricted ? "Pro required" : "Copy download link"}
+              isRestricted={isRestricted}
             />
           </div>
         </div>

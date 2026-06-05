@@ -19,6 +19,9 @@ import {
 import { CollectionFormFields } from '@/components/shared/collection-form-fields'
 import { collectionFormSchema } from '@/lib/utils/validators'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
+import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/usage'
+import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
+import type { ApiBody } from '@/types/api'
 
 type FormValues = z.input<typeof collectionFormSchema>
 
@@ -28,11 +31,12 @@ interface CollectionFormDialogProps {
   submitText: string
   successMessage: string
   defaultValues: { name: string; description: string }
-  onSubmitAction: (data: FormValues) => Promise<{ status: string; message?: string | null }>
+  onSubmitAction: (data: FormValues) => Promise<ApiBody<unknown>>
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
   idPrefix?: string
+  canCreate?: boolean
 }
 
 export function CollectionFormDialog({
@@ -46,8 +50,10 @@ export function CollectionFormDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   idPrefix,
+  canCreate = true,
 }: CollectionFormDialogProps) {
   const router = useRouter()
+  const { showUpgradePrompt } = useUpgradePrompt()
 
   const form = useForm<FormValues>({
     resolver: zodResolver(collectionFormSchema),
@@ -69,7 +75,6 @@ export function CollectionFormDialog({
     onClose,
   })
 
-  // Reset form when modal opens
   useEffect(() => {
     if (open) {
       form.reset(defaultValuesRef.current)
@@ -84,12 +89,23 @@ export function CollectionFormDialog({
       handleOpenChange(false)
       router.refresh()
     } else {
-      toast.error(result.message ?? 'Failed to save collection')
+      if (result.status === 'forbidden') {
+        toast.warning(result.message ?? 'Upgrade to Pro to continue.')
+      } else {
+        toast.error(result.message ?? 'Failed to save collection')
+      }
     }
   }
 
   const triggerEl = trigger ? (
-    <span onClick={() => handleOpenChange(true)} style={{ display: 'contents' }}>
+    <span onClick={(e) => {
+      if (!canCreate) {
+        e.preventDefault()
+        showUpgradePrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
+        return
+      }
+      handleOpenChange(true)
+    }} className="contents">
       {trigger}
     </span>
   ) : null

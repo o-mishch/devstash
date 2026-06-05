@@ -1,9 +1,8 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { forwardRef, type ReactNode, type CSSProperties, type HTMLAttributes } from 'react'
+import { VirtuosoGrid } from 'react-virtuoso'
 import { useVirtualContainer } from '@/hooks/use-virtual-container'
-import { useIntersectionObserver } from '@/hooks/use-intersection-observer'
 
 export interface VirtualGridProps<T> {
   items: T[]
@@ -13,10 +12,8 @@ export interface VirtualGridProps<T> {
   getColumns: (width: number) => number
   renderItem: (item: T, priority: boolean) => ReactNode
   gap?: number
-  // Fixed height or a function that calculates height based on container width
   itemHeight: number | ((containerWidth: number) => number)
   overscan?: number
-  sentinelRootMargin?: string
 }
 
 export function VirtualGrid<T>({
@@ -28,59 +25,61 @@ export function VirtualGrid<T>({
   renderItem,
   gap = 12,
   itemHeight,
-  overscan = 2,
-  sentinelRootMargin = '200px',
+  overscan = 400,
 }: VirtualGridProps<T>) {
-  const { containerRef, scrollMargin, cols, containerWidth, getScrollElement } = useVirtualContainer(getColumns)
-  const { ref: sentinelRef, inView } = useIntersectionObserver({ rootMargin: sentinelRootMargin })
+  const { containerRef, cols, containerWidth, getScrollElement } = useVirtualContainer(getColumns)
 
   const resolvedItemHeight = typeof itemHeight === 'function' ? itemHeight(containerWidth) : itemHeight
+  const scrollElement = getScrollElement()
 
-  const rowHeight = resolvedItemHeight + gap
-  const rowCount = cols > 0 ? Math.ceil(items.length / cols) : 0
-
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const virtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement,
-    estimateSize: () => rowHeight,
-    overscan,
-    scrollMargin,
-  })
-
-  useEffect(() => {
-    if (inView && hasMore && !loading) {
-      onFetchMore()
-    }
-  }, [inView, hasMore, loading, onFetchMore])
+  // VirtuosoGrid needs to know its custom scroll parent to function properly.
+  // Delay rendering until the container finishes its first measurement.
+  if (!scrollElement || cols === 0) {
+    return <div ref={containerRef} className="w-full h-full min-h-[500px]" />
+  }
 
   return (
     <div ref={containerRef} className="w-full">
-      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const startIdx = virtualRow.index * cols
-          const rowItems = items.slice(startIdx, startIdx + cols)
-
-          return (
+      <VirtuosoGrid
+        data={items}
+        customScrollParent={scrollElement}
+        endReached={() => {
+          if (hasMore && !loading) {
+            onFetchMore()
+          }
+        }}
+        overscan={overscan}
+        components={{
+          List: forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function GridList({ style, children, ...props }, ref) {
+            const { paddingTop, paddingBottom, ...restStyle } = (style || {}) as CSSProperties
+            return (
+              <div
+                ref={ref}
+                {...props}
+                style={{
+                  ...restStyle,
+                  marginTop: paddingTop,
+                  marginBottom: paddingBottom,
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                  gap,
+                }}
+              >
+                {children}
+              </div>
+            )
+          }),
+          Item: ({ children, style, ...props }) => (
             <div
-              key={virtualRow.index}
-              style={{
-                position: 'absolute',
-                top: virtualRow.start - scrollMargin,
-                left: 0,
-                right: 0,
-                height: resolvedItemHeight,
-                display: 'grid',
-                gridTemplateColumns: `repeat(${cols}, 1fr)`,
-                gap,
-              }}
+              {...props}
+              style={{ ...style, height: resolvedItemHeight }}
             >
-              {rowItems.map((item, i) => renderItem(item, virtualRow.index === 0 && i < cols))}
+              {children}
             </div>
           )
-        })}
-      </div>
-      {hasMore && <div ref={sentinelRef} className="h-4" />}
+        }}
+        itemContent={(index, item) => renderItem(item, index < 4)}
+      />
     </div>
   )
 }

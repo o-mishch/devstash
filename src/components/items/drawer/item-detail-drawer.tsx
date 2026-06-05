@@ -7,16 +7,16 @@ import { apiFetch } from '@/lib/api-fetch'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
-import type { Item, LightItem, ItemRemainFields } from '@/types/item'
+import type { LightItem, FullItem, ItemDetails } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDetailDrawerProps {
-  item: LightItem | Item | null
+  item: LightItem | FullItem | null
   open: boolean
   onOpenChange: (open: boolean) => void
   collections: CollectionWithTypes[]
-  onFullItemFetched: (item: Item) => void
-  onItemSaved: (item: Item) => void
+  onFullItemFetched: (item: FullItem) => void
+  onItemSaved: (item: FullItem) => void
   onItemDeleted: (id: string) => void
 }
 
@@ -29,8 +29,8 @@ function ItemDetailDrawerInner({
   onItemDeleted,
 }: Omit<ItemDetailDrawerProps, 'open'>) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
-  const [savedItem, setSavedItem] = useState<Item | null>(null)
-  const [fullItem, setFullItem] = useState<Item | null>(null)
+  const [savedItem, setSavedItem] = useState<FullItem | null>(null)
+  const [fullItem, setFullItem] = useState<FullItem | null>(null)
 
   const itemId = item?.id ?? null
   const propIsLight = item !== null && !('content' in item)
@@ -41,9 +41,9 @@ function ItemDetailDrawerInner({
 
     const controller = new AbortController()
 
-    apiFetch<ItemRemainFields>(`/api/items/${itemId}/remain-fields`).then((result) => {
+    apiFetch<ItemDetails>(`/api/items/${itemId}/remain-fields`).then((result) => {
       if (!controller.signal.aborted && result.status === 'ok' && result.data) {
-        const mergedItem = { ...item, ...result.data } as Item
+        const mergedItem: FullItem = { ...item, ...result.data }
         setFullItem(mergedItem)
         onFullItemFetched(mergedItem)
       }
@@ -64,10 +64,10 @@ function ItemDetailDrawerInner({
         <DrawerSkeleton />
       ) : editing ? (
         <ItemDrawerEditContent
-          item={displayItem as Item}
+          item={displayItem as FullItem}
           collections={collections}
           onClose={() => onOpenChange(false)}
-          onSave={(updated: Item) => {
+          onSave={(updated: FullItem) => {
             setSavedItem(updated)
             setEditingItemId(null)
             onItemSaved(updated)
@@ -102,7 +102,7 @@ export function ItemDetailDrawer({
   const { width, dragging, startResize, onMouseMove, onMouseUp } = useResizable({
     defaultWidth: 560,
     maxBoundarySelector: 'main',
-    maxBoundaryGapVw: 0.1, // 10% distance from the sidebar/main boundary
+    maxBoundaryGapVw: 0.1,
   })
 
   return (
@@ -119,10 +119,10 @@ export function ItemDetailDrawer({
         />
 
         {dragging && (
-          <div 
-            className="fixed inset-0 z-[60] cursor-ew-resize select-none" 
-            onMouseMove={onMouseMove} 
-            onMouseUp={onMouseUp} 
+          <div
+            className="fixed inset-0 z-[60] cursor-ew-resize select-none"
+            onMouseMove={onMouseMove}
+            onMouseUp={onMouseUp}
           />
         )}
 

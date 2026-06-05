@@ -3,36 +3,36 @@
 import { useState, useCallback, useMemo, useReducer, useRef } from 'react'
 import { DrawerContext } from '@/context/item-drawer-context'
 import { ItemsStoreContext, itemsStoreReducer, itemsStoreInitialState, ItemsStoreActionType } from '@/context/items-store-context'
-import { itemToLightItem } from '@/types/item'
 import { ItemDetailDrawer } from '@/components/items/drawer/item-detail-drawer'
 import { EditorPreloader } from '@/components/shared/editor-preloader'
 import type { WithChildren } from '@/types/common'
-import type { Item, LightItem } from '@/types/item'
+import type { LightItem, FullItem } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDrawerProviderProps extends WithChildren {
   collections: CollectionWithTypes[]
+  isPro?: boolean
 }
 
-export function ItemDrawerProvider({ children, collections }: ItemDrawerProviderProps) {
+export function ItemDrawerProvider({ children, collections, isPro = false }: ItemDrawerProviderProps) {
   const [storeState, dispatch] = useReducer(itemsStoreReducer, itemsStoreInitialState)
   const [open, setOpen] = useState(false)
-  const [openItem, setOpenItem] = useState<LightItem | Item | null>(null)
-  const fullItemCache = useRef<Map<string, Item>>(new Map())
+  const [openItem, setOpenItem] = useState<LightItem | FullItem | null>(null)
+  const fullItemCache = useRef<Map<string, FullItem>>(new Map())
 
-  const openDrawer = useCallback((item: LightItem | Item) => {
+  const openDrawer = useCallback((item: LightItem | FullItem) => {
     const cached = fullItemCache.current.get(item.id)
     setOpenItem(cached ?? item)
     setOpen(true)
   }, [])
 
-  const handleFullItemFetched = useCallback((item: Item) => {
+  const handleFullItemFetched = useCallback((item: FullItem) => {
     fullItemCache.current.set(item.id, item)
   }, [])
 
-  const handleItemSaved = useCallback((updated: Item) => {
+  const handleItemSaved = useCallback((updated: FullItem) => {
     fullItemCache.current.set(updated.id, updated)
-    dispatch({ type: ItemsStoreActionType.UpdateItem, item: itemToLightItem(updated) })
+    dispatch({ type: ItemsStoreActionType.UpdateItem, item: updated })
   }, [dispatch])
 
   const handleItemDeleted = useCallback((id: string) => {
@@ -44,7 +44,7 @@ export function ItemDrawerProvider({ children, collections }: ItemDrawerProvider
     setOpen(false)
   }, [])
 
-  const contextValue = useMemo(() => ({ openDrawer, closeDrawer }), [openDrawer, closeDrawer])
+  const contextValue = useMemo(() => ({ openDrawer, closeDrawer, isPro }), [openDrawer, closeDrawer, isPro])
   const storeContextValue = useMemo(() => ({ state: storeState, dispatch }), [storeState, dispatch])
 
   return (

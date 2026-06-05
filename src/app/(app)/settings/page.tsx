@@ -1,8 +1,10 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { getCurrentUserId } from '@/lib/session'
 import { EditorPreferencesForm } from './_components/editor-preferences-form'
+import { BillingSettings } from './_components/billing-settings'
 
 export default async function SettingsPage() {
   const userId = await getCurrentUserId()
@@ -23,7 +25,12 @@ export default async function SettingsPage() {
         </div>
       </div>
 
-      <EditorPreferencesForm />
+      <div className="grid gap-6">
+        <Suspense fallback={<div className="h-48 rounded-xl border bg-muted/30 animate-pulse" />}>
+          <BillingSettings />
+        </Suspense>
+        <EditorPreferencesForm />
+      </div>
     </div>
   )
 }

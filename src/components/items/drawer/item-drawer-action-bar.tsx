@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Star, Pin, Pencil, Trash2 } from 'lucide-react'
+import { Star, Pin, Pencil, Trash2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { useRestrictedAction } from '@/hooks/use-restricted-action'
 import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,13 +11,16 @@ import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-
 import { deleteItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } from '@/actions/items'
 import { useRouter } from 'next/navigation'
 import { ItemsStoreActionType, useItemsStore } from '@/context/items-store-context'
+import { useItemDrawer } from '@/context/item-drawer-context'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
-import type { Item, LightItem } from '@/types/item'
+import { ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import { getDownloadUrl } from '@/lib/utils/url'
+import type { LightItem, FullItem } from '@/types/item'
 
 interface ItemDrawerActionBarProps {
-  item: LightItem | Item
+  item: LightItem | FullItem
   isLight: boolean
-  fullItem: Item | null
+  fullItem: FullItem | null
   onEdit: () => void
   onDeleted: () => void
 }
@@ -24,8 +28,16 @@ interface ItemDrawerActionBarProps {
 export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted }: ItemDrawerActionBarProps) {
   const router = useRouter()
   const { dispatch } = useItemsStore()
+  const { isPro, closeDrawer } = useItemDrawer()
+  const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const { showError: showEditError, flash: flashEditError } = useRestrictedAction({
+    title: 'Pro feature',
+    description: 'Editing files and images requires a Pro plan.',
+    onUpgrade: closeDrawer,
+  })
   const { value: isFavorite, toggle: handleFavoriteToggle } = useOptimisticToggle(
     item.isFavorite,
     (next) => toggleItemFavoriteAction(item.id, next),
@@ -50,9 +62,15 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     }
   )
 
-  const copyValue = fullItem
-    ? (fullItem.content ?? fullItem.url ?? fullItem.title)
-    : (item.url ?? item.title)
+  const hasFile = ITEM_TYPES_WITH_FILE.has(item.itemType.name)
+  let copyValue: string
+  if (hasFile) {
+    copyValue = getDownloadUrl(item.id, true)
+  } else if (fullItem) {
+    copyValue = fullItem.content ?? fullItem.url ?? fullItem.title
+  } else {
+    copyValue = item.url ?? item.title
+  }
 
   async function handleDelete() {
     setIsDeleting(true)
@@ -91,9 +109,16 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         <Pin className={`size-4 ${isPinned ? 'fill-primary' : ''}`} />
         Pin
       </Button>
-      <CopyButton value={copyValue} text="Copy" />
-      <Button variant="ghost" size="sm" onClick={onEdit} disabled={isLight}>
-        <Pencil className="size-4" />
+      <CopyButton value={copyValue} text="Copy" isRestricted={isRestricted} onUpgrade={closeDrawer} />
+      <Button variant="ghost" size="sm" onClick={(e) => {
+        if (isRestricted) {
+          e.preventDefault()
+          flashEditError()
+          return
+        }
+        onEdit()
+      }} disabled={isLight}>
+        {showEditError ? <XCircle className="size-4 text-destructive" /> : <Pencil className="size-4" />}
         Edit
       </Button>
       <Button

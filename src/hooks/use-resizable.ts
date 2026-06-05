@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, type RefObject, type MouseEvent as ReactMouseEvent } from 'react'
+import { useState, useCallback, useSyncExternalStore, type RefObject, type MouseEvent as ReactMouseEvent } from 'react'
 
 interface UseResizableOptions {
   defaultWidth: number
@@ -19,7 +19,7 @@ interface UseResizableOptions {
 interface UseResizableReturn {
   width: number
   dragging: boolean
-  startResize: () => void
+  startResize: (e: ReactMouseEvent | MouseEvent) => void
   onMouseMove: (e: ReactMouseEvent | MouseEvent) => void
   onMouseUp: () => void
 }
@@ -33,45 +33,56 @@ export function useResizable({
   maxBoundaryGapVw = 0.05,
 }: UseResizableOptions): UseResizableReturn {
   const [rawWidth, setRawWidth] = useState(defaultWidth)
-  const [dragging, setDragging] = useState(false)
-  const [boundaryLeft, setBoundaryLeft] = useState(0)
+  const [dragStart, setDragStart] = useState<{ x: number, initialWidth: number } | null>(null)
+  const dragging = dragStart !== null
 
-  // Initialize boundary left once on mount
-  useEffect(() => {
-    const el = maxBoundaryRef?.current ?? (maxBoundarySelector ? document.querySelector(maxBoundarySelector) : null)
-    if (el) {
-      setBoundaryLeft(el.getBoundingClientRect().left)
-    }
+  const getBoundaryEl = useCallback(() => {
+    // Justification: Need to find the <main> layout wrapper across React portal boundaries
+    return maxBoundaryRef?.current ?? (maxBoundarySelector ? document.querySelector(maxBoundarySelector) : null)
   }, [maxBoundaryRef, maxBoundarySelector])
 
-  // Keep boundaryLeft in sync — ResizeObserver fires on sidebar expand/collapse and window resize
-  useEffect(() => {
-    const el = maxBoundaryRef?.current ?? (maxBoundarySelector ? document.querySelector(maxBoundarySelector) : null)
-    if (!el) return
-    const ro = new ResizeObserver(() => setBoundaryLeft(el.getBoundingClientRect().left))
+  const subscribeBoundary = useCallback((callback: () => void) => {
+    const el = getBoundaryEl()
+    if (!el) return () => {}
+    const ro = new ResizeObserver(callback)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [maxBoundaryRef, maxBoundarySelector])
+  }, [getBoundaryEl])
 
-  // Derive clamped width during render — no DOM reads needed in any effect
-  const vw = typeof window !== 'undefined' ? window.innerWidth : defaultWidth
+  const getBoundarySnapshot = useCallback(() => {
+    const rect = getBoundaryEl()?.getBoundingClientRect()
+    return rect ? `${rect.left},${rect.right}` : ''
+  }, [getBoundaryEl])
+
+  const boundaryRectStr = useSyncExternalStore(
+    subscribeBoundary,
+    getBoundarySnapshot,
+    () => ''
+  )
+
+  const [boundaryLeft, boundaryRight] = boundaryRectStr 
+    ? boundaryRectStr.split(',').map(Number) 
+    : [0, defaultWidth]
+
+  // The boundary right edge (e.g. main content area) equates to our responsive viewport edge
+  const vw = boundaryRight || defaultWidth
   const min = Math.max(minPx, Math.round(vw * minVw))
   const max = vw - boundaryLeft - Math.round(vw * maxBoundaryGapVw)
   const width = Math.min(Math.max(rawWidth, min), max)
 
   const onMouseMove = useCallback((e: ReactMouseEvent | MouseEvent) => {
-    if (!dragging) return
-    const currentVw = window.innerWidth
-    const currentMin = Math.max(minPx, Math.round(currentVw * minVw))
-    const currentMax = currentVw - boundaryLeft - Math.round(currentVw * maxBoundaryGapVw)
-    setRawWidth(Math.min(Math.max(currentVw - e.clientX, currentMin), currentMax))
-  }, [dragging, minPx, minVw, boundaryLeft, maxBoundaryGapVw])
+    if (!dragStart) return
+    const deltaX = dragStart.x - e.clientX
+    setRawWidth(Math.min(Math.max(dragStart.initialWidth + deltaX, min), max))
+  }, [dragStart, min, max])
 
   const onMouseUp = useCallback(() => {
-    setDragging(false)
+    setDragStart(null)
   }, [])
 
-  const startResize = useCallback(() => setDragging(true), [])
+  const startResize = useCallback((e: ReactMouseEvent | MouseEvent) => {
+    setDragStart({ x: e.clientX, initialWidth: width })
+  }, [width])
 
   return { width, dragging, startResize, onMouseMove, onMouseUp }
 }

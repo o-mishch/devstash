@@ -1,14 +1,15 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
-import { buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { FadeIn } from './FadeIn';
-import { GradientCta } from './GradientCta';
+import { useState } from 'react'
+import Link from 'next/link'
+import { ArrowRight } from 'lucide-react'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { PRICING } from '@/lib/utils/constants'
+import { FadeIn } from './FadeIn'
+import { GradientCta } from './GradientCta'
 
-type BillingPeriod = 'monthly' | 'yearly';
+type BillingPeriod = 'monthly' | 'yearly'
 
 const FREE_FEATURES = [
   { included: true,  text: '50 items total' },
@@ -18,7 +19,7 @@ const FREE_FEATURES = [
   { included: false, text: 'File & Image uploads' },
   { included: false, text: 'AI features' },
   { included: false, text: 'Data export' },
-];
+]
 
 const PRO_FEATURES = [
   { included: true, text: 'Unlimited items' },
@@ -28,17 +29,11 @@ const PRO_FEATURES = [
   { included: true, text: 'File & Image uploads' },
   { included: true, text: 'AI auto-tagging & summaries' },
   { included: true, text: 'Data export (JSON/ZIP)' },
-];
-
-const PRICING = {
-  free: '0 PLN',
-  monthly: '30 PLN',
-  yearly: '270 PLN',
-};
+]
 
 interface FeatureRowProps {
-  included: boolean;
-  text: string;
+  included: boolean
+  text: string
 }
 
 function FeatureRow({ included, text }: FeatureRowProps) {
@@ -49,12 +44,12 @@ function FeatureRow({ included, text }: FeatureRowProps) {
       </span>
       <span className={included ? 'text-foreground' : 'text-foreground/60'}>{text}</span>
     </li>
-  );
+  )
 }
 
 export function PricingSection() {
-  const [billing, setBilling] = useState<BillingPeriod>('monthly');
-  const isYearly = billing === 'yearly';
+  const [billing, setBilling] = useState<BillingPeriod>('monthly')
+  const isYearly = billing === 'yearly'
 
   return (
     <section id="pricing" className="py-24">
@@ -100,7 +95,7 @@ export function PricingSection() {
         <div className="mx-auto grid max-w-3xl gap-6 md:grid-cols-2">
 
           <FadeIn index={0}>
-            <div 
+            <div
               role="button"
               tabIndex={0}
               className="cursor-pointer group block h-full rounded-xl border border-white/10 bg-card p-6 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-all duration-200 hover:-translate-y-1 hover:border-blue-500/30 hover:shadow-lg hover:shadow-blue-500/10"
@@ -115,7 +110,7 @@ export function PricingSection() {
               <div className="mb-6">
                 <div className="mb-2 text-sm font-medium text-muted-foreground">Free</div>
                 <div className="flex items-end gap-1">
-                  <span className="text-5xl font-bold">{PRICING.free}</span>
+                  <span className="text-5xl font-bold">{PRICING.free.amount}</span>
                   <span className="mb-1 text-muted-foreground">/month</span>
                 </div>
               </div>
@@ -124,8 +119,8 @@ export function PricingSection() {
                   <FeatureRow key={f.text} {...f} />
                 ))}
               </ul>
-              <Link 
-                href="/register" 
+              <Link
+                href="/register"
                 onClick={(e) => e.stopPropagation()}
                 className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-center group-hover:border-blue-500/40 group-hover:text-foreground transition-colors')}
               >
@@ -148,7 +143,7 @@ export function PricingSection() {
               </div>
 
               {/* Inner card — overflow-hidden only clips the top glow, not the badge */}
-              <div 
+              <div
                 role="button"
                 tabIndex={0}
                 className="cursor-pointer relative flex h-full flex-col overflow-hidden rounded-[11px] bg-card p-6 pt-7 outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 transition-colors hover:bg-card/90"
@@ -166,7 +161,7 @@ export function PricingSection() {
                 <div className="relative mb-6">
                   <div className="mb-2 text-sm font-medium text-muted-foreground">Pro</div>
                   <div className="flex items-end gap-1">
-                    <span className="text-5xl font-bold">{isYearly ? PRICING.yearly : PRICING.monthly}</span>
+                    <span className="text-5xl font-bold">{isYearly ? PRICING.yearly.amount : PRICING.monthly.amount}</span>
                     <span className="mb-1 text-muted-foreground">/{isYearly ? 'year' : 'month'}</span>
                   </div>
                 </div>
@@ -188,5 +183,5 @@ export function PricingSection() {
         </div>
       </div>
     </section>
-  );
+  )
 }

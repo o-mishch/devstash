@@ -9,7 +9,7 @@ interface CollectionsGridProps {
 export function CollectionsGrid({ collections }: CollectionsGridProps) {
   return (
     <CollectionDialogProvider>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 [&>*]:h-full">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {collections.map((col) => (
           <CollectionCard key={col.id} collection={col} />
         ))}

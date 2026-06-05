@@ -72,8 +72,20 @@ describe('createItemAction', () => {
     expect(result.status).toBe('validation_error')
   })
 
+  it('returns FORBIDDEN when free user tries to create a file item', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', isPro: false } })
+    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'file', fileUrl: 'user-1/doc.pdf', fileName: 'doc.pdf', fileSize: 1024 })
+    expect(result.status).toBe('forbidden')
+  })
+
+  it('returns FORBIDDEN when free user tries to create an image item', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', isPro: false } })
+    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'user-1/pic.png', fileName: 'pic.png', fileSize: 1024 })
+    expect(result.status).toBe('forbidden')
+  })
+
   it('returns FORBIDDEN when fileUrl does not belong to the authenticated user', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', isPro: true } })
     const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'other-user/abc.png' })
     expect(result.status).toBe('forbidden')
   })

@@ -5,11 +5,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
-import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { getBaseUrl } from '@/lib/utils/url'
 import { formatDate } from '@/lib/utils'
-import { ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 
 interface ItemCardProps {
@@ -18,13 +17,14 @@ interface ItemCardProps {
 
 export function ItemCard({ item }: ItemCardProps) {
   const { itemType } = item
-  const { openDrawer } = useItemDrawer()
-  const isFile = ITEM_TYPES_WITH_FILE.has(item.itemType.name)
-  const copyValue = isFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.url ?? item.title)
+  const { openDrawer, isPro } = useItemDrawer()
+  const hasFile = ITEM_TYPES_WITH_FILE.has(itemType.name)
+  const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(itemType.name)
+  const copyValue = hasFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.url ?? item.title)
 
   return (
     <Card
-      className="card-interactive group/card relative min-h-20 overflow-hidden border-l-2 border-l-[var(--item-color)]"
+      className="card-interactive group/card relative h-full min-h-20 overflow-hidden border-l-2 border-l-[var(--item-color)]"
       style={{ '--item-color': itemType.color } as CSSProperties}
     >
       <button
@@ -45,7 +45,6 @@ export function ItemCard({ item }: ItemCardProps) {
               ) : item.contentPreview ? (
                 <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.contentPreview}</p>
               ) : null}
-              <ItemTags tags={item.tags} max={3} className="mt-1.5" />
             </div>
             <span className="ml-2 shrink-0 text-xs text-muted-foreground">{formatDate(item.createdAt)}</span>
           </div>
@@ -56,6 +55,7 @@ export function ItemCard({ item }: ItemCardProps) {
         className="absolute bottom-1 right-1 size-6 opacity-0 transition-opacity group-hover/card:opacity-100"
         iconClassName="size-3"
         stopPropagation
+        isRestricted={isRestricted}
       />
     </Card>
   )

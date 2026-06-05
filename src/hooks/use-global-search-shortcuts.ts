@@ -24,6 +24,7 @@ export function useGlobalSearchShortcuts({
         inputRef.current?.blur()
       }
     }
+    // document.addEventListener is required for global key listening — React handlers attach to specific elements
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)
   }, [closeDrawer, setOpen, inputRef])
@@ -34,6 +35,7 @@ export function useGlobalSearchShortcuts({
         setOpen(false)
       }
     }
+    // document.addEventListener is required to detect clicks outside the container
     document.addEventListener('mousedown', click)
     return () => document.removeEventListener('mousedown', click)
   }, [setOpen, containerRef])

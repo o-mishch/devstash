@@ -121,7 +121,13 @@ Example v4 configuration:
 
 ## Code Quality
 
+- Code must comply with ESLint rules. Check and fix linting errors on every attempt of code editing.
 - No commented-out code unless specified
 - No unused imports or variables
 - Keep functions under 50 lines when possible
 - Avoid over-decomposition: do not extract a function, component, or file that is only used in one place and adds indirection without benefit. A single-use 3-line helper, a pass-through wrapper component, or a one-export file whose only caller is adjacent are signs of over-decomposition. Inline it instead.
+
+## Logging
+
+- On the back-end side, every important/key step should be logged (e.g., critical state changes, external API calls, webhook events).
+- Maintain balance: avoid logging excessive, useless information to prevent logs from becoming unreadable garbage. Use appropriate log levels (`info`, `warn`, `error`).

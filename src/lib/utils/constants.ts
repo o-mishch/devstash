@@ -20,6 +20,12 @@ export const ITEM_TYPES_WITH_IMAGE_GRID = new Set(['image'])
 export const ITEM_TYPES_WITH_FILE_LIST = new Set(['file'])
 export const PRO_ITEM_TYPE_NAMES = new Set(['file', 'image'])
 
+export const PRICING = {
+  free:    { amount: '0 PLN' },
+  monthly: { amount: '30 PLN',  label: '30 PLN / month' },
+  yearly:  { amount: '270 PLN', label: '270 PLN / year · save 25%' },
+} as const
+
 export const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
 
 // Colors and icon names match the DB seed — fixed for system types

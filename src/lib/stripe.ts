@@ -1,14 +1,19 @@
-import Stripe from "stripe";
+import Stripe from 'stripe'
 
 if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("STRIPE_SECRET_KEY is missing. Please set it in your .env file.");
+  throw new Error('STRIPE_SECRET_KEY is missing. Please set it in your .env file.')
+}
+
+/** Converts a Stripe Unix timestamp (seconds) to a JS Date (milliseconds). */
+export function fromStripeTs(ts: number): Date {
+  return new Date(ts * 1000)
 }
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2026-05-27.dahlia",
+  apiVersion: '2026-05-27.dahlia',
   appInfo: {
-    name: "DevStash Pro",
-    version: "0.1.0",
+    name: 'DevStash Pro',
+    version: '0.1.0',
   },
   typescript: true,
-});
+})

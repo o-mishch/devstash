@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate, cn } from '@/lib/utils'
-import type { Item } from '@/types/item'
+import type { FullItem, ItemType } from '@/types/item'
 
 interface DrawerContainerProps {
   header: ReactNode
@@ -32,7 +32,7 @@ function DrawerContainer({ header, actions, children, style }: DrawerContainerPr
 }
 
 interface DrawerLayoutProps {
-  itemType: Item['itemType']
+  itemType: ItemType
   onClose: () => void
   titleArea: ReactNode
   actionArea: ReactNode
@@ -90,7 +90,7 @@ export function DrawerSection({ label, icon, className, children }: DrawerSectio
 }
 
 interface DrawerCollectionsSectionProps {
-  item: Item
+  item: FullItem
   onEdit?: () => void
 }
 
@@ -99,7 +99,7 @@ export function DrawerCollectionsSection({ item, onEdit }: DrawerCollectionsSect
     <DrawerSection label="Collections" icon={<FolderOpen className="size-3" />}>
       {item.collections.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          {item.collections.map((col) => (
+          {item.collections.map((col: { id: string; name: string }) => (
             <Badge key={col.id} variant="outline">{col.name}</Badge>
           ))}
         </div>
@@ -114,7 +114,11 @@ export function DrawerCollectionsSection({ item, onEdit }: DrawerCollectionsSect
   )
 }
 
-export function DrawerDetailsSection({ item }: { item: Item }) {
+interface DrawerDetailsSectionProps {
+  item: FullItem
+}
+
+export function DrawerDetailsSection({ item }: DrawerDetailsSectionProps) {
   return (
     <DrawerSection label="Details" icon={<Calendar className="size-3" />}>
       <div className="space-y-1 text-sm">

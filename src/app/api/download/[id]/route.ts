@@ -1,20 +1,27 @@
 import type { Readable } from 'stream'
 import { lookup as mimeType } from 'mime-types'
+import sharp from 'sharp'
 import { ApiResponse, authenticatedRoute } from '@/lib/api'
 import { getItemById } from '@/lib/db/items'
 import { downloadFromFilebase } from '@/lib/filebase'
 import type { RouteContext } from '@/lib/api'
 import { createLogger } from '@/lib/logger'
+import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 
 const log = createLogger('download')
 
-export const GET = authenticatedRoute(async (_request, context: RouteContext, { userId }) => {
+export const GET = authenticatedRoute(async (_request, context: RouteContext, { userId, isPro }) => {
   const { id } = await context.params
   if (!id) return ApiResponse.BAD_REQUEST('Missing item ID.')
 
   const item = await getItemById(userId, id)
-  if (!item || !item.fileUrl) return ApiResponse.NOT_FOUND('File not found.')
-  if (item.fileUrl.startsWith('http')) return ApiResponse.NOT_FOUND('File not found.')
+  if (!item) return ApiResponse.NOT_FOUND('File not found.')
+
+  if (!isPro && item.itemType.name === 'file') {
+    return ApiResponse.FORBIDDEN('Upgrade to Pro to access this file.')
+  }
+
+  if (!item.fileUrl || item.fileUrl.startsWith('http')) return ApiResponse.NOT_FOUND('File not found.')
 
   const start = Date.now()
   const nodeStream = await downloadFromFilebase(item.fileUrl)
@@ -26,7 +33,12 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, { 
 
   log.info(`stream ready (${Date.now() - start}ms): ${item.fileUrl}`)
 
-  const readable = nodeStream as Readable
+  let readable = nodeStream as Readable
+
+  if (!isPro && item.itemType.name === 'image') {
+    log.info('Applying sharp blur to image stream')
+    readable = readable.pipe(sharp().blur(5))
+  }
 
   const webStream = new ReadableStream({
     start(controller) {
@@ -43,11 +55,15 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, { 
   const contentType = mimeType(fileName) || 'application/octet-stream'
   const disposition = contentType.startsWith('image/') ? 'inline' : 'attachment'
 
+  const cacheControl = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
+    ? 'private, no-cache, no-store, must-revalidate'
+    : 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
+
   return new Response(webStream, {
     headers: {
       'Content-Type': contentType,
       'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-      'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800',
+      'Cache-Control': cacheControl,
     },
   })
 })

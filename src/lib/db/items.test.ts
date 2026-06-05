@@ -182,7 +182,7 @@ describe('getRecentItemsPage', () => {
 
   it('uses preview data from fetchItemPreviews', async () => {
     mockItemFindMany.mockResolvedValue([makeLightRow('x')])
-    mockQueryRaw.mockResolvedValueOnce([{ id: 'x', descriptionPreview: 'preview desc' }])
+    mockQueryRaw.mockResolvedValueOnce([{ id: 'x', description_preview: 'preview desc' }])
     const result = await getRecentItemsPage('user-1')
     expect(result.items[0].descriptionPreview).toBe('preview desc')
   })

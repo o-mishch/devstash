@@ -37,11 +37,12 @@ The user provides a folder path as an argument. Scan **every file** in that fold
 3. **Concrete Suggestions**: Every finding must include the exact files/lines involved and a specific proposal with example code.
 4. **Respect Existing Abstractions**: Check `src/lib/`, `src/hooks/`, `src/components/shared/`, and `src/components/ui/` before suggesting extractions — the utility may already exist.
 5. **Minimum Threshold**: Only flag duplicates where the repeated block is 3+ lines. Single-line repetitions (like imports or simple returns) are not worth extracting.
-6. **Over-Decomposition**: Flag components, functions, or modules split so finely that they add indirection without benefit. Symptoms: a file with a single tiny export called from only one place; a wrapper component with no logic of its own; a helper that's 1–3 lines and used once. Suggest collapsing into the caller **only when doing so does not violate SRP or introduce mixed concerns**. Never suggest collapsing if the abstraction exists for testability, reusability across ≥2 sites, or clear boundary enforcement.
-7. **Package/Folder Boundaries**: Enforce strict code placement using the following priority order — violation of a higher-priority rule is always more serious than a lower one:
-   - **P1 — Front-end vs. back-end**: Server-only code (Prisma, `next/headers`, `server-only`, raw SQL) must never appear in client component files (`'use client'`). Client-only code (browser APIs, React state) must never appear in `src/lib/`, `src/actions/`, or API routes.
-   - **P2 — Next.js layer conventions**: DB queries belong in `src/lib/db/`; server actions in `src/actions/`; API route handlers in `src/app/api/`; shared types in `src/types/`; utilities in `src/lib/`; React context providers in `src/components/providers/`. Code that bypasses these layers (e.g. a server action that runs Prisma directly instead of calling `src/lib/db/`) is a boundary violation.
-   - **P3 — Responsibility/usage grouping**: Within a layer, files should be grouped by feature or domain (e.g. `src/actions/auth/`, `src/lib/db/items.ts`), not scattered as top-level files or mixed into unrelated feature folders.
+6. **KISS Over Flexibility**: Prefer the simplest solution that solves the actual problem. Do not suggest abstractions that add flexibility, extensibility, or future-proofing beyond what the existing code requires. Three concrete files are better than one generic factory. Never suggest an abstraction because it "could" be useful later.
+7. **Collapse by Default**: When a unit is used in only one place and adds no meaningful logic, **always** suggest collapsing it into the caller. The bar for keeping a separate file is high: it must serve ≥2 call sites, exist for testability, or enforce a real architectural boundary. A wrapper with no logic, a pass-through component, or a one-liner helper used once are always collapse candidates — do not hedge.
+8. **Strict Front-end / Back-end Boundary**: This is the highest-priority concern. Enforce hard separation across all layers:
+   - **P1 — Client/server code mixing**: Server-only code (Prisma, `next/headers`, `server-only`, raw SQL) must never appear in client component files (`'use client'`). Client-only code (browser APIs, React state, DOM access) must never appear in `src/lib/`, `src/actions/`, or API routes. Any violation is a critical bug risk, not a style issue.
+   - **P2 — Next.js layer conventions**: DB queries belong in `src/lib/db/`; server actions in `src/actions/`; API route handlers in `src/app/api/`; shared types in `src/types/`; utilities in `src/lib/`; context definitions in `src/context/`; provider components in `src/providers/`. Code that bypasses these layers (e.g. a server action calling Prisma directly instead of going through `src/lib/db/`) is a boundary violation.
+   - **P3 — Responsibility/usage grouping**: Within a layer, files should be grouped by feature or domain (e.g. `src/lib/db/items.ts`), not scattered as top-level files or mixed into unrelated feature folders.
 
 ## Folder-Specific Instructions
 
@@ -54,7 +55,7 @@ Look for:
 - **Repeated Zod validation patterns**: Similar schema definitions or parse-then-return-error flows
 - **Repeated try/catch error handling**: Same error response shape (`{ success, error }`) constructed repeatedly
 - **Repeated rate limiting setup**: Same rate limiter initialization pattern across actions
-- **Repeated Prisma query patterns**: Similar where clauses, select fields, or include patterns
+- **Repeated Prisma query patterns**: Similar where clauses, select fields, or include patterns (also flag as P2 if Prisma is called directly in actions instead of via `src/lib/db/`)
 - **Repeated Pro/feature gating checks**: Same isPro checks with similar error responses
 
 Suggest: Shared action wrappers, validation helpers, error response builders, authenticated action factories.
@@ -69,6 +70,7 @@ Look for:
 - **Repeated icon + label combos**: Same icon mapping or icon-with-text patterns
 - **Repeated className strings**: Long Tailwind class strings that appear in multiple places
 - **Repeated prop drilling**: Same props passed through multiple layers that could use context
+- **Server-side code in client components**: Any `'use client'` file importing Prisma, `next/headers`, or `server-only` is a P1 violation
 
 Suggest: Shared UI components, compound components, render-prop utilities, context providers, className utility constants.
 
@@ -80,8 +82,9 @@ Look for:
 - **Repeated constants**: Same magic numbers, strings, or config values in multiple files
 - **Overlapping utilities**: Functions in different files that do nearly the same thing
 - **Repeated API client patterns**: Similar fetch/response handling
+- **Client-only code in lib**: Browser APIs, React state, or DOM access in `src/lib/` files is a P1 violation
 
-Suggest: Consolidated utility modules, shared type files, constants files, base client classes.
+Suggest: Consolidated utility modules, shared type files, constants files.
 
 ### `src/app/api/` — API Routes
 
@@ -92,6 +95,7 @@ Look for:
 - **Repeated error handling**: Same try/catch with similar error responses
 - **Repeated CORS/header setup**: Same headers applied across routes
 - **Repeated rate limiting**: Same rate limit initialization
+- **Direct Prisma calls**: DB queries must go through `src/lib/db/` — calling Prisma directly in an API route is a P2 violation
 
 Suggest: API middleware helpers, response builders, authenticated route wrappers, shared validators.
 
@@ -190,7 +194,7 @@ For each over-decomposed unit:
 **Impact:** Removes [N] lines of indirection, one fewer file to navigate
 ```
 
-Only suggest collapsing when it does **not** violate SRP. If the abstraction exists for testability or serves ≥2 call sites, **skip it**.
+Default to recommending collapse for any single-use abstraction with no standalone logic. Only skip if the unit serves ≥2 call sites, is independently testable, or enforces a strict architectural boundary.
 
 ---
 
@@ -217,8 +221,8 @@ Report P1 violations first (most severe), then P2, then P3.
 ### Priority Ranking
 
 End with a single prioritized list across all three sections:
-1. **High Impact** — P1 boundary violations; large duplicate blocks (5+ lines, 3+ files)
-2. **Medium Impact** — P2 boundary violations; medium duplicates; clear over-decomposition
+1. **High Impact** — P1 boundary violations (client/server code mixing — always fix first); large duplicate blocks (5+ lines, 3+ files)
+2. **Medium Impact** — P2 boundary violations (layer convention breaches); medium duplicates; clear over-decomposition
 3. **Low Impact** — P3 grouping issues; minor duplicates; marginal collapses
 
 If a category has no findings, say so explicitly. Do not invent issues.

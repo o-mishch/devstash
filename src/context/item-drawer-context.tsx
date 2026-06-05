@@ -1,16 +1,18 @@
 'use client'
 
 import { createContext, useContext } from 'react'
-import type { Item, LightItem } from '@/types/item'
+import type { LightItem, FullItem } from '@/types/item'
 
 interface DrawerContextValue {
-  openDrawer: (item: LightItem | Item) => void
+  openDrawer: (item: LightItem | FullItem) => void
   closeDrawer: () => void
+  isPro: boolean
 }
 
 const DrawerContext = createContext<DrawerContextValue>({
   openDrawer: () => {},
   closeDrawer: () => {},
+  isPro: false,
 })
 
 export { DrawerContext }

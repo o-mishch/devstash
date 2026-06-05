@@ -33,6 +33,9 @@ import { apiFetch } from '@/lib/api-fetch'
 import { createLogger } from '@/lib/logger'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import { FREE_TIER_ITEM_LIMIT } from '@/lib/usage'
+import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
+
 import { itemFormBaseSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
@@ -56,11 +59,15 @@ interface CreateItemDialogProps {
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  canCreate?: boolean
+  isPro?: boolean
 }
 
-export function CreateItemDialog({ itemTypes, collections, initialType, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
+export function CreateItemDialog({ itemTypes, collections, initialType, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange, canCreate = true, isPro = false }: CreateItemDialogProps) {
   const router = useRouter()
-  const defaultItemType = initialType || itemTypes[0]?.name || ''
+  const { showUpgradePrompt } = useUpgradePrompt()
+  const validInitialType = (initialType && PRO_ITEM_TYPE_NAMES.has(initialType) && !isPro) ? itemTypes[0]?.name : initialType
+  const defaultItemType = validInitialType || itemTypes[0]?.name || ''
 
   const [itemType, setItemType] = useState(defaultItemType)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
@@ -101,6 +108,10 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
 
   function handleTypeChange(val: string | null) {
     if (!val) return
+    if (PRO_ITEM_TYPE_NAMES.has(val) && !isPro) {
+      showUpgradePrompt({ title: 'Pro feature', description: 'File and image uploads are only available on the Pro plan.', onUpgrade: () => handleOpenChange(false) })
+      return
+    }
     setItemType(val)
     setFileError(null)
     form.clearErrors()
@@ -140,7 +151,11 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
         handleOpenChange(false)
         router.refresh()
       } else {
-        toast.error(result.message || 'Failed to create item')
+        if (result.status === 'forbidden') {
+          toast.warning(result.message ?? 'Upgrade to Pro to continue.')
+        } else {
+          toast.error(result.message ?? 'Failed to create item')
+        }
       }
     })(e)
   }
@@ -154,7 +169,14 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
 
   return (
     <>
-      <span onClick={() => setInternalOpen(true)} className="contents">{triggerEl}</span>
+      <span onClick={(e) => {
+        if (!canCreate) {
+          e.preventDefault()
+          showUpgradePrompt({ title: 'Item limit reached', description: `You've used all ${FREE_TIER_ITEM_LIMIT} free items.` })
+          return
+        }
+        setInternalOpen(true)
+      }} className="contents">{triggerEl}</span>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="flex flex-col max-h-[90dvh] sm:max-w-[500px]">
           <form onSubmit={handleFormSubmit} className="flex flex-col flex-1 min-h-0">

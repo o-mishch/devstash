@@ -6,30 +6,6 @@ export interface ItemType {
   isSystem: boolean
 }
 
-interface ItemCollection {
-  id: string
-  name: string
-}
-
-export interface Item {
-  id: string
-  title: string
-  content: string | null
-  url: string | null
-  description: string | null
-  language: string | null
-  fileName: string | null
-  fileSize: number | null
-  fileUrl: string | null
-  isFavorite: boolean
-  isPinned: boolean
-  createdAt: Date
-  updatedAt: Date
-  itemType: ItemType
-  tags: string[]
-  collections: ItemCollection[]
-}
-
 export interface LightItem {
   id: string
   title: string
@@ -46,7 +22,8 @@ export interface LightItem {
   isPinned: boolean
 }
 
-export interface ItemRemainFields {
+/** Lazily-fetched fields loaded when the item drawer opens */
+export interface ItemDetails {
   id: string
   content: string | null
   description: string | null
@@ -54,6 +31,9 @@ export interface ItemRemainFields {
   updatedAt: Date
   collections: { id: string; name: string }[]
 }
+
+/** LightItem merged with lazily-fetched ItemDetails — the shape used inside the item drawer */
+export type FullItem = LightItem & ItemDetails
 
 export interface ItemsPage {
   items: LightItem[]
@@ -80,21 +60,6 @@ export interface SidebarItemType {
   count: number
 }
 
-/** Convert a full Item to LightItem shape for store mutations and pinned list rendering */
-export function itemToLightItem(item: Item): LightItem {
-  return {
-    id: item.id,
-    title: item.title,
-    createdAt: item.createdAt,
-    itemType: item.itemType,
-    descriptionPreview: item.description ? item.description.slice(0, 150) : null,
-    contentPreview: item.content,
-    url: item.url,
-    tags: item.tags,
-    fileUrl: item.fileUrl,
-    fileName: item.fileName,
-    fileSize: item.fileSize,
-    isFavorite: item.isFavorite,
-    isPinned: item.isPinned,
-  }
+export function isFullItem(item: LightItem | FullItem): item is FullItem {
+  return 'collections' in item
 }

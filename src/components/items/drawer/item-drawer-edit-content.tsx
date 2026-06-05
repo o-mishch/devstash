@@ -17,7 +17,7 @@ import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
-import type { Item } from '@/types/item'
+import type { FullItem } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 
 const createDrawerFormSchema = (itemType: string) => itemFormBaseSchema.superRefine((data, ctx) => {
@@ -33,10 +33,10 @@ const createDrawerFormSchema = (itemType: string) => itemFormBaseSchema.superRef
 type DrawerFormValues = z.infer<ReturnType<typeof createDrawerFormSchema>>
 
 interface ItemDrawerEditContentProps {
-  item: Item
+  item: FullItem
   collections: CollectionWithTypes[]
   onClose: () => void
-  onSave: (updated: Item) => void
+  onSave: (updated: FullItem) => void
   onCancel: () => void
 }
 
@@ -85,7 +85,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
 
     toast.success('Item saved')
     router.refresh()
-    onSave(result.data)
+    onSave(result.data as FullItem)
   })
 
   return (

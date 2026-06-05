@@ -42,24 +42,45 @@ export function itemsStoreReducer(state: ItemsStoreState, action: ItemsStoreActi
       return { pageKey: action.pageKey, items: action.items, cursor: action.cursor, hasMore: action.hasMore, loading: false }
     case ItemsStoreActionType.AppendPage:
       return { ...state, items: [...state.items, ...action.items], cursor: action.cursor, hasMore: action.hasMore, loading: false }
-    case ItemsStoreActionType.UpdateItem:
-      return { ...state, items: state.items.map((i) => (i.id === action.item.id ? action.item : i)) }
+    case ItemsStoreActionType.UpdateItem: {
+      const oldItem = state.items.find(i => i.id === action.item.id)
+      let changedSort = false
+      if (oldItem && oldItem.isPinned !== action.item.isPinned) changedSort = true
+
+      let items = state.items.map((i) => (i.id === action.item.id ? action.item : i))
+
+      if (changedSort && state.pageKey !== 'favorites:items') {
+        items = sortGridItems(items)
+      }
+
+      return { ...state, items }
+    }
     case ItemsStoreActionType.RemoveItem:
       return { ...state, items: state.items.filter((i) => i.id !== action.id) }
     case ItemsStoreActionType.SetLoading:
       return { ...state, loading: action.loading }
-    case ItemsStoreActionType.UpdateItemFields:
-      return {
-        ...state,
-        items: state.items
-          .map((i) => (i.id === action.id ? { ...i, ...action.fields } : i))
-          .filter((i) => {
-            if (state.pageKey === 'favorites:items' && action.fields.isFavorite === false && i.id === action.id) {
-              return false
-            }
-            return true
-          })
+    case ItemsStoreActionType.UpdateItemFields: {
+      let changedSort = false
+      let items = state.items
+        .map((i) => {
+          if (i.id === action.id) {
+            if (action.fields.isPinned !== undefined && i.isPinned !== action.fields.isPinned) changedSort = true
+            return { ...i, ...action.fields }
+          }
+          return i
+        })
+        .filter((i) => {
+          if (state.pageKey === 'favorites:items' && action.fields.isFavorite === false && i.id === action.id) {
+            return false
+          }
+          return true
+        })
+
+      if (changedSort && state.pageKey !== 'favorites:items') {
+        items = sortGridItems(items)
       }
+      return { ...state, items }
+    }
   }
 }
 
@@ -84,4 +105,17 @@ export function useVirtualGridState(pageKey: string) {
     hasMore: state.pageKey === pageKey ? state.hasMore : false,
     loading: state.pageKey === pageKey ? state.loading : false,
   }
+}
+
+function sortGridItems(items: LightItem[]): LightItem[] {
+  return [...items].sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1
+    if (!a.isPinned && b.isPinned) return 1
+    const timeA = new Date(a.createdAt).getTime()
+    const timeB = new Date(b.createdAt).getTime()
+    if (timeA !== timeB) return timeB - timeA
+    if (a.id > b.id) return -1
+    if (a.id < b.id) return 1
+    return 0
+  })
 }

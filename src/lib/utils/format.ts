@@ -4,8 +4,12 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export function formatDate(date: Date | string): string {
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+export function formatDate(date: Date | string, includeYear = false): string {
+  return new Date(date).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(includeYear && { year: 'numeric' }),
+  })
 }
 
 export function parseTagString(raw: string | undefined): string[] {
@@ -13,6 +17,14 @@ export function parseTagString(raw: string | undefined): string[] {
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean)
+}
+
+export function getInitialTypeFromPathname(
+  pathname: string,
+  itemTypes: { name: string }[]
+): string | undefined {
+  const match = pathname.match(/^\/items\/(\w+)$/)
+  return itemTypes.find((t) => `${t.name}s` === match?.[1])?.name
 }
 
 export function getTypeLabel(name: string): string {
