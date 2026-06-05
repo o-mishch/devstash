@@ -22,7 +22,7 @@ export interface SearchResult {
 }
 
 export async function globalSearchAction(raw: { query: string }): Promise<ApiBody<SearchResult | null>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId }) => {
     const result = parseOrFail(searchSchema, raw)
     if (!result.success) return result.response
 

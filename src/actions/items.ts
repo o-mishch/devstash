@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth, withValidatedAuth } from '@/lib/session'
 import { createToggleAction } from '@/lib/action-utils'
+import { canCreateItem } from '@/lib/usage'
 import {
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
@@ -59,7 +60,16 @@ const createItemSchema = itemMutationSchema.extend({
 type CreateItemInput = z.infer<typeof createItemSchema>
 
 export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Item | null>> {
-  return withValidatedAuth(createItemSchema, raw, async (userId, data: CreateItemInput) => {
+  return withValidatedAuth(createItemSchema, raw, async ({ userId, isPro }, data: CreateItemInput) => {
+    if ((data.itemTypeName === 'file' || data.itemTypeName === 'image') && !isPro) {
+      return ApiResponse.FORBIDDEN('Upgrade to Pro to upload files and images.')
+    }
+
+    const canCreate = await canCreateItem(userId, isPro)
+    if (!canCreate) {
+      return ApiResponse.FORBIDDEN('You have reached your free tier limit of 50 items. Please upgrade to Pro.')
+    }
+
     if (data.fileUrl && !data.fileUrl.startsWith(`${userId}/`)) {
       return ApiResponse.FORBIDDEN('Invalid file reference.')
     }
@@ -77,7 +87,7 @@ export async function updateItemAction(
   itemId: string,
   raw: UpdateItemInput
 ): Promise<ApiBody<Item | null>> {
-  return withValidatedAuth(itemMutationSchema, raw, async (userId, data: UpdateItemInput) => {
+  return withValidatedAuth(itemMutationSchema, raw, async ({ userId }, data: UpdateItemInput) => {
     const updated = await dbUpdateItem(userId, itemId, data)
     if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
 
@@ -88,7 +98,7 @@ export async function updateItemAction(
 }
 
 export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId }) => {
     const existing = await dbGetItemById(userId, itemId)
     if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
 
@@ -104,7 +114,7 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
 }
 
 export async function fetchMoreItemsAction(query: FetchItemsQuery, cursor?: string): Promise<ApiBody<ItemsPage | null>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId }) => {
     let page: ItemsPage
     switch (query.type) {
       case 'recent':

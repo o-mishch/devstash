@@ -6,7 +6,7 @@ import { CollectionsSort } from './_components/collections-sort'
 
 export default async function CollectionsPage({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
   const userId = await getCurrentUserId()
-  let collections = userId ? await getAllCollections(userId) : []
+  const collections = userId ? await getAllCollections(userId) : []
   
   const { sort = 'recent' } = await searchParams
 

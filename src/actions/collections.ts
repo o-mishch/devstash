@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth, withValidatedAuth } from '@/lib/session'
 import { createToggleAction } from '@/lib/action-utils'
+import { canCreateCollection } from '@/lib/usage'
 import { collectionFormSchema } from '@/lib/utils/validators'
 import {
   createCollection as dbCreateCollection,
@@ -20,7 +21,12 @@ import type { CreateCollectionInput, UpdateCollectionInput } from '@/lib/db/coll
 const log = createLogger('collections')
 
 export async function createCollectionAction(raw: CreateCollectionInput): Promise<ApiBody<CollectionWithTypes | null>> {
-  return withValidatedAuth(collectionFormSchema, raw, async (userId, data: CreateCollectionInput) => {
+  return withValidatedAuth(collectionFormSchema, raw, async ({ userId, isPro }, data: CreateCollectionInput) => {
+    const canCreate = await canCreateCollection(userId, isPro)
+    if (!canCreate) {
+      return ApiResponse.FORBIDDEN('You have reached your free tier limit of 3 collections. Please upgrade to Pro.')
+    }
+
     const created = await dbCreateCollection(userId, data)
     invalidateCollectionsCache(userId)
     log.info(`created "${data.name}" user:${userId}`)
@@ -33,7 +39,7 @@ const updateCollectionSchema = collectionFormSchema.partial().extend({
 })
 
 export async function updateCollectionAction(collectionId: string, raw: UpdateCollectionInput): Promise<ApiBody<CollectionWithTypes | null>> {
-  return withValidatedAuth(updateCollectionSchema, raw, async (userId, data: UpdateCollectionInput) => {
+  return withValidatedAuth(updateCollectionSchema, raw, async ({ userId }, data: UpdateCollectionInput) => {
     const updated = await dbUpdateCollection(userId, collectionId, data)
     invalidateCollectionsCache(userId)
     log.info(`updated collection:${collectionId} user:${userId}`)
@@ -42,7 +48,7 @@ export async function updateCollectionAction(collectionId: string, raw: UpdateCo
 }
 
 export async function deleteCollectionAction(collectionId: string): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId }) => {
     await dbDeleteCollection(userId, collectionId)
     invalidateCollectionsCache(userId)
     log.info(`deleted collection:${collectionId} user:${userId}`)

@@ -28,14 +28,19 @@ export async function requireUserId(): Promise<string> {
   return session.user.id
 }
 
+export interface SessionContext {
+  userId: string
+  isPro: boolean
+}
+
 export async function withAuth<T>(
-  fn: (userId: string) => Promise<ApiBody<T>>,
+  fn: (ctx: SessionContext) => Promise<ApiBody<T>>,
   context?: string
 ): Promise<ApiBody<T>> {
   const session = await getSession()
   if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.') as ApiBody<T>
   try {
-    return await fn(session.user.id)
+    return await fn({ userId: session.user.id, isPro: session.user.isPro ?? false })
   } catch (error) {
     log.error(`${context ?? 'action'} failed`, error)
     return ApiResponse.INTERNAL_ERROR() as ApiBody<T>
@@ -44,25 +49,25 @@ export async function withAuth<T>(
 
 export async function withAuthAndRateLimit<T>(
   rateLimitKey: RateLimitKey,
-  fn: (userId: string) => Promise<ApiBody<T>>,
+  fn: (ctx: SessionContext) => Promise<ApiBody<T>>,
   context?: string
 ): Promise<ApiBody<T>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId, isPro }) => {
     const rl = await rateLimitAction(rateLimitKey, userId)
     if (rl) return rl as ApiBody<T>
-    return await fn(userId)
+    return await fn({ userId, isPro })
   }, context)
 }
 
 export async function withValidatedAuth<T, Output>(
   schema: z.ZodType<Output>,
   raw: unknown,
-  fn: (userId: string, data: Output) => Promise<ApiBody<T>>,
+  fn: (ctx: SessionContext, data: Output) => Promise<ApiBody<T>>,
   context?: string
 ): Promise<ApiBody<T>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId, isPro }) => {
     const result = parseOrFail<Output>(schema, raw)
     if (!result.success) return result.response as ApiBody<T>
-    return await fn(userId, result.data)
+    return await fn({ userId, isPro }, result.data)
   }, context)
 }

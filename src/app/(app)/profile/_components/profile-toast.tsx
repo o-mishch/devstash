@@ -25,6 +25,6 @@ export function ProfileToast({ code }: ProfileToastProps) {
     if (!msg) return
     msg.fn(msg.text)
     router.replace('/profile')
-  }, [])
+  }, [code, router])
   return null
 }

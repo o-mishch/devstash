@@ -4,7 +4,7 @@ import type { Prisma } from '@/generated/prisma/client'
 
 
 export async function getUserSessionInfo(id: string) {
-  return prisma.user.findUnique({ where: { id }, select: { id: true, password: true } })
+  return prisma.user.findUnique({ where: { id }, select: { id: true, password: true, isPro: true } })
 }
 
 export async function createUser(data: Prisma.UserCreateInput | Prisma.UserUncheckedCreateInput) {

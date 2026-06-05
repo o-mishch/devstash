@@ -11,7 +11,7 @@ export function createToggleAction(
   entityName: string
 ) {
   return async function toggleAction(entityId: string, flag: boolean): Promise<ApiBody<null>> {
-    return withAuth(async (userId) => {
+    return withAuth(async ({ userId }) => {
       const ok = await dbAction(userId, entityId, flag)
       if (!ok) return ApiResponse.NOT_FOUND(`${entityName} not found.`)
       

@@ -130,6 +130,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             log.warn(`user not found by token.id, invalidating session: ${token.id}`)
             return null
           }
+          token.isPro = dbUser.isPro ?? false
           // Last 8 chars of the bcrypt hash — changes on every password rotation
           const pwFingerprint = dbUser.password?.slice(-8) ?? ''
           if (user) {
@@ -166,6 +167,13 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       }
 
       return token
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.id as string
+        session.user.isPro = token.isPro as boolean
+      }
+      return session
     },
     async signIn({ user, account }: SignInParams): Promise<boolean | string> {
       // Only intercept supported OAuth sign-ins

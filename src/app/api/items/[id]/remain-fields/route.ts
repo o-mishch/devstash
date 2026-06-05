@@ -2,7 +2,7 @@ import { ApiResponse, authenticatedRoute } from '@/lib/api'
 import { getItemRemainFields } from '@/lib/db/items'
 import type { RouteContext } from '@/lib/api'
 
-export const GET = authenticatedRoute(async (_request, context: RouteContext, userId) => {
+export const GET = authenticatedRoute(async (_request, context: RouteContext, { userId }) => {
   const { id } = await context.params
   if (!id) return ApiResponse.BAD_REQUEST('Missing item ID.')
 

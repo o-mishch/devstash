@@ -18,7 +18,7 @@ export async function updateNameAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId }) => {
     const result = parseOrFail(NameSchema, formData.get('name'))
     if (!result.success) return result.response
     const name = result.data
@@ -34,7 +34,7 @@ export async function changePasswordAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
-  return withAuthAndRateLimit('changePassword', async (userId) => {
+  return withAuthAndRateLimit('changePassword', async ({ userId }) => {
     const currentPassword = (formData.get('currentPassword') as string) ?? ''
     const newPassword = (formData.get('newPassword') as string) ?? ''
     const confirmPassword = (formData.get('confirmPassword') as string) ?? ''
@@ -61,7 +61,7 @@ export async function setInitialPasswordAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
-  return withAuthAndRateLimit('changePassword', async (userId) => {
+  return withAuthAndRateLimit('changePassword', async ({ userId }) => {
     const result = parseOrFail(EmailSchema, formData.get('email'))
     if (!result.success) return result.response
     const selectedEmail = result.data
@@ -97,7 +97,7 @@ export async function changeCredentialEmailAction(
   _prevState: ApiBody<null> | null,
   formData: FormData
 ): Promise<ApiBody<null>> {
-  return withAuthAndRateLimit('changeCredentials', async (userId) => {
+  return withAuthAndRateLimit('changeCredentials', async ({ userId }) => {
     const result = parseOrFail(EmailSchema, formData.get('email'))
     if (!result.success) return result.response
     const newEmail = result.data
@@ -123,7 +123,7 @@ export async function changeCredentialEmailAction(
 }
 
 export async function removeCredentialsAction(): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId }) => {
     const user = await getUserAuthMethods(userId)
     if (!user) return ApiResponse.UNAUTHORIZED('Not authenticated.')
     if (!user.password) return ApiResponse.BAD_REQUEST('No password set.')
@@ -137,7 +137,7 @@ export async function removeCredentialsAction(): Promise<ApiBody<null>> {
 }
 
 export async function unlinkProviderAction(accountId: string): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId }) => {
     const user = await getUserAuthMethods(userId)
 
     if (!user) return ApiResponse.UNAUTHORIZED('Not authenticated.')
@@ -160,7 +160,7 @@ export async function unlinkProviderAction(accountId: string): Promise<ApiBody<n
 
 // Allows switching the primary email to any email owned via a linked OAuth account.
 export async function updateMainEmailAction(newEmailRaw: string): Promise<ApiBody<null>> {
-  return withAuth(async (userId) => {
+  return withAuth(async ({ userId }) => {
     const result = parseOrFail(EmailSchema, newEmailRaw)
     if (!result.success) return result.response
     const newEmail = result.data

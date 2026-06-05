@@ -4,9 +4,13 @@ vi.mock('@/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn(), toggleItemFavorite: vi.fn(), toggleItemPinned: vi.fn() }))
 vi.mock('@/lib/cache', () => ({ invalidateItemsCache: vi.fn() }))
 vi.mock('@/lib/filebase', () => ({ deleteFromFilebase: vi.fn() }))
+vi.mock('@/lib/usage', () => ({ canCreateItem: vi.fn() }))
 
 import { deleteFromFilebase } from '@/lib/filebase'
+import { canCreateItem } from '@/lib/usage'
+
 const mockDeleteFromFilebase = deleteFromFilebase as ReturnType<typeof vi.fn>
+const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
 
 import { auth } from '@/auth'
 import { updateItem, deleteItem, getItemById, createItem, toggleItemFavorite, toggleItemPinned } from '@/lib/db/items'
@@ -44,7 +48,10 @@ const validCreateInput = {
   fileSize: null,
 }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockCanCreateItem.mockResolvedValue(true)
+})
 
 describe('createItemAction', () => {
   it('returns UNAUTHORIZED when not signed in', async () => {
@@ -85,8 +92,8 @@ describe('createItemAction', () => {
     expect(result.data).toEqual(mockItem)
   })
 
-  it('returns CREATED when fileUrl belongs to the authenticated user', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+  it('returns CREATED when fileUrl belongs to the authenticated user (requires Pro)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', isPro: true } })
     mockCreateItem.mockResolvedValue(mockItem)
     const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'user-1/abc.png', fileName: 'abc.png', fileSize: 1024 })
     expect(result.status).toBe('created')

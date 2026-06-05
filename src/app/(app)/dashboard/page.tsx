@@ -37,7 +37,7 @@ export default async function DashboardPage() {
           </div>
           <h2 className="text-lg font-semibold">Welcome to DevStash!</h2>
           <p className="text-sm text-muted-foreground mt-1 max-w-sm mb-6">
-            Your dashboard is looking a bit empty. Let's get started by creating your first item.
+            Your dashboard is looking a bit empty. Let&apos;s get started by creating your first item.
           </p>
           <Link href="/items/snippets">
             <Button>Create your first item &rarr;</Button>

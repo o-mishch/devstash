@@ -8,7 +8,7 @@ import { createLogger } from '@/lib/logger'
 
 const log = createLogger('download')
 
-export const GET = authenticatedRoute(async (_request, context: RouteContext, userId) => {
+export const GET = authenticatedRoute(async (_request, context: RouteContext, { userId }) => {
   const { id } = await context.params
   if (!id) return ApiResponse.BAD_REQUEST('Missing item ID.')
 

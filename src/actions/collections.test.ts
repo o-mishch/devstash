@@ -6,7 +6,9 @@ vi.mock('@/lib/db/collections', () => ({
   createCollection: vi.fn(),
   updateCollection: vi.fn(),
   deleteCollection: vi.fn(),
+  toggleCollectionFavorite: vi.fn(),
 }))
+vi.mock('@/lib/usage', () => ({ canCreateCollection: vi.fn() }))
 import { auth } from '@/auth'
 import { createCollection, updateCollection, deleteCollection } from '@/lib/db/collections'
 import { createCollectionAction, updateCollectionAction, deleteCollectionAction } from './collections'
@@ -17,9 +19,15 @@ const mockCreateCollection = createCollection as ReturnType<typeof vi.fn>
 const mockUpdateCollection = updateCollection as ReturnType<typeof vi.fn>
 const mockDeleteCollection = deleteCollection as ReturnType<typeof vi.fn>
 
+import { canCreateCollection } from '@/lib/usage'
+const mockCanCreateCollection = canCreateCollection as ReturnType<typeof vi.fn>
+
 const mockCollection = { id: 'col-1', name: 'My Collection', description: null }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockCanCreateCollection.mockResolvedValue(true)
+})
 
 describe('createCollectionAction', () => {
   it('returns UNAUTHORIZED when not signed in', async () => {

@@ -10,7 +10,9 @@ interface UploadResult {
   fileSize: number
 }
 
-export const POST = authenticatedRoute(async (request, _context, userId) => {
+export const POST = authenticatedRoute(async (request, _context, { userId, isPro }) => {
+  if (!isPro) return ApiResponse.FORBIDDEN('Upgrade to Pro to upload files and images.')
+
   const formData = await request.formData()
   const file = formData.get('file')
   const itemType = formData.get('itemType')
@@ -47,7 +49,7 @@ export const POST = authenticatedRoute(async (request, _context, userId) => {
   })
 })
 
-export const DELETE = authenticatedRoute(async (request, _context, userId) => {
+export const DELETE = authenticatedRoute(async (request, _context, { userId }) => {
   const { searchParams } = new URL(request.url)
   const key = searchParams.get('key')
 

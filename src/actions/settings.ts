@@ -16,7 +16,7 @@ export async function updateEditorPreferencesAction(
   preferences: EditorPreferences
 ): Promise<ApiBody<null>> {
   return withRateLimit('updateSettings', async () => {
-    return withAuth(async (userId) => {
+    return withAuth(async ({ userId }) => {
       const parsed = parseOrFail(editorPreferencesSchema, preferences)
       if (!parsed.success) return parsed.response
 

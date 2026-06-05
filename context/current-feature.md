@@ -6,8 +6,8 @@ Not Started
 
 ## Goals
 
-<!-- Add goals here -->
+<!-- Add bullet points of what success looks like -->
 
-## Notes & Implementation Strategy
+## Notes
 
-<!-- Add notes here -->
+<!-- Add additional context, constraints, or details from spec -->

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUserId } from '@/lib/session'
+import { getSession } from '@/lib/session'
 import { createLogger } from '@/lib/logger'
 import { ApiResponse } from '@/lib/api-response'
 import type { ApiStatus, ApiBody } from '@/types/api'
@@ -44,17 +44,19 @@ export interface RouteContext {
   params: Promise<Record<string, string>>
 }
 
+import type { SessionContext } from '@/lib/session'
+
 type AuthenticatedHandler = (
   request: NextRequest,
   context: RouteContext,
-  userId: string
+  authCtx: SessionContext
 ) => Promise<HandlerResult>
 
 export function authenticatedRoute(handler: AuthenticatedHandler) {
   return apiRoute(async (request, context) => {
-    const userId = await getCurrentUserId()
-    if (!userId) return ApiResponse.UNAUTHORIZED('Not authenticated.')
-    return handler(request, context, userId)
+    const session = await getSession()
+    if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+    return handler(request, context, { userId: session.user.id, isPro: session.user.isPro ?? false })
   })
 }
 

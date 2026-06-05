@@ -14,7 +14,7 @@ if (typeof window !== 'undefined') {
       if (typeof args[0] === 'string' && args[0].includes('Canceled')) return true
       if (args[0] instanceof Error && args[0].message.includes('Canceled')) return true
       if (typeof args[0] === 'object') {
-        const obj = args[0] as any
+        const obj = args[0] as Record<string, unknown>
         if (obj.name === 'Canceled' || (typeof obj.message === 'string' && obj.message.includes('Canceled'))) {
           return true
         }

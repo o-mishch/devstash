@@ -43,6 +43,7 @@ export const CacheTags = {
 // React.cache is scoped per-request. We use it to create a per-request Map
 // which allows us to deduplicate unstable_cache calls across different components
 // in the same render pass, using the string config.tag as the key.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getRequestCache = cache(() => new Map<string, Promise<any>>())
 
 export async function withDataCache<T>(

@@ -89,8 +89,8 @@ export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Prom
       }),
       prisma.$queryRaw<ItemPreview[]>`
         SELECT id, LEFT(description, 150) AS "descriptionPreview"
-        FROM items WHERE user_id = ${userId} AND is_pinned = true
-        ORDER BY updated_at DESC
+        FROM items WHERE "userId" = ${userId} AND "isPinned" = true
+        ORDER BY "updatedAt" DESC
         LIMIT ${safeLimit}
       `,
     ])
