@@ -13,6 +13,9 @@ interface AuthorizedParams {
 }
 
 export const authConfig: NextAuthConfig = {
+  session: {
+    maxAge: 15 * 60, // 15 minutes
+  },
   pages: {
     signIn: '/sign-in',
   },
