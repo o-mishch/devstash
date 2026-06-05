@@ -7,16 +7,25 @@ import { DashboardRecentList } from './_components/dashboard-recent-list'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
-import Link from 'next/link'
+import { getSession } from '@/lib/session'
+import { fetchSidebarData } from '@/lib/db/sidebar'
+import { canCreateItem } from '@/lib/usage'
+import { CreateItemDialog } from '@/components/items/item-create-dialog'
 
 export default async function DashboardPage() {
-  const userId = await getCurrentUserId()
+  const session = await getSession()
+  const userId = session?.user?.id
+  const user = session?.user
+    ? { id: session.user.id, name: session.user.name ?? null, email: session.user.email ?? null, image: session.user.image ?? null, isPro: session.user.isPro ?? false }
+    : null
 
-  if (!userId) return null
+  if (!userId || !user) return null
 
-  const [firstPage, itemStats] = await Promise.all([
+  const [firstPage, itemStats, sidebarData, userCanCreateItem] = await Promise.all([
     getRecentItemsPage(userId),
     getItemStats(userId),
+    fetchSidebarData(user),
+    canCreateItem(userId, user.isPro),
   ])
 
   const isEmpty = itemStats.totalItems === 0
@@ -39,9 +48,13 @@ export default async function DashboardPage() {
           <p className="text-sm text-muted-foreground mt-1 max-w-sm mb-6">
             Your dashboard is looking a bit empty. Let&apos;s get started by creating your first item.
           </p>
-          <Link href="/items/snippets">
-            <Button>Create your first item &rarr;</Button>
-          </Link>
+          <CreateItemDialog
+            itemTypes={sidebarData.itemTypes}
+            collections={sidebarData.collections}
+            canCreate={userCanCreateItem}
+            isPro={user.isPro}
+            trigger={<Button>Create your first item &rarr;</Button>}
+          />
         </div>
       ) : (
         <>

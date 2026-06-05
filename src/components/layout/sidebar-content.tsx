@@ -33,6 +33,7 @@ import { UserAvatar } from '@/components/shared/user-avatar'
 import { signOutAction } from '@/actions/auth/login'
 import { PRO_ITEM_TYPE_NAMES, THEME_STORAGE_KEY } from '@/lib/utils/constants'
 import type { SidebarData } from '@/types/sidebar'
+import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
 
 function getTypeHref(name: string) {
   return `/items/${name}s`
@@ -52,6 +53,7 @@ interface CollapsedSidebarProps {
 
 function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
   const pathname = usePathname()
+  const { showUpgradePrompt } = useUpgradePrompt()
   const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
 
   return (
@@ -70,6 +72,15 @@ function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
                 <TooltipTrigger render={<span />}>
                   <Link
                     href={getTypeHref(t.name)}
+                    onClick={(e) => {
+                      if (!sidebarData.user?.isPro && PRO_ITEM_TYPE_NAMES.has(t.name) && t.count === 0) {
+                        e.preventDefault()
+                        showUpgradePrompt({
+                          title: 'Pro Feature',
+                          description: `Creating ${getTypeLabel(t.name).toLowerCase()} is a Pro feature.`
+                        })
+                      }
+                    }}
                     className={cn(
                       'flex size-11 items-center justify-center rounded-lg transition-colors',
                       pathname === getTypeHref(t.name)
@@ -139,6 +150,7 @@ interface ExpandedSidebarProps {
 
 function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProps) {
   const pathname = usePathname()
+  const { showUpgradePrompt } = useUpgradePrompt()
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
 
@@ -193,7 +205,17 @@ function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProp
               <Link
                 key={t.id}
                 href={getTypeHref(t.name)}
-                onClick={onClose}
+                onClick={(e) => {
+                  if (!sidebarData.user?.isPro && PRO_ITEM_TYPE_NAMES.has(t.name) && t.count === 0) {
+                    e.preventDefault()
+                    showUpgradePrompt({
+                      title: 'Pro Feature',
+                      description: `Creating ${getTypeLabel(t.name).toLowerCase()} is a Pro feature.`
+                    })
+                    return
+                  }
+                  onClose?.()
+                }}
                 className={sidebarLinkClass(pathname === getTypeHref(t.name))}
               >
                 <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
@@ -339,14 +361,18 @@ function UserDropdownMenuContent({
   const router = useRouter()
   return (
     <DropdownMenuContent side={side} align={align} className="w-52">
-      <DropdownMenuItem onClick={() => { router.push('/profile'); onClose?.() }}>
-        <User className="size-4" />
-        Profile
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => { router.push('/settings'); onClose?.() }}>
-        <Settings className="size-4" />
-        Settings
-      </DropdownMenuItem>
+      <DropdownMenuItem render={
+        <Link href="/profile" onClick={() => onClose?.()}>
+          <User className="size-4" />
+          Profile
+        </Link>
+      } />
+      <DropdownMenuItem render={
+        <Link href="/settings" onClick={() => onClose?.()}>
+          <Settings className="size-4" />
+          Settings
+        </Link>
+      } />
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => {
         localStorage.removeItem(THEME_STORAGE_KEY)

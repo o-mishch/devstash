@@ -19,11 +19,10 @@ import { canCreateItem, FREE_TIER_COLLECTION_LIMIT } from '@/lib/usage'
 
 const getSidebarData = cache(async () => {
   const session = await getSession()
-  const userId = session?.user?.id ?? null
   const user = session?.user
-    ? { name: session.user.name ?? null, email: session.user.email ?? null, image: session.user.image ?? null }
+    ? { id: session.user.id, name: session.user.name ?? null, email: session.user.email ?? null, image: session.user.image ?? null, isPro: session.user.isPro ?? false }
     : null
-  return fetchSidebarData(userId, user)
+  return fetchSidebarData(user)
 })
 
 async function SidebarAsync() {

@@ -8,10 +8,10 @@ const log = createLogger('sidebar')
 const EMPTY_SIDEBAR: Omit<SidebarData, 'user'> = { collections: [], itemTypes: [] }
 
 export async function fetchSidebarData(
-  userId: string | null,
   user: SidebarUser | null
 ): Promise<SidebarData> {
   try {
+    const userId = user?.id ?? null
     const [collections, itemTypes] = await Promise.all([
       userId ? getAllCollections(userId) : Promise.resolve([]),
       getSidebarItemTypes(userId),
