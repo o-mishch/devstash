@@ -73,7 +73,7 @@ export async function signInWithCredentials(
   }
 
   try {
-    await signIn('credentials', { email, password, redirect: false })
+    await signIn('credentials', { email, password, redirectTo: '/dashboard' })
   } catch (error) {
     if (error instanceof AuthError) {
       switch (error.type) {
@@ -91,6 +91,8 @@ export async function signInWithCredentials(
     throw error
   }
 
+  // Code below will only be reached if signIn doesn't throw a redirect,
+  // which shouldn't happen with redirectTo, but typescript needs a return.
   return ApiResponse.OK()
 }
 
