@@ -45,6 +45,23 @@ interface JwtParams {
   account?: Account | null
 }
 
+function buildPendingLinkData(email: string, userEmail: string | null | undefined, account: Account): PendingLinkData {
+  return {
+    email,
+    providerEmail: userEmail ?? null,
+    provider: account.provider,
+    providerAccountId: account.providerAccountId,
+    type: account.type,
+    access_token: account.access_token ?? null,
+    refresh_token: account.refresh_token ?? null,
+    expires_at: account.expires_at ?? null,
+    token_type: account.token_type ?? null,
+    scope: account.scope ?? null,
+    id_token: account.id_token ?? null,
+    session_state: typeof account.session_state === 'string' ? account.session_state : null,
+  } as PendingLinkData
+}
+
 async function handleLinkIntent(user: User | AdapterUser, account: Account): Promise<string | boolean | null> {
   const cookieStore = await cookies()
   const intentToken = cookieStore.get(LINK_INTENT_COOKIE)?.value
@@ -71,20 +88,7 @@ async function handleLinkIntent(user: User | AdapterUser, account: Account): Pro
   }
 
   // Store pending link keyed by the target user's primary email
-  const token = await createPendingLink({
-    email: targetUser.email,
-    providerEmail: user.email ?? null,
-    provider: account.provider,
-    providerAccountId: account.providerAccountId,
-    type: account.type,
-    access_token: account.access_token ?? null,
-    refresh_token: account.refresh_token ?? null,
-    expires_at: account.expires_at ?? null,
-    token_type: account.token_type ?? null,
-    scope: account.scope ?? null,
-    id_token: account.id_token ?? null,
-    session_state: typeof account.session_state === 'string' ? account.session_state : null,
-  } as PendingLinkData)
+  const token = await createPendingLink(buildPendingLinkData(targetUser.email, user.email, account))
 
   if (!token) return true
   return `/link-account?token=${token}`
@@ -96,20 +100,7 @@ async function handleOAuthConflict(user: User | AdapterUser, account: Account): 
   const existingUser = await getUserWithOAuthConflict(user.email, account.provider)
   if (!existingUser) return true
 
-  const token = await createPendingLink({
-    email: existingUser.email,
-    providerEmail: user.email,
-    provider: account.provider,
-    providerAccountId: account.providerAccountId,
-    type: account.type,
-    access_token: account.access_token ?? null,
-    refresh_token: account.refresh_token ?? null,
-    expires_at: account.expires_at ?? null,
-    token_type: account.token_type ?? null,
-    scope: account.scope ?? null,
-    id_token: account.id_token ?? null,
-    session_state: typeof account.session_state === 'string' ? account.session_state : null,
-  } as PendingLinkData)
+  const token = await createPendingLink(buildPendingLinkData(existingUser.email, user.email, account))
 
   if (!token) return true
   return `/link-account?token=${token}`

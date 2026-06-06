@@ -1,24 +1,8 @@
 import type { ReactNode } from 'react'
-import { redirect } from 'next/navigation'
 import { getVerificationToken, deleteVerificationToken, verifyUserEmailAndToken } from '@/lib/db/users'
-import { resendVerification } from '@/lib/emails/verification'
-import { rateLimitAction, getActionIP } from '@/lib/rate-limit'
 import { AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 
-async function resendVerificationAction(email: string) {
-  'use server'
-  const ip = await getActionIP()
-
-  const ipRl = await rateLimitAction('resendVerificationIP', ip)
-  if (ipRl) return
-
-  const emailRl = await rateLimitAction('resendVerification', `${ip}:${email}`)
-  if (emailRl) return
-
-  await resendVerification(email)
-  redirect('/sign-in?resent=1')
-}
-
+import { resendVerificationAction } from '@/actions/auth/verify'
 interface VerifyEmailPageProps {
   searchParams: Promise<{ token?: string }>
 }

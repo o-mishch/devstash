@@ -56,6 +56,13 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+function setupStripeMocks(subscriptionId: string | null = 'sub_abc') {
+  mockGetSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: subscriptionId })
+  mockSetCancelAtPeriodEnd.mockResolvedValue(undefined)
+  mockUpdateSubscriptionState.mockResolvedValue({ count: 1 })
+}
+
 describe('createCheckoutSessionAction', () => {
   it('returns unauthorized when not signed in', async () => {
     mockGetSession.mockResolvedValue(null)
@@ -146,8 +153,7 @@ describe('cancelSubscriptionAction', () => {
   })
 
   it('returns bad_request when user has no subscription', async () => {
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } })
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: null })
+    setupStripeMocks(null)
     const result = await cancelSubscriptionAction()
     expect(result.status).toBe('bad_request')
   })
@@ -162,10 +168,7 @@ describe('cancelSubscriptionAction', () => {
   })
 
   it('cancels subscription and updates DB on success', async () => {
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } })
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_abc' })
-    mockSetCancelAtPeriodEnd.mockResolvedValue(undefined)
-    mockUpdateSubscriptionState.mockResolvedValue({ count: 1 })
+    setupStripeMocks('sub_abc')
 
     const result = await cancelSubscriptionAction()
 
@@ -183,17 +186,13 @@ describe('reactivateSubscriptionAction', () => {
   })
 
   it('returns bad_request when user has no subscription', async () => {
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } })
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: null })
+    setupStripeMocks(null)
     const result = await reactivateSubscriptionAction()
     expect(result.status).toBe('bad_request')
   })
 
   it('reactivates subscription and updates DB on success', async () => {
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } })
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_abc' })
-    mockSetCancelAtPeriodEnd.mockResolvedValue(undefined)
-    mockUpdateSubscriptionState.mockResolvedValue({ count: 1 })
+    setupStripeMocks('sub_abc')
 
     const result = await reactivateSubscriptionAction()
 

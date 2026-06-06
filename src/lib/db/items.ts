@@ -70,6 +70,18 @@ export async function fetchItemPreviews(ids: string[]): Promise<Map<string, Item
   ]))
 }
 
+function mapBaseItemFields(item: LightItemWithRelations) {
+  return {
+    url: item.url,
+    tags: item.tags.map((t) => t.name),
+    fileUrl: item.fileUrl,
+    fileName: item.fileName,
+    fileSize: item.fileSize,
+    isFavorite: item.isFavorite,
+    isPinned: item.isPinned,
+  }
+}
+
 export function toLightItem(item: LightItemWithRelations, preview?: ItemPreview): LightItem {
   return {
     id: item.id,
@@ -78,13 +90,7 @@ export function toLightItem(item: LightItemWithRelations, preview?: ItemPreview)
     itemType: item.itemType,
     descriptionPreview: preview?.descriptionPreview ?? null,
     contentPreview: preview?.contentPreview ?? null,
-    url: item.url,
-    tags: item.tags.map((t) => t.name),
-    fileUrl: item.fileUrl,
-    fileName: item.fileName,
-    fileSize: item.fileSize,
-    isFavorite: item.isFavorite,
-    isPinned: item.isPinned,
+    ...mapBaseItemFields(item),
   }
 }
 
@@ -428,13 +434,7 @@ function toFullItem(item: ItemWithRelations): FullItem {
     itemType: item.itemType,
     contentPreview: item.content ? item.content.slice(0, 150) : null,
     descriptionPreview: item.description ? item.description.slice(0, 150) : null,
-    url: item.url,
-    tags: item.tags.map((t) => t.name),
-    fileUrl: item.fileUrl,
-    fileName: item.fileName,
-    fileSize: item.fileSize,
-    isFavorite: item.isFavorite,
-    isPinned: item.isPinned,
+    ...mapBaseItemFields(item),
     content: item.content,
     description: item.description,
     language: item.language,
