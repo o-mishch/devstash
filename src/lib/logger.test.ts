@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createLogger } from './logger'
 
+// When createLogger() is called from this file, callerTag() resolves "logger.test"
+const AUTO_TAG = 'logger.test'
+
 describe('createLogger', () => {
   let logSpy: ReturnType<typeof vi.spyOn>
   let warnSpy: ReturnType<typeof vi.spyOn>
@@ -16,51 +19,79 @@ describe('createLogger', () => {
     vi.restoreAllMocks()
   })
 
-  it('info calls console.log with [tag] prefix', () => {
-    const log = createLogger('items')
+  it('auto-detects tag from caller filename', () => {
+    const log = createLogger()
+    log.info('hello')
+    expect(logSpy).toHaveBeenCalledWith(`[${AUTO_TAG}] INFO hello`)
+  })
+
+  it('info calls console.log with [tag] INFO prefix', () => {
+    const log = createLogger()
     log.info('created "My Snippet" [snippet]')
-    expect(logSpy).toHaveBeenCalledWith('[items] created "My Snippet" [snippet]')
+    expect(logSpy).toHaveBeenCalledWith(`[${AUTO_TAG}] INFO created "My Snippet" [snippet]`)
   })
 
-  it('warn calls console.warn with [tag] prefix', () => {
-    const log = createLogger('download')
+  it('warn calls console.warn with [tag] WARN prefix', () => {
+    const log = createLogger()
     log.warn('filebase fetch failed for item:abc (120ms)')
-    expect(warnSpy).toHaveBeenCalledWith('[download] filebase fetch failed for item:abc (120ms)')
+    expect(warnSpy).toHaveBeenCalledWith(`[${AUTO_TAG}] WARN filebase fetch failed for item:abc (120ms)`)
   })
 
-  it('error without err passes only the message to console.error', () => {
-    const log = createLogger('api')
+  it('error without context passes only the message to console.error', () => {
+    const log = createLogger()
     log.error('unhandled route error')
     expect(errorSpy).toHaveBeenCalledTimes(1)
-    const call = errorSpy.mock.calls[0]
-    expect(call[0]).toBe('[api] unhandled route error')
-    expect(call[1]).toBeUndefined()
+    expect(errorSpy.mock.calls[0][0]).toBe(`[${AUTO_TAG}] ERROR unhandled route error`)
   })
 
-  it('error with err passes the error object as second arg to console.error', () => {
-    const log = createLogger('filebase')
-    const err = new Error('S3 connection refused')
-    log.error('delete failed: user/abc/file.png', err)
-    expect(errorSpy).toHaveBeenCalledWith('[filebase] delete failed: user/abc/file.png', err)
+  it('error with LogContext embeds key=value pairs in the message', () => {
+    const log = createLogger()
+    log.error('delete failed: user/abc/file.png', { userId: 'abc', reason: 'S3 connection refused' })
+    expect(errorSpy).toHaveBeenCalledWith(
+      `[${AUTO_TAG}] ERROR delete failed: user/abc/file.png | userId="abc" reason="S3 connection refused"`
+    )
   })
 
-  it('different tags produce independent scoped loggers', () => {
-    const cache = createLogger('cache')
-    const email = createLogger('email')
-    cache.info('MISS user:abc:pinned-items')
-    email.info('sent verification')
-    expect(logSpy).toHaveBeenNthCalledWith(1, '[cache] MISS user:abc:pinned-items')
-    expect(logSpy).toHaveBeenNthCalledWith(2, '[email] sent verification')
+  it('error with Error instance embeds error message in the log', () => {
+    const log = createLogger()
+    log.error('delete failed: user/abc/file.png', new Error('S3 connection refused'))
+    expect(errorSpy).toHaveBeenCalledWith(
+      `[${AUTO_TAG}] ERROR delete failed: user/abc/file.png | error="S3 connection refused"`
+    )
   })
 
-  it('includes HH:MM:SS timestamp prefix in development mode', async () => {
+  it('info with context embeds key=value pairs in the message', () => {
+    const log = createLogger()
+    log.info('item created', { itemId: '123', type: 'snippet' })
+    expect(logSpy).toHaveBeenCalledWith(
+      `[${AUTO_TAG}] INFO item created | itemId="123" type="snippet"`
+    )
+  })
+
+  it('warn with context embeds key=value pairs in the message', () => {
+    const log = createLogger()
+    log.warn('rate limit hit', { ip: '1.2.3.4', limit: 5 })
+    expect(warnSpy).toHaveBeenCalledWith(
+      `[${AUTO_TAG}] WARN rate limit hit | ip="1.2.3.4" limit=5`
+    )
+  })
+
+  it('explicit tag overrides auto-detection', () => {
+    const log = createLogger('custom')
+    log.info('hello')
+    expect(logSpy).toHaveBeenCalledWith('[custom] INFO hello')
+  })
+
+  it('includes HH:MM:SS timestamp and level label in development mode', async () => {
     vi.stubEnv('NODE_ENV', 'development')
     vi.resetModules()
     const { createLogger: createDev } = await import('./logger')
-    const log = createDev('cache')
+    const log = createDev()
     log.info('MISS user:abc:pinned-items')
     const [msg] = logSpy.mock.calls[0]
-    expect(msg).toMatch(/^\d{2}:\d{2}:\d{2} \[cache\] MISS user:abc:pinned-items$/)
+    // strip ANSI escape codes before matching
+    const plain = (msg as string).replace(/\x1b\[\d+m/g, '')
+    expect(plain).toMatch(/^\d{2}:\d{2}:\d{2} \[[\w.]+\] INFO MISS user:abc:pinned-items$/)
     vi.unstubAllEnvs()
   })
 })

@@ -25,6 +25,8 @@ model User {
   subscriptionStart    DateTime?
   currentPeriodEnd     DateTime?
   proExpiredAt         DateTime?
+  subscriptionInterval SubscriptionInterval?
+  cancelAtPeriodEnd    Boolean               @default(false)
   editorPreferences    Json?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -85,6 +87,13 @@ model VerificationToken {
 }
 
 // ============================================
+// SUBSCRIPTION
+// ============================================
+enum SubscriptionInterval {
+  month
+  year
+}
+
 // ITEM
 // ============================================
 enum ContentType {

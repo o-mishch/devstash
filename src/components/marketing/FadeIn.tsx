@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { useIntersectionObserver } from '@/hooks/use-intersection-observer';
 
 interface FadeInProps {
   children: ReactNode;
@@ -10,43 +11,43 @@ interface FadeInProps {
 }
 
 export function FadeIn({ children, index = 0, className }: FadeInProps) {
-  const ref = useRef<HTMLDivElement>(null);
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+  const { ref: observerRef, inView } = useIntersectionObserver({
+    threshold: 0.1,
+    rootMargin: '0px 0px -40px 0px',
+    triggerOnce: true,
+  });
+
+  const setRefs = (node: HTMLDivElement | null) => {
+    nodeRef.current = node;
+    observerRef(node);
+  };
+
   // mounted tracks whether JS has hydrated. Before that no opacity class is applied,
   // so server-rendered content stays visible even before the IntersectionObserver fires.
   const [mounted, setMounted] = useState(false);
-  const [visible, setVisible] = useState(false);
+  const [alreadyVisible, setAlreadyVisible] = useState(false);
 
   useEffect(() => {
-    const el = ref.current;
+    const el = nodeRef.current;
     if (!el) return;
 
     // Elements already in the viewport on mount are shown immediately to avoid a
     // flash where content becomes invisible briefly before fading back in.
     const { top, bottom } = el.getBoundingClientRect();
-    const alreadyVisible = top < window.innerHeight && bottom >= 0;
+    const visible = top < window.innerHeight && bottom >= 0;
 
     setMounted(true);
-    if (alreadyVisible) {
-      setVisible(true);
-      return;
+    if (visible) {
+      setAlreadyVisible(true);
     }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.unobserve(el);
-        }
-      },
-      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
   }, []);
+
+  const visible = alreadyVisible || inView;
 
   return (
     <div
-      ref={ref}
+      ref={setRefs}
       className={cn(
         'transition-all duration-700',
         mounted && !visible && 'opacity-0 translate-y-4',

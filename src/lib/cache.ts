@@ -10,15 +10,15 @@ const revalidateTag = _revalidateTag as unknown as (tag: string) => void
 
 export interface DataCacheConfig {
   tag: string
-  revalidate: number
+  revalidate: number | false
   tags?: string[]
 }
 
 const CacheRevalidate = {
-  items: 60,
-  collections: 60,
-  profile: 300,
-  itemTypes: 3600,
+  items: false, // Use on-demand invalidation
+  collections: false, // Use on-demand invalidation
+  profile: false, // Use on-demand invalidation
+  itemTypes: 86400, // 24 hours
 } as const
 
 export const CacheTags = {
@@ -58,16 +58,16 @@ export async function withDataCache<T>(
 
   const promise = unstable_cache(
     async () => {
-      log.info(`MISS ${config.tag}`)
+      log.info(`MISSED/ABSENT ${config.tag}`)
       const start = Date.now()
       const result = await fetcher()
-      log.info(`FETCHED ${config.tag} in ${Date.now() - start}ms`)
+      log.info(`FETCHED/PRESENT ${config.tag} in ${Date.now() - start}ms`)
       // Strip Prisma proxies and non-serializable objects to guarantee successful caching
       return JSON.parse(JSON.stringify(result)) as T
     },
     [config.tag],
     {
-      revalidate: config.revalidate,
+      revalidate: config.revalidate === false ? false : config.revalidate,
       tags: config.tags ? [config.tag, ...config.tags] : [config.tag]
     }
   )()

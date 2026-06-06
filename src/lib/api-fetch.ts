@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { Method } from 'axios'
 import type { ApiBody } from '@/types/api'
+import { toErrorMessage } from '@/lib/logger'
 
 type RequestOptions = {
   method?: Method
@@ -13,7 +14,7 @@ function handleApiError<T>(err: unknown, fallbackMessage: string): ApiBody<T> {
     const body = err.response.data as ApiBody<T>
     if (body && typeof body.status === 'string') return body
   }
-  const message = err instanceof Error ? err.message : fallbackMessage
+  const message = toErrorMessage(err, fallbackMessage)
   return { status: 'internal_error', data: null, message }
 }
 

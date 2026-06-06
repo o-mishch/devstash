@@ -14,7 +14,7 @@ import {
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
 import { FREE_TIER_ITEM_LIMIT, FREE_TIER_COLLECTION_LIMIT } from '@/lib/usage'
-import { getInitialTypeFromPathname } from '@/lib/utils/format'
+import { getInitialTypeFromPathname } from '@/lib/utils/url'
 import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'

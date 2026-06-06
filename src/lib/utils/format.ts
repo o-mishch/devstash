@@ -18,23 +18,3 @@ export function parseTagString(raw: string | undefined): string[] {
     .map((t) => t.trim())
     .filter(Boolean)
 }
-
-export function getInitialTypeFromPathname(
-  pathname: string,
-  itemTypes: { name: string }[]
-): string | undefined {
-  const match = pathname.match(/^\/items\/(\w+)$/)
-  return itemTypes.find((t) => `${t.name}s` === match?.[1])?.name
-}
-
-export function getTypeLabel(name: string): string {
-  if (!name) return ''
-  const capitalized = name.charAt(0).toUpperCase() + name.slice(1)
-  if (name.endsWith('y') && !/[aeiou]y$/i.test(name)) {
-    return capitalized.slice(0, -1) + 'ies'
-  }
-  if (name.endsWith('s') || name.endsWith('ch') || name.endsWith('sh') || name.endsWith('x') || name.endsWith('z')) {
-    return capitalized + 'es'
-  }
-  return capitalized + 's'
-}

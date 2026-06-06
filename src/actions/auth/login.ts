@@ -1,7 +1,7 @@
 'use server'
 
 import { cookies } from 'next/headers'
-import { signIn, signOut, auth, LINK_INTENT_COOKIE } from '@/auth'
+import { signIn, auth, LINK_INTENT_COOKIE } from '@/auth'
 import { AuthError } from 'next-auth'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
@@ -94,6 +94,3 @@ export async function signInWithCredentials(
   return ApiResponse.OK()
 }
 
-export async function signOutAction() {
-  await signOut({ redirectTo: '/' })
-}

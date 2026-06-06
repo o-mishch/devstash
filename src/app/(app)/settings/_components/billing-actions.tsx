@@ -3,19 +3,49 @@
 import { useEffect, useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useSearchParams } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { createCheckoutSessionAction, createPortalSessionAction } from '@/actions/stripe'
+import { type VariantProps } from 'class-variance-authority'
+import { Button, buttonVariants } from '@/components/ui/button'
+import {
+  createCheckoutSessionAction,
+  createPortalSessionAction,
+  cancelSubscriptionAction,
+  reactivateSubscriptionAction,
+  syncSubscriptionStateAction,
+} from '@/actions/stripe'
 import { PRICING } from '@/lib/utils/constants'
 import { toast } from 'sonner'
 
-interface BillingSubmitButtonProps {
+function useCheckoutNotification() {
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const success = searchParams.get('success')
+    const canceled = searchParams.get('canceled')
+    if (success) {
+      toast.success('Subscription successful! Welcome to DevStash Pro.')
+    } else if (canceled) {
+      toast.info('Checkout canceled. Your subscription has not been changed.')
+    }
+    if (success || canceled) {
+      // replaceState cleans up the URL silently — router.replace would trigger a full re-render
+      window.history.replaceState(null, '', '/settings')
+    }
+  }, [searchParams])
+}
+
+function useSyncSubscriptionState(isStale: boolean) {
+  useEffect(() => {
+    if (isStale) void syncSubscriptionStateAction()
+  }, [isStale])
+}
+
+interface BillingSubmitButtonProps extends VariantProps<typeof buttonVariants> {
   label: string
 }
 
-function BillingSubmitButton({ label }: BillingSubmitButtonProps) {
+function BillingSubmitButton({ label, variant = 'default' }: BillingSubmitButtonProps) {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+    <Button type="submit" variant={variant} disabled={pending} className="w-full sm:w-auto">
       {pending ? 'Redirecting...' : label}
     </Button>
   )
@@ -23,13 +53,25 @@ function BillingSubmitButton({ label }: BillingSubmitButtonProps) {
 
 interface BillingFormsProps {
   isPro: boolean
+  isCanceling: boolean
   priceIdMonthly: string | undefined
   priceIdYearly: string | undefined
+  isStale?: boolean
 }
 
-export function BillingForms({ isPro, priceIdMonthly, priceIdYearly }: BillingFormsProps) {
-  const searchParams = useSearchParams()
+export function BillingForms({
+  isPro,
+  isCanceling,
+  priceIdMonthly,
+  priceIdYearly,
+  isStale = false,
+}: BillingFormsProps) {
+  useCheckoutNotification()
+  useSyncSubscriptionState(isStale)
+
   const [portalState, portalFormAction] = useActionState(createPortalSessionAction, null)
+  const [cancelState, cancelFormAction] = useActionState(cancelSubscriptionAction, null)
+  const [reactivateState, reactivateFormAction] = useActionState(reactivateSubscriptionAction, null)
   const [monthlyState, monthlyFormAction] = useActionState(
     createCheckoutSessionAction.bind(null, priceIdMonthly ?? ''),
     null
@@ -40,24 +82,14 @@ export function BillingForms({ isPro, priceIdMonthly, priceIdYearly }: BillingFo
   )
 
   useEffect(() => {
-    const success = searchParams.get('success')
-    const canceled = searchParams.get('canceled')
-
-    if (success) {
-      toast.success('Subscription successful! Welcome to DevStash Pro.')
-    } else if (canceled) {
-      toast.info('Checkout canceled. Your subscription has not been changed.')
-    }
-
-    if (success || canceled) {
-      // replaceState cleans up the URL silently — router.replace would trigger a full re-render
-      window.history.replaceState(null, '', '/settings')
-    }
-  }, [searchParams])
-
-  useEffect(() => {
     if (portalState && portalState.status !== 'ok') {
       toast.error(portalState.message ?? 'Unable to open billing portal. Please try again.')
+    }
+    if (cancelState && cancelState.status !== 'ok') {
+      toast.error(cancelState.message ?? 'Unable to open cancellation flow. Please try again.')
+    }
+    if (reactivateState && reactivateState.status !== 'ok') {
+      toast.error(reactivateState.message ?? 'Unable to reactivate subscription. Please try again.')
     }
     if (monthlyState && monthlyState.status !== 'ok') {
       toast.error(monthlyState.message ?? 'Unable to start checkout. Please try again.')
@@ -65,13 +97,31 @@ export function BillingForms({ isPro, priceIdMonthly, priceIdYearly }: BillingFo
     if (yearlyState && yearlyState.status !== 'ok') {
       toast.error(yearlyState.message ?? 'Unable to start checkout. Please try again.')
     }
-  }, [portalState, monthlyState, yearlyState])
+  }, [portalState, cancelState, reactivateState, monthlyState, yearlyState])
 
   if (isPro) {
+    if (isCanceling) {
+      return (
+        <div className="flex flex-col sm:flex-row gap-2">
+          <form action={reactivateFormAction}>
+            <BillingSubmitButton label="Keep Subscription" />
+          </form>
+          <form action={portalFormAction}>
+            <BillingSubmitButton label="Manage Billing" variant="outline" />
+          </form>
+        </div>
+      )
+    }
+
     return (
-      <form action={portalFormAction}>
-        <BillingSubmitButton label="Manage Subscription" />
-      </form>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <form action={portalFormAction}>
+          <BillingSubmitButton label="Manage Billing" variant="outline" />
+        </form>
+        <form action={cancelFormAction}>
+          <BillingSubmitButton label="Cancel Subscription" variant="ghost" />
+        </form>
+      </div>
     )
   }
 
@@ -90,3 +140,4 @@ export function BillingForms({ isPro, priceIdMonthly, priceIdYearly }: BillingFo
     </div>
   )
 }
+

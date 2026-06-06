@@ -1,4 +1,4 @@
-import { getCurrentUserId } from '@/lib/session'
+
 import { getRecentItemsPage, getItemStats } from '@/lib/db/items'
 import { DashboardStats } from './_components/dashboard-stats'
 import { DashboardCollections } from './_components/dashboard-collections'

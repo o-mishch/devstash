@@ -71,7 +71,6 @@ document.querySelectorAll('.fade-in').forEach((el, i) => {
   const SPEED = 0.6;
   let mouse = { x: -9999, y: -9999 };
   let icons = [];
-  let raf;
 
   function resize() {
     const rect = canvas.parentElement.getBoundingClientRect();
@@ -106,7 +105,7 @@ document.querySelectorAll('.fade-in').forEach((el, i) => {
   }
 
   function tick() {
-    raf = requestAnimationFrame(tick);
+    requestAnimationFrame(tick);
     const W = canvas.width;
     const H = canvas.height;
     ctx.clearRect(0, 0, W, H);

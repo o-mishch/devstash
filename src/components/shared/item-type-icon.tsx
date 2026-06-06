@@ -11,12 +11,6 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   Link,
 }
 
-function renderItemIcon(iconName: string, color: string | null | undefined, className: string) {
-  const Icon = ICON_MAP[iconName]
-  if (!Icon) return null
-  return <Icon className={className} style={{ color: color ?? undefined }} />
-}
-
 interface ItemTypeIconProps {
   iconName: string
   color?: string | null
@@ -24,5 +18,7 @@ interface ItemTypeIconProps {
 }
 
 export function ItemTypeIcon({ iconName, color, className = 'size-3' }: ItemTypeIconProps) {
-  return renderItemIcon(iconName, color, className)
+  const Icon = ICON_MAP[iconName]
+  if (!Icon) return null
+  return <Icon className={className} style={{ color: color ?? undefined }} />
 }

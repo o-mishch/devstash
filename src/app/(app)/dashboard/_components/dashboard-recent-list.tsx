@@ -1,9 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
 import { ItemRow } from '@/components/dashboard/item-row'
-import { useIntersectionObserver } from '@/hooks/use-intersection-observer'
-import { useInfiniteItemsFetch } from '@/hooks/use-infinite-items-fetch'
+import { useInfiniteScrollFetch } from '@/hooks/use-infinite-scroll-fetch'
 import type { ItemsPage } from '@/types/item'
 
 const PAGE_KEY = 'recent'
@@ -13,14 +11,7 @@ interface DashboardRecentListProps {
 }
 
 export function DashboardRecentList({ firstPage }: DashboardRecentListProps) {
-  const { items, hasMore, loading, fetchMore } = useInfiniteItemsFetch(PAGE_KEY, firstPage, { type: 'recent' })
-  const { ref: sentinelRef, inView } = useIntersectionObserver({ rootMargin: '200px' })
-
-  useEffect(() => {
-    if (inView && hasMore && !loading) {
-      void fetchMore()
-    }
-  }, [inView, hasMore, loading, fetchMore])
+  const { items, hasMore, sentinelRef } = useInfiniteScrollFetch(PAGE_KEY, firstPage, { type: 'recent' })
 
   return (
     <div className="flex flex-col gap-3">

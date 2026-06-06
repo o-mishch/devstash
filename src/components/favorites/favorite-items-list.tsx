@@ -1,15 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { useIntersectionObserver } from '@/hooks/use-intersection-observer'
 import { useItemDrawer } from '@/context/item-drawer-context'
-import { useInfiniteItemsFetch } from '@/hooks/use-infinite-items-fetch'
+import { useInfiniteScrollFetch } from '@/hooks/use-infinite-scroll-fetch'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FavoriteItemRow } from './favorite-item-row'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
-import type { ItemsPage, ItemType, LightItem } from '@/types/item'
+import type { ItemsPage, LightItem, ItemType } from '@/types/item'
 
 const PAGE_KEY = 'favorites:items'
 
@@ -38,8 +37,7 @@ interface FavoriteItemsListProps {
 
 export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsListProps) {
   const { openDrawer } = useItemDrawer()
-  const { items, hasMore, loading, fetchMore } = useInfiniteItemsFetch(PAGE_KEY, firstPage, { type: 'favorites' })
-  const { ref, inView } = useIntersectionObserver({ rootMargin: '200px' })
+  const { items, hasMore, loading, sentinelRef } = useInfiniteScrollFetch(PAGE_KEY, firstPage, { type: 'favorites' })
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const groups = useMemo(
@@ -55,12 +53,6 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
       return next
     })
   }, [])
-
-  useEffect(() => {
-    if (inView && hasMore && !loading) {
-      void fetchMore()
-    }
-  }, [inView, hasMore, loading, fetchMore])
 
   return (
     <div className="flex flex-col gap-1">
@@ -90,12 +82,9 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
                 className="rounded px-1 font-mono text-[10px]"
                 style={{ color: itemType.color, backgroundColor: `${itemType.color}15` }}
               >
-                {(() => {
-                  const total = itemTypeCounts[itemType.id]
-                  return total !== undefined && groupItems.length < total
-                    ? `${groupItems.length} / ${total}`
-                    : groupItems.length
-                })()}
+                {itemTypeCounts[itemType.id] !== undefined && groupItems.length < itemTypeCounts[itemType.id]
+                  ? `${groupItems.length} / ${itemTypeCounts[itemType.id]}`
+                  : groupItems.length}
               </span>
             </button>
 
@@ -111,7 +100,7 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
         )
       })}
 
-      {hasMore && <div ref={ref} className="h-px" aria-hidden="true" />}
+      {hasMore && <div ref={sentinelRef} className="h-px" aria-hidden="true" />}
       {loading && (
         <div className="flex flex-col pl-4">
           {Array.from({ length: 3 }).map((_, i) => (

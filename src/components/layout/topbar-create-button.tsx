@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
-import { getInitialTypeFromPathname } from '@/lib/utils/format'
+import { getInitialTypeFromPathname } from '@/lib/utils/url'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 
