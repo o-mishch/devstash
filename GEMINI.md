@@ -1,6 +1,6 @@
-# DevStash
+# DevStash — Gemini CLI Instructions
 
-Developer knowledge hub — one fast, searchable place for snippets, prompts, commands, notes, files, images, and links.
+Developer knowledge hub: one fast, searchable place for snippets, prompts, commands, notes, files, images, and links.
 
 ## Stack
 
@@ -35,17 +35,20 @@ npm run test:run  # Vitest single run
 ## Neon Database
 
 - Project: `devstash` (ID: `wandering-lab-34213896`)
-- **Always use the `dev` branch** (ID: `br-dry-scene-al1ir5ie`) for all Neon MCP operations
+- **Always use the `dev` branch** (ID: `br-dry-scene-al1ir5ie`) for all database operations
 - **Never touch the `production` branch** (`br-royal-poetry-ale2q4pb`) unless explicitly told to
+- Always use `prisma migrate dev` for schema changes — never `prisma db push`
 
 ## Current feature
 
-@context/current-feature.md
+See `context/current-feature.md`.
 
 ## Rules
 
-@.agents/rules/ai-interaction.md
-@.agents/rules/coding-standards.md
-@.agents/rules/security.md
-@.agents/rules/testing.md
-@.agents/rules/api-contract.md
+Read the following files for detailed rules before making any changes:
+
+- `.agents/rules/ai-interaction.md` — workflow, branching, commits, communication style
+- `.agents/rules/coding-standards.md` — TypeScript, React, Next.js, Tailwind v4, file organisation
+- `.agents/rules/security.md` — IDOR prevention, auth patterns, input validation, token handling
+- `.agents/rules/testing.md` — Vitest conventions, what to test, mocking patterns
+- `.agents/rules/api-contract.md` — ApiBody shape, apiRoute wrapper, apiFetch, status codes

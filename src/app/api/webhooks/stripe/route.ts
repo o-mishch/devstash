@@ -42,14 +42,17 @@ export const POST = apiRoute(async (req: NextRequest) => {
     case 'checkout.session.completed':
       await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session)
       break
-    case 'customer.subscription.deleted':
-      await handleSubscriptionDeleted(event.data.object as Stripe.Subscription)
-      break
     case 'customer.subscription.updated':
       await handleSubscriptionUpdated(event.data.object as Stripe.Subscription)
       break
+    case 'customer.subscription.deleted':
+      await handleSubscriptionDeleted(event.data.object as Stripe.Subscription)
+      break
     case 'invoice.payment_failed':
       handleInvoicePaymentFailed(event.data.object as Stripe.Invoice)
+      break
+    case 'invoice.payment_succeeded':
+      handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice)
       break
     case 'invoice.paid':
       await handleInvoicePaid(event.data.object as Stripe.Invoice)
@@ -110,6 +113,10 @@ function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   // Do not downgrade immediately on payment failure — Stripe will retry and
   // eventually cancel the subscription (handled by customer.subscription.deleted).
   log.warn(`Payment failed for invoice ${invoice.id}`)
+}
+
+function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+  log.info(`Payment succeeded for invoice ${invoice.id}`)
 }
 
 async function handleInvoicePaid(invoice: Stripe.Invoice) {
