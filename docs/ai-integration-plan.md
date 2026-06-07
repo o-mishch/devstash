@@ -4,6 +4,8 @@
 
 Integrate OpenAI for four Pro-only features: auto-tagging (all item types), AI summaries (notes, links), code explanation (snippets, commands), and prompt optimization (prompts). Model selection is feature-specific: `gpt-4.1-nano` for tagging (classification, no reasoning required), `gpt-5-mini` for everything else (near-frontier quality at competitive cost).
 
+Current implementation note: auto-tagging is shipped as a small server action that calls the OpenAI SDK directly via the Responses API. The tag flow uses `gpt-4.1-nano`, keeps prompts compact, and parses `output_text` defensively.
+
 ---
 
 ## 1. AI Operational Best Practices
@@ -11,7 +13,7 @@ Integrate OpenAI for four Pro-only features: auto-tagging (all item types), AI s
 Before diving into the implementation details, it is critical to adhere to the following best practices when integrating OpenAI with Next.js, as derived from current guidelines and the SOLID principles:
 
 ### 1.1 SOLID Architecture & Encapsulation
-- **Dependency Inversion**: Server Actions and API Routes must **never** call the OpenAI SDK directly.
+- **Dependency Inversion**: Prefer isolating OpenAI access in a shared `src/lib/ai` module when multiple AI features need the same client/config, but a focused server action is fine for the first small feature.
 - **Single Responsibility Principle**: 
   - `src/lib/ai/client.ts` owns SDK initialization and configuration.
   - `src/lib/ai/service.ts` owns the business logic, constructing prompts, and executing requests.
@@ -23,7 +25,7 @@ Choosing between streaming and non-streaming responses fundamentally impacts bot
 - **Non-Streaming (Structured Data & Short Text)**
   - **Best for**: Auto-tagging, summarization, prompt optimization.
   - **Why**: These operations either require structured JSON output (tags) where partial data is useless, or side-by-side diffing (prompt optimization) where the full text must be ready before the UI can render meaningfully.
-  - **Implementation**: Handled easily within Next.js Server Actions using the `client.chat.completions.parse()` helper.
+  - **Implementation**: Handled within Next.js Server Actions using the OpenAI Responses API for the current auto-tag flow. The tag flow uses `gpt-4.1-nano` and reads the result from `output_text`.
 
 - **Streaming (Long-Form Content)**
   - **Best for**: Code explanations and generative chat.
@@ -31,7 +33,7 @@ Choosing between streaming and non-streaming responses fundamentally impacts bot
   - **Implementation**: Must use an API Route (`src/app/api/...`), as Next.js Server Actions cannot serialize `ReadableStream` objects to the client. Use `stream: true` and `stream_options: { include_usage: true }` to accurately track token consumption on the final chunk.
 
 ### 1.3 Structured Outputs
-Never rely on prompt engineering alone to return JSON. Always use `client.chat.completions.parse()` paired with Zod schemas (`zodResponseFormat`). This guarantees the output matches your schema perfectly without manual `JSON.parse` or regex wrangling, ensuring type-safe returns to the client.
+Never rely on prompt engineering alone to return JSON. Prefer explicit JSON/structured output modes when the schema matters. The current auto-tag implementation keeps the payload intentionally small, instructs the model to emit JSON, and then parses `output_text` defensively.
 
 ### 1.4 Prompt Injection & Security
 - **Strict Role Separation**: Never construct the `system` role prompt using user input. All user-supplied text must be passed in the `user` message role.
@@ -442,3 +444,109 @@ export function AiExplanation({ explanation, isStreaming, onAbort }: AiExplanati
 4. Build **Non-Streaming Feature**: Implement `summarizeContent` logic.
 5. Build **Non-Streaming Feature**: Implement `optimizePrompt` logic.
 6. Build **Streaming Feature**: Implement `explainCode` in service, create `src/app/api/ai/explain/route.ts`, and wire the streaming UI.
+
+---
+
+## Appendix: OpenAI Model Limits
+
+| Model | TPM | RPM / RPD | TPD |
+|---|---|---|---|
+| **Chat** | | | |
+| `gpt-3.5-turbo` | 200,000 TPM | 500 RPM / 10,000 RPD | 2,000,000 TPD |
+| `gpt-3.5-turbo-16k` | 200,000 TPM | 500 RPM / 10,000 RPD | 2,000,000 TPD |
+| `gpt-3.5-turbo-instruct` | 90,000 TPM | 3,500 RPM | 200,000 TPD |
+| `gpt-4` | 10,000 TPM | 500 RPM / 10,000 RPD | 100,000 TPD |
+| `gpt-4-turbo` | 30,000 TPM | 500 RPM | 90,000 TPD |
+| `gpt-4.1` | 30,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-4.1 (long context)` | 200,000 TPM | 100 RPM | 2,000,000 TPD |
+| `gpt-4.1-mini` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `gpt-4.1-mini (long context)` | 400,000 TPM | 200 RPM | 4,000,000 TPD |
+| `gpt-4.1-nano` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `gpt-4.1-nano (long context)` | 400,000 TPM | 200 RPM | 4,000,000 TPD |
+| `gpt-4o` | 30,000 TPM | 500 RPM | 90,000 TPD |
+| `gpt-4o-mini` | 200,000 TPM | 500 RPM / 10,000 RPD | 2,000,000 TPD |
+| `gpt-4o-mini-search-preview` | 6,000 TPM | 100 RPM | |
+| `gpt-4o-mini-transcribe` | 50,000 TPM | 500 RPM | |
+| `gpt-4o-mini-transcribe-2025-03-20` | 250,000 TPM | 3,000 RPM | |
+| `gpt-4o-mini-transcribe-2025-12-15` | 250,000 TPM | 3,000 RPM | |
+| `gpt-4o-search-preview` | 6,000 TPM | 100 RPM | |
+| `gpt-4o-transcribe` | 10,000 TPM | 500 RPM | |
+| `gpt-4o-transcribe-diarize` | 250,000 TPM | 3,000 RPM | |
+| `gpt-5` | 500,000 TPM | 500 RPM | 1,500,000 TPD |
+| `gpt-5-chat-latest` | 30,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5-codex` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5-mini` | 500,000 TPM | 500 RPM | 5,000,000 TPD |
+| `gpt-5-nano` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `gpt-5-pro` | 30,000 TPM | 500 RPM | 90,000 TPD |
+| `gpt-5-search-api` | 6,000 TPM | 100 RPM | |
+| `gpt-5.1` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.1-chat-latest` | 30,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.1-codex` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.1-codex-max` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.1-codex-mini` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `gpt-5.2` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.2-chat-latest` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.2-codex` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.2-pro` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.3-chat-latest` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.3-codex` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.4` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.4 (long context)` | 400,000 TPM | 200 RPM | 5,000,000 TPD |
+| `gpt-5.4-mini` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `gpt-5.4-mini-2026-03-17` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `gpt-5.4-nano` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `gpt-5.4-nano-2026-03-17` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `gpt-5.4-pro` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.4-pro (long context)` | 400,000 TPM | 100 RPM | 2,000,000 TPD |
+| `gpt-5.5` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.5-2026-04-23` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `gpt-5.5-long-context` | 400,000 TPM | 200 RPM | 5,000,000 TPD |
+| `gpt-5.5-pro` | 50,000 TPM | 50 RPM | 500,000 TPD |
+| `gpt-5.5-pro-2026-04-23` | 50,000 TPM | 50 RPM | 500,000 TPD |
+| `gpt-5.5-pro-long-context` | 400,000 TPM | 100 RPM | 2,000,000 TPD |
+| `gpt-audio` | 250,000 TPM | 3,000 RPM | |
+| `gpt-audio-1.5` | 250,000 TPM | 3,000 RPM | |
+| `gpt-audio-2025-08-28` | 250,000 TPM | 3,000 RPM | |
+| `gpt-audio-mini` | 250,000 TPM | 3,000 RPM | |
+| `gpt-audio-mini-2025-10-06` | 250,000 TPM | 3,000 RPM | |
+| `gpt-audio-mini-2025-12-15` | 250,000 TPM | 3,000 RPM | |
+| **Text** | | | |
+| `babbage-002` | 250,000 TPM | 3,000 RPM | |
+| `chat-latest` | 500,000 TPM | 500 RPM | 900,000 TPD |
+| `chatgpt-image-latest` | 250,000 TPM | 3,000 RPM | |
+| `davinci-002` | 250,000 TPM | 3,000 RPM | |
+| `o1` | 30,000 TPM | 500 RPM | 90,000 TPD |
+| `o1-pro` | 30,000 TPM | 500 RPM | 90,000 TPD |
+| `o3` | 30,000 TPM | 500 RPM | 90,000 TPD |
+| `o3-mini` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `o4-mini` | 200,000 TPM | 500 RPM | 2,000,000 TPD |
+| `o4-mini-deep-research` | 200,000 TPM | 500 RPM | 200,000 TPD |
+| `o4-mini-deep-research-2025-06-26` | 250,000 TPM | 3,000 RPM | |
+| `text-embedding-3-large` | 1,000,000 TPM | 3,000 RPM | 3,000,000 TPD |
+| `text-embedding-3-small` | 1,000,000 TPM | 3,000 RPM | 3,000,000 TPD |
+| `text-embedding-ada-002` | 1,000,000 TPM | 3,000 RPM | 3,000,000 TPD |
+| **Realtime** | | | |
+| `gpt-realtime` | 40,000 TPM | 200 RPM / 1,000 RPD | |
+| `gpt-realtime-mini` | 40,000 TPM | 200 RPM / 1,000 RPD | |
+| `gpt-realtime-translate` | 30,000 TPM | 500 RPM | |
+| `gpt-realtime-whisper` | 60,000 TPM | 500 RPM | |
+| **Moderation** | | | |
+| `omni-moderation-2024-09-26` | 10,000 TPM | 500 RPM / 10,000 RPD | 1,000,000 TPD |
+| `omni-moderation-latest` | 10,000 TPM | 500 RPM / 10,000 RPD | 1,000,000 TPD |
+| `text-moderation-latest` | 150,000 TPM | 1,000 RPM | |
+| `text-moderation-stable` | 150,000 TPM | 1,000 RPM | |
+| **Image** | | | |
+| `gpt-image` | 100,000 TPM | 5 images per minute | |
+| `gpt-image-1-mini` | 100,000 TPM | 5 images per minute | |
+| **Video** | | | |
+| `sora-2` | | 25 RPM | |
+| `sora-2-pro` | | 10 RPM | |
+| **Audio** | | | |
+| `gpt-4o-mini-tts` | 50,000 TPM | 500 RPM | |
+| `gpt-4o-mini-tts-2025-03-20` | 250,000 TPM | 3,000 RPM | |
+| `gpt-4o-mini-tts-2025-12-15` | 250,000 TPM | 3,000 RPM | |
+| `tts-1` | | 500 RPM | |
+| `tts-1-hd` | | 500 RPM | |
+| `whisper-1` | | 500 RPM | |
+| **Other** | | | |
+| `Default limits for all other models` | 250,000 TPM | 3,000 RPM | |

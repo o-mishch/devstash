@@ -15,6 +15,7 @@ export type RateLimitKey =
   | 'updateSettings'
   | 'changePassword'
   | 'changeCredentials'
+  | 'aiTags'
 
 interface LimitConfig {
   attempts: number
@@ -33,6 +34,7 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   updateSettings:       { attempts: 60, window: '1 m'  }, // keyed by IP
   changePassword:       { attempts: 5,  window: '15 m' }, // keyed by userId
   changeCredentials:    { attempts: 5,  window: '15 m' }, // keyed by userId — email/password changes
+  aiTags:               { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage
 }
 
 interface RouteRateLimitDenied {

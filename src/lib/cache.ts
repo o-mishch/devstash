@@ -80,6 +80,7 @@ export async function withDataCache<T>(
 // The group tag `collections-${userId}` sweeps all collection cache entries automatically —
 // no need to enumerate specific tags here when adding new collection caches.
 export function invalidateCollectionsCache(userId: string): void {
+  getRequestCache().clear()
   revalidateTag(`collections-${userId}`)
   revalidatePath('/dashboard')
   revalidatePath('/collections', 'layout')
@@ -89,6 +90,7 @@ export function invalidateCollectionsCache(userId: string): void {
 
 // Called after profile mutations (password change, unlink provider).
 export function invalidateProfileCache(userId: string): void {
+  getRequestCache().clear()
   revalidateTag(CacheTags.profile(userId).tag)
   revalidatePath('/profile', 'page')
   log.info(`INVALIDATED profile for user:${userId}`)
@@ -98,6 +100,7 @@ export function invalidateProfileCache(userId: string): void {
 // Any cache entry that includes `items-${userId}` in its tags is swept automatically —
 // no need to enumerate specific tags here when adding new item caches.
 export function invalidateItemsCache(userId?: string): void {
+  getRequestCache().clear()
   if (userId) {
     revalidateTag(`items-${userId}`)
   }

@@ -2,7 +2,6 @@
 
 import { ReactNode } from 'react'
 import { Controller, type UseFormReturn } from 'react-hook-form'
-import { Tag } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -13,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { type ItemFormBaseValues } from '@/lib/utils/validators'
 import type { CollectionWithTypes } from '@/types/collection'
+import { ItemTagsField } from '@/components/items/item-tags-field'
 
 interface FieldProps {
   name: string
@@ -47,10 +47,18 @@ export interface ItemFormFieldsProps {
   itemType: string
   watchedLanguage?: string
   collections: CollectionWithTypes[]
+  isPro: boolean
   variant?: 'dialog' | 'drawer'
 }
 
-export function ItemFormFields({ form, itemType, watchedLanguage, collections, variant = 'dialog' }: ItemFormFieldsProps) {
+export function ItemFormFields({
+  form,
+  itemType,
+  watchedLanguage,
+  collections,
+  isPro,
+  variant = 'dialog',
+}: ItemFormFieldsProps) {
   const Field = variant === 'drawer' ? DrawerField : DialogField
   const showContent = ITEM_TYPES_WITH_CONTENT.has(itemType)
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(itemType)
@@ -143,20 +151,12 @@ export function ItemFormFields({ form, itemType, watchedLanguage, collections, v
         )}
       </Field>
 
-      <Field
-        name="tags"
-        label="Tags"
-        icon={variant === 'drawer' ? <Tag className="size-3" /> : undefined}
+      <ItemTagsField
+        form={form}
         error={form.formState.errors.tags?.message}
-        className={variant === 'drawer' ? 'space-y-1.5' : undefined}
-      >
-        <Input
-          id="tags"
-          placeholder="react, hooks, typescript (comma separated)"
-          {...form.register('tags')}
-        />
-        {variant === 'drawer' && <p className="text-xs text-muted-foreground">Comma-separated</p>}
-      </Field>
+        isPro={isPro}
+        variant={variant}
+      />
 
       {collections.length > 0 && (
         <Field

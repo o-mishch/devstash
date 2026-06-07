@@ -238,6 +238,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
                 itemType={itemType}
                 watchedLanguage={watchedLanguage}
                 collections={collections}
+                isPro={isPro}
                 variant="dialog"
               />
 

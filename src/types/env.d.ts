@@ -27,5 +27,6 @@ declare namespace NodeJS {
     NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: string;
     STRIPE_PRICE_ID_MONTHLY: string;
     STRIPE_PRICE_ID_YEARLY: string;
+    OPENAI_API_KEY: string;
   }
 }

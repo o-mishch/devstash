@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add AI-powered tag suggestions for items using the OpenAI "gpt-5-nano" model. Users click a "Suggest Tags" button in the tags area, and the AI returns 3-5 freeform tag suggestions based on the item's title and content. Each suggestion has accept/reject controls. Pro-only feature with both UI-level and server-side gating. If this is the first AI feature implemented, it also establishes the OpenAI foundation (client, server action, rate limit config) for subsequent AI features.
+Add AI-powered tag suggestions for items using the OpenAI "gpt-4.1-nano" model. Users click a "Suggest Tags" button in the tags area, and the AI returns 3-5 freeform tag suggestions based on the item's title and content. Each suggestion has accept/reject controls. Pro-only feature with both UI-level and server-side gating. If this is the first AI feature implemented, it also establishes the OpenAI foundation (client, server action, rate limit config) for subsequent AI features.
 
 ## Requirements
 
@@ -14,54 +14,30 @@ Add AI-powered tag suggestions for items using the OpenAI "gpt-5-nano" model. Us
 - Display suggested tags as badges with accept (check) and reject (X) controls per tag
 - Accepted tags get added to the item's tag list
 - Tags are freeform (not limited to existing tags in the database)
-- Truncate content to 2000 chars before API call
+- Keep the AI input within the 2000-char validation cap before the API call
 - Hide the Suggest Tags button for free users (Pro-only UI gating)
 - Error handling via toast (Pro gating, rate limit, AI service errors)
 - Follow existing patterns
 - Unit tests for server action
 
-## CRITICAL: OpenAI SDK & gpt-5-nano gotchas
+## OpenAI SDK & gpt-4.1-nano integration
 
-The `openai` npm package v6+ has TWO different APIs. **gpt-5-nano does NOT work with the Chat Completions API** — it returns empty content. You MUST use the **Responses API** instead.
-
-### Use the Responses API (NOT Chat Completions)
+Use the standard **Responses API**. `gpt-4.1-nano` is supported here and the current auto-tag flow reads from `output_text`.
 
 ```typescript
-// CORRECT — Responses API (works with gpt-5-nano)
 const response = await client.responses.create({
-  model: 'gpt-5-nano',
+  model: 'gpt-4.1-nano',
   instructions: 'You are a developer tool assistant...',
   input: 'Suggest 3-5 tags for this snippet...',
-  text: {
-    format: { type: 'json_object' },
-  },
 });
-const text = response.output_text; // <-- this is where the content is
-
-// WRONG — Chat Completions API (returns empty content with gpt-5-nano)
-const completion = await client.chat.completions.create({
-  model: 'gpt-5-nano',
-  messages: [{ role: 'user', content: '...' }],
-});
-// completion.choices[0].message.content will be "" (empty string)
+const text = response.output_text;
 ```
 
-### Key differences from Chat Completions
+### Gotchas
 
-| Chat Completions | Responses API |
-|---|---|
-| `client.chat.completions.create()` | `client.responses.create()` |
-| `messages: [{ role, content }]` | `instructions` (system) + `input` (user) |
-| `response_format: { type: 'json_object' }` | `text: { format: { type: 'json_object' } }` |
-| `completion.choices[0].message.content` | `response.output_text` |
-| `max_tokens` / `max_completion_tokens` | not needed (or use `max_output_tokens`) |
-
-### Other gotchas
-
-- `max_tokens` is NOT supported by gpt-5-nano — use `max_completion_tokens` if using Chat Completions (but don't use Chat Completions, use Responses API)
-- `zodResponseFormat` structured output consumes excessive tokens with this model and hits length limits — use `json_object` format instead and parse manually
-- The model may return `{"tags": ["a", "b"]}` OR `["a", "b"]` — handle both formats
-- Always normalize tags to lowercase after receiving them
+- Keep prompts compact and parse manually.
+- The model may return `{"tags": ["a", "b"]}` OR `["a", "b"]` — handle both formats.
+- Always normalize tags to lowercase after receiving them.
 
 ## Notes
 

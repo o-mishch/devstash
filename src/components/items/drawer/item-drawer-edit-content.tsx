@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { LanguageInput } from '@/components/shared/item-content-input'
 import { ItemFormFields } from '@/components/items/item-form-fields'
 import { updateItemAction } from '@/actions/items'
+import { useItemDrawer } from '@/context/item-drawer-context'
 import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
@@ -42,6 +43,7 @@ interface ItemDrawerEditContentProps {
 
 export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel }: ItemDrawerEditContentProps) {
   const router = useRouter()
+  const { isPro } = useItemDrawer()
   const { itemType } = item
   const typeName = itemType.name
 
@@ -148,6 +150,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
         itemType={typeName}
         watchedLanguage={watchedLanguage}
         collections={collections}
+        isPro={isPro}
         variant="drawer"
       />
 
