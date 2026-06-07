@@ -53,3 +53,8 @@ MD for reference. Phase 1 should include unit tests for the usage-limits module.
 save as:
 context/features/stripe-phase-1-spec.md
 context/features/stripe-phase-2-spec.md
+
+
+we need a clear way to upgrade the user. Free isers should see a button in the header that says "Upgrade". Instead of that taking them directly to the Stripe checkout, create a / upgrade page that displays the features much like we have in the pricing area of the homepage. They should be able to select the PLN 20 monthly or PLN 270 yearly. Then they can click to upgrade from there to go through checkout
+
+see src/lib/utils/constants.ts PRICING

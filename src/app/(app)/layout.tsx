@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { WithChildren } from '@/types/common'
-import { Archive, Home, Star } from 'lucide-react'
+import { Archive, Home, Star, Zap } from 'lucide-react'
 import { GlobalSearch } from '@/components/shared/global-search'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
@@ -76,6 +76,16 @@ export default async function DashboardLayout({ children }: WithChildren) {
             <GlobalSearch collections={sidebarData.collections} />
 
             <div className="flex shrink-0 items-center gap-2">
+              {!isPro && (
+                <Link
+                  href="/upgrade"
+                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+                >
+                  <Zap className="size-3" />
+                  Upgrade
+                </Link>
+              )}
+
               <TooltipProvider delay={400}>
                 <Tooltip>
                   <TooltipTrigger render={

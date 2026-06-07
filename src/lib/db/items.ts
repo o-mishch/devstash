@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { withDataCache, CacheTags } from '@/lib/cache'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { FullItem, ItemDetails, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
-import { Prisma } from '@/generated/prisma/client'
+import { Prisma, ContentType } from '@/generated/prisma/client'
 
 const ITEM_SELECT = {
   id: true,
@@ -99,29 +99,19 @@ const PINNED_LIMIT = 20
 export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<LightItem[]> {
   return withDataCache(CacheTags.pinnedItems(userId), async () => {
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), PINNED_LIMIT)
-    const [items, previewRows] = await Promise.all([
-      prisma.item.findMany({
-        where: { userId, isPinned: true },
-        orderBy: { updatedAt: 'desc' },
-        take: safeLimit,
-        select: LIGHT_ITEM_SELECT,
-      }),
-      prisma.$queryRaw<RawItemPreviewRow[]>`
-        SELECT id, LEFT(description, 150) AS description_preview
-        FROM items WHERE "userId" = ${userId} AND "isPinned" = true
-        ORDER BY "updatedAt" DESC
-        LIMIT ${safeLimit}
-      `,
-    ])
-    const previews = new Map(previewRows.map((r) => [
-      r.id,
-      {
-        id: r.id,
-        descriptionPreview: r.description_preview || null,
+    const items = await prisma.item.findMany({
+      where: { userId, isPinned: true },
+      orderBy: { updatedAt: 'desc' },
+      take: safeLimit,
+      select: { ...LIGHT_ITEM_SELECT, description: true },
+    })
+    return items.map(({ description, ...item }) =>
+      toLightItem(item as LightItemWithRelations, {
+        id: item.id,
+        descriptionPreview: description ? description.slice(0, 150) : null,
         contentPreview: null,
-      }
-    ]))
-    return items.map((i) => toLightItem(i, previews.get(i.id)))
+      })
+    )
   })
 }
 
@@ -160,7 +150,7 @@ export const ITEM_DETAILS_SELECT = {
 } as const
 
 export async function getItemDetails(userId: string, itemId: string): Promise<ItemDetails | null> {
-  return withDataCache(CacheTags.itemById(userId, itemId), async () => {
+  return withDataCache(CacheTags.itemDetails(userId, itemId), async () => {
     const row = await prisma.item.findUnique({
       where: { id: itemId, userId },
       select: ITEM_DETAILS_SELECT,
@@ -197,9 +187,9 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
 
   if (!itemType) return null
 
-  let contentType: 'TEXT' | 'FILE' | 'URL' = 'TEXT'
-  if (ITEM_TYPES_WITH_URL.has(data.itemTypeName)) contentType = 'URL'
-  else if (ITEM_TYPES_WITH_FILE.has(data.itemTypeName)) contentType = 'FILE'
+  let contentType: ContentType = ContentType.TEXT
+  if (ITEM_TYPES_WITH_URL.has(data.itemTypeName)) contentType = ContentType.URL
+  else if (ITEM_TYPES_WITH_FILE.has(data.itemTypeName)) contentType = ContentType.FILE
 
   const validCollectionIds = await getValidCollectionIds(userId, data.collectionIds)
 

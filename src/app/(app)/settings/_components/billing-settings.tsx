@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
-import { CreditCard, CheckCircle2, Clock, Zap } from 'lucide-react'
+import Link from 'next/link'
+import { CreditCard, CheckCircle2, Clock, Zap, ArrowRight } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -54,10 +55,8 @@ export async function BillingSettings() {
   const subscriptionStart = stripeInfo?.subscriptionStart ?? null
   const currentPeriodEnd = stripeInfo?.currentPeriodEnd ?? null
   const cancelAtPeriodEnd = stripeInfo?.cancelAtPeriodEnd ?? false
-  const interval = stripeInfo?.subscriptionInterval ?? null
   const isStale = stripeInfo?.isStale ?? false
-
-  const { label, price, unit } = getIntervalInfo(interval)
+  const planInfo = isPro ? getIntervalInfo(stripeInfo?.subscriptionInterval ?? null) : null
 
   return (
     <Card>
@@ -101,7 +100,7 @@ export async function BillingSettings() {
               </div>
 
               {/* Data rows */}
-              <DetailRow label="Plan" value={`${label} · ${price} / ${unit}`} />
+              <DetailRow label="Plan" value={`${planInfo!.label} · ${planInfo!.price} / ${planInfo!.unit}`} />
               {subscriptionStart && (
                 <DetailRow
                   label="Pro since"
@@ -164,27 +163,16 @@ export async function BillingSettings() {
               </div>
             </div>
 
-            {/* Upgrade nudge */}
-            <div className="rounded-lg border bg-muted/30 px-4 py-3 flex items-start gap-3">
-              <Zap className="size-4 text-primary mt-0.5 shrink-0" />
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium">Unlock Pro</p>
-                <p className="text-xs text-muted-foreground">
-                  File & image uploads, unlimited items and collections.
-                </p>
-              </div>
-            </div>
-
             <Separator />
 
-            <Suspense fallback={null}>
-              <BillingForms
-                isPro={isPro}
-                isCanceling={false}
-                priceIdMonthly={process.env.STRIPE_PRICE_ID_MONTHLY}
-                priceIdYearly={process.env.STRIPE_PRICE_ID_YEARLY}
-              />
-            </Suspense>
+            <Link
+              href="/upgrade"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 hover:-translate-y-0.5 active:scale-95"
+            >
+              <Zap className="size-4" />
+              Upgrade to Pro
+              <ArrowRight className="size-4" />
+            </Link>
           </>
         )}
       </CardContent>

@@ -38,7 +38,7 @@ If the argument is `check`, `run`, or `fix`, evaluate the codebase for the follo
 3. **Dead code**: Find unused imports and orphaned/unused files.
 4. **Stale comments**: Check for stale `TODO` or `FIXME` comments.
 5. **Type overrides**: Find `@ts-ignore` or `@ts-expect-error` comments that might no longer be necessary.
-6. **Environment variables**: Verify that `.env.production` has the same variables (not necessarily values) as `.env.example` or `.env`. Report any missing variables.
+6. **Environment variables**: Verify that `.env._production` has the same variables (not necessarily values) as `.env.example` or `.env`. Report any missing variables.
 7. **ESLint Compliance**: Ensure the code is compliant with ESLint. Check and fix linting errors on every attempt of code editing.
 
 ### Output Formatting

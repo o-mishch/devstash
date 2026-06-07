@@ -30,7 +30,7 @@ export function UpgradePromptProvider({ children }: WithChildren) {
   function handleUpgrade() {
     config?.onUpgrade?.()
     setConfig(null)
-    router.push('/settings')
+    router.push('/upgrade')
   }
 
   const value = useMemo(() => ({ showUpgradePrompt }), [showUpgradePrompt])

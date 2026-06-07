@@ -675,9 +675,9 @@ function buildBulkRow(typeName: string, typeId: string, userId: string, i: numbe
       const version = Math.floor(i / IMAGE_SUBJECTS.length) + 1
       const imageKeys = [
         { key: 'cmpk3zmxa00072jceqh45o1yo/32114d4e-6048-4bb7-8a97-e2332a303915.jpeg', ext: 'jpeg' },
-        { key: 'cmpk3zmxa00072jceqh45o1yo/bb7b5d4d-49cc-4603-9c9d-b540ccc1da33.png',  ext: 'png'  },
+        { key: 'cmpk3zmxa00072jceqh45o1yo/bb7b5d4d-49cc-4603-9c9d-b540ccc1da33.png', ext: 'png' },
         { key: 'a619936e-d734-4032-b15b-be61b3b8f926/8a27a479-9a29-4f4d-b115-375d93eae212.jpg', ext: 'jpg' },
-        { key: 'cmpjykoh3000004jx6ahstbmh/9f4f472d-920a-4578-9d0a-44965de9cf41.jpg',  ext: 'jpg'  },
+        { key: 'cmpjykoh3000004jx6ahstbmh/9f4f472d-920a-4578-9d0a-44965de9cf41.jpg', ext: 'jpg' },
       ]
       const { key, ext } = imageKeys[i % imageKeys.length]
       const name = `${subject.toLowerCase().replace(/\s+/g, '-')}-v${version}.${ext}`
@@ -986,7 +986,7 @@ docker stop app || true && \\
 docker rm app || true && \\
 docker run -d --name app --restart unless-stopped \\
   -p 3000:3000 \\
-  --env-file .env.production \\
+  --env-file .env._production \\
   ghcr.io/$IMAGE_NAME:latest`,
       description: 'Pull latest image, swap container with zero downtime',
     },

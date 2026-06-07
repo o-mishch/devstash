@@ -9,18 +9,18 @@ if (typeof window !== 'undefined') {
   const origError = console.error
   console.error = (...args) => {
     const isScriptError = typeof args[0] === 'string' && args[0].includes('Encountered a script tag')
-    const isMonacoCanceledError = (() => {
-      if (!args[0]) return false
-      if (typeof args[0] === 'string' && args[0].includes('Canceled')) return true
-      if (args[0] instanceof Error && args[0].message.includes('Canceled')) return true
-      if (typeof args[0] === 'object') {
-        const obj = args[0] as Record<string, unknown>
-        if (obj.name === 'Canceled' || (typeof obj.message === 'string' && obj.message.includes('Canceled'))) {
-          return true
-        }
+    // Monaco emits "Canceled" errors as known noise (github.com/microsoft/monaco-editor/issues/4859).
+    // Check all args because Turbopack may spread the error across multiple arguments.
+    const isMonacoCanceledError = args.some((arg) => {
+      if (!arg) return false
+      if (typeof arg === 'string') return arg.includes('Canceled')
+      if (arg instanceof Error) return arg.message.includes('Canceled')
+      if (typeof arg === 'object') {
+        const obj = arg as Record<string, unknown>
+        return obj.name === 'Canceled' || (typeof obj.message === 'string' && obj.message.includes('Canceled'))
       }
       return false
-    })()
+    })
 
     if (isScriptError || isMonacoCanceledError) {
       return
