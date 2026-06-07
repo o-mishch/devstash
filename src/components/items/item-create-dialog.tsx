@@ -161,7 +161,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
   }
 
   const triggerEl = trigger ?? (
-    <Button size="sm">
+    <Button size="sm" data-create-item-trigger>
       <Plus className="size-4" />
       <span className="hidden sm:inline">New Item</span>
     </Button>
@@ -175,7 +175,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
           showUpgradePrompt({ title: 'Item limit reached', description: `You've used all ${FREE_TIER_ITEM_LIMIT} free items.` })
           return
         }
-        setInternalOpen(true)
+        handleOpenChange(true)
       }} className="contents">{triggerEl}</span>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="flex flex-col max-h-[90dvh] sm:max-w-[500px]">

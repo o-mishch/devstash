@@ -10,6 +10,8 @@ import { ImageCard } from '@/components/items/image-card'
 import { EmptyCard } from '@/components/shared/empty-card'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 import type { ItemsPage } from '@/types/item'
+import { Button } from '@/components/ui/button'
+import { ArrowRight } from 'lucide-react'
 
 interface CollectionItemsGridProps {
   collectionId: string
@@ -23,7 +25,19 @@ export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItems
   const uniqueTypeCount = useMemo(() => new Set(items.map((i) => i.itemType.name)).size, [items])
 
   if (items.length === 0) {
-    return <EmptyCard message="No items in this collection yet." />
+    return (
+      <EmptyCard
+        action={
+          <Button
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => document.querySelector<HTMLButtonElement>('[data-create-item-trigger]')?.click()}
+          >
+            Create your first item <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        }
+      />
+    )
   }
 
   if (uniqueTypeCount === 1) {
