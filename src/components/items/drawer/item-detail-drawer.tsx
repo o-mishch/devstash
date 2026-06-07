@@ -41,7 +41,7 @@ function ItemDetailDrawerInner({
 
     const controller = new AbortController()
 
-    apiFetch<ItemDetails>(`/api/items/${itemId}/remain-fields`).then((result) => {
+    apiFetch<ItemDetails>(`/api/items/${itemId}/details`).then((result) => {
       if (!controller.signal.aborted && result.status === 'ok' && result.data) {
         const mergedItem: FullItem = { ...item, ...result.data }
         setFullItem(mergedItem)

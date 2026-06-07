@@ -201,9 +201,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
   if (ITEM_TYPES_WITH_URL.has(data.itemTypeName)) contentType = 'URL'
   else if (ITEM_TYPES_WITH_FILE.has(data.itemTypeName)) contentType = 'FILE'
 
-  const validCollectionIds = data.collectionIds.length > 0
-    ? await prisma.collection.findMany({ where: { id: { in: data.collectionIds }, userId }, select: { id: true } }).then(rows => rows.map(r => r.id))
-    : []
+  const validCollectionIds = await getValidCollectionIds(userId, data.collectionIds)
 
   const created = await prisma.item.create({
     data: {
@@ -249,9 +247,7 @@ export interface UpdateItemInput {
 }
 
 export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<FullItem | null> {
-  const validCollectionIds = data.collectionIds.length > 0
-    ? await prisma.collection.findMany({ where: { id: { in: data.collectionIds }, userId }, select: { id: true } }).then(rows => rows.map(r => r.id))
-    : []
+  const validCollectionIds = await getValidCollectionIds(userId, data.collectionIds)
 
   try {
     const updated = await prisma.item.update({
@@ -448,3 +444,13 @@ function buildTagsConnectOrCreate(tags: string[]) {
     create: { name },
   }))
 }
+
+async function getValidCollectionIds(userId: string, collectionIds: string[]) {
+  if (collectionIds.length === 0) return []
+  const rows = await prisma.collection.findMany({
+    where: { id: { in: collectionIds }, userId },
+    select: { id: true },
+  })
+  return rows.map((r) => r.id)
+}
+

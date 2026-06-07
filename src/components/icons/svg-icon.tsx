@@ -1,4 +1,5 @@
 import type { SVGProps } from 'react'
+import DOMPurify from 'isomorphic-dompurify'
 
 interface SvgIconProps extends Omit<SVGProps<SVGSVGElement>, 'dangerouslySetInnerHTML'> {
   src: string
@@ -7,21 +8,18 @@ interface SvgIconProps extends Omit<SVGProps<SVGSVGElement>, 'dangerouslySetInne
 /**
  * Renders a raw SVG string as an inline <svg> element.
  * IMPORTANT: `src` must only be a statically-imported SVG module string.
- * Never pass user-supplied or remotely-fetched content — there is no sanitization.
  */
 export function SvgIcon({ src, ...props }: SvgIconProps) {
-  if (src.includes('<script')) {
-    throw new Error('SvgIcon must not contain <script> tags for security reasons.')
-  }
-  
   const viewBox = src.match(/viewBox="([^"]+)"/)?.[1] ?? '0 0 24 24'
   const inner = src.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
+  const cleanSvg = DOMPurify.sanitize(inner, { USE_PROFILES: { svg: true } })
+
   return (
     <svg
       viewBox={viewBox}
       fill="currentColor"
       {...props}
-      dangerouslySetInnerHTML={{ __html: inner }}
+      dangerouslySetInnerHTML={{ __html: cleanSvg }}
     />
   )
 }
