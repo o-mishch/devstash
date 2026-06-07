@@ -62,7 +62,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
 
   const watchedLanguage = useWatch({ control: form.control, name: 'language' })
   const saving = form.formState.isSubmitting
-
+  
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(typeName)
 
   const handleSubmit = form.handleSubmit(async (data: DrawerFormValues) => {
@@ -118,12 +118,12 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
                       value={field.value || ''}
                       onChange={field.onChange}
                       placeholder="Language"
-                      className="h-5 w-24 rounded-md border-border/60 px-1.5 py-0 text-xs shadow-none transition-colors hover:bg-accent/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                      className="h-5 w-32 rounded-full border-border px-2.5 py-0.5 text-xs shadow-none transition-colors hover:bg-accent/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     />
                   )}
                 />
                 {form.formState.errors.language && (
-                  <p className="absolute top-6 left-0 text-red-500 text-[10px] whitespace-nowrap">{form.formState.errors.language.message}</p>
+                  <p className="absolute top-7 left-0 text-red-500 text-[10px] whitespace-nowrap">{form.formState.errors.language.message}</p>
                 )}
               </div>
             )}

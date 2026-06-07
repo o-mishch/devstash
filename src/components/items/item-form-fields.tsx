@@ -58,6 +58,27 @@ export function ItemFormFields({ form, itemType, watchedLanguage, collections, v
 
   return (
     <>
+      {showLanguage && variant === 'dialog' && (
+        <Field
+          name="language"
+          label="Language"
+          error={form.formState.errors.language?.message}
+        >
+          <Controller
+            control={form.control}
+            name="language"
+            render={({ field }) => (
+              <LanguageInput
+                id="language"
+                value={field.value || ''}
+                onChange={field.onChange}
+                placeholder="Select language..."
+              />
+            )}
+          />
+        </Field>
+      )}
+
       {showContent && (
         <Field
           name="content"
@@ -85,6 +106,22 @@ export function ItemFormFields({ form, itemType, watchedLanguage, collections, v
         </Field>
       )}
 
+      {showUrl && (
+        <Field
+          name="url"
+          label="URL"
+          error={form.formState.errors.url?.message}
+          className={variant === 'drawer' ? 'space-y-1.5' : undefined}
+        >
+          <Input
+            id="url"
+            type="url"
+            placeholder="https://..."
+            {...form.register('url')}
+          />
+        </Field>
+      )}
+
       <Field
         name="description"
         label="Description"
@@ -105,43 +142,6 @@ export function ItemFormFields({ form, itemType, watchedLanguage, collections, v
           />
         )}
       </Field>
-
-      {showUrl && (
-        <Field
-          name="url"
-          label="URL"
-          error={form.formState.errors.url?.message}
-          className={variant === 'drawer' ? 'space-y-1.5' : undefined}
-        >
-          <Input
-            id="url"
-            type="url"
-            placeholder="https://..."
-            {...form.register('url')}
-          />
-        </Field>
-      )}
-
-      {showLanguage && variant === 'dialog' && (
-        <Field
-          name="language"
-          label="Language"
-          error={form.formState.errors.language?.message}
-        >
-          <Controller
-            control={form.control}
-            name="language"
-            render={({ field }) => (
-              <LanguageInput
-                id="language"
-                value={field.value || ''}
-                onChange={field.onChange}
-                placeholder="e.g. typescript, bash"
-              />
-            )}
-          />
-        </Field>
-      )}
 
       <Field
         name="tags"

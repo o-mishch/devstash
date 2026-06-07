@@ -91,7 +91,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
   const showFile = ITEM_TYPES_WITH_FILE.has(itemType)
   const selectedType = itemTypes.find(t => t.name === itemType)
 
-  const { open, handleOpenChange, setInternalOpen } = useControllableOpen({
+  const { open, handleOpenChange } = useControllableOpen({
     open: controlledOpen,
     onOpenChange: (isOpen) => {
       controlledOnOpenChange?.(isOpen)

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { Textarea } from '@/components/ui/textarea'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
@@ -10,6 +9,12 @@ import type { languages as MonacoLanguages } from 'monaco-editor'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
 
 import { CodeEditor, MarkdownEditor } from './dynamic-editors'
+
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Button } from '@/components/ui/button'
+import { ChevronsUpDown, Check } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 function useMonacoLanguageList() {
   const [languages, setLanguages] = useState<string[]>([])
@@ -43,26 +48,55 @@ interface LanguageInputProps {
   className?: string
 }
 
-export function LanguageInput({ id, value, onChange, placeholder = "e.g. typescript, bash", className }: LanguageInputProps) {
+export function LanguageInput({ id, value, onChange, placeholder = "Select language...", className }: LanguageInputProps) {
   const monacoLanguages = useMonacoLanguageList()
-  const listId = id ? `${id}-datalist` : "language-datalist"
+  const [open, setOpen] = useState(false)
 
   return (
-    <>
-      <Input
-        id={id}
-        list={listId}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={className}
-      />
-      <datalist id={listId}>
-        {monacoLanguages.map(l => (
-          <option key={l} value={l} />
-        ))}
-      </datalist>
-    </>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        nativeButton={false}
+        render={
+          <Button
+            id={id}
+            render={<div />}
+            nativeButton={false}
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn("w-full justify-between font-normal h-9", className)}
+          />
+        }
+      >
+        <span className={cn("truncate flex-1 text-left", !value && "text-muted-foreground")}>
+          {value ? monacoLanguages.find((lang) => lang === value) || value : placeholder}
+        </span>
+        <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search language..." />
+          <CommandList>
+            <CommandEmpty>No language found.</CommandEmpty>
+            <CommandGroup>
+              {monacoLanguages.map((l) => (
+                <CommandItem
+                  key={l}
+                  value={l}
+                  onSelect={(currentValue) => {
+                    onChange(currentValue === value ? "" : currentValue)
+                    setOpen(false)
+                  }}
+                >
+                  <Check className={cn("mr-2 size-4", value === l ? "opacity-100" : "opacity-0")} />
+                  {l}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 

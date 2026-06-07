@@ -52,11 +52,18 @@ interface BillingToggleProps {
 export function BillingToggle({ billing, onChange }: BillingToggleProps) {
   const isYearly = billing === 'yearly'
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+    <div className="relative inline-grid grid-cols-2 rounded-lg border border-border bg-card p-1">
+      {/* Sliding pill */}
+      <div
+        className={cn(
+          'absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-md bg-primary transition-transform duration-300 ease-in-out',
+          isYearly && 'translate-x-[calc(100%+0.25rem)]'
+        )}
+      />
       <button
         className={cn(
-          'rounded-md px-4 py-1.5 text-sm font-medium transition-all',
-          !isYearly ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+          'relative z-10 rounded-md px-4 py-1.5 text-sm font-medium transition-colors duration-300',
+          !isYearly ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
         )}
         onClick={() => onChange('monthly')}
       >
@@ -64,14 +71,14 @@ export function BillingToggle({ billing, onChange }: BillingToggleProps) {
       </button>
       <button
         className={cn(
-          'flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-all',
-          isYearly ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+          'relative z-10 flex items-center justify-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors duration-300',
+          isYearly ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
         )}
         onClick={() => onChange('yearly')}
       >
         Yearly
         <span className={cn(
-          'rounded-full px-1.5 py-0 text-sm font-medium',
+          'rounded-full px-1.5 py-0 text-sm font-medium transition-colors duration-300',
           isYearly
             ? 'bg-emerald-950/70 text-emerald-400'
             : 'bg-emerald-500/20 text-emerald-400'
@@ -163,11 +170,21 @@ export function PricingCards({ billing, freeCta, proCta, onCardSelect }: Pricing
 
           <div className="relative mb-6">
             <div className="mb-2 text-sm font-medium text-muted-foreground">Pro</div>
-            <div className="flex items-end gap-1">
-              <span className="text-5xl font-bold">
-                {isYearly ? PRICING.yearly.amount : PRICING.monthly.amount}
-              </span>
-              <span className="mb-1 text-muted-foreground">/{isYearly ? 'year' : 'month'}</span>
+            <div className="relative h-14 overflow-hidden">
+              <div className={cn(
+                'absolute inset-0 flex items-end gap-1 transition-all duration-500 ease-in-out',
+                isYearly ? '-translate-y-full opacity-0' : 'translate-y-0 opacity-100'
+              )}>
+                <span className="text-5xl font-bold">{PRICING.monthly.amount}</span>
+                <span className="mb-1 text-muted-foreground">/month</span>
+              </div>
+              <div className={cn(
+                'absolute inset-0 flex items-end gap-1 transition-all duration-500 ease-in-out',
+                isYearly ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
+              )}>
+                <span className="text-5xl font-bold">{PRICING.yearly.amount}</span>
+                <span className="mb-1 text-muted-foreground">/year</span>
+              </div>
             </div>
           </div>
 
