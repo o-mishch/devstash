@@ -24,6 +24,19 @@ interface EmailRowProps {
 }
 
 function EmailRow({ email, canUnlink }: EmailRowProps) {
+  const removePasswordDialog = (
+    <ProfileActionDialog
+      title="Remove password"
+      description="Your email & password sign-in will be removed. You can still sign in via your linked accounts."
+      triggerText="Unlink"
+      triggerIcon={<Unlink className="mr-1 size-3" />}
+      confirmText="Remove password"
+      action={removeCredentialsAction}
+      successMessage="Password removed. Sign in via a linked account."
+      errorMessage="Failed to remove password."
+    />
+  )
+
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
       <div className="flex items-center justify-between w-full sm:w-auto gap-3 min-w-0">
@@ -36,16 +49,7 @@ function EmailRow({ email, canUnlink }: EmailRowProps) {
         </div>
         {canUnlink && (
           <div className="sm:hidden shrink-0">
-            <ProfileActionDialog
-              title="Remove password"
-              description="Your email & password sign-in will be removed. You can still sign in via your linked accounts."
-              triggerText="Unlink"
-              triggerIcon={<Unlink className="mr-1 size-3" />}
-              confirmText="Remove password"
-              action={removeCredentialsAction}
-              successMessage="Password removed. Sign in via a linked account."
-              errorMessage="Failed to remove password."
-            />
+            {removePasswordDialog}
           </div>
         )}
       </div>
@@ -54,16 +58,7 @@ function EmailRow({ email, canUnlink }: EmailRowProps) {
         <ChangePasswordForm />
         {canUnlink && (
           <div className="hidden sm:block">
-            <ProfileActionDialog
-              title="Remove password"
-              description="Your email & password sign-in will be removed. You can still sign in via your linked accounts."
-              triggerText="Unlink"
-              triggerIcon={<Unlink className="mr-1 size-3" />}
-              confirmText="Remove password"
-              action={removeCredentialsAction}
-              successMessage="Password removed. Sign in via a linked account."
-              errorMessage="Failed to remove password."
-            />
+            {removePasswordDialog}
           </div>
         )}
       </div>

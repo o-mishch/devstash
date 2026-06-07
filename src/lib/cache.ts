@@ -33,6 +33,7 @@ export const CacheTags = {
   favoriteCollections: (userId: string) => ({ tag: `user:${userId}:favorite-collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   collectionById: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   itemById: (userId: string, itemId: string) => ({ tag: `user:${userId}:item:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
+  itemDetails: (userId: string, itemId: string) => ({ tag: `user:${userId}:item-details:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   itemsByCollection: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}:items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   collectionStats: (userId: string) => ({ tag: `user:${userId}:collection-stats`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   profile: (userId: string) => ({ tag: `user:${userId}:profile`, revalidate: CacheRevalidate.profile }),
@@ -43,8 +44,7 @@ export const CacheTags = {
 // React.cache is scoped per-request. We use it to create a per-request Map
 // which allows us to deduplicate unstable_cache calls across different components
 // in the same render pass, using the string config.tag as the key.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getRequestCache = cache(() => new Map<string, Promise<any>>())
+const getRequestCache = cache(() => new Map<string, Promise<unknown>>())
 
 export async function withDataCache<T>(
   config: DataCacheConfig,
@@ -53,7 +53,7 @@ export async function withDataCache<T>(
   const requestCache = getRequestCache()
 
   if (requestCache.has(config.tag)) {
-    return requestCache.get(config.tag)!
+    return requestCache.get(config.tag)! as Promise<T>
   }
 
   const promise = unstable_cache(

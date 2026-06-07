@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { Settings, User, LogOut } from 'lucide-react'
 import { useTheme } from 'next-themes'
-import { toast } from 'sonner'
+
 import {
   DropdownMenuContent,
   DropdownMenuItem,

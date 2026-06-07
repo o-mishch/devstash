@@ -55,8 +55,8 @@ Items are the core unit of DevStash. Each item has a type that determines its be
 
 #### System Types (Immutable)
 
-| Type       | Icon         | Color               | Content Type | Route             |
-| ---------- | ------------ | ------------------- | ------------ | ----------------- |
+| Type      | Icon         | Color               | Content Type | Route             |
+| --------- | ------------ | ------------------- | ------------ | ----------------- |
 | 🔷 Snippet | `Code`       | `#3b82f6` (blue)    | Text         | `/items/snippets` |
 | 🟣 Prompt  | `Sparkles`   | `#8b5cf6` (purple)  | Text         | `/items/prompts`  |
 | 🟠 Command | `Terminal`   | `#f97316` (orange)  | Text         | `/items/commands` |
@@ -548,19 +548,19 @@ flowchart LR
 
 ### Feature Comparison
 
-| Feature                                   | Free |      Pro       |
-| ----------------------------------------- | :--: | :------------: |
-| Items                                     |  50  |   Unlimited    |
-| Collections                               |  3   |   Unlimited    |
-| Snippets, Prompts, Commands, Notes, Links |  ✅  |       ✅       |
-| Files & Images                            |  ❌  |       ✅       |
-| Basic Search                              |  ✅  |       ✅       |
-| Custom Types                              |  ❌  | 🔜 Coming Soon |
-| AI Auto-tagging                           |  ❌  |       ✅       |
-| AI Code Explanation                       |  ❌  |       ✅       |
-| AI Prompt Optimizer                       |  ❌  |       ✅       |
-| Data Export                               |  ❌  |       ✅       |
-| Priority Support                          |  ❌  |       ✅       |
+| Feature                                   | Free  |      Pro      |
+| ----------------------------------------- | :---: | :-----------: |
+| Items                                     |  50   |   Unlimited   |
+| Collections                               |   3   |   Unlimited   |
+| Snippets, Prompts, Commands, Notes, Links |   ✅   |       ✅       |
+| Files & Images                            |   ❌   |       ✅       |
+| Basic Search                              |   ✅   |       ✅       |
+| Custom Types                              |   ❌   | 🔜 Coming Soon |
+| AI Auto-tagging                           |   ❌   |       ✅       |
+| AI Code Explanation                       |   ❌   |       ✅       |
+| AI Prompt Optimizer                       |   ❌   |       ✅       |
+| Data Export                               |   ❌   |       ✅       |
+| Priority Support                          |   ❌   |       ✅       |
 
 > **Development Note:** During development, all users can access all features. Pro gating will be enabled before launch.
 
@@ -738,7 +738,7 @@ devstash/
 ├── public/
 ├── .env
 ├── .env.example
-├── .env.production
+├── .env._production
 ├── next.config.ts
 ├── tsconfig.json
 └── package.json

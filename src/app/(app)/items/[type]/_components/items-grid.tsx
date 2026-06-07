@@ -7,6 +7,8 @@ import { VirtualFileList } from '@/components/items/virtual-file-list'
 import { EmptyCard } from '@/components/shared/empty-card'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 import type { ItemsPage } from '@/types/item'
+import { Button } from '@/components/ui/button'
+import { ArrowRight } from 'lucide-react'
 
 interface ItemsGridProps {
   firstPage: ItemsPage
@@ -18,7 +20,19 @@ export function ItemsGrid({ firstPage, typeName }: ItemsGridProps) {
   const { items, fetchMore } = useInfiniteItemsFetch(pageKey, firstPage, { type: 'type', typeName })
 
   if (items.length === 0) {
-    return <EmptyCard message={`No ${typeName}s yet.`} />
+    return (
+      <EmptyCard
+        action={
+          <Button
+            variant="ghost"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => document.querySelector<HTMLButtonElement>('[data-create-item-trigger]')?.click()}
+          >
+            Create your first {typeName} <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        }
+      />
+    )
   }
 
   if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {

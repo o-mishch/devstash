@@ -8,8 +8,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
+function PreferenceRow({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="space-y-0.5">
+        <Label>{title}</Label>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export function EditorPreferencesForm() {
   const { preferences, updatePreference } = useEditorPreferences()
+
+  const handleNumberChange = (key: 'fontSize' | 'tabSize') => (value: string | null) => {
+    if (value) updatePreference(key, parseInt(value, 10))
+  }
 
   return (
     <div className="space-y-6">
@@ -62,11 +78,7 @@ export function EditorPreferencesForm() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label>Theme</Label>
-            <p className="text-sm text-muted-foreground">Select the editor color theme</p>
-          </div>
+        <PreferenceRow title="Theme" description="Select the editor color theme">
           <Select 
             value={preferences.theme} 
             onValueChange={(value: EditorTheme | null) => { if (value) updatePreference('theme', value) }}
@@ -84,16 +96,12 @@ export function EditorPreferencesForm() {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </PreferenceRow>
 
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label>Font Size</Label>
-            <p className="text-sm text-muted-foreground">Editor font size in pixels</p>
-          </div>
+        <PreferenceRow title="Font Size" description="Editor font size in pixels">
           <Select 
             value={String(preferences.fontSize)} 
-            onValueChange={(value) => updatePreference('fontSize', parseInt(value as string, 10))}
+            onValueChange={handleNumberChange('fontSize')}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Font Size">
@@ -108,16 +116,12 @@ export function EditorPreferencesForm() {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </PreferenceRow>
 
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label>Tab Size</Label>
-            <p className="text-sm text-muted-foreground">Number of spaces per tab</p>
-          </div>
+        <PreferenceRow title="Tab Size" description="Number of spaces per tab">
           <Select 
             value={String(preferences.tabSize)} 
-            onValueChange={(value) => updatePreference('tabSize', parseInt(value as string, 10))}
+            onValueChange={handleNumberChange('tabSize')}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Tab Size">
@@ -132,29 +136,21 @@ export function EditorPreferencesForm() {
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </PreferenceRow>
 
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label>Word Wrap</Label>
-            <p className="text-sm text-muted-foreground">Wrap lines that exceed the editor width</p>
-          </div>
+        <PreferenceRow title="Word Wrap" description="Wrap lines that exceed the editor width">
           <Switch 
             checked={preferences.wordWrap === 'on'} 
             onCheckedChange={(checked) => updatePreference('wordWrap', checked ? 'on' : 'off')}
           />
-        </div>
+        </PreferenceRow>
 
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label>Minimap</Label>
-            <p className="text-sm text-muted-foreground">Show code minimap on the right</p>
-          </div>
+        <PreferenceRow title="Minimap" description="Show code minimap on the right">
           <Switch 
             checked={preferences.minimap} 
             onCheckedChange={(checked) => updatePreference('minimap', checked)}
           />
-        </div>
+        </PreferenceRow>
       </CardContent>
     </Card>
     </div>

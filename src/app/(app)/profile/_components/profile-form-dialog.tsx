@@ -1,16 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import type { ReactNode } from 'react'
+import { BaseProfileDialog } from './base-profile-dialog'
 
 interface ProfileFormDialogProps {
   title: string
@@ -32,8 +24,8 @@ export function ProfileFormDialog({
   children,
   open: controlledOpen,
   onOpenChange,
-  triggerVariant = "ghost",
-  triggerClassName = "h-7 px-2 text-xs",
+  triggerVariant,
+  triggerClassName,
 }: ProfileFormDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   
@@ -48,24 +40,17 @@ export function ProfileFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button variant={triggerVariant} size="sm" className={triggerClassName}>
-            {triggerIcon}
-            {triggerText}
-          </Button>
-        }
-      />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {description}
-          </DialogDescription>
-        </DialogHeader>
-        {children({ closeDialog: () => handleOpenChange(false) })}
-      </DialogContent>
-    </Dialog>
+    <BaseProfileDialog
+      title={title}
+      description={description}
+      triggerText={triggerText}
+      triggerIcon={triggerIcon}
+      open={open}
+      onOpenChange={handleOpenChange}
+      triggerVariant={triggerVariant}
+      triggerClassName={triggerClassName}
+    >
+      {children({ closeDialog: () => handleOpenChange(false) })}
+    </BaseProfileDialog>
   )
 }

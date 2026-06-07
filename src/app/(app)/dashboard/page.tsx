@@ -1,7 +1,9 @@
 
 import { getRecentItemsPage, getItemStats } from '@/lib/db/items'
 import { DashboardStats } from './_components/dashboard-stats'
-import { DashboardCollections } from './_components/dashboard-collections'
+import { getAllCollections } from '@/lib/db/collections'
+import { CollectionsGrid } from '@/components/dashboard/collections-grid'
+import Link from 'next/link'
 import { DashboardPinned } from './_components/dashboard-pinned'
 import { DashboardRecentList } from './_components/dashboard-recent-list'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,11 +23,12 @@ export default async function DashboardPage() {
 
   if (!userId || !user) return null
 
-  const [firstPage, itemStats, sidebarData, userCanCreateItem] = await Promise.all([
+  const [firstPage, itemStats, sidebarData, userCanCreateItem, allCollections] = await Promise.all([
     getRecentItemsPage(userId),
     getItemStats(userId),
     fetchSidebarData(user),
     canCreateItem(userId, user.isPro),
+    getAllCollections(userId),
   ])
 
   const isEmpty = itemStats.totalItems === 0
@@ -58,7 +61,17 @@ export default async function DashboardPage() {
         </div>
       ) : (
         <>
-          <DashboardCollections userId={userId} />
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <CardTitle className="text-sm font-semibold">Collections</CardTitle>
+              <Link href="/collections" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                View all
+              </Link>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <CollectionsGrid collections={allCollections.slice(0, 6)} />
+            </CardContent>
+          </Card>
           <DashboardPinned userId={userId} />
           {firstPage.items.length > 0 && (
             <Card>

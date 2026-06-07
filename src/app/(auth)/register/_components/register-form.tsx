@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
+import { PasswordFields } from '@/components/auth/password-fields'
 import { registerAction } from '@/actions/auth/register'
 import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
@@ -16,8 +17,7 @@ export function RegisterForm() {
       <form action={formAction} className="flex flex-col gap-4">
         <AuthFormField id="name" name="name" label="Name" type="text" placeholder="Brad Traversy" autoComplete="name" required />
         <AuthFormField id="email" name="email" label="Email" type="email" placeholder="you@example.com" autoComplete="email" required />
-        <AuthFormField id="password" name="password" label="Password" type="password" placeholder="••••••••" autoComplete="new-password" minLength={8} required />
-        <AuthFormField id="confirmPassword" name="confirmPassword" label="Confirm password" type="password" placeholder="••••••••" autoComplete="new-password" minLength={8} required />
+        <PasswordFields />
 
         <SubmitButton className="w-full" isPending={isPending}>
           Create account

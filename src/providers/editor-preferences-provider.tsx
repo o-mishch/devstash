@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { useTheme } from 'next-themes'
 import type { EditorPreferences } from '@/types/editor-preferences'
 import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
@@ -32,7 +32,7 @@ export function EditorPreferencesProvider({ children, initialPreferences }: Edit
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function updatePreference<K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) {
+  const updatePreference = useCallback(async <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => {
     const prev = preferences
     const next = { ...prev, [key]: value }
     setPreferences(next)
@@ -59,10 +59,12 @@ export function EditorPreferencesProvider({ children, initialPreferences }: Edit
         setTheme(prev.appTheme)
       }
     }
-  }
+  }, [preferences, setTheme])
+
+  const value = useMemo(() => ({ preferences, updatePreference }), [preferences, updatePreference])
 
   return (
-    <EditorPreferencesContext.Provider value={{ preferences, updatePreference }}>
+    <EditorPreferencesContext.Provider value={value}>
       {children}
     </EditorPreferencesContext.Provider>
   )

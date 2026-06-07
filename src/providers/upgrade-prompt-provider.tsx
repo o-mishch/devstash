@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Lock, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -30,11 +30,13 @@ export function UpgradePromptProvider({ children }: WithChildren) {
   function handleUpgrade() {
     config?.onUpgrade?.()
     setConfig(null)
-    router.push('/settings')
+    router.push('/upgrade')
   }
 
+  const value = useMemo(() => ({ showUpgradePrompt }), [showUpgradePrompt])
+
   return (
-    <UpgradePromptContext.Provider value={{ showUpgradePrompt }}>
+    <UpgradePromptContext.Provider value={value}>
       {children}
       <Dialog open={config !== null} onOpenChange={(open) => { if (!open) setConfig(null) }}>
         <DialogContent className="sm:max-w-[380px]">
