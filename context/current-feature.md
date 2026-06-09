@@ -6,8 +6,8 @@ Not Started
 
 ## Goals
 
-<!-- Goals for the current feature -->
+<!-- No active feature -->
 
 ## Notes
 
-<!-- Any notes or constraints -->
+<!-- No active feature -->

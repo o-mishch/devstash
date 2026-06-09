@@ -1,6 +1,6 @@
 import { getAllCollections } from './collections'
 import { getSidebarItemTypes } from './items'
-import { createLogger } from '@/lib/logger'
+import { createLogger } from '@/lib/infra/logger'
 import { cache } from 'react'
 import type { SidebarData, SidebarUser } from '@/types/sidebar'
 

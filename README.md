@@ -39,6 +39,21 @@ stripe trigger customer.subscription.created
 
 Use [Stripe test card numbers](https://docs.stripe.com/testing#cards) (e.g. `4242 4242 4242 4242`) when checking out in the sandbox.
 
+## Database maintenance
+
+Trim excess items from the demo account (`demo@devstash.io`). Keeps up to 10 items per type (pinned and favorites first); deletes the rest in batches. Requires `DATABASE_URL` in `.env` and an existing demo user (`npm run db:seed`).
+
+```bash
+npm run db:purge-demo-items
+```
+
+Related scripts:
+
+```bash
+npm run db:purge-users   # delete all users except demo@devstash.io
+npm run db:test          # smoke-test DB connectivity and seed data
+```
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

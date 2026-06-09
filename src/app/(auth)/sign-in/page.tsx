@@ -1,4 +1,4 @@
-import { SignInForm } from './_components/sign-in-form'
+import { SignInForm } from '@/components/auth/sign-in-form'
 import { AuthFormLayout } from '@/components/auth/auth-page-header'
 
 interface SignInPageProps {

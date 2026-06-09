@@ -1,7 +1,7 @@
 import { AuthFormLayout, AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
-import { peekPasswordResetToken } from '@/lib/tokens'
+import { peekPasswordResetToken } from '@/lib/auth/tokens'
 import { resetPasswordAction } from '@/actions/auth/reset'
-import { ResetPasswordForm } from './_components/reset-password-form'
+import { ResetPasswordForm } from '@/components/auth/reset-password-form'
 
 interface ResetPasswordPageProps {
   searchParams: Promise<{ token?: string }>

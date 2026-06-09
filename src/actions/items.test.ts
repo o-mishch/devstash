@@ -1,20 +1,35 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn().mockResolvedValue(false),
+}))
 vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn(), toggleItemFavorite: vi.fn(), toggleItemPinned: vi.fn() }))
-vi.mock('@/lib/cache', () => ({ invalidateItemsCache: vi.fn() }))
-vi.mock('@/lib/filebase', () => ({ deleteFromFilebase: vi.fn() }))
-vi.mock('@/lib/usage', () => ({ canCreateItem: vi.fn() }))
+vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn() }))
+vi.mock('@/lib/storage/filebase', () => ({ deleteFromFilebase: vi.fn() }))
+vi.mock('@/lib/db/usage', () => ({
+  canCreateItem: vi.fn(),
+  FREE_TIER_ITEM_LIMIT: 50,
+}))
 
-import { deleteFromFilebase } from '@/lib/filebase'
-import { canCreateItem } from '@/lib/usage'
+import { deleteFromFilebase } from '@/lib/storage/filebase'
+import { canCreateItem } from '@/lib/db/usage'
+import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 
 const mockDeleteFromFilebase = deleteFromFilebase as ReturnType<typeof vi.fn>
 const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
+const mockGetCachedVerifiedProAccess = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 
 import { auth } from '@/auth'
 import { updateItem, deleteItem, getItemById, createItem, toggleItemFavorite, toggleItemPinned } from '@/lib/db/items'
-import { updateItemAction, deleteItemAction, createItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } from './items'
+import {
+  updateItemAction,
+  deleteItemAction,
+  createItemAction,
+  fetchMoreItemsAction,
+  toggleItemFavoriteAction,
+  toggleItemPinnedAction,
+} from './items'
 
 const mockAuth = auth as ReturnType<typeof vi.fn>
 const mockUpdateItem = updateItem as ReturnType<typeof vi.fn>
@@ -51,6 +66,8 @@ const validCreateInput = {
 beforeEach(() => {
   vi.clearAllMocks()
   mockCanCreateItem.mockResolvedValue(true)
+  mockGetCachedVerifiedProAccess.mockResolvedValue(false)
+  mockGetItemById.mockResolvedValue(mockItem)
 })
 
 describe('createItemAction', () => {
@@ -72,21 +89,45 @@ describe('createItemAction', () => {
     expect(result.status).toBe('validation_error')
   })
 
+  it('returns FORBIDDEN when free user reaches the item limit', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCanCreateItem.mockResolvedValue(false)
+    const result = await createItemAction(validCreateInput)
+    expect(result.status).toBe('forbidden')
+    expect(result.message).toMatch(/free tier limit/i)
+  })
+
   it('returns FORBIDDEN when free user tries to create a file item', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1', isPro: false } })
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(false)
     const result = await createItemAction({ ...validCreateInput, itemTypeName: 'file', fileUrl: 'user-1/doc.pdf', fileName: 'doc.pdf', fileSize: 1024 })
     expect(result.status).toBe('forbidden')
   })
 
   it('returns FORBIDDEN when free user tries to create an image item', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1', isPro: false } })
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(false)
     const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'user-1/pic.png', fileName: 'pic.png', fileSize: 1024 })
     expect(result.status).toBe('forbidden')
   })
 
   it('returns FORBIDDEN when fileUrl does not belong to the authenticated user', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1', isPro: true } })
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(true)
     const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'other-user/abc.png' })
+    expect(result.status).toBe('forbidden')
+  })
+
+  it('returns FORBIDDEN when fileUrl uses path traversal within the user prefix', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(true)
+    const result = await createItemAction({
+      ...validCreateInput,
+      itemTypeName: 'image',
+      fileUrl: 'user-1/../other-user/abc.png',
+      fileName: 'abc.png',
+      fileSize: 1024,
+    })
     expect(result.status).toBe('forbidden')
   })
 
@@ -105,7 +146,8 @@ describe('createItemAction', () => {
   })
 
   it('returns CREATED when fileUrl belongs to the authenticated user (requires Pro)', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1', isPro: true } })
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(true)
     mockCreateItem.mockResolvedValue(mockItem)
     const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'user-1/abc.png', fileName: 'abc.png', fileSize: 1024 })
     expect(result.status).toBe('created')
@@ -169,9 +211,28 @@ describe('updateItemAction', () => {
 
   it('returns NOT_FOUND when item does not exist or belongs to another user', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
-    mockUpdateItem.mockResolvedValue(null)
+    mockGetItemById.mockResolvedValue(null)
     const result = await updateItemAction('item-1', validInput)
     expect(result.status).toBe('not_found')
+    expect(mockUpdateItem).not.toHaveBeenCalled()
+  })
+
+  it('returns FORBIDDEN when free user tries to edit a file item', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(false)
+    mockGetItemById.mockResolvedValue({ ...mockItem, itemType: { name: 'file' } })
+    const result = await updateItemAction('item-1', validInput)
+    expect(result.status).toBe('forbidden')
+    expect(mockUpdateItem).not.toHaveBeenCalled()
+  })
+
+  it('returns FORBIDDEN when free user tries to edit an image item', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(false)
+    mockGetItemById.mockResolvedValue({ ...mockItem, itemType: { name: 'image' } })
+    const result = await updateItemAction('item-1', validInput)
+    expect(result.status).toBe('forbidden')
+    expect(mockUpdateItem).not.toHaveBeenCalled()
   })
 
   it('returns OK with updated item on success', async () => {
@@ -262,13 +323,23 @@ describe('deleteItemAction', () => {
     expect(mockDeleteFromFilebase).not.toHaveBeenCalled()
   })
 
-  it('deletes file from filebase when item has fileUrl', async () => {
+  it('deletes file from filebase before removing the DB row', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetItemById.mockResolvedValue({ ...mockItem, fileUrl: 'user-1/abc.pdf' })
     mockDeleteItem.mockResolvedValue(true)
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('ok')
     expect(mockDeleteFromFilebase).toHaveBeenCalledWith('user-1/abc.pdf')
+    expect(mockDeleteFromFilebase.mock.invocationCallOrder[0]).toBeLessThan(mockDeleteItem.mock.invocationCallOrder[0])
+  })
+
+  it('returns INTERNAL_ERROR when filebase delete fails and keeps the DB row', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetItemById.mockResolvedValue({ ...mockItem, fileUrl: 'user-1/abc.pdf' })
+    mockDeleteFromFilebase.mockRejectedValue(new Error('R2 unavailable'))
+    const result = await deleteItemAction('item-1')
+    expect(result.status).toBe('internal_error')
+    expect(mockDeleteItem).not.toHaveBeenCalled()
   })
 
   it('returns INTERNAL_ERROR on unexpected DB failure', async () => {
@@ -280,6 +351,30 @@ describe('deleteItemAction', () => {
 })
 
 describe('fetchMoreItemsAction', () => {
+  it('returns UNAUTHORIZED when not signed in', async () => {
+    mockAuth.mockResolvedValue(null)
+
+    const result = await fetchMoreItemsAction({ type: 'recent' })
+
+    expect(result.status).toBe('unauthorized')
+  })
+
+  it('returns validation_error for invalid query type at runtime', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+
+    const result = await fetchMoreItemsAction({ type: 'invalid' } as never)
+
+    expect(result.status).toBe('validation_error')
+  })
+
+  it('returns validation_error when type query is missing typeName', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+
+    const result = await fetchMoreItemsAction({ type: 'type', typeName: '   ' })
+
+    expect(result.status).toBe('validation_error')
+  })
+
   it('calls getRecentItemsPage when type is recent', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     const mockPage = { items: [], nextCursor: null, hasMore: false }

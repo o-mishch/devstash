@@ -5,33 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
-import { formatDate, PROVIDER_LABELS } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import { getCurrentUserId } from '@/lib/session'
-import { getProfileData } from '@/lib/db/profile'
-import { DeleteAccountDialog } from './_components/delete-account-dialog'
-import { ConnectedAccounts } from './_components/connected-accounts'
-import { ProfileToast, type ToastCode } from './_components/profile-toast'
-import { MainEmailSelector } from './_components/main-email-selector'
-import { EditableName } from './_components/editable-name'
+import { getProfileData, getProfileAccountSummary } from '@/lib/db/profile'
+import { DeleteAccountDialog } from '@/components/profile/delete-account-dialog'
+import { ConnectedAccounts } from '@/components/profile/connected-accounts'
+import { ProfileToast, type ToastCode } from '@/components/profile/profile-toast'
+import { MainEmailSelector } from '@/components/profile/main-email-selector'
+import { EditableName } from '@/components/profile/editable-name'
 
 interface ProfilePageProps {
   searchParams: Promise<{ toast?: string }>
-}
-
-type ProfileUser = NonNullable<Awaited<ReturnType<typeof getProfileData>>>['user']
-
-function getAccountData(user: ProfileUser) {
-  const accountTypes: string[] = []
-  if (user.hasPassword) accountTypes.push('Email')
-  user.accounts.forEach(({ provider }) => {
-    accountTypes.push(PROVIDER_LABELS[provider] ?? provider)
-  })
-
-  const availableEmails = Array.from(
-    new Set([user.email, ...user.accounts.map((a) => a.email).filter(Boolean) as string[]])
-  )
-
-  return { accountTypes, availableEmails }
 }
 
 export default async function ProfilePage({ searchParams }: ProfilePageProps) {
@@ -43,7 +27,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
   if (!data) redirect('/sign-in')
 
   const { user, stats } = data
-  const { accountTypes, availableEmails } = getAccountData(user)
+  const { accountTypes, availableEmails } = getProfileAccountSummary(user)
 
   const showEmailSelector = availableEmails.length > 1
 
@@ -161,7 +145,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
               Permanently removes your account and all data. This cannot be undone.
             </p>
           </div>
-          <DeleteAccountDialog />
+          <DeleteAccountDialog hasPassword={user.hasPassword} />
         </div>
       </div>
     </div>

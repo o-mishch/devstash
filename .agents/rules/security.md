@@ -5,9 +5,8 @@ paths:
   - "src/actions/**"
   - "src/auth.ts"
   - "src/auth.config.ts"
-  - "src/lib/auth-service.ts"
-  - "src/lib/tokens.ts"
-  - "src/lib/rate-limit.ts"
+  - "src/lib/auth/**"
+  - "src/lib/infra/rate-limit.ts"
   - "src/lib/db/**"
   - "prisma/**"
 ---
@@ -41,19 +40,19 @@ All external inputs (form data, query params, JSON bodies) must be parsed with Z
 
 ## Token Security
 
-- Generate tokens with `generateSecureToken()` from `src/lib/tokens.ts` (32-byte hex via `crypto.randomBytes`) — never `Math.random()`
+- Generate tokens with `generateSecureToken()` from `src/lib/auth/tokens.ts` (32-byte hex via `crypto.randomBytes`) — never `Math.random()`
 - Tokens must be **single-use** — delete from DB immediately after consumption
 - Enforce expiry server-side before accepting a token
 
 ## Password Handling
 
-- Hash with `bcryptjs` cost 12 via `src/lib/auth-service.ts`
+- Hash with `bcryptjs` cost 12 via `src/lib/auth/auth-service.ts`
 - Never log, store, or return password hashes to the client
 - Always verify current password before allowing password change
 
 ## Rate Limiting
 
-New auth-adjacent endpoints must apply rate limiting via `src/lib/rate-limit.ts`. Existing limits: login (5/15min per IP+email), register/forgot-password (3/1h per IP), reset-password (5/15min per IP).
+New auth-adjacent endpoints must apply rate limiting via `src/lib/infra/rate-limit.ts`. Existing limits: login (5/15min per IP+email), register/forgot-password (3/1h per IP), reset-password (5/15min per IP).
 
 ## What NextAuth Handles (Do Not Re-implement)
 

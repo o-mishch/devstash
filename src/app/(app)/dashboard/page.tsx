@@ -1,36 +1,31 @@
-
-import { getRecentItemsPage, getItemStats } from '@/lib/db/items'
-import { DashboardStats } from './_components/dashboard-stats'
-import { getAllCollections } from '@/lib/db/collections'
+import { getItemStats, getRecentItemsPage } from '@/lib/db/items'
+import { DashboardStats } from '@/components/dashboard/dashboard-stats'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import Link from 'next/link'
-import { DashboardPinned } from './_components/dashboard-pinned'
-import { DashboardRecentList } from './_components/dashboard-recent-list'
+import { redirect } from 'next/navigation'
+import { DashboardPinned } from '@/components/dashboard/dashboard-pinned'
+import { DashboardRecentList } from '@/components/dashboard/dashboard-recent-list'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
-import { getSession } from '@/lib/session'
-import { fetchSidebarData } from '@/lib/db/sidebar'
-import { canCreateItem } from '@/lib/usage'
+import { loadAppSidebarData } from '@/lib/app/sidebar-data'
+import { getCachedSession } from '@/lib/session'
+import { canCreateItem } from '@/lib/db/usage'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 
 export default async function DashboardPage() {
-  const session = await getSession()
+  const session = await getCachedSession()
   const userId = session?.user?.id
-  const user = session?.user
-    ? { id: session.user.id, name: session.user.name ?? null, email: session.user.email ?? null, image: session.user.image ?? null, isPro: session.user.isPro ?? false }
-    : null
+  if (!userId) redirect('/sign-in')
 
-  if (!userId || !user) return null
+  const sidebarData = await loadAppSidebarData(session)
+  const isPro = sidebarData.user?.isPro ?? false
 
-  const [firstPage, itemStats, sidebarData, userCanCreateItem, allCollections] = await Promise.all([
+  const [firstPage, itemStats, userCanCreateItem] = await Promise.all([
     getRecentItemsPage(userId),
     getItemStats(userId),
-    fetchSidebarData(user),
-    canCreateItem(userId, user.isPro),
-    getAllCollections(userId),
+    canCreateItem(userId, isPro),
   ])
-
   const isEmpty = itemStats.totalItems === 0
 
   return (
@@ -55,7 +50,7 @@ export default async function DashboardPage() {
             itemTypes={sidebarData.itemTypes}
             collections={sidebarData.collections}
             canCreate={userCanCreateItem}
-            isPro={user.isPro}
+            isPro={isPro}
             trigger={<Button>Create your first item &rarr;</Button>}
           />
         </div>
@@ -69,7 +64,7 @@ export default async function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent className="pt-0">
-              <CollectionsGrid collections={allCollections.slice(0, 6)} />
+              <CollectionsGrid collections={sidebarData.collections.slice(0, 6)} />
             </CardContent>
           </Card>
           <DashboardPinned userId={userId} />

@@ -1,5 +1,5 @@
-import { prisma } from '@/lib/prisma'
-import { withDataCache, CacheTags } from '@/lib/cache'
+import { prisma } from '@/lib/infra/prisma'
+import { withDataCache, CacheTags } from '@/lib/infra/cache'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { FullItem, ItemDetails, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
 import { Prisma, ContentType } from '@/generated/prisma/client'
@@ -103,15 +103,10 @@ export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Prom
       where: { userId, isPinned: true },
       orderBy: { updatedAt: 'desc' },
       take: safeLimit,
-      select: { ...LIGHT_ITEM_SELECT, description: true },
+      select: LIGHT_ITEM_SELECT,
     })
-    return items.map(({ description, ...item }) =>
-      toLightItem(item as LightItemWithRelations, {
-        id: item.id,
-        descriptionPreview: description ? description.slice(0, 150) : null,
-        contentPreview: null,
-      })
-    )
+    const previews = await fetchItemPreviews(items.map((r) => r.id))
+    return items.map((r) => toLightItem(r, previews.get(r.id)))
   })
 }
 
@@ -293,7 +288,7 @@ export async function toggleItemPinned(userId: string, itemId: string, isPinned:
 
 async function getPaginatedItems(
   where: Prisma.ItemWhereInput,
-  cacheKey: import('@/lib/cache').DataCacheConfig,
+  cacheKey: import('@/lib/infra/cache').DataCacheConfig,
   cursor?: string,
   orderBy: Prisma.ItemOrderByWithRelationInput[] = [{ isPinned: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
 ): Promise<ItemsPage> {

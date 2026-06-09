@@ -4,8 +4,7 @@ paths:
   - "src/app/api/**"
   - "src/actions/**"
   - "src/types/api.ts"
-  - "src/lib/api.ts"
-  - "src/lib/api-fetch.ts"
+  - "src/lib/api/**"
 ---
 
 # API Contract
@@ -54,10 +53,10 @@ export async function myAction(
 
 ## Frontend
 
-Use `apiFetch` from `@/lib/api-fetch` — never raw `fetch()`.
+Use `apiFetch` from `@/lib/api/api-fetch` — never raw `fetch()`.
 
 ```ts
-import { apiFetch } from '@/lib/api-fetch'
+import { apiFetch } from '@/lib/api/api-fetch'
 
 const data = await apiFetch<MyData>('/api/...', {
   method: 'POST',
@@ -84,9 +83,26 @@ if (data.status !== 'ok') {
 | `too_many_requests` | 429  | Rate limited                  |
 | `internal_error`    | 500  | Server error                  |
 
+## Redirects (API routes)
+
+Inside `apiRoute` handlers, use `apiRedirect()` from `@/lib/api` — not raw `NextResponse.redirect()`.
+
+```ts
+import { apiRedirect, apiRoute } from '@/lib/api'
+
+export const GET = apiRoute(async (request) => {
+  return apiRedirect(new URL('/settings', request.url))
+})
+```
+
+Raw `NextResponse.redirect` needs **strict justification** in code (comment) — e.g. route not wrapped in `apiRoute`, or framework middleware constraint.
+
+`redirect()` from `next/navigation` in Server Components / Server Actions is separate and fine.
+
 ## Rules
 
-- **Never** return raw `NextResponse.json()` from API routes
+- **Never** return raw `NextResponse.json()` from API routes — use `ApiResponse` + `apiRoute`
+- **Never** return raw `NextResponse.redirect()` from API routes — use `apiRedirect` + `apiRoute`
 - **Never** return plain booleans/strings from Server Actions that communicate status to the FE
 - **Never** call `fetch()` directly from client components — always use `apiFetch`
 - **Always** use named interfaces for response data types — no inline generics

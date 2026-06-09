@@ -10,7 +10,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/actions/**', 'src/lib/**'],
-      exclude: ['src/**/*.html', 'src/lib/db/**', 'src/lib/prisma.ts', 'src/lib/redis.ts', 'src/lib/resend.ts'],
+      exclude: ['src/**/*.html', 'src/lib/db/**', 'src/lib/infra/prisma.ts', 'src/lib/infra/redis.ts', 'src/lib/infra/resend.ts'],
     },
   },
   resolve: {

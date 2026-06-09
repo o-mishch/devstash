@@ -19,7 +19,7 @@ import {
 import { CollectionFormFields } from '@/components/shared/collection-form-fields'
 import { collectionFormSchema } from '@/lib/utils/validators'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
-import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/usage'
+import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
 import type { ApiBody } from '@/types/api'
 

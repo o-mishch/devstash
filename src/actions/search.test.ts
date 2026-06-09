@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
-vi.mock('@/lib/prisma', () => ({
+vi.mock('@/lib/infra/prisma', () => ({
   prisma: {
     $queryRaw: vi.fn().mockResolvedValue([]),
     item: { findMany: vi.fn() },
@@ -10,7 +10,7 @@ vi.mock('@/lib/prisma', () => ({
 }))
 
 import { auth } from '@/auth'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/infra/prisma'
 import { globalSearchAction } from './search'
 
 const mockAuth = auth as ReturnType<typeof vi.fn>

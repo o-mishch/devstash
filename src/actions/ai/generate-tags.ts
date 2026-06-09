@@ -3,18 +3,32 @@
 import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth } from '@/lib/session'
-import { rateLimitAction } from '@/lib/rate-limit'
+import { rateLimitAction } from '@/lib/infra/rate-limit'
 import { parseOrFail } from '@/lib/utils/validators'
 import { getOpenAIClient, AI_MODELS } from '@/lib/ai/openai'
-import { createLogger } from '@/lib/logger'
+import { createLogger } from '@/lib/infra/logger'
 import type { ApiBody } from '@/types/api'
 
 const log = createLogger('generate-tags')
 
-const generateTagsSchema = z.object({
-  title: z.string().trim().min(1, 'Title is required').max(2000),
-  content: z.string().trim().max(2000).optional(),
-})
+const MAX_AI_INPUT_CHARS = 4000
+
+const generateTagsSchema = z
+  .object({
+    title: z.string(),
+    content: z.string().optional(),
+  })
+  .transform((data) => {
+    const title = data.title.trim().slice(0, MAX_AI_INPUT_CHARS)
+    const content = data.content?.trim().slice(0, MAX_AI_INPUT_CHARS)
+    return content === undefined ? { title } : { title, content }
+  })
+  .pipe(
+    z.object({
+      title: z.string().min(1, 'Title is required'),
+      content: z.string().optional(),
+    })
+  )
 
 export type GenerateTagsInput = z.infer<typeof generateTagsSchema>
 

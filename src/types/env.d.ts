@@ -11,8 +11,8 @@ declare namespace NodeJS {
     NEXTAUTH_URL: string;
 
     RESEND_API_KEY: string;
-    EMAIL_FROM: string;
-    DISABLE_EMAIL_VERIFICATION: string;
+    EMAIL_FROM?: string;
+    DISABLE_EMAIL_VERIFICATION?: string;
 
     UPSTASH_REDIS_REST_URL: string;
     UPSTASH_REDIS_REST_TOKEN: string;
@@ -23,10 +23,10 @@ declare namespace NodeJS {
 
     STRIPE_WEBHOOK_SECRET: string;
     STRIPE_SECRET_KEY: string;
-    STRIPE_PUBLISHABLE_KEY: string;
-    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: string;
+    STRIPE_PUBLISHABLE_KEY?: string;
     STRIPE_PRICE_ID_MONTHLY: string;
     STRIPE_PRICE_ID_YEARLY: string;
     OPENAI_API_KEY: string;
+    SKIP_ENV_VALIDATION?: string;
   }
 }

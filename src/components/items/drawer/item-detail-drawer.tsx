@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
-import { apiFetch } from '@/lib/api-fetch'
+import { apiFetch } from '@/lib/api/api-fetch'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'

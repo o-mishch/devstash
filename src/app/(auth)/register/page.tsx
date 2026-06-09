@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { AuthFormLayout } from '@/components/auth/auth-page-header'
 import { buttonVariants } from '@/components/ui/button'
-import { RegisterForm } from './_components/register-form'
+import { RegisterForm } from '@/components/auth/register-form'
 
 interface RegisterPageProps {
   searchParams: Promise<{ pending?: string; email?: string; sent?: string }>

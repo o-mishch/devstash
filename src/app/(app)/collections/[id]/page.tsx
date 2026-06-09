@@ -4,8 +4,8 @@ import { ChevronRight } from 'lucide-react'
 import { requireUserId } from '@/lib/session'
 import { getCollectionById } from '@/lib/db/collections'
 import { getItemsByCollectionPage } from '@/lib/db/items'
-import { CollectionHeaderActions } from './_components/collection-header-actions'
-import { CollectionItemsGrid } from './_components/collection-items-grid'
+import { CollectionHeaderActions } from '@/components/collections/collection-header-actions'
+import { CollectionItemsGrid } from '@/components/collections/collection-items-grid'
 
 interface CollectionPageProps {
   params: Promise<{ id: string }>

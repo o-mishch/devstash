@@ -2,9 +2,10 @@ import NextAuth, { type User, type Account } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import type { AdapterUser } from 'next-auth/adapters'
 import { PrismaAdapter } from '@auth/prisma-adapter'
+import { Prisma } from '@/generated/prisma'
 import { cookies } from 'next/headers'
 import Credentials from 'next-auth/providers/credentials'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/infra/prisma'
 import { authConfig } from '@/auth.config'
 import { emailVerificationEnabled } from '@/lib/emails/verification'
 import {
@@ -12,20 +13,30 @@ import {
   getLinkIntent,
   deleteLinkIntent,
   type PendingLinkData,
-} from '@/lib/pending-link'
+} from '@/lib/auth/pending-link'
 import {
+  backfillOAuthAccountEmail,
   getUserSessionInfo,
   getUserWithOAuthConflict,
   getUserById,
   getProviderAccount,
 } from '@/lib/db/users'
+import { resolveSessionUserIsPro } from '@/lib/billing/access/pro-access-resolution'
 import { SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils/constants'
-import { validateUserPassword } from '@/lib/auth-service'
-import { createLogger } from '@/lib/logger'
+import { validateUserPassword } from '@/lib/auth/auth-service'
+import { createLogger } from '@/lib/infra/logger'
 
 const log = createLogger('auth')
-
 export const LINK_INTENT_COOKIE = 'devstash_link_token'
+
+const TRANSIENT_DB_ERROR_CODES = new Set(['P1001', 'P1002', 'P1008', 'P1017', 'P2024'])
+
+function isTransientDatabaseError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return TRANSIENT_DB_ERROR_CODES.has(error.code)
+  }
+  return true
+}
 
 interface AuthorizedUser {
   id: string
@@ -118,10 +129,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         try {
           const dbUser = await getUserSessionInfo(token.id as string)
           if (!dbUser) {
-            log.warn(`user not found by token.id, invalidating session: ${token.id}`)
+            log.warn('Session invalidated — user not found', { userId: token.id })
             return null
           }
-          token.isPro = dbUser.isPro ?? false
           // Last 8 chars of the bcrypt hash — changes on every password rotation
           const pwFingerprint = dbUser.password?.slice(-8) ?? ''
           if (user) {
@@ -138,23 +148,29 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             token.pwHash = pwFingerprint
           }
         } catch (error) {
-          log.error('DB error validating session (preserving token):', error)
-          // Do not invalidate session or crash NextAuth on transient DB errors (e.g., Neon cold starts)
+          if (!isTransientDatabaseError(error)) {
+            log.warn('Session invalidated — non-transient DB validation error', { userId: token.id, error })
+            return null
+          }
+          // Availability trade-off: preserve session during transient DB outages so paying users
+          // are not locked out. Deleted users are invalidated above when DB returns null.
+          log.error(
+            'Session DB validation failed',
+            { userId: token.id, error },
+            'preserving token during outage',
+          )
         }
       }
 
       // Backfill Account.email for OAuth sign-ins handled by PrismaAdapter
       if (account && account.provider !== 'credentials' && user?.email) {
-        prisma.account
-          .updateMany({
-            where: {
-              provider: account.provider,
-              providerAccountId: account.providerAccountId,
-              email: null,
-            },
-            data: { email: user.email },
+        void backfillOAuthAccountEmail(account.provider, account.providerAccountId, user.email).catch((error) => {
+          log.warn('Failed to backfill OAuth account email', {
+            provider: account.provider,
+            providerAccountId: account.providerAccountId,
+            error,
           })
-          .catch(() => {})
+        })
       }
 
       return token
@@ -162,7 +178,16 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
-        session.user.isPro = token.isPro as boolean
+        if (token.id) {
+          const dbUser = await getUserById(token.id as string)
+          if (dbUser?.email) {
+            session.user.email = dbUser.email
+          }
+          // Refreshed on every session read (Redis-cached). Display fallback only — never gate on this.
+          session.user.isPro = await resolveSessionUserIsPro(token.id as string)
+        } else {
+          session.user.isPro = false
+        }
       }
       return session
     },

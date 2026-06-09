@@ -43,13 +43,14 @@ export const APP_THEME_OPTIONS: { value: AppTheme; label: string; description: s
   { value: 'monokai', label: 'Monokai', description: 'Classic Warm Accents' },
 ];
 
-export const APP_THEME_COLORS: Record<AppTheme, { bg: string; accent: string }> = {
-  vscode:    { bg: 'var(--color-zinc-950)',   accent: 'var(--color-blue-500)' },
-  github:    { bg: 'oklch(0.13 0.012 250)',   accent: 'var(--color-blue-500)' },   /* #0d1117 */
-  jetbrains: { bg: 'var(--color-zinc-800)',   accent: 'var(--color-amber-500)' },  /* Darcula #2B2B2B */
-  vercel:    { bg: 'var(--color-black)',      accent: 'var(--color-white)' },
-  dracula:   { bg: 'oklch(0.22 0.018 285)',   accent: 'var(--color-purple-500)' }, /* #282A36 */
-  monokai:   { bg: 'var(--color-stone-800)',  accent: 'var(--color-pink-500)' },   /* #272822 */
+/** Tailwind classes for theme picker swatches (avoids inline styles in settings UI). */
+export const APP_THEME_SWATCH_CLASSES: Record<AppTheme, { bg: string; accent: string }> = {
+  vscode:    { bg: 'bg-zinc-950', accent: 'bg-blue-500' },
+  github:    { bg: 'bg-[oklch(0.13_0.012_250)]', accent: 'bg-blue-500' },
+  jetbrains: { bg: 'bg-zinc-800', accent: 'bg-amber-500' },
+  vercel:    { bg: 'bg-black', accent: 'bg-white' },
+  dracula:   { bg: 'bg-[oklch(0.22_0.018_285)]', accent: 'bg-purple-500' },
+  monokai:   { bg: 'bg-stone-800', accent: 'bg-pink-500' },
 };
 
 export const EDITOR_FONT_SIZE_OPTIONS = [12, 14, 16, 18, 20];

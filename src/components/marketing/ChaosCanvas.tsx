@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { loadCanvasIcons } from '@/lib/canvas-icons';
+import { loadCanvasIcons } from '@/components/marketing/canvas-icons'
 
 interface FloatingIcon {
   img: HTMLImageElement;

@@ -23,6 +23,13 @@ export function parseOrFail<T>(schema: ZodType<T>, input: unknown): ParseResult<
 
 export const MAX_PASSWORD_LENGTH = 128
 
+/** Returns true when a file reference belongs to the signed-in user and has no path traversal. */
+export function isOwnedFileReference(fileUrl: string, userId: string): boolean {
+  if (!fileUrl.startsWith(`${userId}/`)) return false
+  if (fileUrl.includes('..')) return false
+  return true
+}
+
 export const validatePassword = (password: string, confirmPassword?: string): string | null => {
   if (password.length < 8) return 'Password must be at least 8 characters.'
   if (password.length > MAX_PASSWORD_LENGTH) return 'Password is too long.'

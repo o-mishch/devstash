@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { getCurrentUserId } from '@/lib/session'
 import { getItemTypeBySlug, getItemsByTypePage, getItemCountByType } from '@/lib/db/items'
 import { getTypeLabel } from '@/lib/utils'
-import { ItemsGrid } from './_components/items-grid'
+import { ItemsGrid } from '@/components/items/items-grid'
 import type { ItemsPage } from '@/types/item'
 
 interface ItemsPageProps {

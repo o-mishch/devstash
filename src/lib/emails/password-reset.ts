@@ -1,6 +1,6 @@
-import { sendEmail } from '@/lib/resend'
+import { sendEmail } from '@/lib/infra/resend'
 import { getBaseUrl } from '@/lib/utils/url'
-import { createPasswordResetToken } from '@/lib/tokens'
+import { createPasswordResetToken } from '@/lib/auth/tokens'
 import { buildEmailTemplate } from './template-builder'
 import resetHtml from './password-reset.html'
 

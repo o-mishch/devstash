@@ -3,7 +3,7 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/styles'
-import { apiUpload } from '@/lib/api-fetch'
+import { apiUpload } from '@/lib/api/api-fetch'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { FILE_UPLOAD_CONFIG } from '@/lib/utils/constants'

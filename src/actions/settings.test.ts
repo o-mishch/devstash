@@ -2,14 +2,22 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/db/profile', () => ({ updateEditorPreferences: vi.fn() }))
-vi.mock('@/lib/cache', () => ({ invalidateProfileCache: vi.fn() }))
-vi.mock('@/lib/rate-limit', () => ({
-  withRateLimit: vi.fn((_key: string, fn: () => unknown) => fn()),
+vi.mock('@/lib/infra/cache', () => ({ invalidateProfileCache: vi.fn() }))
+vi.mock('@/lib/infra/rate-limit', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/infra/rate-limit')>('@/lib/infra/rate-limit')
+  return {
+    ...actual,
+    rateLimitAction: vi.fn(async () => null),
+  }
+})
+
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn(async () => false),
 }))
 
 import { auth } from '@/auth'
 import { updateEditorPreferences } from '@/lib/db/profile'
-import { invalidateProfileCache } from '@/lib/cache'
+import { invalidateProfileCache } from '@/lib/infra/cache'
 import { updateEditorPreferencesAction } from './settings'
 import { editorPreferencesSchema } from '@/lib/utils/validators'
 import type { EditorPreferences } from '@/types/editor-preferences'

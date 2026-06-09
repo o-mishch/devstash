@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/infra/prisma'
 import { LIGHT_ITEM_SELECT, fetchItemPreviews, toLightItem } from '@/lib/db/items'
 import { COLLECTION_SELECT, mapCollection } from '@/lib/db/collections'
 import type { LightItem } from '@/types/item'

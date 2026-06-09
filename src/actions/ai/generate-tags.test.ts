@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { generateAutoTags } from './generate-tags'
 import { getOpenAIClient } from '@/lib/ai/openai'
 import * as session from '@/lib/session'
-import * as rateLimit from '@/lib/rate-limit'
+import * as rateLimit from '@/lib/infra/rate-limit'
 
 const createResponse = vi.fn()
+type OpenAIClient = NonNullable<ReturnType<typeof getOpenAIClient>>
 
 vi.mock('@/lib/ai/openai', () => ({
   getOpenAIClient: vi.fn(),
@@ -15,7 +16,7 @@ vi.mock('@/lib/session', () => ({
   withAuth: vi.fn(),
 }))
 
-vi.mock('@/lib/rate-limit', () => ({
+vi.mock('@/lib/infra/rate-limit', () => ({
   rateLimitAction: vi.fn(),
 }))
 
@@ -26,11 +27,13 @@ describe('generateAutoTags', () => {
       return fn({ userId: 'user1', isPro: true })
     })
     vi.mocked(rateLimit.rateLimitAction).mockResolvedValue(null)
-    vi.mocked(getOpenAIClient).mockReturnValue({
+    const mockClient = {
       responses: {
         create: createResponse,
       },
-    } as ReturnType<typeof getOpenAIClient>)
+    } as unknown as OpenAIClient
+
+    vi.mocked(getOpenAIClient).mockReturnValue(mockClient)
   })
 
   it('fails if user is not pro', async () => {
@@ -58,6 +61,21 @@ describe('generateAutoTags', () => {
     const result = await generateAutoTags({ title: 'React Hooks' })
     expect(result.status).toBe('too_many_requests')
     expect(createResponse).not.toHaveBeenCalled()
+  })
+
+  it('truncates long content instead of failing validation', async () => {
+    createResponse.mockResolvedValue({
+      output_text: '{"tags": ["typescript"]}',
+    })
+
+    const longContent = 'x'.repeat(5000)
+    const result = await generateAutoTags({ title: 'Long snippet', content: longContent })
+
+    expect(result.status).toBe('ok')
+    expect(createResponse).toHaveBeenCalledOnce()
+    const call = createResponse.mock.calls[0][0]
+    expect(call.input).toContain('x'.repeat(4000))
+    expect(call.input).not.toContain('x'.repeat(4001))
   })
 
   it('successfully generates and parses tags', async () => {

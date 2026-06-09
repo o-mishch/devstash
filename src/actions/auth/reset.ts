@@ -3,8 +3,8 @@
 import { redirect } from 'next/navigation'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
-import { withRateLimit } from '@/lib/rate-limit'
-import { triggerPasswordReset, applyPasswordReset } from '@/lib/auth-service'
+import { withRateLimit } from '@/lib/infra/rate-limit'
+import { triggerPasswordReset, applyPasswordReset } from '@/lib/auth/auth-service'
 import { validatePassword } from '@/lib/utils/validators'
 
 export async function resetPasswordAction(

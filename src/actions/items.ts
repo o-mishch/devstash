@@ -3,8 +3,8 @@
 import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth, withValidatedAuth } from '@/lib/session'
-import { createToggleAction } from '@/lib/action-utils'
-import { canCreateItem, FREE_TIER_ITEM_LIMIT } from '@/lib/usage'
+import { createToggleAction } from '@/lib/app/action-utils'
+import { canCreateItem, FREE_TIER_ITEM_LIMIT } from '@/lib/db/usage'
 import {
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
@@ -17,14 +17,22 @@ import {
   toggleItemFavorite as dbToggleItemFavorite,
   toggleItemPinned as dbToggleItemPinned,
 } from '@/lib/db/items'
-import { createLogger } from '@/lib/logger'
-import { invalidateItemsCache } from '@/lib/cache'
-import { deleteFromFilebase } from '@/lib/filebase'
+import { createLogger } from '@/lib/infra/logger'
+import { invalidateItemsCache } from '@/lib/infra/cache'
+import { deleteFromFilebase } from '@/lib/storage/filebase'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import { parseOrFail, isOwnedFileReference } from '@/lib/utils/validators'
 import type { ApiBody } from '@/types/api'
 import type { LightItem, FullItem, FetchItemsQuery, ItemsPage } from '@/types/item'
 
 const log = createLogger('items')
+
+const fetchItemsQuerySchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('recent') }),
+  z.object({ type: z.literal('type'), typeName: z.string().trim().min(1, 'Item type is required.') }),
+  z.object({ type: z.literal('collection'), collectionId: z.string().trim().min(1, 'Collection is required.') }),
+  z.object({ type: z.literal('favorites') }),
+]) satisfies z.ZodType<FetchItemsQuery>
 
 const PRO_TYPE_NAMES_LABEL = [...PRO_ITEM_TYPE_NAMES].join(' and ')
 
@@ -72,7 +80,7 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Li
       return ApiResponse.FORBIDDEN(`You have reached your free tier limit of ${FREE_TIER_ITEM_LIMIT} items. Please upgrade to Pro.`)
     }
 
-    if (data.fileUrl && !data.fileUrl.startsWith(`${userId}/`)) {
+    if (data.fileUrl && !isOwnedFileReference(data.fileUrl, userId)) {
       return ApiResponse.FORBIDDEN('Invalid file reference.')
     }
 
@@ -80,7 +88,7 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Li
     if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
 
     invalidateItemsCache(userId)
-    log.info(`created "${data.title}" [${data.itemTypeName}] user:${userId}`)
+    log.info('Item created', { userId, itemTypeName: data.itemTypeName, title: data.title })
     return ApiResponse.CREATED(created)
   }, 'createItemAction')
 }
@@ -89,12 +97,19 @@ export async function updateItemAction(
   itemId: string,
   raw: UpdateItemInput
 ): Promise<ApiBody<FullItem | null>> {
-  return withValidatedAuth(itemMutationSchema, raw, async ({ userId }, data: UpdateItemInput) => {
+  return withValidatedAuth(itemMutationSchema, raw, async ({ userId, isPro }, data: UpdateItemInput) => {
+    const existing = await dbGetItemById(userId, itemId)
+    if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
+
+    if (PRO_ITEM_TYPE_NAMES.has(existing.itemType.name) && !isPro) {
+      return ApiResponse.FORBIDDEN(`Upgrade to Pro to edit ${PRO_TYPE_NAMES_LABEL}.`)
+    }
+
     const updated = await dbUpdateItem(userId, itemId, data)
     if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
 
     invalidateItemsCache(userId)
-    log.info(`updated item:${itemId} user:${userId}`)
+    log.info('Item updated', { userId, itemId })
     return ApiResponse.OK(updated)
   }, 'updateItemAction')
 }
@@ -104,29 +119,40 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
     const existing = await dbGetItemById(userId, itemId)
     if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
 
+    if (existing.fileUrl) {
+      try {
+        await deleteFromFilebase(existing.fileUrl)
+      } catch (error) {
+        log.error('Failed to delete file from storage', { userId, itemId, error })
+        return ApiResponse.INTERNAL_ERROR('Failed to delete file from storage.')
+      }
+    }
+
     const deleted = await dbDeleteItem(userId, itemId)
     if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
 
     invalidateItemsCache(userId)
-    if (existing.fileUrl) await deleteFromFilebase(existing.fileUrl)
 
-    log.info(`deleted item:${itemId} user:${userId}`)
+    log.info('Item deleted', { userId, itemId })
     return ApiResponse.OK()
   }, 'deleteItemAction')
 }
 
 export async function fetchMoreItemsAction(query: FetchItemsQuery, cursor?: string): Promise<ApiBody<ItemsPage | null>> {
   return withAuth(async ({ userId }) => {
+    const parsed = parseOrFail(fetchItemsQuerySchema, query)
+    if (!parsed.success) return parsed.response as ApiBody<ItemsPage | null>
+
     let page: ItemsPage
-    switch (query.type) {
+    switch (parsed.data.type) {
       case 'recent':
         page = await getRecentItemsPage(userId, cursor)
         break
       case 'type':
-        page = await getItemsByTypePage(userId, query.typeName, cursor)
+        page = await getItemsByTypePage(userId, parsed.data.typeName, cursor)
         break
       case 'collection':
-        page = await getItemsByCollectionPage(userId, query.collectionId, cursor)
+        page = await getItemsByCollectionPage(userId, parsed.data.collectionId, cursor)
         break
       case 'favorites':
         page = await getFavoriteItemsPage(userId, cursor)

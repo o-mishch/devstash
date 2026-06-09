@@ -27,11 +27,11 @@ Next.js server modules (`next/navigation`, `next/headers`, `next/cache`) are pre
 ```ts
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-vi.mock('@/lib/prisma', () => ({
+vi.mock('@/lib/infra/prisma', () => ({
   prisma: { user: { findUnique: vi.fn() } },
 }))
 
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/infra/prisma'
 
 describe('myAction', () => {
   beforeEach(() => vi.clearAllMocks())

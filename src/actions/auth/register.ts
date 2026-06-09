@@ -3,8 +3,8 @@
 import { redirect } from 'next/navigation'
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
-import { withRateLimit } from '@/lib/rate-limit'
-import { registerUser, type VerificationResult } from '@/lib/auth-service'
+import { withRateLimit } from '@/lib/infra/rate-limit'
+import { registerUser, type VerificationResult } from '@/lib/auth/auth-service'
 import { validatePassword, parseOrFail, EmailSchema } from '@/lib/utils/validators'
 
 export async function registerAction(

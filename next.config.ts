@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import { validateStripeBillingEnv } from "./src/env/validate-billing-env";
+
+if (process.env.SKIP_ENV_VALIDATION !== "true") {
+  validateStripeBillingEnv();
+}
 
 const nextConfig: NextConfig = {
   devIndicators: {

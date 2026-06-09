@@ -1,5 +1,5 @@
-import { prisma } from '@/lib/prisma'
-import { withDataCache, CacheTags } from '@/lib/cache'
+import { prisma } from '@/lib/infra/prisma'
+import { withDataCache, CacheTags } from '@/lib/infra/cache'
 import type { CollectionWithTypes, CollectionStats } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
 

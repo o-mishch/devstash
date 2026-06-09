@@ -1,6 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-vi.mock('@/lib/prisma', () => ({
+vi.mock('@/lib/infra/prisma', () => ({
   prisma: {
     $queryRaw: vi.fn().mockResolvedValue([]),
     item: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn() },
@@ -8,7 +8,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }))
 
-vi.mock('@/lib/cache', () => ({
+vi.mock('@/lib/infra/cache', () => ({
   withDataCache: vi.fn((_config, fetcher) => fetcher()),
   CacheTags: {
     itemTypeBySlug: (slug: string) => ({ tag: `item-type:slug:${slug}`, revalidate: 3600 }),
@@ -22,7 +22,7 @@ vi.mock('@/lib/cache', () => ({
   },
 }))
 
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/infra/prisma'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
 import { getItemTypeBySlug, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage } from './items'
 

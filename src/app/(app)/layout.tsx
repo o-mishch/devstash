@@ -9,42 +9,29 @@ import { CollectionCreateDialog } from '@/components/dashboard/collection-create
 import { MobileCreateMenu } from '@/components/layout/mobile-create-menu'
 import { TopbarCreateButton } from '@/components/layout/topbar-create-button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { cache } from 'react'
-import { getSession } from '@/lib/session'
-import { fetchSidebarData } from '@/lib/db/sidebar'
 import { getProfileData } from '@/lib/db/profile'
 import { EditorPreferencesProvider } from '@/providers/editor-preferences-provider'
 import { UpgradePromptProvider } from '@/providers/upgrade-prompt-provider'
-import { canCreateItem, FREE_TIER_COLLECTION_LIMIT } from '@/lib/usage'
+import { canCreateItem, FREE_TIER_COLLECTION_LIMIT } from '@/lib/db/usage'
+import { loadAppSidebarData } from '@/lib/app/sidebar-data'
+import { getCachedSession } from '@/lib/session'
+import { createLogger } from '@/lib/infra/logger'
 
-const getSidebarData = cache(async () => {
-  const session = await getSession()
-  const user = session?.user
-    ? { id: session.user.id, name: session.user.name ?? null, email: session.user.email ?? null, image: session.user.image ?? null, isPro: session.user.isPro ?? false }
-    : null
-  return fetchSidebarData(user)
-})
-
-async function SidebarAsync() {
-  const sidebarData = await getSidebarData()
-  return <SidebarContent sidebarData={sidebarData} collapsible />
-}
-
-async function MobileDrawerAsync() {
-  const sidebarData = await getSidebarData()
-  return <MobileDrawer sidebarData={sidebarData} />
-}
+const log = createLogger('layout')
 
 export default async function DashboardLayout({ children }: WithChildren) {
-  const sidebarData = await getSidebarData()
-  const session = await getSession()  // deduped by NextAuth's request-level memoization
+  const session = await getCachedSession()
   const userId = session?.user?.id
-  const isPro = session?.user?.isPro ?? false
-  // canCreateCollection is derived from already-fetched sidebar data — no extra DB call needed
+
+  const sidebarData = await loadAppSidebarData(session)
+  const isPro = sidebarData.user?.isPro ?? false
   const userCanCreateCollection = isPro || sidebarData.collections.length < FREE_TIER_COLLECTION_LIMIT
   const [profileData, userCanCreateItem] = userId
     ? await Promise.all([
-        getProfileData(userId).catch(() => null),
+        getProfileData(userId).catch((error) => {
+          log.warn('Failed to load profile data for layout', { userId, error })
+          return null
+        }),
         canCreateItem(userId, isPro),
       ])
     : [null, false]
@@ -56,7 +43,7 @@ export default async function DashboardLayout({ children }: WithChildren) {
         <ItemDrawerProvider collections={sidebarData.collections} isPro={isPro}>
         <div className="flex h-screen flex-col bg-background">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
-            <MobileDrawerAsync />
+            <MobileDrawer sidebarData={sidebarData} />
 
             {/* Mobile: compact Home icon */}
             <Link
@@ -113,7 +100,7 @@ export default async function DashboardLayout({ children }: WithChildren) {
           </header>
 
           <div className="flex flex-1 overflow-hidden">
-            <SidebarAsync />
+            <SidebarContent sidebarData={sidebarData} collapsible />
 
             <main className="flex flex-1 flex-col overflow-auto">
               {children}

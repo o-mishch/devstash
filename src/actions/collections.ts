@@ -3,8 +3,8 @@
 import { z } from 'zod'
 import { ApiResponse } from '@/lib/api'
 import { withAuth, withValidatedAuth } from '@/lib/session'
-import { createToggleAction } from '@/lib/action-utils'
-import { canCreateCollection } from '@/lib/usage'
+import { createToggleAction } from '@/lib/app/action-utils'
+import { canCreateCollection } from '@/lib/db/usage'
 import { collectionFormSchema } from '@/lib/utils/validators'
 import {
   createCollection as dbCreateCollection,
@@ -12,8 +12,8 @@ import {
   deleteCollection as dbDeleteCollection,
   toggleCollectionFavorite as dbToggleCollectionFavorite
 } from '@/lib/db/collections'
-import { createLogger } from '@/lib/logger'
-import { invalidateCollectionsCache } from '@/lib/cache'
+import { createLogger } from '@/lib/infra/logger'
+import { invalidateCollectionsCache } from '@/lib/infra/cache'
 import type { ApiBody } from '@/types/api'
 import type { CollectionWithTypes } from '@/types/collection'
 import type { CreateCollectionInput, UpdateCollectionInput } from '@/lib/db/collections'

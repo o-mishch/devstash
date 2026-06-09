@@ -1,17 +1,22 @@
-import { prisma } from '@/lib/prisma'
-import type { Prisma } from '@/generated/prisma/client'
-
-
+import { prisma } from '@/lib/infra/prisma'
+import type { Prisma } from '@/generated/prisma'
 
 export async function getUserSessionInfo(id: string) {
-  return prisma.user.findUnique({ where: { id }, select: { id: true, password: true, isPro: true } })
+  return prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      password: true,
+      isPro: true,
+      stripeSubscriptionId: true,
+      lastStripeSyncAt: true,
+    },
+  })
 }
 
 export async function createUser(data: Prisma.UserCreateInput | Prisma.UserUncheckedCreateInput) {
   return prisma.user.create({ data })
 }
-
-
 
 // Returns the user if they exist but haven't linked the given OAuth provider yet.
 // Returns null if no user with that email exists, or they already have the provider linked.
@@ -127,4 +132,20 @@ export async function unlinkUserAccount(userId: string, accountId: string): Prom
 
 export async function removeUserPassword(userId: string): Promise<void> {
   await prisma.user.update({ where: { id: userId }, data: { password: null } })
+}
+
+/** Backfills OAuth account email when PrismaAdapter leaves it null. */
+export async function backfillOAuthAccountEmail(
+  provider: string,
+  providerAccountId: string,
+  email: string,
+): Promise<void> {
+  await prisma.account.updateMany({
+    where: {
+      provider,
+      providerAccountId,
+      email: null,
+    },
+    data: { email },
+  })
 }

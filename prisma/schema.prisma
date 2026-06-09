@@ -25,6 +25,7 @@ model User {
   subscriptionStart    DateTime?
   currentPeriodEnd     DateTime?
   proExpiredAt         DateTime?
+  lastStripeSyncAt     DateTime?
   subscriptionInterval SubscriptionInterval?
   cancelAtPeriodEnd    Boolean               @default(false)
   editorPreferences    Json?
@@ -38,6 +39,25 @@ model User {
   sessions    Session[]
 
   @@map("users")
+}
+
+// ============================================
+// STRIPE WEBHOOK IDEMPOTENCY
+// ============================================
+enum StripeWebhookEventStatus {
+  processing
+  processed
+}
+
+model StripeWebhookEvent {
+  id          String                   @id
+  eventType   String
+  status      StripeWebhookEventStatus
+  createdAt   DateTime                 @default(now())
+  processedAt DateTime?
+
+  @@index([status, createdAt])
+  @@map("stripe_webhook_events")
 }
 
 // ============================================

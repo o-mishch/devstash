@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { resendVerification } from '@/lib/emails/verification'
 import { ApiResponse, apiRoute } from '@/lib/api'
-import { rateLimitRoute, getRequestIP } from '@/lib/rate-limit'
+import { rateLimitRoute, getRequestIP } from '@/lib/infra/rate-limit'
 
 export const POST = apiRoute(async (request: NextRequest) => {
   const ip = getRequestIP(request)

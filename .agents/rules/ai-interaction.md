@@ -1,71 +1,184 @@
 ---
-description: AI collaboration guidelines for DevStash — communication style, feature workflow, branching, commits, and Playwright testing conventions. Loaded at every session start.
+description: AI collaboration guidelines for DevStash — workflow, commits, build preflight, frozen/hung recovery, env vars, Prisma, Playwright. Loaded at every session start.
 ---
 
 # AI Interaction Guidelines
 
-## Communication
+**Must** / **never** = hard constraints.
 
-- Be concise and direct
-- Explain non-obvious decisions briefly
-- Ask before large refactors or architectural changes
-- Don't add features not in the project spec
-- Never delete files without clarification
+## Quick nav
 
-## Workflow
+| Section | Read when |
+| --- | --- |
+| [Defaults](#defaults) | Every session |
+| [Feature workflow](#feature-workflow) | Starting or finishing work |
+| [Branching & commits](#branching--commits) | Git operations |
+| [Build & test](#build--test) | Before `npm run build`, during build, or when build stalls |
+| [Environment variables](#environment-variables) | Adding or changing env vars |
+| [Prisma](#prisma) | Touching Prisma deps in `package.json` |
+| [Code review](#code-review) | Before shipping |
+| [Playwright](#playwright-mcp-user-playwright) | Browser verification |
 
-This is the common workflow that we will use for every single feature/fix:
+## Defaults
 
-1. **Document** - Document the feature in `context/current-feature.md`.
-2. **Branch** - Create new branch for feature, fix, etc
-3. **Implement** - Implement the feature/fix that is documented in `context/current-feature.md`
-4. **Test** - Verify it works in the browser. Run `npm run build && npm run test:run` and fix any errors
-5. **Iterate** - Iterate and change things if needed
-6. **Commit** - Only after build passes and everything works
-7. **Merge** - Merge to main
-8. **Delete Branch** - Delete branch after merge
-9. **Review** - Review AI-generated code periodically and on demand.
-10. Mark as completed in `context/current-feature.md` and append summary to `context/history.md` (append to END — history is ordered oldest to newest)
+| Topic | Rule |
+| --- | --- |
+| Tone | Concise and direct; explain non-obvious decisions briefly |
+| Scope | Minimal diffs; preserve existing patterns; no unrelated refactors |
+| Features | Only what `context/current-feature.md` specifies — no extras |
+| Clarify | Ask before large refactors, architectural changes, or deleting files |
+| Stuck | After 2–3 failed attempts, stop and explain — do not keep guessing |
 
-Do NOT commit without permission and until the build passes. If build fails, fix the issues first.
+## Feature workflow
 
-## Branching
+| Step | Action |
+| ---: | --- |
+| 1 | **Document** — `context/current-feature.md` |
+| 2 | **Branch** — `feature/<name>` or `fix/<name>` |
+| 3 | **Implement** — match the doc |
+| 4 | **Test** — browser verify; [Build & test](#build--test) flow; fix failures |
+| 5 | **Iterate** — adjust as needed |
+| 6 | **Commit** — build + tests pass **and** user explicitly asks |
+| 7 | **Merge** — to `main` |
+| 8 | **Delete branch** — after merge (ask user) |
+| 9 | **Review** — [Code review](#code-review) |
+| 10 | **Close out** — mark complete in `context/current-feature.md`; append to **end** of `context/history.md` (oldest → newest) |
 
-We will create a new branch for every feature/fix. Name branch **feature/[feature]** or **fix/[fix]**, etc. Ask to delete the branch once merged.
+**Never** commit without user permission or while build/test is failing.
 
-## Commits
+## Branching & commits
 
-- Ask before committing (don't auto-commit)
-- Use conventional commit messages (feat:, fix:, chore:, etc.)
-- Keep commits focused (one feature/fix per commit)
-- Never include Claude attribution in commit messages — no "Generated With Claude", no "Co-Authored-By: Claude" trailers, nothing that references AI authorship
+| Topic | Rule |
+| --- | --- |
+| Branch naming | `feature/<name>` or `fix/<name>` — one branch per feature/fix |
+| Commit timing | User must ask; build and tests must pass first |
+| Commit style | Conventional prefixes (`feat:`, `fix:`, `chore:`); one logical change per commit |
+| Attribution | **Never** AI attribution — no "Generated with …", no `Co-Authored-By` trailers |
 
-## When Stuck
+## Build & test
 
-- If something isn't working after 2-3 attempts, stop and explain the issue
-- Don't keep trying random fixes
-- Ask for clarification if requirements are unclear
+Automatic cleanup — **no user prompt** unless noted. Run each phase as **separate terminal commands** (never chain; never pipe through `tail`/`head`/`grep`).
 
-## Code Changes
+### Flow
 
-- Make minimal changes to accomplish the task
-- Don't refactor unrelated code unless asked
-- Don't add "nice to have" features
-- Preserve existing patterns in the codebase
+| Phase | When | Section |
+| --- | --- | --- |
+| 1 Preflight | Before every `npm run build` | [below](#preflight) |
+| 2 Build | After preflight | `npm run build` in fresh session |
+| 3 Monitor | While build runs | [below](#monitor) |
+| 4 Recovery | Hung build or lock error | [below](#recovery) |
+| 5 Tests | After build passes | `npm run test:run` |
 
-## Code Review
+One build/test at a time — do not start a second session while the first runs.
 
-Review AI-generated code periodically, especially for:
+### Reset stale builds
 
-- Security (auth checks, input validation)
-- Performance (unnecessary re-renders, N+1 queries)
-- Logic errors (edge cases)
-- Patterns (matches existing codebase?)
+Shared by preflight and recovery. Request escalated permissions if sandbox blocks `pgrep`/`pkill`/`ps`.
 
-## Playwright MCP
+```bash
+pgrep -fl 'next build|npm run build'    # note PIDs
+pkill -f 'next build'; pkill -f 'npm run build'
+sleep 2; pgrep -fl 'next build|npm run build' || true   # repeat pkill once if still running
+rm -rf .next
+```
 
-- Always close the browser with `mcp__playwright__browser_close` when you are finished testing.
-- Begin testing by navigating to the target URL using `mcp__playwright__browser_navigate` (e.g., `http://localhost:3000`).
-- If you need to debug a layout or verify visual changes, use `mcp__playwright__browser_take_screenshot` to capture the current state.
-- Rely on `mcp__playwright__browser_wait_for` to wait for specific selectors instead of using arbitrary delays.
-- If you encounter an unexpected state, check for errors using `mcp__playwright__browser_console_messages` or inspect the DOM with `mcp__playwright__browser_snapshot`.
+### Preflight
+
+Run [reset](#reset-stale-builds) then start build.
+
+| Step | Action |
+| ---: | --- |
+| 1–3 | [Reset stale builds](#reset-stale-builds) |
+| 4 | `npm run build` in fresh session → [Monitor](#monitor) |
+
+### Monitor
+
+Poll the **same** build session. Keep polls internal — no passive status narration unless the user asks.
+
+**Progress signals** (any one = still running):
+
+| Signal | Notes |
+| --- | --- |
+| New stdout/stderr | — |
+| `.next/build/**`, `.next/server/**`, `.next/static/**`, `.next/types/**`, `.next/diagnostics/**` writes | Production output |
+| `.next/lock` created or updated | — |
+| CPU or child workers on build PID | — |
+| `.next/dev/**` only | **Ignore** — usually `next dev` |
+
+**Agent polling** — use only your runtime row:
+
+| Agent | How |
+| --- | --- |
+| **Cursor** | High `block_until_ms`; poll same shell with `Await` until exit |
+| **Codex** | `yield_time_ms` up to 30000; poll same session id — **not** `block_until_ms` / `Await` |
+
+**Health check** (~30s with no new output — separate commands):
+
+```bash
+pgrep -fl 'next build|npm run build'
+ps -o pid,pcpu,command -p <pid>
+find .next/build .next/server .next/static .next/types .next/diagnostics -type f -mmin -1 2>/dev/null | head
+```
+
+Also note elapsed time since build started.
+
+**States:**
+
+| State | Criteria | Action |
+| --- | --- | --- |
+| Running | Output or progress signal within ~30s | Keep polling |
+| Suspicious | 1 quiet check: no output **and** no progress | Run health check; stay attached |
+| Hung | 2 quiet checks (~60–90s): no output, no `.next` writes, no CPU/workers | [Recovery](#recovery) |
+| Lock error | "Another next build process is already running" | [Recovery](#recovery) once |
+
+### Recovery
+
+Hung or lock error — automatic, no approval.
+
+| Step | Action |
+| ---: | --- |
+| 1 | [Reset stale builds](#reset-stale-builds) |
+| 2 | One-line report: elapsed time, PIDs killed, health-check results |
+| 3 | Retry `npm run build` **once** in fresh session |
+| 4 | Still hung or lock again → **stop**; report state; do not loop |
+
+## Environment variables
+
+Sync `src/types/env.d.ts` and `.env.example` in the same change. Use `?` in `env.d.ts` for optional vars.
+
+| Policy | Vars |
+| --- | --- |
+| **Never add** | `BILLING_ALERT_EMAIL`, `ADMIN_EMAIL` — use `EMAIL_FROM` via `getNotificationRecipientEmail()` in `src/lib/infra/resend.ts` |
+| **Never add** | `STRIPE_TRIAL_PERIOD_DAYS` — configured in Stripe, not app env |
+| **Never add** | `STRIPE_AUTOMATIC_TAX_ENABLED`, `CRON_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` |
+| **Keep** | `STRIPE_PUBLISHABLE_KEY` in both files — reserved for future Stripe.js |
+
+## Prisma
+
+| Rule | Detail |
+| --- | --- |
+| Latest | `prisma` + `@prisma/client` on latest npm (including `-dev` pre-releases) |
+| Match | Same version in devDependency and dependency |
+| Bump | Check npm; bump both + `@prisma/adapter-neon` when behind — no approval needed |
+| Never pin old | Do not stay on older stable when newer exists |
+
+## Code review
+
+| Area | Look for |
+| --- | --- |
+| Security | Auth checks, input validation, IDOR scoping |
+| Performance | Unnecessary re-renders, N+1 queries |
+| Logic | Edge cases, error paths |
+| Patterns | Consistency with existing codebase |
+
+## Playwright MCP (`user-playwright`)
+
+Browser verification (workflow step 4). Always `browser_close` when done.
+
+| Task | Tool |
+| --- | --- |
+| Open | `browser_navigate` → `http://localhost:3000` |
+| Wait | `browser_wait_for` (selectors, not arbitrary delays) |
+| Screenshot | `browser_take_screenshot` |
+| Inspect | `browser_snapshot`, `browser_console_messages` |
+| Close | `browser_close` |

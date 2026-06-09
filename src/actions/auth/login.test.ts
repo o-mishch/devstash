@@ -15,7 +15,7 @@ vi.mock('@/auth', () => ({
   auth: vi.fn(),
   LINK_INTENT_COOKIE: 'link-intent',
 }))
-vi.mock('@/lib/rate-limit', () => ({
+vi.mock('@/lib/infra/rate-limit', () => ({
   rateLimitAction: vi.fn(),
   getActionIP: vi.fn().mockResolvedValue('127.0.0.1'),
 }))
@@ -30,7 +30,7 @@ vi.mock('next/headers', () => ({
 }))
 
 import { signIn } from '@/auth'
-import { rateLimitAction } from '@/lib/rate-limit'
+import { rateLimitAction } from '@/lib/infra/rate-limit'
 import { emailVerificationEnabled } from '@/lib/emails/verification'
 import { getUserEmailVerified } from '@/lib/db/users'
 import { signInWithCredentials } from './login'

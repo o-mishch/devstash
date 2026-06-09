@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { lookup as mimeType } from 'mime-types'
 import { ApiResponse, authenticatedRoute } from '@/lib/api'
-import { uploadToFilebase, deleteFromFilebase } from '@/lib/filebase'
+import { uploadToFilebase, deleteFromFilebase } from '@/lib/storage/filebase'
 import { ALLOWED_IMAGE_EXTS, ALLOWED_FILE_EXTS, IMAGE_MAX_BYTES, FILE_MAX_BYTES } from '@/lib/utils/constants'
 
 interface UploadResult {

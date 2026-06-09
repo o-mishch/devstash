@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { auth } from '@/auth';
 import { ChaosCanvas } from '@/components/marketing/ChaosCanvas';
-import { PricingSection } from '@/components/marketing/PricingSection';
+import { PricingSectionInteractive } from '@/components/marketing/PricingSectionInteractive';
+import { FreePricingFeatures, ProPricingFeatures } from '@/components/billing/pricing-feature-lists';
 import { FadeIn } from '@/components/marketing/FadeIn';
 import { GradientCta } from '@/components/marketing/GradientCta';
 import { SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants';
@@ -122,6 +124,7 @@ function HeroVisual() {
                   ))}
                 </div>
                 <div className="flex flex-1 flex-col gap-1.5 overflow-hidden p-2">
+                  {/* Inline styles: card accent colors come from runtime SYSTEM_TYPE data, not static theme tokens. */}
                   {MOCKUP_CARDS.map(c => (
                     <div
                       key={c.title}
@@ -442,7 +445,9 @@ function Footer() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await auth()
+
   return (
     <>
       <main>
@@ -450,7 +455,12 @@ export default function HomePage() {
         <HeroVisual />
         <FeaturesGrid />
         <AiSection />
-        <PricingSection />
+        <PricingSectionInteractive
+          freeFeatures={<FreePricingFeatures />}
+          proFeatures={<ProPricingFeatures />}
+          isAuthenticated={!!session?.user}
+          isPro={session?.user?.isPro ?? false}
+        />
         <CtaSection />
       </main>
       <Footer />

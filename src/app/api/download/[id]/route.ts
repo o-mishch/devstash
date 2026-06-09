@@ -3,9 +3,9 @@ import { lookup as mimeType } from 'mime-types'
 import sharp from 'sharp'
 import { ApiResponse, authenticatedRoute } from '@/lib/api'
 import { getItemById } from '@/lib/db/items'
-import { downloadFromFilebase } from '@/lib/filebase'
+import { downloadFromFilebase } from '@/lib/storage/filebase'
 import type { RouteContext } from '@/lib/api'
-import { createLogger } from '@/lib/logger'
+import { createLogger } from '@/lib/infra/logger'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 
 const log = createLogger('download')

@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { resendVerification } from '@/lib/emails/verification'
-import { rateLimitAction, getActionIP } from '@/lib/rate-limit'
+import { rateLimitAction, getActionIP } from '@/lib/infra/rate-limit'
 
 export async function resendVerificationAction(email: string) {
   const ip = await getActionIP()

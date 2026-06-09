@@ -95,7 +95,7 @@ export function AutoTagInput({ form, isPro }: AutoTagInputProps) {
 
       {isPro ? (
         <p className="text-xs text-muted-foreground">
-          AI suggestions appear below. Approve adds a tag to the input; reject removes it. Nothing is added automatically.
+          AI suggestions appear below. Accept adds a tag to the input; reject removes it. Nothing is added automatically.
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -122,7 +122,7 @@ export function AutoTagInput({ form, isPro }: AutoTagInputProps) {
                 <p className="text-sm font-medium text-foreground">Review AI suggestions</p>
               </div>
               <p className="text-xs text-muted-foreground">
-                Click approve to add a tag to the input, or reject to dismiss it.
+                Click accept to add a tag to the input, or reject to dismiss it.
               </p>
             </div>
             <Badge variant="outline" className="shrink-0 border-border/70 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -148,7 +148,7 @@ export function AutoTagInput({ form, isPro }: AutoTagInputProps) {
                     className="gap-1.5 text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
                   >
                     <Check className="size-3.5" />
-                    Approve
+                    Accept
                   </Button>
                   <Button
                     type="button"

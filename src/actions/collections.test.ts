@@ -1,14 +1,14 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }))
-vi.mock('@/lib/cache', () => ({ invalidateCollectionsCache: vi.fn() }))
+vi.mock('@/lib/infra/cache', () => ({ invalidateCollectionsCache: vi.fn() }))
 vi.mock('@/lib/db/collections', () => ({
   createCollection: vi.fn(),
   updateCollection: vi.fn(),
   deleteCollection: vi.fn(),
   toggleCollectionFavorite: vi.fn(),
 }))
-vi.mock('@/lib/usage', () => ({ canCreateCollection: vi.fn() }))
+vi.mock('@/lib/db/usage', () => ({ canCreateCollection: vi.fn() }))
 import { auth } from '@/auth'
 import { createCollection, updateCollection, deleteCollection } from '@/lib/db/collections'
 import { createCollectionAction, updateCollectionAction, deleteCollectionAction } from './collections'
@@ -19,7 +19,7 @@ const mockCreateCollection = createCollection as ReturnType<typeof vi.fn>
 const mockUpdateCollection = updateCollection as ReturnType<typeof vi.fn>
 const mockDeleteCollection = deleteCollection as ReturnType<typeof vi.fn>
 
-import { canCreateCollection } from '@/lib/usage'
+import { canCreateCollection } from '@/lib/db/usage'
 const mockCanCreateCollection = canCreateCollection as ReturnType<typeof vi.fn>
 
 const mockCollection = { id: 'col-1', name: 'My Collection', description: null }

@@ -9,7 +9,7 @@ import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 import type { editor } from 'monaco-editor'
 import { useEditorPreferences } from '@/providers/editor-preferences-provider'
-import { monokaiTheme, githubDarkTheme } from '@/lib/utils/monaco-themes'
+import { monokaiTheme, githubDarkTheme } from '@/lib/editor/monaco-themes'
 
 interface CodeEditorProps {
   value: string

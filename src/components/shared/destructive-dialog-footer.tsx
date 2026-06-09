@@ -9,6 +9,7 @@ interface DestructiveDialogFooterProps {
   onConfirm: () => void
   isPending: boolean
   confirmText: string
+  confirmDisabled?: boolean
 }
 
 export function DestructiveDialogFooter({
@@ -16,13 +17,14 @@ export function DestructiveDialogFooter({
   onConfirm,
   isPending,
   confirmText,
+  confirmDisabled = false,
 }: DestructiveDialogFooterProps) {
   return (
     <DialogFooter className="pt-2">
       <Button variant="ghost" onClick={onCancel} disabled={isPending}>
         Cancel
       </Button>
-      <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+      <Button variant="destructive" onClick={onConfirm} disabled={isPending || confirmDisabled}>
         {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
         {confirmText}
       </Button>

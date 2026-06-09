@@ -30,9 +30,11 @@ export function ItemRow({ item }: ItemRowProps) {
           <p className="truncate text-sm font-medium">{item.title}</p>
           <ItemStatusIcons isPinned={item.isPinned} isFavorite={item.isFavorite} className="size-3" />
         </div>
-        {item.descriptionPreview && (
+        {item.descriptionPreview ? (
           <p className="truncate text-xs text-muted-foreground">{item.descriptionPreview}</p>
-        )}
+        ) : item.contentPreview ? (
+          <p className="truncate text-xs text-muted-foreground">{item.contentPreview}</p>
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <ItemTags tags={item.tags} max={2} badgeClassName="hidden sm:inline-flex" />

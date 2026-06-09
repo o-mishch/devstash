@@ -2,13 +2,18 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { getCurrentUserId } from '@/lib/session'
-import { EditorPreferencesForm } from './_components/editor-preferences-form'
-import { BillingSettings } from './_components/billing-settings'
+import { getCachedSession } from '@/lib/session'
+import type { SettingsCheckoutSearchParams } from '@/lib/billing/checkout/checkout-return-params'
+import { EditorPreferencesForm } from '@/components/settings/editor-preferences-form'
+import { BillingSettings } from '@/components/billing/billing-settings'
 
-export default async function SettingsPage() {
-  const userId = await getCurrentUserId()
-  if (!userId) redirect('/sign-in')
+interface SettingsPageProps {
+  searchParams: Promise<SettingsCheckoutSearchParams>
+}
+
+export default async function SettingsPage({ searchParams }: SettingsPageProps) {
+  const session = await getCachedSession()
+  if (!session?.user?.id) redirect('/sign-in')
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -27,7 +32,11 @@ export default async function SettingsPage() {
 
       <div className="grid gap-6">
         <Suspense fallback={<div className="h-48 rounded-xl border bg-muted/30 animate-pulse" />}>
-          <BillingSettings />
+          <BillingSettings
+            userId={session.user.id}
+            fallbackIsPro={session.user.isPro ?? false}
+            searchParams={searchParams}
+          />
         </Suspense>
         <EditorPreferencesForm />
       </div>

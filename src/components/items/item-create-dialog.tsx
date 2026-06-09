@@ -29,11 +29,11 @@ import {
 } from '@/components/ui/select'
 
 import { createItemAction } from '@/actions/items'
-import { apiFetch } from '@/lib/api-fetch'
-import { createLogger } from '@/lib/logger'
+import { apiFetch } from '@/lib/api/api-fetch'
+import { createLogger } from '@/lib/infra/logger'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
-import { FREE_TIER_ITEM_LIMIT } from '@/lib/usage'
+import { FREE_TIER_ITEM_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
 
 import { itemFormBaseSchema, type ItemFormBaseValues } from '@/lib/utils/validators'

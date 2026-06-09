@@ -55,6 +55,7 @@ tmp
 
 # local MCP config (may contain API keys)
 .mcp.json
+.cursor/mcp.json
 
 *.png
 .idea

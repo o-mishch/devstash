@@ -1,7 +1,8 @@
-import { prisma } from '@/lib/prisma'
-import { sendEmail } from '@/lib/resend'
+import { findLatestVerificationToken, TOKEN_TTL_MS } from '@/lib/db/tokens'
+import { findUnverifiedUserByEmail } from '@/lib/db/verification'
+import { sendEmail } from '@/lib/infra/resend'
+import { createVerificationToken } from '@/lib/auth/tokens'
 import { getBaseUrl } from '@/lib/utils/url'
-import { createVerificationToken, TOKEN_TTL_MS } from '@/lib/tokens'
 import { buildEmailTemplate } from './template-builder'
 import verificationHtml from './verification.html'
 
@@ -27,17 +28,11 @@ async function sendVerificationEmail(to: string, token: string): Promise<boolean
 }
 
 export async function resendVerification(email: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, emailVerified: true },
-  })
+  const user = await findUnverifiedUserByEmail(email)
 
   if (!user || user.emailVerified) return false
 
-  const existing = await prisma.verificationToken.findFirst({
-    where: { identifier: email },
-    orderBy: { expires: 'desc' },
-  })
+  const existing = await findLatestVerificationToken(email)
 
   const tokenCreatedAt = existing ? existing.expires.getTime() - TOKEN_TTL_MS : 0
   const isTokenFresh = !!existing && Date.now() - tokenCreatedAt < RATE_LIMIT_MS

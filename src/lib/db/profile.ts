@@ -1,6 +1,6 @@
-import { prisma } from '@/lib/prisma'
-import { withDataCache, CacheTags } from '@/lib/cache'
-import { compareBySystemTypeOrder } from '@/lib/utils/constants'
+import { prisma } from '@/lib/infra/prisma'
+import { withDataCache, CacheTags } from '@/lib/infra/cache'
+import { compareBySystemTypeOrder, PROVIDER_LABELS } from '@/lib/utils/constants'
 import type { EditorPreferences } from '@/types/editor-preferences'
 import type { Prisma } from '@/generated/prisma/client'
 
@@ -35,6 +35,26 @@ interface ItemTypeCount {
 }
 
 type ProfileData = { user: ProfileUser; stats: ProfileStats }
+
+export interface ProfileAccountSummary {
+  accountTypes: string[]
+  availableEmails: string[]
+}
+
+/** Derives sign-in method labels and deduped owned emails for profile UI. */
+export function getProfileAccountSummary(user: Pick<ProfileUser, 'email' | 'hasPassword' | 'accounts'>): ProfileAccountSummary {
+  const accountTypes: string[] = []
+  if (user.hasPassword) accountTypes.push('Email')
+  for (const { provider } of user.accounts) {
+    accountTypes.push(PROVIDER_LABELS[provider] ?? provider)
+  }
+
+  const availableEmails = Array.from(
+    new Set([user.email, ...user.accounts.map((account) => account.email).filter(Boolean) as string[]]),
+  )
+
+  return { accountTypes, availableEmails }
+}
 
 async function fetchProfileData(userId: string): Promise<ProfileData | null> {
   const [user, itemTypes] = await Promise.all([
