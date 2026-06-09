@@ -6,17 +6,17 @@ vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
 }))
 vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn(), toggleItemFavorite: vi.fn(), toggleItemPinned: vi.fn() }))
 vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn() }))
-vi.mock('@/lib/storage/filebase', () => ({ deleteFromFilebase: vi.fn() }))
+vi.mock('@/lib/storage/image-thumbnails', () => ({ deleteStoredImageFiles: vi.fn() }))
 vi.mock('@/lib/db/usage', () => ({
   canCreateItem: vi.fn(),
   FREE_TIER_ITEM_LIMIT: 50,
 }))
 
-import { deleteFromFilebase } from '@/lib/storage/filebase'
+import { deleteStoredImageFiles } from '@/lib/storage/image-thumbnails'
 import { canCreateItem } from '@/lib/db/usage'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 
-const mockDeleteFromFilebase = deleteFromFilebase as ReturnType<typeof vi.fn>
+const mockDeleteStoredImageFiles = deleteStoredImageFiles as ReturnType<typeof vi.fn>
 const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
 const mockGetCachedVerifiedProAccess = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 
@@ -320,7 +320,7 @@ describe('deleteItemAction', () => {
     mockDeleteItem.mockResolvedValue(true)
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('ok')
-    expect(mockDeleteFromFilebase).not.toHaveBeenCalled()
+    expect(mockDeleteStoredImageFiles).not.toHaveBeenCalled()
   })
 
   it('deletes file from filebase before removing the DB row', async () => {
@@ -329,14 +329,14 @@ describe('deleteItemAction', () => {
     mockDeleteItem.mockResolvedValue(true)
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('ok')
-    expect(mockDeleteFromFilebase).toHaveBeenCalledWith('user-1/abc.pdf')
-    expect(mockDeleteFromFilebase.mock.invocationCallOrder[0]).toBeLessThan(mockDeleteItem.mock.invocationCallOrder[0])
+    expect(mockDeleteStoredImageFiles).toHaveBeenCalledWith('user-1/abc.pdf')
+    expect(mockDeleteStoredImageFiles.mock.invocationCallOrder[0]).toBeLessThan(mockDeleteItem.mock.invocationCallOrder[0])
   })
 
   it('returns INTERNAL_ERROR when filebase delete fails and keeps the DB row', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetItemById.mockResolvedValue({ ...mockItem, fileUrl: 'user-1/abc.pdf' })
-    mockDeleteFromFilebase.mockRejectedValue(new Error('R2 unavailable'))
+    mockDeleteStoredImageFiles.mockRejectedValue(new Error('R2 unavailable'))
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('internal_error')
     expect(mockDeleteItem).not.toHaveBeenCalled()

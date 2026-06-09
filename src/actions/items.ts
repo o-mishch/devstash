@@ -19,7 +19,7 @@ import {
 } from '@/lib/db/items'
 import { createLogger } from '@/lib/infra/logger'
 import { invalidateItemsCache } from '@/lib/infra/cache'
-import { deleteFromFilebase } from '@/lib/storage/filebase'
+import { deleteStoredImageFiles } from '@/lib/storage/image-thumbnails'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { parseOrFail, isOwnedFileReference } from '@/lib/utils/validators'
 import type { ApiBody } from '@/types/api'
@@ -121,7 +121,7 @@ export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
 
     if (existing.fileUrl) {
       try {
-        await deleteFromFilebase(existing.fileUrl)
+        await deleteStoredImageFiles(existing.fileUrl)
       } catch (error) {
         log.error('Failed to delete file from storage', { userId, itemId, error })
         return ApiResponse.INTERNAL_ERROR('Failed to delete file from storage.')

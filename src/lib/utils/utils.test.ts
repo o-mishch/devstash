@@ -17,4 +17,3 @@ describe('formatDate', () => {
     expect(formatDate(date)).toBe('Jan 15')
   })
 })
-

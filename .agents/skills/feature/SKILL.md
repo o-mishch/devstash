@@ -36,7 +36,7 @@ Execute the requested action: $ARGUMENTS
 
 | Action     | Description                                               |
 | ---------- | --------------------------------------------------------- |
-| `load`     | Load a feature spec or inline description                 |
+| `load`     | Research the codebase, then write goals/notes to current-feature.md — no branch, no code changes |
 | `start`    | Begin implementation, create branch                       |
 | `review`   | Check goals met, code quality                             |
 | `test`     | Check for testable logic for server actions and utilities |

@@ -23,7 +23,7 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
   if (!collection) notFound()
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="app-page gap-6 p-6">
       <div className="flex items-center justify-between">
         <nav className="flex items-center gap-1 text-sm">
           <Link href="/collections" className="text-muted-foreground hover:text-foreground transition-colors">Collections</Link>

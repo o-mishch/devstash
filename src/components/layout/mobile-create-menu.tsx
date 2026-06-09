@@ -15,6 +15,7 @@ import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
 import { FREE_TIER_ITEM_LIMIT, FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
 import { getInitialTypeFromPathname } from '@/lib/utils/url'
+import { useAppUser } from '@/context/app-user-context'
 import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
@@ -22,12 +23,10 @@ import type { CollectionWithTypes } from '@/types/collection'
 interface MobileCreateMenuProps {
   itemTypes: SidebarItemType[]
   collections: CollectionWithTypes[]
-  canCreateItem?: boolean
-  canCreateCollection?: boolean
-  isPro?: boolean
 }
 
-export function MobileCreateMenu({ itemTypes, collections, canCreateItem = true, canCreateCollection = true, isPro = false }: MobileCreateMenuProps) {
+export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuProps) {
+  const { canCreateItem, canCreateCollection } = useAppUser()
   const { showUpgradePrompt } = useUpgradePrompt()
   const [itemOpen, setItemOpen] = useState(false)
   const [collectionOpen, setCollectionOpen] = useState(false)
@@ -44,7 +43,6 @@ export function MobileCreateMenu({ itemTypes, collections, canCreateItem = true,
           onOpenChange={setItemOpen}
           initialType={initialType}
           trigger={<></>}
-          isPro={isPro}
         />
       )}
       {collectionOpen && (

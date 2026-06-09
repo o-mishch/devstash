@@ -17,12 +17,12 @@ interface PreferenceRowProps {
 
 function PreferenceRow({ title, description, children }: PreferenceRowProps) {
   return (
-    <div className="flex items-center justify-between">
-      <div className="space-y-0.5">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 flex-1 space-y-0.5">
         <Label>{title}</Label>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
-      {children}
+      <div className="shrink-0">{children}</div>
     </div>
   )
 }
@@ -44,7 +44,7 @@ export function EditorPreferencesForm() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="app-grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             {APP_THEME_OPTIONS.map((theme) => {
               const isActive = preferences.appTheme === theme.value;
               const { bg, accent } = APP_THEME_SWATCH_CLASSES[theme.value as AppTheme]

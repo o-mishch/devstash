@@ -12,7 +12,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { getProfileData } from '@/lib/db/profile'
 import { EditorPreferencesProvider } from '@/providers/editor-preferences-provider'
 import { UpgradePromptProvider } from '@/providers/upgrade-prompt-provider'
-import { canCreateItem, FREE_TIER_COLLECTION_LIMIT } from '@/lib/db/usage'
+import { AppUserProvider } from '@/providers/app-user-provider'
+import { canCreateCollection, canCreateItem } from '@/lib/db/usage'
 import { loadAppSidebarData } from '@/lib/app/sidebar-data'
 import { getCachedSession } from '@/lib/session'
 import { createLogger } from '@/lib/infra/logger'
@@ -25,24 +26,29 @@ export default async function DashboardLayout({ children }: WithChildren) {
 
   const sidebarData = await loadAppSidebarData(session)
   const isPro = sidebarData.user?.isPro ?? false
-  const userCanCreateCollection = isPro || sidebarData.collections.length < FREE_TIER_COLLECTION_LIMIT
-  const [profileData, userCanCreateItem] = userId
+  const [profileData, userCanCreateItem, userCanCreateCollection] = userId
     ? await Promise.all([
         getProfileData(userId).catch((error) => {
           log.warn('Failed to load profile data for layout', { userId, error })
           return null
         }),
         canCreateItem(userId, isPro),
+        canCreateCollection(userId, isPro),
       ])
-    : [null, false]
+    : [null, false, false]
   const initialPreferences = profileData?.user.editorPreferences || null
 
   return (
     <EditorPreferencesProvider initialPreferences={initialPreferences}>
       <UpgradePromptProvider>
-        <ItemDrawerProvider collections={sidebarData.collections} isPro={isPro}>
-        <div className="flex h-screen flex-col bg-background">
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+        <AppUserProvider
+          isPro={isPro}
+          canCreateItem={userCanCreateItem}
+          canCreateCollection={userCanCreateCollection}
+        >
+        <ItemDrawerProvider collections={sidebarData.collections}>
+        <div className="flex h-screen flex-col overflow-hidden bg-background">
+          <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">
             <MobileDrawer sidebarData={sidebarData} />
 
             {/* Mobile: compact Home icon */}
@@ -89,12 +95,12 @@ export default async function DashboardLayout({ children }: WithChildren) {
               </TooltipProvider>
 
               {/* Mobile: single + dropdown for new item / new collection */}
-              <MobileCreateMenu itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} canCreateItem={userCanCreateItem} canCreateCollection={userCanCreateCollection} isPro={isPro} />
+              <MobileCreateMenu itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
 
               {/* Desktop: separate explicit buttons */}
               <div className="hidden lg:flex items-center gap-2">
-                <CollectionCreateDialog canCreate={userCanCreateCollection} />
-                <TopbarCreateButton itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} canCreateItem={userCanCreateItem} isPro={isPro} />
+                <CollectionCreateDialog />
+                <TopbarCreateButton itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
               </div>
             </div>
           </header>
@@ -102,12 +108,13 @@ export default async function DashboardLayout({ children }: WithChildren) {
           <div className="flex flex-1 overflow-hidden">
             <SidebarContent sidebarData={sidebarData} collapsible />
 
-            <main className="flex flex-1 flex-col overflow-auto">
+            <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
               {children}
             </main>
           </div>
         </div>
         </ItemDrawerProvider>
+        </AppUserProvider>
       </UpgradePromptProvider>
       </EditorPreferencesProvider>
   )

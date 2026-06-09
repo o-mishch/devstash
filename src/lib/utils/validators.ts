@@ -2,7 +2,7 @@ import { z, ZodType } from 'zod'
 import type { ApiBody } from '@/types/api'
 import { EDITOR_THEMES, APP_THEMES } from '@/types/editor-preferences'
 
-type ParseResult<T> =
+export type ParseResult<T> =
   | { success: true; data: T }
   | { success: false; response: ApiBody<null> }
 

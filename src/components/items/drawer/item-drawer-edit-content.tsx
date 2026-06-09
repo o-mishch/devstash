@@ -13,9 +13,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { LanguageInput } from '@/components/shared/item-content-input'
 import { ItemFormFields } from '@/components/items/item-form-fields'
 import { updateItemAction } from '@/actions/items'
-import { useItemDrawer } from '@/context/item-drawer-context'
 import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
+import { getDownloadUrl } from '@/lib/utils/url'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import type { FullItem } from '@/types/item'
@@ -43,7 +43,6 @@ interface ItemDrawerEditContentProps {
 
 export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel }: ItemDrawerEditContentProps) {
   const router = useRouter()
-  const { isPro } = useItemDrawer()
   const { itemType } = item
   const typeName = itemType.name
 
@@ -147,11 +146,17 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
     >
       <ItemFormFields
         form={form}
-        itemType={typeName}
+        itemContext={{
+          itemType: typeName,
+          fileName: item.fileName,
+          fileSize: item.fileSize,
+        }}
         watchedLanguage={watchedLanguage}
         collections={collections}
-        isPro={isPro}
         variant="drawer"
+        imageProbeUrl={
+          typeName === 'image' && item.fileUrl ? getDownloadUrl(item.id) : undefined
+        }
       />
 
       <DrawerDetailsSection item={item} />

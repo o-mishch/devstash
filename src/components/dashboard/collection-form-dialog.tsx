@@ -25,12 +25,17 @@ import type { ApiBody } from '@/types/api'
 
 type FormValues = z.input<typeof collectionFormSchema>
 
+interface CollectionFormDefaultValues {
+  name: string
+  description: string
+}
+
 interface CollectionFormDialogProps {
   title: string
   description: string
   submitText: string
   successMessage: string
-  defaultValues: { name: string; description: string }
+  defaultValues: CollectionFormDefaultValues
   onSubmitAction: (data: FormValues) => Promise<ApiBody<unknown>>
   trigger?: ReactNode
   open?: boolean
@@ -122,8 +127,7 @@ export function CollectionFormDialog({
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <CollectionFormFields
-                register={form.register}
-                errors={form.formState.errors}
+                form={form}
                 idPrefix={idPrefix}
               />
             </div>

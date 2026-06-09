@@ -16,7 +16,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   if (!session?.user?.id) redirect('/sign-in')
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="app-page gap-6 p-6">
       <div className="flex items-start gap-3">
         <Link
           href="/dashboard"
@@ -30,7 +30,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         </div>
       </div>
 
-      <div className="grid gap-6">
+      <div className="flex flex-col gap-6">
         <Suspense fallback={<div className="h-48 rounded-xl border bg-muted/30 animate-pulse" />}>
           <BillingSettings
             userId={session.user.id}

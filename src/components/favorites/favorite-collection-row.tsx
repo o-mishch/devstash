@@ -13,7 +13,7 @@ export function FavoriteCollectionRow({ collection }: FavoriteCollectionRowProps
   return (
     <Link
       href={`/collections/${collection.id}`}
-      className="card-interactive group flex w-full items-center gap-3 rounded px-3 py-1.5 text-left"
+      className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left"
     >
       <FolderOpen
         className="size-3.5 shrink-0"

@@ -5,10 +5,10 @@ const SKELETON_COUNT = 6
 
 export default function CollectionsLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="app-page gap-6 p-6">
       <PageHeaderSkeleton actionWidthClass="w-36" />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="app-grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {[...Array(SKELETON_COUNT)].map((_, i) => (
           <CollectionCardSkeleton key={i} />
         ))}

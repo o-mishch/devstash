@@ -3,7 +3,6 @@
 import { ReactNode } from 'react'
 import { Controller, type UseFormReturn } from 'react-hook-form'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { ItemContentInput, LanguageInput } from '@/components/shared/item-content-input'
 import { CollectionSelector } from '@/components/shared/collection-selector'
@@ -12,11 +11,14 @@ import { cn } from '@/lib/utils'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { type ItemFormBaseValues } from '@/lib/utils/validators'
 import type { CollectionWithTypes } from '@/types/collection'
-import { ItemTagsField } from '@/components/items/item-tags-field'
+import { AutoDescriptionInput } from '@/components/items/auto-description-input'
+import { AutoTagInput } from '@/components/items/auto-tag-input'
+import { AiFieldBadgeIfPro } from '@/components/shared/ai-field-chrome'
+import type { ItemFileContext } from '@/lib/ai/item-context'
 
 interface FieldProps {
   name: string
-  label: string
+  label: ReactNode
   icon?: ReactNode
   error?: string
   children: ReactNode
@@ -44,21 +46,22 @@ function DrawerField({ label, icon, error, children, className }: FieldProps) {
 
 export interface ItemFormFieldsProps {
   form: UseFormReturn<ItemFormBaseValues>
-  itemType: string
+  itemContext: ItemFileContext
   watchedLanguage?: string
   collections: CollectionWithTypes[]
-  isPro: boolean
   variant?: 'dialog' | 'drawer'
+  imageProbeUrl?: string | null
 }
 
 export function ItemFormFields({
   form,
-  itemType,
+  itemContext,
   watchedLanguage,
   collections,
-  isPro,
   variant = 'dialog',
+  imageProbeUrl,
 }: ItemFormFieldsProps) {
+  const { itemType } = itemContext
   const Field = variant === 'drawer' ? DrawerField : DialogField
   const showContent = ITEM_TYPES_WITH_CONTENT.has(itemType)
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(itemType)
@@ -132,30 +135,29 @@ export function ItemFormFields({
 
       <Field
         name="description"
-        label="Description"
+        label={
+          <span className="inline-flex items-center gap-2">
+            Description
+            <AiFieldBadgeIfPro />
+          </span>
+        }
         error={form.formState.errors.description?.message}
         className={variant === 'drawer' ? 'space-y-1.5' : undefined}
       >
-        {variant === 'drawer' ? (
-          <Textarea
-            {...form.register('description')}
-            placeholder="Optional description"
-            className="min-h-[3rem] resize-none"
-          />
-        ) : (
-          <Input
-            id="description"
-            placeholder="Optional description"
-            {...form.register('description')}
-          />
-        )}
+        <AutoDescriptionInput
+          form={form}
+          itemContext={itemContext}
+          imageProbeUrl={imageProbeUrl}
+          variant={variant}
+        />
       </Field>
 
-      <ItemTagsField
+      <AutoTagInput
         form={form}
+        itemContext={itemContext}
         error={form.formState.errors.tags?.message}
-        isPro={isPro}
         variant={variant}
+        imageProbeUrl={imageProbeUrl}
       />
 
       {collections.length > 0 && (

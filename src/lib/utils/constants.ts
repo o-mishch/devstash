@@ -59,6 +59,8 @@ export const FILE_ICON_JSON_EXTS = new Set(['json', 'yaml', 'yml', 'toml', 'xml'
 export const FILE_ICON_TEXT_EXTS = new Set(['txt', 'md', 'pdf', 'csv'])
 
 export const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+export const IMAGE_THUMBNAIL_MAX_WIDTH = 640
+export const IMAGE_THUMBNAIL_QUALITY = 80
 
 export const FILE_MAX_BYTES = 10 * 1024 * 1024
 

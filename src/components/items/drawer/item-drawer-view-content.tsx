@@ -13,6 +13,7 @@ import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO
 import { formatBytes } from '@/lib/utils/format'
 import { getDownloadUrl } from '@/lib/utils/url'
 import { useItemDrawer } from '@/context/item-drawer-context'
+import { useAppUser } from '@/context/app-user-context'
 import { useRestrictedDownload } from '@/hooks/use-restricted-download'
 import { isFullItem } from '@/types/item'
 import type { LightItem, FullItem } from '@/types/item'
@@ -22,7 +23,8 @@ interface FileSectionProps {
 }
 
 function FileSectionContent({ item }: FileSectionProps) {
-  const { isPro, closeDrawer } = useItemDrawer()
+  const { closeDrawer } = useItemDrawer()
+  const { isPro } = useAppUser()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const { handleDownload, showError } = useRestrictedDownload(
     getDownloadUrl(item.id),
@@ -39,7 +41,7 @@ function FileSectionContent({ item }: FileSectionProps) {
       <div className="flex justify-center">
         <div className="group relative flex max-w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted/30">
           <Image
-            src={getDownloadUrl(item.id)}
+            src={getDownloadUrl(item.id, { preview: true })}
             alt={item.fileName ?? item.title}
             width={0}
             height={0}

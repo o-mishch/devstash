@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 
 export default function SettingsLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="app-page gap-6 p-6">
       {/* Header */}
       <div className="flex items-start gap-3">
         <Skeleton className="mt-0.5 size-5 shrink-0 rounded-sm" />
@@ -13,7 +13,7 @@ export default function SettingsLoading() {
         </div>
       </div>
 
-      <div className="grid gap-6">
+      <div className="flex flex-col gap-6">
         {/* Billing Card Skeleton */}
         <Card>
           <CardHeader>
@@ -33,7 +33,7 @@ export default function SettingsLoading() {
             <Skeleton className="h-4 w-64" />
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="app-grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
               {[...Array(6)].map((_, i) => (
                 <Skeleton key={i} className="h-[90px] w-full rounded-lg" />
               ))}

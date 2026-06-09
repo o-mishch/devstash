@@ -35,11 +35,11 @@ export function VirtualGrid<T>({
   // VirtuosoGrid needs to know its custom scroll parent to function properly.
   // Delay rendering until the container finishes its first measurement.
   if (!scrollElement || cols === 0) {
-    return <div ref={containerRef} className="w-full h-full min-h-[500px]" />
+    return <div ref={containerRef} className="h-full min-h-[500px] w-full min-w-0" />
   }
 
   return (
-    <div ref={containerRef} className="w-full">
+    <div ref={containerRef} className="w-full min-w-0 overflow-hidden">
       <VirtuosoGrid
         data={items}
         customScrollParent={scrollElement}
@@ -56,13 +56,15 @@ export function VirtualGrid<T>({
               <div
                 ref={ref}
                 {...props}
+                className="min-w-0"
                 style={{
                   ...restStyle,
                   marginTop: paddingTop,
                   marginBottom: paddingBottom,
                   display: 'grid',
-                  gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                   gap,
+                  width: '100%',
                 }}
               >
                 {children}
@@ -72,6 +74,7 @@ export function VirtualGrid<T>({
           Item: ({ children, style, ...props }) => (
             <div
               {...props}
+              className="min-w-0 overflow-visible"
               style={{ ...style, height: resolvedItemHeight }}
             >
               {children}

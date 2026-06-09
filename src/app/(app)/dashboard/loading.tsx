@@ -11,7 +11,7 @@ function DashboardListSkeleton({ count = 3 }: DashboardListSkeletonProps) {
   return (
     <div className='flex flex-col gap-3'>
       {[...Array(count)].map((_, i) => (
-        <div key={i} className='flex h-14 items-center gap-3 rounded-xl px-2 ring-1 ring-foreground/10'>
+        <div key={i} className='app-row h-14 gap-3 rounded-xl px-2 ring-1 ring-foreground/10'>
           <Skeleton className='size-7 shrink-0 rounded-md' />
           <div className='min-w-0 flex-1 space-y-1.5'>
             <Skeleton className='h-4 w-40' />
@@ -29,13 +29,13 @@ function DashboardListSkeleton({ count = 3 }: DashboardListSkeletonProps) {
 
 export default function DashboardLoading() {
   return (
-    <div className='flex flex-col gap-6 p-6'>
+    <div className='app-page gap-4 p-3 sm:gap-6 sm:p-6'>
       <div>
         <Skeleton className='mb-1.5 h-7 w-32' />
         <Skeleton className='h-4 w-48' />
       </div>
 
-      <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-4'>
+      <div className='app-grid gap-4 md:grid-cols-2 lg:grid-cols-4'>
         {[...Array(4)].map((_, i) => (
           <Card key={i}>
             <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
@@ -57,7 +57,7 @@ export default function DashboardLoading() {
           <Skeleton className='h-4 w-12' />
         </CardHeader>
         <CardContent>
-          <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3'>
+          <div className='app-grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3'>
             {[...Array(6)].map((_, i) => (
               <CollectionCardSkeleton key={i} />
             ))}

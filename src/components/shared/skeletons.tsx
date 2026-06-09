@@ -22,7 +22,7 @@ interface CardGridSkeletonProps {
 
 export function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+    <div className="app-grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
       {[...Array(count)].map((_, i) => (
         <div key={i} className="flex h-20 items-center gap-3 rounded-lg border border-border p-4">
           <Skeleton className="size-8 shrink-0 rounded-md" />

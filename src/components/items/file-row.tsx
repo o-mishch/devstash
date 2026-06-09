@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawer } from '@/context/item-drawer-context'
+import { useAppUser } from '@/context/app-user-context'
 import { useRestrictedDownload } from '@/hooks/use-restricted-download'
 import { formatDate, formatBytes } from '@/lib/utils/format'
 import { getDownloadUrl } from '@/lib/utils/url'
@@ -36,7 +37,8 @@ interface FileRowProps {
 }
 
 export function FileRow({ item }: FileRowProps) {
-  const { openDrawer, isPro } = useItemDrawer()
+  const { openDrawer } = useItemDrawer()
+  const { isPro } = useAppUser()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const { handleDownload, showError } = useRestrictedDownload(
     getDownloadUrl(item.id),
@@ -47,7 +49,7 @@ export function FileRow({ item }: FileRowProps) {
 
   return (
     <div
-      className="card-interactive group/card flex items-center gap-3 rounded-lg border border-border px-4 py-3"
+      className="card-interactive group/card flex h-full w-full min-w-0 items-center gap-3 rounded-lg border border-border px-4 py-2.5"
       onClick={() => openDrawer(item)}
     >
       <FileTypeIcon fileName={item.fileName} className="size-5 shrink-0 text-muted-foreground" />
@@ -56,17 +58,17 @@ export function FileRow({ item }: FileRowProps) {
           <p className="truncate font-medium">{item.title}</p>
           <ItemStatusIcons isPinned={item.isPinned} isFavorite={item.isFavorite} />
         </div>
-        <p className="truncate text-xs text-muted-foreground sm:hidden">
+        <p className="truncate text-xs text-muted-foreground lg:hidden">
           {item.fileName ?? '—'} · {item.fileSize ? formatBytes(item.fileSize) : '—'} · {formatDate(item.createdAt)}
         </p>
       </div>
-      <p className="hidden max-w-[200px] shrink-0 truncate text-sm text-muted-foreground sm:block">
+      <p className="hidden max-w-[200px] shrink-0 truncate text-sm text-muted-foreground lg:block">
         {item.fileName ?? '—'}
       </p>
-      <p className="hidden w-20 shrink-0 text-right text-sm text-muted-foreground sm:block">
+      <p className="hidden w-20 shrink-0 text-right text-sm text-muted-foreground lg:block">
         {item.fileSize ? formatBytes(item.fileSize) : '—'}
       </p>
-      <p className="hidden w-24 shrink-0 text-right text-sm text-muted-foreground sm:block">
+      <p className="hidden w-24 shrink-0 text-right text-sm text-muted-foreground lg:block">
         {formatDate(item.createdAt)}
       </p>
       <CopyButton

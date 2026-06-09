@@ -31,7 +31,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
   // 'recent' (default): getAllCollections already orders by updatedAt desc at the DB level
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="app-page gap-6 p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Collections</h1>

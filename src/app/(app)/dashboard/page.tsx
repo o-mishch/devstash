@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import { loadAppSidebarData } from '@/lib/app/sidebar-data'
 import { getCachedSession } from '@/lib/session'
-import { canCreateItem } from '@/lib/db/usage'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 
 export default async function DashboardPage() {
@@ -19,17 +18,15 @@ export default async function DashboardPage() {
   if (!userId) redirect('/sign-in')
 
   const sidebarData = await loadAppSidebarData(session)
-  const isPro = sidebarData.user?.isPro ?? false
 
-  const [firstPage, itemStats, userCanCreateItem] = await Promise.all([
+  const [firstPage, itemStats] = await Promise.all([
     getRecentItemsPage(userId),
     getItemStats(userId),
-    canCreateItem(userId, isPro),
   ])
   const isEmpty = itemStats.totalItems === 0
 
   return (
-    <div className="flex flex-col gap-4 p-3 sm:gap-6 sm:p-6">
+    <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6">
       <div className="hidden sm:block">
         <h1 className="text-xl font-semibold">Dashboard</h1>
         <p className="text-sm text-muted-foreground">Your developer knowledge hub</p>
@@ -49,21 +46,19 @@ export default async function DashboardPage() {
           <CreateItemDialog
             itemTypes={sidebarData.itemTypes}
             collections={sidebarData.collections}
-            canCreate={userCanCreateItem}
-            isPro={isPro}
             trigger={<Button>Create your first item &rarr;</Button>}
           />
         </div>
       ) : (
         <>
-          <Card>
+          <Card className="overflow-visible">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <CardTitle className="text-sm font-semibold">Collections</CardTitle>
               <Link href="/collections" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                 View all
               </Link>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className="overflow-visible pt-0">
               <CollectionsGrid collections={sidebarData.collections.slice(0, 6)} />
             </CardContent>
           </Card>

@@ -35,6 +35,7 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { FREE_TIER_ITEM_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
+import { useAppUser } from '@/context/app-user-context'
 
 import { itemFormBaseSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
@@ -59,12 +60,11 @@ interface CreateItemDialogProps {
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  canCreate?: boolean
-  isPro?: boolean
 }
 
-export function CreateItemDialog({ itemTypes, collections, initialType, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange, canCreate = true, isPro = false }: CreateItemDialogProps) {
+export function CreateItemDialog({ itemTypes, collections, initialType, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
   const router = useRouter()
+  const { isPro, canCreateItem } = useAppUser()
   const { showUpgradePrompt } = useUpgradePrompt()
   const validInitialType = (initialType && PRO_ITEM_TYPE_NAMES.has(initialType) && !isPro) ? itemTypes[0]?.name : initialType
   const defaultItemType = validInitialType || itemTypes[0]?.name || ''
@@ -170,7 +170,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
   return (
     <>
       <span onClick={(e) => {
-        if (!canCreate) {
+        if (!canCreateItem) {
           e.preventDefault()
           showUpgradePrompt({ title: 'Item limit reached', description: `You've used all ${FREE_TIER_ITEM_LIMIT} free items.` })
           return
@@ -235,10 +235,19 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
 
               <ItemFormFields
                 form={form}
-                itemType={itemType}
+                itemContext={{
+                  itemType,
+                  ...(uploadedFile
+                    ? {
+                        fileName: uploadedFile.fileName,
+                        fileSize: uploadedFile.fileSize,
+                        imageWidth: uploadedFile.imageWidth,
+                        imageHeight: uploadedFile.imageHeight,
+                      }
+                    : {}),
+                }}
                 watchedLanguage={watchedLanguage}
                 collections={collections}
-                isPro={isPro}
                 variant="dialog"
               />
 

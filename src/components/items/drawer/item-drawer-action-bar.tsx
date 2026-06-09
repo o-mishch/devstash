@@ -12,6 +12,7 @@ import { deleteItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } fr
 import { useRouter } from 'next/navigation'
 import { ItemsStoreActionType, useItemsStore } from '@/context/items-store-context'
 import { useItemDrawer } from '@/context/item-drawer-context'
+import { useAppUser } from '@/context/app-user-context'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import { ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { getDownloadUrl } from '@/lib/utils/url'
@@ -28,7 +29,8 @@ interface ItemDrawerActionBarProps {
 export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted }: ItemDrawerActionBarProps) {
   const router = useRouter()
   const { dispatch } = useItemsStore()
-  const { isPro, closeDrawer } = useItemDrawer()
+  const { closeDrawer } = useItemDrawer()
+  const { isPro } = useAppUser()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)

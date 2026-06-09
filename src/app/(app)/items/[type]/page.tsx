@@ -35,7 +35,7 @@ export default async function ItemsPage({ params }: ItemsPageProps) {
   const label = getTypeLabel(itemType.name)
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="app-page gap-6 p-6">
       <h1 className="text-xl font-semibold">{label} <span className="text-muted-foreground font-normal text-lg">({totalCount})</span></h1>
       <ItemsGrid firstPage={firstPage} typeName={itemType.name} />
     </div>

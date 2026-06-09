@@ -10,7 +10,7 @@ interface EmptyCardProps {
 
 export function EmptyCard({ message, action, className }: EmptyCardProps) {
   return (
-    <Card className={cn("h-24 border-dashed bg-transparent shadow-none", className)}>
+    <Card className={cn("h-24 w-full border-dashed bg-transparent shadow-none", className)}>
       <CardContent className="flex h-full items-center justify-center p-4">
         {action ? (
           action

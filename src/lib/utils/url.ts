@@ -7,8 +7,29 @@ export function getBaseUrl(): string {
   return process.env.NEXTAUTH_URL || 'http://localhost:3000'
 }
 
-export function getDownloadUrl(itemId: string, absolute = false): string {
-  const path = `/api/download/${itemId}`
+export interface DownloadUrlOptions {
+  absolute?: boolean
+  preview?: boolean
+}
+
+export function getDownloadUrl(itemId: string, absolute?: boolean): string
+export function getDownloadUrl(itemId: string, options: DownloadUrlOptions): string
+export function getDownloadUrl(
+  itemId: string,
+  absoluteOrOptions: boolean | DownloadUrlOptions = false,
+): string {
+  let absolute = false
+  let preview = false
+
+  if (typeof absoluteOrOptions === 'boolean') {
+    absolute = absoluteOrOptions
+  } else {
+    absolute = absoluteOrOptions.absolute ?? false
+    preview = absoluteOrOptions.preview ?? false
+  }
+
+  const query = preview ? '?preview=1' : ''
+  const path = `/api/download/${itemId}${query}`
   return absolute ? `${getBaseUrl()}${path}` : path
 }
 

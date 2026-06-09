@@ -1,5 +1,7 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { AuthFormLayout } from '@/components/auth/auth-page-header'
+import { getCachedSession } from '@/lib/session'
 import { buttonVariants } from '@/components/ui/button'
 import { RegisterForm } from '@/components/auth/register-form'
 
@@ -9,6 +11,8 @@ interface RegisterPageProps {
 
 export default async function RegisterPage({ searchParams }: RegisterPageProps) {
   const { pending, email, sent } = await searchParams
+  const session = await getCachedSession()
+  if (session?.user?.id) redirect('/dashboard')
 
   if (pending === '1') {
     return (

@@ -55,7 +55,7 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
   }, [])
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       {groups.map(({ itemType, items: groupItems }) => {
         const isCollapsed = collapsed.has(itemType.id)
         return (

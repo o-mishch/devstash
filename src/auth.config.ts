@@ -30,7 +30,7 @@ export const authConfig: NextAuthConfig = {
   ],
   callbacks: {
     authorized({ auth, request: { nextUrl } }: AuthorizedParams) {
-      const isLoggedIn = !!auth?.user
+      const isLoggedIn = !!auth?.user?.id
       const isProtected =
         nextUrl.pathname.startsWith('/dashboard') ||
         nextUrl.pathname.startsWith('/profile') ||
@@ -38,20 +38,19 @@ export const authConfig: NextAuthConfig = {
         nextUrl.pathname.startsWith('/collections') ||
         nextUrl.pathname.startsWith('/favorites') ||
         nextUrl.pathname.startsWith('/items')
-      const isAuthPage =
-        nextUrl.pathname === '/sign-in' || nextUrl.pathname === '/register'
 
       if (isProtected) return isLoggedIn
-      if (isAuthPage && isLoggedIn) {
-        return Response.redirect(new URL('/dashboard', nextUrl))
-      }
+      // Auth pages handle "already signed in" via server-side session (DB-validated).
+      // Middleware only decodes the JWT and cannot detect deleted users — redirecting
+      // here caused an infinite loop with stale cookies.
       return true
     },
     // session callback runs in the middleware (proxy.ts) context, which is what
     // auth() in server components reads. token.sub is set automatically by Auth.js
     // to user.id on sign-in for both Credentials and OAuth providers.
     session({ session, token }: { session: Session; token: JWT }): Session {
-      if (token.sub) session.user.id = token.sub
+      const userId = (token.id ?? token.sub) as string | undefined
+      if (userId) session.user.id = userId
       return session
     },
   },

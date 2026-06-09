@@ -3,7 +3,7 @@ import { CardGridSkeleton } from '@/components/shared/skeletons'
 
 export default function CollectionLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="app-page gap-6 p-6">
       <div className="space-y-1.5">
         <Skeleton className="h-3 w-32" />
         <Skeleton className="h-7 w-48" />

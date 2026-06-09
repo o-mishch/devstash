@@ -9,11 +9,9 @@ import type { CollectionWithTypes } from '@/types/collection'
 interface TopbarCreateButtonProps {
   itemTypes: SidebarItemType[]
   collections: CollectionWithTypes[]
-  canCreateItem?: boolean
-  isPro?: boolean
 }
 
-export function TopbarCreateButton({ itemTypes, collections, canCreateItem = true, isPro = false }: TopbarCreateButtonProps) {
+export function TopbarCreateButton({ itemTypes, collections }: TopbarCreateButtonProps) {
   const pathname = usePathname()
   const initialType = getInitialTypeFromPathname(pathname, itemTypes)
 
@@ -22,8 +20,6 @@ export function TopbarCreateButton({ itemTypes, collections, canCreateItem = tru
       itemTypes={itemTypes}
       collections={collections}
       initialType={initialType}
-      canCreate={canCreateItem}
-      isPro={isPro}
     />
   )
 }

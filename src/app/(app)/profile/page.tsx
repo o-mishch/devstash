@@ -32,7 +32,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
   const showEmailSelector = availableEmails.length > 1
 
   return (
-    <div className="flex flex-col gap-5 p-6">
+    <div className="app-page gap-5 p-6">
       {/* Header */}
       <div className="flex items-start gap-3">
         <Link href="/dashboard" className="mt-0.5 text-muted-foreground hover:text-foreground transition-colors">
@@ -100,7 +100,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
           <CardTitle className="text-sm font-medium text-muted-foreground">Usage</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="app-grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex items-center gap-3 rounded-lg border border-border p-3">
               <Package className="size-5 text-muted-foreground" />
               <div>
@@ -119,7 +119,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
 
           <Separator />
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="app-grid grid-cols-2 gap-2 sm:grid-cols-4">
             {stats.itemTypeCounts.map((type) => (
               <div
                 key={type.name}
@@ -138,8 +138,8 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
 
       {/* Danger zone — no card chrome, stands apart */}
       <div className="rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3">
-        <div className="flex items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">Delete Account</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Permanently removes your account and all data. This cannot be undone.

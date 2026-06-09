@@ -1,12 +1,17 @@
 'use server'
 
 import { z } from 'zod'
-import { ApiResponse } from '@/lib/api'
 import { withAuth } from '@/lib/session'
-import { rateLimitAction } from '@/lib/infra/rate-limit'
 import { parseOrFail } from '@/lib/utils/validators'
-import { getOpenAIClient, AI_MODELS } from '@/lib/ai/openai'
+import { AI_MODELS } from '@/lib/ai/openai'
+import { runProAiGeneration } from '@/lib/ai/description-generation'
 import { createLogger } from '@/lib/infra/logger'
+import {
+  buildItemAiUserMessage,
+  itemTypeSchema,
+  itemAiFileMetadataSchema,
+  trimOptionalAiField,
+} from '@/lib/ai/item-context'
 import type { ApiBody } from '@/types/api'
 
 const log = createLogger('generate-tags')
@@ -15,19 +20,24 @@ const MAX_AI_INPUT_CHARS = 4000
 
 const generateTagsSchema = z
   .object({
-    title: z.string(),
+    itemType: itemTypeSchema,
+    title: z.string().optional(),
     content: z.string().optional(),
+    fileName: z.string().optional(),
+    ...itemAiFileMetadataSchema,
   })
-  .transform((data) => {
-    const title = data.title.trim().slice(0, MAX_AI_INPUT_CHARS)
-    const content = data.content?.trim().slice(0, MAX_AI_INPUT_CHARS)
-    return content === undefined ? { title } : { title, content }
-  })
-  .pipe(
-    z.object({
-      title: z.string().min(1, 'Title is required'),
-      content: z.string().optional(),
-    })
+  .transform((data) => ({
+    itemType: data.itemType,
+    title: trimOptionalAiField(data.title, MAX_AI_INPUT_CHARS),
+    content: trimOptionalAiField(data.content, MAX_AI_INPUT_CHARS),
+    fileName: trimOptionalAiField(data.fileName, 255),
+    fileSize: data.fileSize,
+    imageWidth: data.imageWidth,
+    imageHeight: data.imageHeight,
+  }))
+  .refine(
+    (data) => Boolean(data.title || data.fileName),
+    { message: 'Provide a title or file name to suggest tags.' }
   )
 
 export type GenerateTagsInput = z.infer<typeof generateTagsSchema>
@@ -37,6 +47,12 @@ const tagResponseSchema = z.union([
   z.object({ tags: z.array(tagSchema).max(5) }),
   z.array(tagSchema).max(5),
 ])
+
+const TAG_SYSTEM_PROMPT = `You are an expert tag generator for a developer knowledge base.
+Your task is to suggest 3-5 highly relevant, concise, and specific tags based on the provided item type, title, file name, and content.
+Return the result strictly as a JSON object with a single "tags" property containing an array of strings.
+Example: { "tags": ["react", "hooks", "typescript"] }
+Do not include any other text or properties.`
 
 function parseTagsResponse(responseContent: string): string[] | null {
   let parsed: unknown
@@ -57,57 +73,39 @@ export async function generateAutoTags(
   rawInput: unknown
 ): Promise<ApiBody<string[] | null>> {
   return withAuth<string[] | null>(async ({ isPro, userId }) => {
-    if (!isPro) {
-      return ApiResponse.FORBIDDEN('This feature requires a Pro subscription.')
-    }
-
-    const rl = await rateLimitAction('aiTags', userId)
-    if (rl) return rl as ApiBody<string[] | null>
-
     const parseResult = parseOrFail(generateTagsSchema, rawInput)
-    if (!parseResult.success) return parseResult.response
 
-    const { title, content } = parseResult.data
-    const client = getOpenAIClient()
-    if (!client) {
-      log.error('OpenAI client is not configured')
-      return ApiResponse.INTERNAL_ERROR('AI tag generation is not configured.')
-    }
+    return runProAiGeneration({
+      isPro,
+      userId,
+      parseResult,
+      rateLimitKey: 'aiTags',
+      notConfiguredMessage: 'AI tag generation is not configured.',
+      failureMessage: 'Failed to generate tags.',
+      log,
+      logLabel: 'AI tags',
+      execute: async (client, data) => {
+        const completion = await client.responses.create({
+          model: AI_MODELS.TAG,
+          instructions: TAG_SYSTEM_PROMPT,
+          input: buildItemAiUserMessage(data),
+        })
 
-    const systemPrompt = `You are an expert tag generator for a developer knowledge base.
-Your task is to suggest 3-5 highly relevant, concise, and specific tags based on the provided title and content.
-Return the result strictly as a JSON object with a single "tags" property containing an array of strings.
-Example: { "tags": ["react", "hooks", "typescript"] }
-Do not include any other text or properties.`
+        const responseContent = completion.output_text
+        if (!responseContent) {
+          throw new Error('No content returned from OpenAI')
+        }
 
-    const userMessage = `Title: ${title}\nContent: ${content || ''}`.trim()
+        const normalizedTags = parseTagsResponse(responseContent)
+        if (!normalizedTags) {
+          log.error('Failed to parse OpenAI JSON response', {
+            responseLength: responseContent.length,
+          })
+          return null
+        }
 
-    log.info('Generating AI tags via OpenAI', { userId, model: AI_MODELS.TAG, titleLength: title.length })
-
-    try {
-      const completion = await client.responses.create({
-        model: AI_MODELS.TAG,
-        instructions: systemPrompt,
-        input: userMessage,
-      })
-
-      const responseContent = completion.output_text
-      if (!responseContent) {
-        throw new Error('No content returned from OpenAI')
-      }
-
-      const normalizedTags = parseTagsResponse(responseContent)
-      if (!normalizedTags) {
-        log.error('Failed to parse OpenAI JSON response', { responseLength: responseContent.length })
-        return ApiResponse.INTERNAL_ERROR('Failed to generate tags.')
-      }
-
-      log.info('Successfully generated AI tags', { userId, count: normalizedTags.length })
-
-      return ApiResponse.OK(normalizedTags)
-    } catch (error) {
-      log.error('OpenAI API Error', error)
-      return ApiResponse.INTERNAL_ERROR('Failed to generate tags.')
-    }
+        return normalizedTags
+      },
+    })
   }, 'generateAutoTags')
 }

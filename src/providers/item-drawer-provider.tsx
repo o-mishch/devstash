@@ -11,10 +11,9 @@ import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDrawerProviderProps extends WithChildren {
   collections: CollectionWithTypes[]
-  isPro?: boolean
 }
 
-export function ItemDrawerProvider({ children, collections, isPro = false }: ItemDrawerProviderProps) {
+export function ItemDrawerProvider({ children, collections }: ItemDrawerProviderProps) {
   const [storeState, dispatch] = useReducer(itemsStoreReducer, itemsStoreInitialState)
   const [open, setOpen] = useState(false)
   const [openItem, setOpenItem] = useState<LightItem | FullItem | null>(null)
@@ -44,7 +43,7 @@ export function ItemDrawerProvider({ children, collections, isPro = false }: Ite
     setOpen(false)
   }, [])
 
-  const contextValue = useMemo(() => ({ openDrawer, closeDrawer, isPro }), [openDrawer, closeDrawer, isPro])
+  const contextValue = useMemo(() => ({ openDrawer, closeDrawer }), [openDrawer, closeDrawer])
   const storeContextValue = useMemo(() => ({ state: storeState, dispatch }), [storeState, dispatch])
 
   return (

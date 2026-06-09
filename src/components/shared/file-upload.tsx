@@ -8,12 +8,15 @@ import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { FILE_UPLOAD_CONFIG } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
+import { getImageDimensionsFromFile } from '@/lib/utils/image-dimensions.client'
 import type { FileItemType } from '@/lib/utils/constants'
 
 export interface UploadedFile {
   fileUrl: string
   fileName: string
   fileSize: number
+  imageWidth?: number
+  imageHeight?: number
 }
 
 interface FileUploadProps {
@@ -39,12 +42,18 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     formData.append('file', file)
     formData.append('itemType', itemType)
 
+    const dimensions = itemType === 'image' ? await getImageDimensionsFromFile(file) : null
     const result = await apiUpload<UploadedFile>('/api/upload', formData, setProgress)
 
     setProgress(null)
 
     if (result.status === 'created' && result.data) {
-      onUpload(result.data)
+      onUpload({
+        ...result.data,
+        ...(dimensions
+          ? { imageWidth: dimensions.width, imageHeight: dimensions.height }
+          : {}),
+      })
     } else {
       setError(result.message ?? 'Upload failed')
     }
@@ -67,7 +76,12 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
         <FileIcon className="size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{value.fileName}</p>
-          <p className="text-xs text-muted-foreground">{formatBytes(value.fileSize)}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatBytes(value.fileSize)}
+            {value.imageWidth != null && value.imageHeight != null
+              ? ` · ${value.imageWidth} × ${value.imageHeight}`
+              : ''}
+          </p>
         </div>
         {onClear && (
           <Button

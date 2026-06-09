@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawer } from '@/context/item-drawer-context'
+import { useAppUser } from '@/context/app-user-context'
 import { getDownloadUrl } from '@/lib/utils/url'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
@@ -17,13 +18,14 @@ interface ImageCardProps {
 }
 
 export function ImageCard({ item, priority = false }: ImageCardProps) {
-  const { openDrawer, isPro } = useItemDrawer()
+  const { openDrawer } = useItemDrawer()
+  const { isPro } = useAppUser()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const [isLoaded, setIsLoaded] = useState(false)
 
   return (
     <Card
-      className="card-interactive group/card relative h-full overflow-hidden p-0"
+      className="card-interactive group/card relative h-full min-w-0 w-full overflow-hidden p-0"
       style={{ '--item-color': item.itemType.color } as CSSProperties}
       onClick={() => openDrawer(item)}
     >
@@ -32,7 +34,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
           <Skeleton className="absolute inset-0 z-0 h-full w-full rounded-none" />
         )}
         <Image
-          src={getDownloadUrl(item.id)}
+          src={getDownloadUrl(item.id, { preview: true })}
           alt={item.title}
           fill
           unoptimized

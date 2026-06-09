@@ -22,7 +22,7 @@ export default async function FavoritesPage() {
   const isEmpty = totalFavorites === 0
 
   return (
-    <Tabs defaultValue={totalItemCount > 0 ? 'items' : 'collections'} className="flex flex-col gap-6 p-6">
+    <Tabs defaultValue={totalItemCount > 0 ? 'items' : 'collections'} className="app-page gap-6 p-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-lg bg-amber-500/10">

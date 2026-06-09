@@ -340,9 +340,20 @@
     }
 }
 
+/* App shell layout — prevents horizontal overflow inside sidebar + main flex layout */
 @layer utilities {
+    .app-page {
+        @apply flex w-full min-w-0 max-w-full flex-col [&>*]:min-w-0;
+    }
+    .app-grid {
+        @apply grid min-w-0;
+    }
+    /* Single-line interactive rows only — multi-line rows (e.g. files) use their own layout */
+    .app-row {
+        @apply flex w-full min-w-0 items-center overflow-hidden;
+    }
     .card-interactive {
-        @apply cursor-pointer transition-all duration-200 hover:bg-foreground/5 hover:shadow-md hover:-translate-y-1;
+        @apply relative mt-1 -mb-1 cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:bg-foreground/5 hover:shadow-md;
     }
     .pricing-pro-border {
         background: linear-gradient(to bottom, rgba(59,130,246,0.6), rgba(6,182,212,0.4), rgba(255,255,255,0.06));

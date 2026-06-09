@@ -13,7 +13,7 @@ export function FavoriteItemRow({ item, onOpen }: FavoriteItemRowProps) {
   return (
     <button
       type="button"
-      className="card-interactive group flex w-full items-center gap-3 rounded px-3 py-1.5 text-left"
+      className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left"
       onClick={() => onOpen(item)}
     >
       <ItemTypeIcon
@@ -25,7 +25,7 @@ export function FavoriteItemRow({ item, onOpen }: FavoriteItemRowProps) {
         {item.title}
       </span>
       <span
-        className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] capitalize"
+        className="hidden shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] capitalize sm:inline"
         style={{
           color: itemType.color,
           borderColor: `${itemType.color}40`,
@@ -34,7 +34,7 @@ export function FavoriteItemRow({ item, onOpen }: FavoriteItemRowProps) {
       >
         {itemType.name}
       </span>
-      <span className="w-16 shrink-0 text-right font-mono text-xs text-muted-foreground">
+      <span className="hidden w-16 shrink-0 text-right font-mono text-xs text-muted-foreground md:inline">
         {formatDate(item.createdAt)}
       </span>
     </button>

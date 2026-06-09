@@ -1,11 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { generateAutoTags } from './generate-tags'
-import { getOpenAIClient } from '@/lib/ai/openai'
+import { createResponse, setupProAiMocks } from './ai-action-test-helpers'
 import * as session from '@/lib/session'
 import * as rateLimit from '@/lib/infra/rate-limit'
-
-const createResponse = vi.fn()
-type OpenAIClient = NonNullable<ReturnType<typeof getOpenAIClient>>
+import { getOpenAIClient } from '@/lib/ai/openai'
 
 vi.mock('@/lib/ai/openai', () => ({
   getOpenAIClient: vi.fn(),
@@ -23,17 +21,7 @@ vi.mock('@/lib/infra/rate-limit', () => ({
 describe('generateAutoTags', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(session.withAuth).mockImplementation(async (fn) => {
-      return fn({ userId: 'user1', isPro: true })
-    })
-    vi.mocked(rateLimit.rateLimitAction).mockResolvedValue(null)
-    const mockClient = {
-      responses: {
-        create: createResponse,
-      },
-    } as unknown as OpenAIClient
-
-    vi.mocked(getOpenAIClient).mockReturnValue(mockClient)
+    setupProAiMocks()
   })
 
   it('fails if user is not pro', async () => {
@@ -41,13 +29,13 @@ describe('generateAutoTags', () => {
       return fn({ userId: 'user1', isPro: false })
     })
 
-    const result = await generateAutoTags({ title: 'React Hooks' })
+    const result = await generateAutoTags({ itemType: 'snippet', title: 'React Hooks' })
     expect(result.status).toBe('forbidden')
     expect(rateLimit.rateLimitAction).not.toHaveBeenCalled()
   })
 
-  it('fails validation without title', async () => {
-    const result = await generateAutoTags({ content: 'test' })
+  it('fails validation without title or file name', async () => {
+    const result = await generateAutoTags({ itemType: 'snippet', content: 'test' })
     expect(result.status).toBe('validation_error')
   })
 
@@ -58,7 +46,7 @@ describe('generateAutoTags', () => {
       message: 'Too many attempts. Please try again in a moment.',
     })
 
-    const result = await generateAutoTags({ title: 'React Hooks' })
+    const result = await generateAutoTags({ itemType: 'snippet', title: 'React Hooks' })
     expect(result.status).toBe('too_many_requests')
     expect(createResponse).not.toHaveBeenCalled()
   })
@@ -69,7 +57,11 @@ describe('generateAutoTags', () => {
     })
 
     const longContent = 'x'.repeat(5000)
-    const result = await generateAutoTags({ title: 'Long snippet', content: longContent })
+    const result = await generateAutoTags({
+      itemType: 'snippet',
+      title: 'Long snippet',
+      content: longContent,
+    })
 
     expect(result.status).toBe('ok')
     expect(createResponse).toHaveBeenCalledOnce()
@@ -83,10 +75,54 @@ describe('generateAutoTags', () => {
       output_text: '{"tags": ["react", "typescript"]}'
     })
 
-    const result = await generateAutoTags({ title: 'React Hooks', content: 'Use hooks in React' })
+    const result = await generateAutoTags({
+      itemType: 'snippet',
+      title: 'React Hooks',
+      content: 'Use hooks in React',
+    })
     expect(result.status).toBe('ok')
     expect(result.data).toEqual(['react', 'typescript'])
     expect(createResponse).toHaveBeenCalledOnce()
+    const call = createResponse.mock.calls[0][0]
+    expect(call.input).toContain('Item type: snippet')
+  })
+
+  it('accepts file name context and allows file name without title', async () => {
+    createResponse.mockResolvedValue({
+      output_text: '{"tags": ["pdf", "architecture"]}',
+    })
+
+    const result = await generateAutoTags({
+      itemType: 'file',
+      fileName: 'architecture.pdf',
+    })
+
+    expect(result.status).toBe('ok')
+    expect(createResponse).toHaveBeenCalledOnce()
+    const call = createResponse.mock.calls[0][0]
+    expect(call.input).toContain('Item type: file')
+    expect(call.input).toContain('File name: architecture.pdf')
+    expect(call.input).not.toContain('Title:')
+  })
+
+  it('includes file metadata in the AI prompt', async () => {
+    createResponse.mockResolvedValue({
+      output_text: '{"tags": ["screenshot", "ui"]}',
+    })
+
+    const result = await generateAutoTags({
+      itemType: 'image',
+      fileName: 'dashboard.png',
+      fileSize: 512_000,
+      imageWidth: 1280,
+      imageHeight: 720,
+    })
+
+    expect(result.status).toBe('ok')
+    const call = createResponse.mock.calls[0][0]
+    expect(call.input).toContain('File extension: png')
+    expect(call.input).toContain('File size: 500.0 KB')
+    expect(call.input).toContain('Image dimensions: 1280 × 720 px')
   })
 
   it('handles parsing errors gracefully', async () => {
@@ -94,7 +130,7 @@ describe('generateAutoTags', () => {
       output_text: 'invalid json'
     })
 
-    const result = await generateAutoTags({ title: 'JS' })
+    const result = await generateAutoTags({ itemType: 'snippet', title: 'JS' })
     expect(result.status).toBe('internal_error')
   })
 
@@ -103,7 +139,7 @@ describe('generateAutoTags', () => {
       output_text: '["javascript", "frontend"]'
     })
 
-    const result = await generateAutoTags({ title: 'JS' })
+    const result = await generateAutoTags({ itemType: 'snippet', title: 'JS' })
     expect(result.status).toBe('ok')
     expect(result.data).toEqual(['javascript', 'frontend'])
   })
@@ -111,7 +147,7 @@ describe('generateAutoTags', () => {
   it('fails gracefully if OpenAI is not configured', async () => {
     vi.mocked(getOpenAIClient).mockReturnValue(null)
 
-    const result = await generateAutoTags({ title: 'JS' })
+    const result = await generateAutoTags({ itemType: 'snippet', title: 'JS' })
     expect(result.status).toBe('internal_error')
     expect(createResponse).not.toHaveBeenCalled()
   })

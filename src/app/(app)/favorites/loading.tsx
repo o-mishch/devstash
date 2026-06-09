@@ -8,7 +8,7 @@ function SectionSkeleton({ rows }: { rows: number }) {
       </div>
       <div className="flex flex-col">
         {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 px-3 py-1.5">
+          <div key={i} className="app-row gap-3 px-3 py-1.5">
             <Skeleton className="size-3.5 shrink-0 rounded-full" />
             <Skeleton className="h-4 flex-1" />
             <Skeleton className="h-4 w-16" />
@@ -22,7 +22,7 @@ function SectionSkeleton({ rows }: { rows: number }) {
 
 export default function FavoritesLoading() {
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="app-page gap-6 p-6">
       <div className="flex items-center gap-3">
         <Skeleton className="size-9 shrink-0 rounded-lg" />
         <div className="flex flex-col gap-1">

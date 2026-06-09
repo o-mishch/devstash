@@ -1,7 +1,13 @@
 import crypto from 'crypto'
 import { lookup as mimeType } from 'mime-types'
 import { ApiResponse, authenticatedRoute } from '@/lib/api'
-import { uploadToFilebase, deleteFromFilebase } from '@/lib/storage/filebase'
+import { uploadToFilebase } from '@/lib/storage/filebase'
+import {
+  canGenerateImageThumbnail,
+  deleteStoredImageFiles,
+  generateImageThumbnail,
+  getImageThumbnailKey,
+} from '@/lib/storage/image-thumbnails'
 import { ALLOWED_IMAGE_EXTS, ALLOWED_FILE_EXTS, IMAGE_MAX_BYTES, FILE_MAX_BYTES } from '@/lib/utils/constants'
 
 interface UploadResult {
@@ -42,6 +48,11 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
 
   await uploadToFilebase(key, buffer, resolvedContentType)
 
+  if (isImage && canGenerateImageThumbnail(key)) {
+    const thumbnail = await generateImageThumbnail(buffer)
+    await uploadToFilebase(getImageThumbnailKey(key), thumbnail, 'image/webp')
+  }
+
   return ApiResponse.CREATED<UploadResult>({
     fileUrl: key,
     fileName: file.name,
@@ -58,7 +69,7 @@ export const DELETE = authenticatedRoute(async (request, _context, { userId }) =
   // Only allow deleting keys that belong to this user
   if (!key.startsWith(`${userId}/`)) return ApiResponse.FORBIDDEN('Access denied.')
 
-  await deleteFromFilebase(key)
+  await deleteStoredImageFiles(key)
 
   return ApiResponse.OK()
 })
