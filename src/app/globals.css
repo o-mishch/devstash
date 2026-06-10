@@ -353,7 +353,11 @@
         @apply flex w-full min-w-0 items-center overflow-hidden;
     }
     .card-interactive {
-        @apply relative mt-1 -mb-1 cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:bg-foreground/5 hover:shadow-md;
+        @apply relative z-0 cursor-pointer transition-all duration-200 hover:z-10 hover:-translate-y-1 hover:bg-foreground/5 hover:shadow-md;
+    }
+    /* Reserve space above/below cards so hover lift + shadow aren't clipped */
+    .card-grid {
+        @apply overflow-visible pt-1 pb-1;
     }
     .pricing-pro-border {
         background: linear-gradient(to bottom, rgba(59,130,246,0.6), rgba(6,182,212,0.4), rgba(255,255,255,0.06));

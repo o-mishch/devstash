@@ -1,3 +1,4 @@
+import { getCollectionsPreview } from '@/lib/db/collections'
 import { getItemStats, getRecentItemsPage } from '@/lib/db/items'
 import { DashboardStats } from '@/components/dashboard/dashboard-stats'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
@@ -19,9 +20,10 @@ export default async function DashboardPage() {
 
   const sidebarData = await loadAppSidebarData(session)
 
-  const [firstPage, itemStats] = await Promise.all([
+  const [firstPage, itemStats, collections] = await Promise.all([
     getRecentItemsPage(userId),
     getItemStats(userId),
+    getCollectionsPreview(userId),
   ])
   const isEmpty = itemStats.totalItems === 0
 
@@ -59,7 +61,7 @@ export default async function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent className="overflow-visible pt-0">
-              <CollectionsGrid collections={sidebarData.collections.slice(0, 6)} />
+              <CollectionsGrid collections={collections} />
             </CardContent>
           </Card>
           <DashboardPinned userId={userId} />

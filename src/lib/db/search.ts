@@ -1,10 +1,32 @@
 import { prisma } from '@/lib/infra/prisma'
-import { LIGHT_ITEM_SELECT, fetchItemPreviews, toLightItem } from '@/lib/db/items'
-import { COLLECTION_SELECT, mapCollection } from '@/lib/db/collections'
-import type { LightItem } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
+import { SIDEBAR_COLLECTION_SELECT, mapSidebarCollection } from '@/lib/db/collections'
+import type { SearchResultItem } from '@/types/item'
+import type { SidebarCollection } from '@/types/collection'
 
-export async function globalSearch(query: string, userId: string): Promise<[LightItem[], CollectionWithTypes[]]> {
+const SEARCH_ITEM_SELECT = {
+  id: true,
+  title: true,
+  description: true,
+  itemType: { select: { name: true } },
+} as const
+
+type SearchItemRow = {
+  id: string
+  title: string
+  description: string | null
+  itemType: SearchResultItem['itemType']
+}
+
+function toSearchResultItem(row: SearchItemRow): SearchResultItem {
+  return {
+    id: row.id,
+    title: row.title,
+    itemType: row.itemType,
+    descriptionPreview: row.description ? row.description.slice(0, 150) : null,
+  }
+}
+
+export async function globalSearch(query: string, userId: string): Promise<[SearchResultItem[], SidebarCollection[]]> {
   const [itemRows, collectionRows] = await Promise.all([
     prisma.item.findMany({
       where: {
@@ -15,7 +37,7 @@ export async function globalSearch(query: string, userId: string): Promise<[Ligh
           { content: { contains: query, mode: 'insensitive' } },
         ],
       },
-      select: LIGHT_ITEM_SELECT,
+      select: SEARCH_ITEM_SELECT,
       take: 20,
       orderBy: { updatedAt: 'desc' },
     }),
@@ -27,13 +49,11 @@ export async function globalSearch(query: string, userId: string): Promise<[Ligh
           { description: { contains: query, mode: 'insensitive' } },
         ],
       },
-      select: COLLECTION_SELECT,
+      select: SIDEBAR_COLLECTION_SELECT,
       take: 10,
       orderBy: { updatedAt: 'desc' },
     }),
   ])
 
-  const previews = await fetchItemPreviews(itemRows.map((r) => r.id))
-  const items = itemRows.map((r) => toLightItem(r, previews.get(r.id)))
-  return [items, collectionRows.map(mapCollection)]
+  return [itemRows.map(toSearchResultItem), collectionRows.map((col) => mapSidebarCollection(col))]
 }

@@ -15,7 +15,6 @@ import type { ItemFormBaseValues } from '@/lib/utils/validators'
 interface AutoTagInputProps {
   form: UseFormReturn<ItemFormBaseValues>
   itemContext: ItemFileContext
-  imageProbeUrl?: string | null
   variant?: 'dialog' | 'drawer'
   error?: string
 }
@@ -28,14 +27,12 @@ function getDisabledReason(title: string, fileName: string): string | null {
 export function AutoTagInput({
   form,
   itemContext,
-  imageProbeUrl,
   variant = 'dialog',
   error,
 }: AutoTagInputProps) {
   const { payload } = useItemAiContext({
     form,
     itemContext,
-    imageProbeUrl,
   })
   const canSuggest = Boolean(payload.title || payload.fileName)
   const disabledReason = getDisabledReason(payload.title ?? '', payload.fileName ?? '')

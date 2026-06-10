@@ -18,11 +18,11 @@ import { getInitialTypeFromPathname } from '@/lib/utils/url'
 import { useAppUser } from '@/context/app-user-context'
 import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
 import type { SidebarItemType } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
+import type { CollectionPickerItem } from '@/types/collection'
 
 interface MobileCreateMenuProps {
   itemTypes: SidebarItemType[]
-  collections: CollectionWithTypes[]
+  collections: CollectionPickerItem[]
 }
 
 export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuProps) {

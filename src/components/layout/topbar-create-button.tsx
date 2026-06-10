@@ -4,11 +4,11 @@ import { usePathname } from 'next/navigation'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { getInitialTypeFromPathname } from '@/lib/utils/url'
 import type { SidebarItemType } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
+import type { CollectionPickerItem } from '@/types/collection'
 
 interface TopbarCreateButtonProps {
   itemTypes: SidebarItemType[]
-  collections: CollectionWithTypes[]
+  collections: CollectionPickerItem[]
 }
 
 export function TopbarCreateButton({ itemTypes, collections }: TopbarCreateButtonProps) {

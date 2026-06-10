@@ -13,14 +13,15 @@ import {
 } from '@/components/ui/command'
 import { useItemsStore } from '@/context/items-store-context'
 import { useItemDrawer } from '@/context/item-drawer-context'
-import type { CollectionWithTypes } from '@/types/collection'
+import type { SidebarCollection } from '@/types/collection'
+import { searchResultToLightItem, isSearchResultItem } from '@/types/item'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 
 import { useGlobalSearch } from '@/hooks/use-global-search'
 import { useGlobalSearchShortcuts } from '@/hooks/use-global-search-shortcuts'
 
 interface GlobalSearchProps {
-  collections: CollectionWithTypes[]
+  collections: SidebarCollection[]
 }
 
 export function GlobalSearch({ collections }: GlobalSearchProps) {
@@ -43,15 +44,19 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
     inputRef.current?.blur()
     
     if (type === 'item') {
-      const item = displayItems.find(i => i.id === id)
-      if (item) {
+      const storeItem = itemsStore.items.find(i => i.id === id)
+      const displayHit = displayItems.find(i => i.id === id)
+      const item = storeItem ?? (displayHit && isSearchResultItem(displayHit)
+        ? searchResultToLightItem(displayHit)
+        : displayHit ?? undefined)
+      if (item && 'tags' in item) {
         router.push(`/items/${item.itemType.name}s`)
         openDrawer(item)
       }
     } else {
       router.push(`/collections/${id}`)
     }
-  }, [router, displayItems, openDrawer])
+  }, [router, displayItems, itemsStore.items, openDrawer])
 
   const hasQuery = query.trim().length > 0
   const hasResults = displayItems.length > 0 || displayCollections.length > 0
@@ -110,7 +115,7 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
                     value={`item-${item.id}`}
                     onSelect={() => handleSelect('item', item.id)}
                   >
-                    <ItemTypeIcon iconName={item.itemType.icon} color={item.itemType.color} className="mr-2 size-4" />
+                    <ItemTypeIcon typeName={item.itemType.name} className="mr-2 size-4" />
                     <span className="flex-1 truncate">{item.title}</span>
                     {item.descriptionPreview && (
                       <span className="text-xs text-muted-foreground truncate max-w-[120px] ml-2 hidden sm:inline-block">
@@ -131,7 +136,7 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
                     onSelect={() => handleSelect('collection', col.id)}
                   >
                     <div className="mr-2 flex size-4 items-center justify-center rounded-sm bg-primary/10">
-                      <div className="size-2 rounded-full" style={{ backgroundColor: col.dominantColor || 'currentColor' }} />
+                      <div className="size-2 rounded-full bg-primary/50" />
                     </div>
                     <span className="flex-1 truncate">{col.name}</span>
                     <span className="text-xs text-muted-foreground ml-2">

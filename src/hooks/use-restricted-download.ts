@@ -16,7 +16,7 @@ export function useRestrictedDownload(
     onUpgrade,
   })
 
-  function handleDownload(e: MouseEvent) {
+  async function handleDownload(e: MouseEvent) {
     if (stopPropagation) e.stopPropagation()
     if (isRestricted) {
       flash()

@@ -7,6 +7,7 @@ type RequestOptions = {
   method?: Method
   body?: unknown
   headers?: Record<string, string>
+  signal?: AbortSignal
 }
 
 function handleApiError<T>(err: unknown, fallbackMessage: string): ApiBody<T> {
@@ -22,7 +23,7 @@ export async function apiFetch<T = null>(
   url: string,
   options: RequestOptions = {}
 ): Promise<ApiBody<T>> {
-  const { method = 'GET', body, headers } = options
+  const { method = 'GET', body, headers, signal } = options
 
   try {
     const { data } = await axios.request<ApiBody<T>>({
@@ -30,28 +31,35 @@ export async function apiFetch<T = null>(
       method,
       data: body,
       headers,
+      signal,
     })
     return data
   } catch (err) {
+    if (axios.isCancel(err)) {
+      return { status: 'internal_error', data: null, message: null }
+    }
     return handleApiError(err, 'Network error. Please try again.')
   }
 }
 
-export async function apiUpload<T = null>(
+// PUT a Blob/File directly to a presigned S3 URL, bypassing app auth headers.
+export async function apiUpload(
   url: string,
-  formData: FormData,
+  body: Blob | File,
+  contentType: string,
   onProgress?: (percent: number) => void
-): Promise<ApiBody<T>> {
+): Promise<boolean> {
   try {
-    const { data } = await axios.post<ApiBody<T>>(url, formData, {
+    await axios.put(url, body, {
+      headers: { 'Content-Type': contentType },
       onUploadProgress: (e) => {
         if (onProgress && e.total) {
           onProgress(Math.round((e.loaded / e.total) * 100))
         }
       },
     })
-    return data
-  } catch (err) {
-    return handleApiError(err, 'Upload failed. Please try again.')
+    return true
+  } catch {
+    return false
   }
 }

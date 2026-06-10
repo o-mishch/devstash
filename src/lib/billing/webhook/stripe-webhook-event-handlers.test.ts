@@ -148,7 +148,11 @@ function makeSession(overrides: Partial<Stripe.Checkout.Session> = {}): Stripe.C
   } as Stripe.Checkout.Session
 }
 
-function makeCharge(overrides: Partial<Stripe.Charge> = {}): Stripe.Charge {
+interface ChargeOverrides extends Partial<Stripe.Charge> {
+  invoice?: Stripe.Invoice | null
+}
+
+function makeCharge(overrides: ChargeOverrides = {}): Stripe.Charge {
   return {
     id: 'ch_123',
     amount: 1000,

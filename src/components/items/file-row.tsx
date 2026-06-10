@@ -44,13 +44,22 @@ export function FileRow({ item }: FileRowProps) {
     getDownloadUrl(item.id),
     item.fileName ?? item.title,
     isRestricted,
-    true
+    true,
+    undefined
   )
 
   return (
     <div
-      className="card-interactive group/card flex h-full w-full min-w-0 items-center gap-3 rounded-lg border border-border px-4 py-2.5"
+      role="button"
+      tabIndex={0}
+      className="card-interactive group/card flex h-full w-full min-w-0 items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 focus-visible:ring-2 focus-visible:ring-ring"
       onClick={() => openDrawer(item)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          openDrawer(item)
+        }
+      }}
     >
       <FileTypeIcon fileName={item.fileName} className="size-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">

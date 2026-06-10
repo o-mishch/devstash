@@ -1,5 +1,6 @@
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { formatDate } from '@/lib/utils'
+import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 
 interface FavoriteItemRowProps {
@@ -16,20 +17,16 @@ export function FavoriteItemRow({ item, onOpen }: FavoriteItemRowProps) {
       className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left"
       onClick={() => onOpen(item)}
     >
-      <ItemTypeIcon
-        iconName={itemType.icon}
-        color={itemType.color}
-        className="size-3.5 shrink-0"
-      />
+      <ItemTypeIcon typeName={itemType.name} className="size-3.5 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-sm">
         {item.title}
       </span>
       <span
         className="hidden shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] capitalize sm:inline"
         style={{
-          color: itemType.color,
-          borderColor: `${itemType.color}40`,
-          backgroundColor: `${itemType.color}10`,
+          color: SYSTEM_TYPE_COLORS[itemType.name],
+          borderColor: `${SYSTEM_TYPE_COLORS[itemType.name]}40`,
+          backgroundColor: `${SYSTEM_TYPE_COLORS[itemType.name]}10`,
         }}
       >
         {itemType.name}

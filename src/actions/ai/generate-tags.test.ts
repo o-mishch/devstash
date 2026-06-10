@@ -5,6 +5,10 @@ import * as session from '@/lib/session'
 import * as rateLimit from '@/lib/infra/rate-limit'
 import { getOpenAIClient } from '@/lib/ai/openai'
 
+vi.mock('@/lib/db/items', () => ({
+  getItemAiMetadata: vi.fn().mockResolvedValue(null),
+}))
+
 vi.mock('@/lib/ai/openai', () => ({
   getOpenAIClient: vi.fn(),
   AI_MODELS: { TAG: 'gpt-4.1-nano', DEFAULT: 'gpt-5-mini' },
@@ -105,17 +109,19 @@ describe('generateAutoTags', () => {
     expect(call.input).not.toContain('Title:')
   })
 
-  it('includes file metadata in the AI prompt', async () => {
+  it('includes file metadata and stored dimensions in the AI prompt', async () => {
+    const { getItemAiMetadata } = await import('@/lib/db/items')
+    vi.mocked(getItemAiMetadata).mockResolvedValueOnce({ imageWidth: 1280, imageHeight: 720 })
+
     createResponse.mockResolvedValue({
       output_text: '{"tags": ["screenshot", "ui"]}',
     })
 
     const result = await generateAutoTags({
       itemType: 'image',
+      itemId: 'item-123',
       fileName: 'dashboard.png',
       fileSize: 512_000,
-      imageWidth: 1280,
-      imageHeight: 720,
     })
 
     expect(result.status).toBe('ok')

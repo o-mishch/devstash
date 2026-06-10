@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
-import type { CollectionWithTypes } from '@/types/collection'
+import type { CollectionPickerItem } from '@/types/collection'
 
 interface CollectionSelectorProps {
-  collections: CollectionWithTypes[]
+  collections: CollectionPickerItem[]
   selectedIds: string[]
   onChange: (ids: string[]) => void
 }

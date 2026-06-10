@@ -12,6 +12,7 @@ import {
   itemAiFileMetadataSchema,
   trimOptionalAiField,
 } from '@/lib/ai/item-context'
+import { getItemAiMetadata } from '@/lib/db/items'
 import type { ApiBody } from '@/types/api'
 
 const log = createLogger('generate-tags')
@@ -21,6 +22,7 @@ const MAX_AI_INPUT_CHARS = 4000
 const generateTagsSchema = z
   .object({
     itemType: itemTypeSchema,
+    itemId: z.string().optional(),
     title: z.string().optional(),
     content: z.string().optional(),
     fileName: z.string().optional(),
@@ -28,12 +30,11 @@ const generateTagsSchema = z
   })
   .transform((data) => ({
     itemType: data.itemType,
+    itemId: data.itemId,
     title: trimOptionalAiField(data.title, MAX_AI_INPUT_CHARS),
     content: trimOptionalAiField(data.content, MAX_AI_INPUT_CHARS),
     fileName: trimOptionalAiField(data.fileName, 255),
     fileSize: data.fileSize,
-    imageWidth: data.imageWidth,
-    imageHeight: data.imageHeight,
   }))
   .refine(
     (data) => Boolean(data.title || data.fileName),
@@ -85,10 +86,17 @@ export async function generateAutoTags(
       log,
       logLabel: 'AI tags',
       execute: async (client, data) => {
+        let imageWidth: number | undefined
+        let imageHeight: number | undefined
+        if (data.itemType === 'image' && data.itemId) {
+          const dims = await getItemAiMetadata(userId, data.itemId)
+          if (dims?.imageWidth != null) imageWidth = dims.imageWidth
+          if (dims?.imageHeight != null) imageHeight = dims.imageHeight
+        }
         const completion = await client.responses.create({
           model: AI_MODELS.TAG,
           instructions: TAG_SYSTEM_PROMPT,
-          input: buildItemAiUserMessage(data),
+          input: buildItemAiUserMessage({ ...data, imageWidth, imageHeight }),
         })
 
         const responseContent = completion.output_text

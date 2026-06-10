@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { Analytics } from "@vercel/analytics/next";
 import { ThemeProvider } from "@/providers/theme-provider";
+import { ServiceWorkerRegistration } from "@/components/shared/service-worker-registration";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: Readonly<WithChildren>) {
           <Toaster />
         </ThemeProvider>
         <Analytics />
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );

@@ -7,10 +7,10 @@ import { ItemDetailDrawer } from '@/components/items/drawer/item-detail-drawer'
 import { EditorPreloader } from '@/components/shared/editor-preloader'
 import type { WithChildren } from '@/types/common'
 import type { LightItem, FullItem } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
+import type { CollectionPickerItem } from '@/types/collection'
 
 interface ItemDrawerProviderProps extends WithChildren {
-  collections: CollectionWithTypes[]
+  collections: CollectionPickerItem[]
 }
 
 export function ItemDrawerProvider({ children, collections }: ItemDrawerProviderProps) {

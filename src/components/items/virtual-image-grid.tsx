@@ -24,6 +24,8 @@ export function VirtualImageGrid({ pageKey, onFetchMore }: VirtualImageGridProps
       onFetchMore={onFetchMore}
       getColumns={getColumns}
       gap={GAP}
+      overscan={200}
+      priorityCount={2}
       itemHeight={(width) => Math.round(((width - GAP * (getColumns(width) - 1)) / getColumns(width)) * (9 / 16))}
       renderItem={(item, priority) => (
         <ImageCard key={item.id} item={item} priority={priority} />

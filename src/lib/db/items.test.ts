@@ -2,9 +2,10 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/lib/infra/prisma', () => ({
   prisma: {
-    $queryRaw: vi.fn().mockResolvedValue([]),
-    item: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn() },
+    item: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn(), create: vi.fn() },
     itemType: { findFirst: vi.fn(), findMany: vi.fn() },
+    collection: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
   },
 }))
 
@@ -19,21 +20,28 @@ vi.mock('@/lib/infra/cache', () => ({
     itemsByType: (userId: string, type: string) => ({ tag: `user:${userId}:items:${type}`, revalidate: 60 }),
     itemsByCollection: (userId: string, id: string) => ({ tag: `user:${userId}:collection:${id}:items`, revalidate: 60 }),
     itemStats: (userId: string) => ({ tag: `user:${userId}:item-stats`, revalidate: 60 }),
+    downloadItem: (userId: string, itemId: string) => ({ tag: `user:${userId}:download-item:${itemId}`, revalidate: 60 }),
   },
 }))
 
 import { prisma } from '@/lib/infra/prisma'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
-import { getItemTypeBySlug, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage } from './items'
+import { createItem, getItemTypeBySlug, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem } from './items'
 
 const mockFindFirst = prisma.itemType.findFirst as ReturnType<typeof vi.fn>
 const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>
+const mockItemFindFirst = prisma.item.findFirst as ReturnType<typeof vi.fn>
 const mockItemFindMany = prisma.item.findMany as ReturnType<typeof vi.fn>
+const mockItemCreate = prisma.item.create as ReturnType<typeof vi.fn>
 const mockGroupBy = prisma.item.groupBy as ReturnType<typeof vi.fn>
 const mockDeleteMany = prisma.item.deleteMany as ReturnType<typeof vi.fn>
 const mockQueryRaw = prisma.$queryRaw as ReturnType<typeof vi.fn>
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  // Default: no text previews (non-text pages skip this call; text pages get empty map)
+  mockQueryRaw.mockResolvedValue([])
+})
 
 // ── compareBySystemTypeOrder ─────────────────────────────────────────────────
 
@@ -142,10 +150,9 @@ function makeLightRow(id: string) {
     url: null,
     fileName: null,
     fileSize: null,
-    fileUrl: null,
     isFavorite: false,
     isPinned: false,
-    itemType: { id: 'type-1', name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true },
+    itemType: { name: 'snippet' },
     tags: [{ name: 'react' }],
   }
 }
@@ -180,9 +187,9 @@ describe('getRecentItemsPage', () => {
     expect(result.hasMore).toBe(false)
   })
 
-  it('uses preview data from fetchItemPreviews', async () => {
+  it('derives descriptionPreview from DB-side LEFT() truncation via $queryRaw', async () => {
     mockItemFindMany.mockResolvedValue([makeLightRow('x')])
-    mockQueryRaw.mockResolvedValueOnce([{ id: 'x', description_preview: 'preview desc' }])
+    mockQueryRaw.mockResolvedValue([{ id: 'x', dp: 'preview desc', cp: null }])
     const result = await getRecentItemsPage('user-1')
     expect(result.items[0].descriptionPreview).toBe('preview desc')
   })
@@ -226,6 +233,74 @@ describe('getItemsByCollectionPage', () => {
     const call = mockItemFindMany.mock.calls[0][0]
     expect(call.skip).toBe(1)
     expect(call.cursor).toEqual({ id: 'cursor-id' })
+  })
+})
+
+describe('createItem', () => {
+  it('returns image items with tags after creation', async () => {
+    mockFindMany.mockResolvedValue([
+      { id: 'type-image', name: 'image', icon: 'Image', color: '#ec4899', isSystem: true, userId: null },
+    ])
+    mockItemCreate.mockResolvedValue({
+      id: 'item-1',
+      title: 'Screenshot',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      isFavorite: false,
+      isPinned: false,
+      itemType: { name: 'image' },
+      tags: [{ name: 'ui' }, { name: 'screenshot' }],
+    })
+
+    const result = await createItem('user-1', {
+      title: 'Screenshot',
+      description: null,
+      content: null,
+      url: null,
+      fileUrl: 'user-1/screenshot.png',
+      fileName: 'screenshot.png',
+      fileSize: 1024,
+      language: null,
+      tags: ['ui', 'screenshot'],
+      itemTypeName: 'image',
+      collectionIds: [],
+      imageWidth: 1280,
+      imageHeight: 720,
+    })
+
+    const call = mockItemCreate.mock.calls[0][0]
+    expect(call.data.tags.connectOrCreate).toEqual([
+      { where: { name: 'ui' }, create: { name: 'ui' } },
+      { where: { name: 'screenshot' }, create: { name: 'screenshot' } },
+    ])
+    expect(call.select.tags).toEqual({ select: { name: true } })
+    expect(result?.tags).toEqual(['ui', 'screenshot'])
+  })
+})
+
+describe('getDownloadItem', () => {
+  it('scopes the download lookup by userId and itemId with a narrow select', async () => {
+    const row = {
+      id: 'item-1',
+      fileUrl: 'uploads/user-1/file.png',
+      fileName: 'file.png',
+      updatedAt: new Date('2024-01-01T00:00:00.000Z'),
+      itemType: { name: 'image' },
+    }
+    mockItemFindFirst.mockResolvedValue(row)
+
+    const result = await getDownloadItem('user-1', 'item-1')
+
+    expect(mockItemFindFirst).toHaveBeenCalledWith({
+      where: { id: 'item-1', userId: 'user-1' },
+      select: {
+        id: true,
+        fileUrl: true,
+        fileName: true,
+        updatedAt: true,
+        itemType: { select: { name: true } },
+      },
+    })
+    expect(result).toEqual(row)
   })
 })
 

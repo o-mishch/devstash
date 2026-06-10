@@ -1,23 +1,39 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { apiFetch } from '@/lib/api/api-fetch'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
-import type { LightItem, FullItem, ItemDetails } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
+import { ITEM_TYPES_WITH_CONTENT } from '@/lib/utils/constants'
+import type { LightItem, FullItem, ItemDetails, ItemContent } from '@/types/item'
+import { isFullItem } from '@/types/item'
+import type { CollectionPickerItem } from '@/types/collection'
 
 interface ItemDetailDrawerProps {
   item: LightItem | FullItem | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  collections: CollectionWithTypes[]
+  collections: CollectionPickerItem[]
   onFullItemFetched: (item: FullItem) => void
   onItemSaved: (item: FullItem) => void
   onItemDeleted: (id: string) => void
+}
+
+function mergeDrawerItem(
+  base: LightItem | FullItem,
+  details: ItemDetails | null,
+  content: ItemContent | null,
+): LightItem | FullItem {
+  if (!details) return base
+  return {
+    ...base,
+    ...details,
+    content: content?.content ?? ('content' in base ? base.content : null),
+    language: content?.language ?? ('language' in base ? base.language : null),
+  }
 }
 
 function ItemDetailDrawerInner({
@@ -30,31 +46,57 @@ function ItemDetailDrawerInner({
 }: Omit<ItemDetailDrawerProps, 'open'>) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [savedItem, setSavedItem] = useState<FullItem | null>(null)
-  const [fullItem, setFullItem] = useState<FullItem | null>(null)
+  const [details, setDetails] = useState<ItemDetails | null>(() =>
+    item && isFullItem(item)
+      ? { description: item.description, updatedAt: item.updatedAt, collections: item.collections }
+      : null
+  )
+  const [content, setContent] = useState<ItemContent | null>(() =>
+    item && isFullItem(item) && ITEM_TYPES_WITH_CONTENT.has(item.itemType.name)
+      ? { content: item.content, language: item.language }
+      : null
+  )
 
   const itemId = item?.id ?? null
-  const propIsLight = item !== null && !('content' in item)
+  const needsDetailsFetch = item !== null && !isFullItem(item)
+  const needsContent = item !== null && ITEM_TYPES_WITH_CONTENT.has(item.itemType.name) && !isFullItem(item)
+  // Ref guard: fires fetch exactly once per item mount, even under React StrictMode double-invoke
+  const hasFetched = useRef(false)
 
-  // LightItem has truncated content; fetch the remaining fields without blocking the initial render
   useEffect(() => {
-    if (!itemId || !propIsLight || !item) return
-
-    const controller = new AbortController()
+    if (!itemId || !needsDetailsFetch || hasFetched.current) return
+    hasFetched.current = true
 
     apiFetch<ItemDetails>(`/api/items/${itemId}/details`).then((result) => {
-      if (!controller.signal.aborted && result.status === 'ok' && result.data) {
-        const mergedItem: FullItem = { ...item, ...result.data }
-        setFullItem(mergedItem)
-        onFullItemFetched(mergedItem)
-      }
+      if (result.status === 'ok' && result.data) setDetails(result.data)
     })
 
-    return () => controller.abort()
-  }, [itemId, propIsLight, item, onFullItemFetched])
+    if (needsContent) {
+      apiFetch<ItemContent>(`/api/items/${itemId}/content`).then((result) => {
+        if (result.status === 'ok' && result.data) setContent(result.data)
+      })
+    }
+  }, [itemId, needsDetailsFetch, needsContent])
 
-  const displayItem = savedItem ?? fullItem ?? item
-  const isLight = displayItem !== null && !('content' in displayItem)
-  const editing = editingItemId !== null && editingItemId === displayItem?.id && !isLight
+  useEffect(() => {
+    if (!item || !details) return
+    const merged = mergeDrawerItem(item, details, content) as FullItem
+    if (content || !ITEM_TYPES_WITH_CONTENT.has(item.itemType.name)) {
+      onFullItemFetched(merged)
+    }
+  }, [item, details, content, onFullItemFetched])
+
+  const displayItem = savedItem ?? (item && details ? mergeDrawerItem(item, details, content) : item)
+  const detailsLoaded = Boolean(details) || Boolean(savedItem) || (item !== null && isFullItem(item))
+  const contentLoaded =
+    !item ||
+    !ITEM_TYPES_WITH_CONTENT.has(item.itemType.name) ||
+    Boolean(content) ||
+    Boolean(savedItem) ||
+    (item !== null && isFullItem(item))
+  const isLight = !detailsLoaded
+  const contentLoading = detailsLoaded && !contentLoaded
+  const editing = editingItemId !== null && editingItemId === displayItem?.id && contentLoaded
 
   return (
     <>
@@ -78,8 +120,9 @@ function ItemDetailDrawerInner({
         <ItemDrawerViewContent
           item={displayItem}
           isLight={isLight}
+          contentLoading={contentLoading}
           onClose={() => onOpenChange(false)}
-          onEdit={() => !isLight && setEditingItemId(displayItem.id)}
+          onEdit={() => contentLoaded && setEditingItemId(displayItem.id)}
           onDeleted={() => {
             onItemDeleted(displayItem.id)
             onOpenChange(false)

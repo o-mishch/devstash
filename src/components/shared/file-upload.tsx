@@ -3,20 +3,48 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/styles'
-import { apiUpload } from '@/lib/api/api-fetch'
+import { apiFetch, apiUpload } from '@/lib/api/api-fetch'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
-import { FILE_UPLOAD_CONFIG } from '@/lib/utils/constants'
+import { FILE_UPLOAD_CONFIG, IMAGE_THUMBNAIL_MAX_WIDTH, IMAGE_THUMBNAIL_QUALITY } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
-import { getImageDimensionsFromFile } from '@/lib/utils/image-dimensions.client'
+import { getFileExtension } from '@/lib/utils/files'
 import type { FileItemType } from '@/lib/utils/constants'
 
 export interface UploadedFile {
   fileUrl: string
   fileName: string
   fileSize: number
-  imageWidth?: number
-  imageHeight?: number
+  imageWidth: number | null
+  imageHeight: number | null
+}
+
+interface UploadUrlResult {
+  originalKey: string
+  originalUrl: string
+  thumbKey: string | null
+  thumbUrl: string | null
+  expiresAt: string
+}
+
+async function buildImageThumb(file: File): Promise<{ blob: Blob; width: number; height: number } | null> {
+  try {
+    const bitmap = await createImageBitmap(file)
+    const { width: natW, height: natH } = bitmap
+
+    const scale = Math.min(1, IMAGE_THUMBNAIL_MAX_WIDTH / natW)
+    const w = Math.round(natW * scale)
+    const h = Math.round(natH * scale)
+
+    const canvas = new OffscreenCanvas(w, h)
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, w, h)
+    bitmap.close()
+
+    const blob = await canvas.convertToBlob({ type: 'image/webp', quality: IMAGE_THUMBNAIL_QUALITY / 100 })
+    return { blob, width: natW, height: natH }
+  } catch {
+    return null
+  }
 }
 
 interface FileUploadProps {
@@ -38,25 +66,62 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     setError(null)
     setProgress(0)
 
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('itemType', itemType)
+    // Client-side guard: avoids the presigned URL round-trip for obvious violations.
+    // Server validates declared fileSize too, but can't enforce it once the presigned URL is issued.
+    if (file.size > config.maxBytes) {
+      const maxMb = config.maxBytes / 1024 / 1024
+      setProgress(null)
+      setError(`File exceeds the ${maxMb}MB limit.`)
+      return
+    }
 
-    const dimensions = itemType === 'image' ? await getImageDimensionsFromFile(file) : null
-    const result = await apiUpload<UploadedFile>('/api/upload', formData, setProgress)
+    const isSvg = getFileExtension(file.name) === 'svg'
+    const isImageType = itemType === 'image'
+
+    // Reads original dimensions and builds a 640px WebP thumb before any network calls.
+    // thumb.width/height are the ORIGINAL image dimensions — that's what gets stored in the DB.
+    let thumb: { blob: Blob; width: number; height: number } | null = null
+    if (isImageType && !isSvg) {
+      thumb = await buildImageThumb(file)
+    }
+
+    const urlResult = await apiFetch<UploadUrlResult>('/api/upload/url', {
+      method: 'POST',
+      body: { fileName: file.name, fileSize: file.size, itemType, hasThumb: thumb !== null },
+    })
+
+    if (urlResult.status !== 'ok' || !urlResult.data) {
+      setProgress(null)
+      setError(urlResult.message ?? 'Upload failed')
+      return
+    }
+
+    const { originalKey, originalUrl, thumbUrl } = urlResult.data
+    const contentType = file.type || 'application/octet-stream'
+
+    // Both PUTs go directly to Filebase — zero bytes through Vercel.
+    const uploads: Promise<boolean>[] = [apiUpload(originalUrl, file, contentType, setProgress)]
+    if (thumb && thumbUrl) {
+      uploads.push(apiUpload(thumbUrl, thumb.blob, 'image/webp'))
+    }
+
+    const results = await Promise.all(uploads)
+    if (results.some((ok) => !ok)) {
+      setProgress(null)
+      setError('Upload failed. Please try again.')
+      // Cleanup goes through our server (DELETE /api/upload → server calls Filebase), not direct S3.
+      void apiFetch(`/api/upload?key=${encodeURIComponent(originalKey)}`, { method: 'DELETE' })
+      return
+    }
 
     setProgress(null)
-
-    if (result.status === 'created' && result.data) {
-      onUpload({
-        ...result.data,
-        ...(dimensions
-          ? { imageWidth: dimensions.width, imageHeight: dimensions.height }
-          : {}),
-      })
-    } else {
-      setError(result.message ?? 'Upload failed')
-    }
+    onUpload({
+      fileUrl: originalKey,
+      fileName: file.name,
+      fileSize: file.size,              // actual bytes of the original file
+      imageWidth: thumb?.width ?? null, // original image width (null for SVG / non-image)
+      imageHeight: thumb?.height ?? null,
+    })
   }
 
   function handleFiles(files: FileList | null) {
@@ -76,12 +141,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
         <FileIcon className="size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{value.fileName}</p>
-          <p className="text-xs text-muted-foreground">
-            {formatBytes(value.fileSize)}
-            {value.imageWidth != null && value.imageHeight != null
-              ? ` · ${value.imageWidth} × ${value.imageHeight}`
-              : ''}
-          </p>
+          <p className="text-xs text-muted-foreground">{formatBytes(value.fileSize)}</p>
         </div>
         {onClear && (
           <Button

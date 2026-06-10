@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import debounce from 'lodash.debounce'
 import { globalSearchAction, type SearchResult } from '@/actions/search'
-import type { LightItem } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
+import type { LightItem, SearchResultItem } from '@/types/item'
+import type { SidebarCollection } from '@/types/collection'
+
+export type DisplaySearchItem = LightItem | SearchResultItem
 
 export function useGlobalSearch(
   query: string,
   localItemsData: LightItem[],
-  localCollectionsData: CollectionWithTypes[]
+  localCollectionsData: SidebarCollection[]
 ) {
   const [loading, setLoading] = useState(false)
   const [remoteResults, setRemoteResults] = useState<SearchResult>({ items: [], collections: [] })
@@ -62,14 +64,16 @@ export function useGlobalSearch(
   }, [localCollectionsData, query])
 
   const displayItems = useMemo(() => {
-    const map = new Map<string, LightItem>()
+    const map = new Map<string, DisplaySearchItem>()
     localItems.forEach((i) => map.set(i.id, i))
-    remoteResults.items.forEach((i) => map.set(i.id, i))
+    remoteResults.items.forEach((i) => {
+      if (!map.has(i.id)) map.set(i.id, i)
+    })
     return Array.from(map.values())
   }, [localItems, remoteResults.items])
 
   const displayCollections = useMemo(() => {
-    const map = new Map<string, CollectionWithTypes>()
+    const map = new Map<string, SidebarCollection>()
     localCollections.forEach((c) => map.set(c.id, c))
     remoteResults.collections.forEach((c) => map.set(c.id, c))
     return Array.from(map.values())

@@ -49,7 +49,7 @@ export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItems
 
   // Mixed types: non-virtualized grid (variable row heights)
   return (
-    <div className="app-grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+    <div className="app-grid card-grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
       {items.map((item, index) => {
         if (ITEM_TYPES_WITH_IMAGE_GRID.has(item.itemType.name)) {
           return <ImageCard key={item.id} item={item} priority={index < 8} />

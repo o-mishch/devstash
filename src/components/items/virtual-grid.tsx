@@ -4,6 +4,16 @@ import { forwardRef, type ReactNode, type CSSProperties, type HTMLAttributes } f
 import { VirtuosoGrid } from 'react-virtuoso'
 import { useVirtualContainer } from '@/hooks/use-virtual-container'
 
+/** Matches `hover:-translate-y-1` — reserved as pt-1/pb-1 on each cell so lift + shadow aren't clipped */
+const HOVER_LIFT_PX = 4
+const HOVER_LIFT_CELL_PX = HOVER_LIFT_PX * 2
+
+function addHoverLiftPadding(value: CSSProperties['paddingBottom']): string | number {
+  if (typeof value === 'number') return value + HOVER_LIFT_PX
+  if (typeof value === 'string') return `calc(${value} + ${HOVER_LIFT_PX}px)`
+  return HOVER_LIFT_PX
+}
+
 export interface VirtualGridProps<T> {
   items: T[]
   hasMore: boolean
@@ -14,6 +24,7 @@ export interface VirtualGridProps<T> {
   gap?: number
   itemHeight: number | ((containerWidth: number) => number)
   overscan?: number
+  priorityCount?: number
 }
 
 export function VirtualGrid<T>({
@@ -26,6 +37,7 @@ export function VirtualGrid<T>({
   gap = 12,
   itemHeight,
   overscan = 400,
+  priorityCount = 4,
 }: VirtualGridProps<T>) {
   const { containerRef, cols, containerWidth, getScrollElement } = useVirtualContainer(getColumns)
 
@@ -39,7 +51,7 @@ export function VirtualGrid<T>({
   }
 
   return (
-    <div ref={containerRef} className="w-full min-w-0 overflow-hidden">
+    <div ref={containerRef} className="w-full min-w-0 overflow-x-hidden">
       <VirtuosoGrid
         data={items}
         customScrollParent={scrollElement}
@@ -60,7 +72,7 @@ export function VirtualGrid<T>({
                 style={{
                   ...restStyle,
                   marginTop: paddingTop,
-                  marginBottom: paddingBottom,
+                  marginBottom: addHoverLiftPadding(paddingBottom),
                   display: 'grid',
                   gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                   gap,
@@ -74,14 +86,14 @@ export function VirtualGrid<T>({
           Item: ({ children, style, ...props }) => (
             <div
               {...props}
-              className="min-w-0 overflow-visible"
-              style={{ ...style, height: resolvedItemHeight }}
+              className="relative min-w-0 overflow-visible pt-1 pb-1"
+              style={{ ...style, height: resolvedItemHeight + HOVER_LIFT_CELL_PX, overflow: 'visible' }}
             >
               {children}
             </div>
           )
         }}
-        itemContent={(index, item) => renderItem(item, index < 4)}
+        itemContent={(index, item) => renderItem(item, index < priorityCount)}
       />
     </div>
   )

@@ -1,4 +1,4 @@
-import type { CollectionWithTypes } from './collection'
+import type { SidebarCollection } from './collection'
 import type { SidebarItemType } from './item'
 
 export interface SidebarUser {
@@ -10,7 +10,7 @@ export interface SidebarUser {
 }
 
 export interface SidebarData {
-  collections: CollectionWithTypes[]
+  collections: SidebarCollection[]
   itemTypes: SidebarItemType[]
   user: SidebarUser | null
 }

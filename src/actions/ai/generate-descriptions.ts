@@ -20,6 +20,7 @@ import {
   itemAiFileMetadataSchema,
   trimOptionalAiField,
 } from '@/lib/ai/item-context'
+import { getItemAiMetadata } from '@/lib/db/items'
 import type { ApiBody } from '@/types/api'
 
 const itemLog = createLogger('generate-description')
@@ -31,6 +32,7 @@ const MAX_NAME_CHARS = 100
 const generateDescriptionSchema = z
   .object({
     itemType: itemTypeSchema,
+    itemId: z.string().optional(),
     title: z.string().optional(),
     content: z.string().optional(),
     url: z.string().optional(),
@@ -40,14 +42,13 @@ const generateDescriptionSchema = z
   })
   .transform((data) => ({
     itemType: data.itemType,
+    itemId: data.itemId,
     title: trimOptionalAiField(data.title, MAX_AI_INPUT_CHARS),
     content: trimOptionalAiField(data.content, MAX_AI_INPUT_CHARS),
     url: trimOptionalAiField(data.url, MAX_AI_INPUT_CHARS),
     language: trimOptionalAiField(data.language, 100),
     fileName: trimOptionalAiField(data.fileName, 255),
     fileSize: data.fileSize,
-    imageWidth: data.imageWidth,
-    imageHeight: data.imageHeight,
   }))
   .refine(
     (data) => Boolean(data.title || data.content || data.url || data.fileName),
@@ -112,15 +113,23 @@ export async function generateDescription(
       failureMessage: 'Failed to generate description.',
       log: itemLog,
       logLabel: 'AI item description',
-      execute: async (client, data) =>
-        requestDescription(
+      execute: async (client, data) => {
+        let imageWidth: number | undefined
+        let imageHeight: number | undefined
+        if (data.itemType === 'image' && data.itemId) {
+          const dims = await getItemAiMetadata(userId, data.itemId)
+          if (dims?.imageWidth != null) imageWidth = dims.imageWidth
+          if (dims?.imageHeight != null) imageHeight = dims.imageHeight
+        }
+        return requestDescription(
           client,
           ITEM_DESCRIPTION_SYSTEM_PROMPT,
-          buildItemAiUserMessage(data),
+          buildItemAiUserMessage({ ...data, imageWidth, imageHeight }),
           ITEM_MAX_DESCRIPTION_CHARS,
           itemLog,
           { itemType: data.itemType }
-        ),
+        )
+      },
     })
   }, 'generateDescription')
 }

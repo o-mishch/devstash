@@ -130,6 +130,8 @@ model Item {
   fileUrl     String?
   fileName    String?
   fileSize    Int?
+  imageWidth  Int?
+  imageHeight Int?
   url         String?
   description String?     @db.Text
   isFavorite  Boolean     @default(false)

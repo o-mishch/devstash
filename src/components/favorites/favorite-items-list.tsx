@@ -7,24 +7,24 @@ import { useInfiniteScrollFetch } from '@/hooks/use-infinite-scroll-fetch'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FavoriteItemRow } from './favorite-item-row'
-import { compareBySystemTypeOrder } from '@/lib/utils/constants'
-import type { ItemsPage, LightItem, ItemType } from '@/types/item'
+import { compareBySystemTypeOrder, SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
+import type { ItemsPage, LightItem, SlimItemType } from '@/types/item'
 
 const PAGE_KEY = 'favorites:items'
 
 interface ItemGroup {
-  itemType: ItemType
+  itemType: SlimItemType
   items: LightItem[]
 }
 
 function groupByType(items: LightItem[]): ItemGroup[] {
   const map = new Map<string, ItemGroup>()
   for (const item of items) {
-    const existing = map.get(item.itemType.id)
+    const existing = map.get(item.itemType.name)
     if (existing) {
       existing.items.push(item)
     } else {
-      map.set(item.itemType.id, { itemType: item.itemType, items: [item] })
+      map.set(item.itemType.name, { itemType: item.itemType, items: [item] })
     }
   }
   return Array.from(map.values())
@@ -45,11 +45,11 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
     [items]
   )
 
-  const toggleGroup = useCallback((typeId: string) => {
+  const toggleGroup = useCallback((typeName: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev)
-      if (next.has(typeId)) next.delete(typeId)
-      else next.add(typeId)
+      if (next.has(typeName)) next.delete(typeName)
+      else next.add(typeName)
       return next
     })
   }, [])
@@ -57,33 +57,31 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
   return (
     <div className="flex min-w-0 flex-col gap-1">
       {groups.map(({ itemType, items: groupItems }) => {
-        const isCollapsed = collapsed.has(itemType.id)
+        const color = SYSTEM_TYPE_COLORS[itemType.name]
+        const isCollapsed = collapsed.has(itemType.name)
         return (
-          <div key={itemType.id}>
+          <div key={itemType.name}>
             {/* Group header */}
             <button
               type="button"
               aria-expanded={!isCollapsed}
-              onClick={() => toggleGroup(itemType.id)}
+              onClick={() => toggleGroup(itemType.name)}
               className="flex w-full items-center gap-2 rounded px-3 py-1 text-left transition-colors hover:bg-foreground/[0.04]"
             >
               <ChevronRight
                 className="size-3 shrink-0 text-muted-foreground transition-transform duration-150"
                 style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }}
               />
-              <ItemTypeIcon iconName={itemType.icon} color={itemType.color} className="size-3 shrink-0" />
-              <span
-                className="font-mono text-xs font-medium capitalize"
-                style={{ color: itemType.color }}
-              >
+              <ItemTypeIcon typeName={itemType.name} className="size-3 shrink-0" />
+              <span className="font-mono text-xs font-medium capitalize" style={{ color }}>
                 {itemType.name}
               </span>
               <span
                 className="rounded px-1 font-mono text-[10px]"
-                style={{ color: itemType.color, backgroundColor: `${itemType.color}15` }}
+                style={{ color, backgroundColor: `${color}15` }}
               >
-                {itemTypeCounts[itemType.id] !== undefined && groupItems.length < itemTypeCounts[itemType.id]
-                  ? `${groupItems.length} / ${itemTypeCounts[itemType.id]}`
+                {itemTypeCounts[itemType.name] !== undefined && groupItems.length < itemTypeCounts[itemType.name]
+                  ? `${groupItems.length} / ${itemTypeCounts[itemType.name]}`
                   : groupItems.length}
               </span>
             </button>

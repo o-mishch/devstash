@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/infra/prisma'
 import { withDataCache, CacheTags } from '@/lib/infra/cache'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
-import type { FullItem, ItemDetails, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
+import type { FullItem, ItemDetails, ItemSavedDetails, ItemContent, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
 import { Prisma, ContentType } from '@/generated/prisma/client'
 
 const ITEM_SELECT = {
@@ -25,72 +25,127 @@ const ITEM_SELECT = {
 
 type ItemWithRelations = Prisma.ItemGetPayload<{ select: typeof ITEM_SELECT }>
 
+const LIGHT_ITEM_TYPE_SELECT = { select: { name: true } } as const
+
+/** Mixed pages (recent, pinned, favorites, collections with text): tags, no text/file fields — text fetched separately as LEFT(col,150) */
 export const LIGHT_ITEM_SELECT = {
+  id: true,
+  title: true,
+  createdAt: true,
+  url: true,
+  isFavorite: true,
+  isPinned: true,
+  itemType: LIGHT_ITEM_TYPE_SELECT,
+  tags: { select: { name: true } },
+} as const
+
+/** File type page: fileName + fileSize only, no text preview fields */
+export const LIGHT_ITEM_SELECT_FILE = {
+  id: true,
+  title: true,
+  createdAt: true,
+  fileName: true,
+  fileSize: true,
+  isFavorite: true,
+  isPinned: true,
+  itemType: LIGHT_ITEM_TYPE_SELECT,
+} as const
+
+/** Image type page: minimal — title + status + tags, no text or file fields */
+export const LIGHT_ITEM_SELECT_IMAGE = {
+  id: true,
+  title: true,
+  createdAt: true,
+  isFavorite: true,
+  isPinned: true,
+  itemType: LIGHT_ITEM_TYPE_SELECT,
+  tags: { select: { name: true } },
+} as const
+
+/** Collection pages: need file fields for FileRow + tags for ItemCard — text fetched separately as LEFT(col,150) */
+export const LIGHT_ITEM_SELECT_COLLECTION = {
   id: true,
   title: true,
   createdAt: true,
   url: true,
   fileName: true,
   fileSize: true,
-  fileUrl: true,
   isFavorite: true,
   isPinned: true,
-  itemType: { select: { id: true, name: true, icon: true, color: true, isSystem: true } },
+  itemType: LIGHT_ITEM_TYPE_SELECT,
   tags: { select: { name: true } },
 } as const
 
-type LightItemWithRelations = Prisma.ItemGetPayload<{ select: typeof LIGHT_ITEM_SELECT }>
-
-interface ItemPreview {
+// Keep old export alias for callers that imported it
+export interface DownloadItem {
   id: string
-  descriptionPreview: string | null
-  contentPreview: string | null
-}
-
-interface RawItemPreviewRow {
-  id: string
-  description_preview?: string
-  content_preview?: string
-}
-
-export async function fetchItemPreviews(ids: string[]): Promise<Map<string, ItemPreview>> {
-  if (ids.length === 0) return new Map()
-  const rows = await prisma.$queryRaw<RawItemPreviewRow[]>`
-    SELECT id, LEFT(description, 150) AS description_preview, LEFT(content, 150) AS content_preview
-    FROM items
-    WHERE id IN (${Prisma.join(ids)})
-  `
-  return new Map(rows.map((r) => [
-    r.id,
-    {
-      id: r.id,
-      descriptionPreview: r.description_preview || null,
-      contentPreview: r.content_preview || null,
-    }
-  ]))
-}
-
-function mapBaseItemFields(item: LightItemWithRelations) {
-  return {
-    url: item.url,
-    tags: item.tags.map((t) => t.name),
-    fileUrl: item.fileUrl,
-    fileName: item.fileName,
-    fileSize: item.fileSize,
-    isFavorite: item.isFavorite,
-    isPinned: item.isPinned,
+  fileUrl: string | null
+  fileName: string | null
+  updatedAt: Date
+  itemType: {
+    name: string
   }
 }
 
-export function toLightItem(item: LightItemWithRelations, preview?: ItemPreview): LightItem {
+export interface ItemAiMetadata {
+  imageWidth: number | null
+  imageHeight: number | null
+}
+
+function resolveLightItemSelect(typeName?: string) {
+  if (typeName === 'image') return LIGHT_ITEM_SELECT_IMAGE
+  if (typeName === 'file') return LIGHT_ITEM_SELECT_FILE
+  return LIGHT_ITEM_SELECT
+}
+
+interface LightItemRow {
+  id: string
+  title: string
+  createdAt: Date
+  url?: string | null
+  fileName?: string | null
+  fileSize?: number | null
+  isFavorite: boolean
+  isPinned: boolean
+  itemType: { name: string }
+  tags?: { name: string }[]
+}
+
+interface TextPreview {
+  dp: string | null
+  cp: string | null
+}
+
+// $queryRaw needed: Prisma has no equivalent for LEFT() in SELECT;
+// prevents full description/content text travelling Neon→Vercel on every list page.
+async function fetchTextPreviews(ids: string[]): Promise<Map<string, TextPreview>> {
+  if (ids.length === 0) return new Map()
+  const rows = await prisma.$queryRaw<Array<{ id: string; dp: string | null; cp: string | null }>>`
+    SELECT id, LEFT(description, 150) AS dp, LEFT(content, 150) AS cp
+    FROM items WHERE id = ANY(${ids}::text[])`
+  return new Map(rows.map((r) => [r.id, { dp: r.dp, cp: r.cp }]))
+}
+
+export function toLightItem(item: LightItemRow, textPreviews = new Map<string, TextPreview>()): LightItem {
+  const url = item.url ?? null
+  const tags = item.tags?.map((t) => t.name) ?? []
+  const fileName = item.fileName ?? null
+  const fileSize = item.fileSize ?? null
+  const preview = textPreviews.get(item.id)
+
   return {
     id: item.id,
     title: item.title,
     createdAt: item.createdAt,
     itemType: item.itemType,
-    descriptionPreview: preview?.descriptionPreview ?? null,
-    contentPreview: preview?.contentPreview ?? null,
-    ...mapBaseItemFields(item),
+    descriptionPreview: preview?.dp ?? null,
+    contentPreview: preview?.cp ?? null,
+    url,
+    tags,
+    fileName,
+    fileSize,
+    isFavorite: item.isFavorite,
+    isPinned: item.isPinned,
   }
 }
 
@@ -105,8 +160,8 @@ export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Prom
       take: safeLimit,
       select: LIGHT_ITEM_SELECT,
     })
-    const previews = await fetchItemPreviews(items.map((r) => r.id))
-    return items.map((r) => toLightItem(r, previews.get(r.id)))
+    const textPreviews = await fetchTextPreviews(items.map((r) => r.id))
+    return items.map((r) => toLightItem(r, textPreviews))
   })
 }
 
@@ -135,13 +190,77 @@ export async function getItemById(userId: string, itemId: string): Promise<FullI
   })
 }
 
-export const ITEM_DETAILS_SELECT = {
+export const DOWNLOAD_ITEM_SELECT = {
   id: true,
-  content: true,
+  fileUrl: true,
+  fileName: true,
+  updatedAt: true,
+  itemType: { select: { name: true } },
+} as const
+
+export async function getDownloadItem(userId: string, itemId: string): Promise<DownloadItem | null> {
+  return withDataCache(CacheTags.downloadItem(userId, itemId), () =>
+    prisma.item.findFirst({
+      where: { id: itemId, userId },
+      select: DOWNLOAD_ITEM_SELECT,
+    })
+  )
+}
+
+/** GET /details — only fields LightItem doesn't carry */
+export const ITEM_DETAILS_SELECT = {
   description: true,
-  language: true,
   updatedAt: true,
   collections: { select: { collection: { select: { id: true, name: true } } } },
+} as const
+
+/** Returned after a save — all mutable fields the client needs to patch its store */
+export const ITEM_UPDATE_SELECT = {
+  description: true,
+  updatedAt: true,
+  url: true,
+  tags: { select: { name: true } },
+  isFavorite: true,
+  isPinned: true,
+  collections: { select: { collection: { select: { id: true, name: true } } } },
+} as const
+
+/** Server-only select for mutation auth guards — never sent to the client */
+export const ITEM_AUTH_SELECT = {
+  id: true,
+  fileUrl: true,
+  fileName: true,
+  itemType: { select: { name: true } },
+} as const
+
+export interface ItemAuthData {
+  id: string
+  fileUrl: string | null
+  fileName: string | null
+  itemType: { name: string }
+}
+
+export async function getItemForAuth(userId: string, itemId: string): Promise<ItemAuthData | null> {
+  return prisma.item.findFirst({
+    where: { id: itemId, userId },
+    select: ITEM_AUTH_SELECT,
+  })
+}
+
+export async function getItemAiMetadata(
+  userId: string,
+  itemId: string,
+): Promise<ItemAiMetadata | null> {
+  const row = await prisma.item.findFirst({
+    where: { id: itemId, userId },
+    select: { imageWidth: true, imageHeight: true },
+  })
+  return row ?? null
+}
+
+export const ITEM_CONTENT_SELECT = {
+  content: true,
+  language: true,
 } as const
 
 export async function getItemDetails(userId: string, itemId: string): Promise<ItemDetails | null> {
@@ -159,6 +278,17 @@ export async function getItemDetails(userId: string, itemId: string): Promise<It
   })
 }
 
+export async function getItemContent(userId: string, itemId: string): Promise<ItemContent | null> {
+  return withDataCache(CacheTags.itemContent(userId, itemId), async () => {
+    const row = await prisma.item.findUnique({
+      where: { id: itemId, userId },
+      select: ITEM_CONTENT_SELECT,
+    })
+    if (!row) return null
+    return row
+  })
+}
+
 export interface CreateItemInput {
   title: string
   description: string | null
@@ -171,6 +301,8 @@ export interface CreateItemInput {
   tags: string[]
   itemTypeName: string
   collectionIds: string[]
+  imageWidth?: number | null
+  imageHeight?: number | null
 }
 
 export async function createItem(userId: string, data: CreateItemInput): Promise<LightItem | null> {
@@ -200,6 +332,8 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
       fileUrl: data.fileUrl,
       fileName: data.fileName,
       fileSize: data.fileSize,
+      imageWidth: data.imageWidth,
+      imageHeight: data.imageHeight,
       language: data.language,
       tags: {
         connectOrCreate: buildTagsConnectOrCreate(data.tags),
@@ -213,12 +347,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
     select: LIGHT_ITEM_SELECT,
   })
 
-  const preview = {
-    id: created.id,
-    contentPreview: data.content ? data.content.slice(0, 150) : null,
-    descriptionPreview: data.description ? data.description.slice(0, 150) : null,
-  }
-  return toLightItem(created, preview)
+  return toLightItem(created)
 }
 
 export interface UpdateItemInput {
@@ -231,7 +360,7 @@ export interface UpdateItemInput {
   collectionIds: string[]
 }
 
-export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<FullItem | null> {
+export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<ItemSavedDetails | null> {
   const validCollectionIds = await getValidCollectionIds(userId, data.collectionIds)
 
   try {
@@ -254,9 +383,13 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
           }))
         }
       },
-      select: ITEM_SELECT,
+      select: ITEM_UPDATE_SELECT,
     })
-    return toFullItem(updated)
+    return {
+      ...updated,
+      tags: updated.tags.map((t: { name: string }) => t.name),
+      collections: updated.collections.map((ic) => ic.collection),
+    }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null
     throw error
@@ -290,10 +423,15 @@ async function getPaginatedItems(
   where: Prisma.ItemWhereInput,
   cacheKey: import('@/lib/infra/cache').DataCacheConfig,
   cursor?: string,
-  orderBy: Prisma.ItemOrderByWithRelationInput[] = [{ isPinned: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
+  orderBy: Prisma.ItemOrderByWithRelationInput[] = [{ isPinned: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+  typeName?: string,
+  selectOverride?: typeof LIGHT_ITEM_SELECT_COLLECTION,
 ): Promise<ItemsPage> {
   const take = ITEMS_PAGE_SIZE + 1
-  const query = { where, orderBy, take, select: LIGHT_ITEM_SELECT }
+  const select = selectOverride ?? resolveLightItemSelect(typeName)
+  const query = { where, orderBy, take, select }
+
+  const needsTextPreviews = typeName !== 'image' && typeName !== 'file'
 
   async function loadPage(c?: string): Promise<ItemsPage> {
     const rows = c
@@ -301,9 +439,11 @@ async function getPaginatedItems(
       : await prisma.item.findMany(query)
     const hasMore = rows.length > ITEMS_PAGE_SIZE
     const page = rows.slice(0, ITEMS_PAGE_SIZE)
-    const previews = await fetchItemPreviews(page.map((r) => r.id))
+    const textPreviews = needsTextPreviews
+      ? await fetchTextPreviews(page.map((r) => r.id))
+      : new Map<string, TextPreview>()
     return {
-      items: page.map((r) => toLightItem(r, previews.get(r.id))),
+      items: page.map((r) => toLightItem(r, textPreviews)),
       nextCursor: hasMore ? page[page.length - 1].id : null,
       hasMore,
     }
@@ -317,7 +457,13 @@ export async function getRecentItemsPage(userId: string, cursor?: string): Promi
 }
 
 export async function getItemsByTypePage(userId: string, typeName: string, cursor?: string): Promise<ItemsPage> {
-  return getPaginatedItems({ userId, itemType: { name: typeName } }, CacheTags.itemsByType(userId, typeName), cursor)
+  return getPaginatedItems(
+    { userId, itemType: { name: typeName } },
+    CacheTags.itemsByType(userId, typeName),
+    cursor,
+    undefined,
+    typeName,
+  )
 }
 
 export async function getItemCountByType(userId: string, itemTypeId: string): Promise<number> {
@@ -327,17 +473,26 @@ export async function getItemCountByType(userId: string, itemTypeId: string): Pr
 }
 
 export async function getItemsByCollectionPage(userId: string, collectionId: string, cursor?: string): Promise<ItemsPage> {
-  return getPaginatedItems({ userId, collections: { some: { collectionId } } }, CacheTags.itemsByCollection(userId, collectionId), cursor)
+  return getPaginatedItems(
+    { userId, collections: { some: { collectionId } } },
+    CacheTags.itemsByCollection(userId, collectionId),
+    cursor,
+    undefined,
+    undefined,
+    LIGHT_ITEM_SELECT_COLLECTION,
+  )
 }
 
 export async function getFavoriteItemTypeCounts(userId: string): Promise<Record<string, number>> {
   return withDataCache(CacheTags.favoriteItemTypeCounts(userId), async () => {
-    const rows = await prisma.item.groupBy({
-      by: ['itemTypeId'],
-      where: { userId, isFavorite: true },
-      _count: true,
-    })
-    return Object.fromEntries(rows.map((r) => [r.itemTypeId, r._count]))
+    // $queryRaw needed: Prisma groupBy doesn't support grouping by relation field (item_types.name)
+    const rows = await prisma.$queryRaw<Array<{ name: string; count: bigint }>>`
+      SELECT it.name, COUNT(i.id)::int AS count
+      FROM items i
+      JOIN item_types it ON i."itemTypeId" = it.id
+      WHERE i."userId" = ${userId} AND i."isFavorite" = true
+      GROUP BY it.name`
+    return Object.fromEntries(rows.map((r) => [r.name, Number(r.count)]))
   })
 }
 
@@ -413,9 +568,14 @@ function toFullItem(item: ItemWithRelations): FullItem {
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     itemType: item.itemType,
-    contentPreview: item.content ? item.content.slice(0, 150) : null,
     descriptionPreview: item.description ? item.description.slice(0, 150) : null,
-    ...mapBaseItemFields(item),
+    contentPreview: item.content ? item.content.slice(0, 150) : null,
+    url: item.url,
+    tags: item.tags.map((t) => t.name),
+    fileName: item.fileName,
+    fileSize: item.fileSize,
+    isFavorite: item.isFavorite,
+    isPinned: item.isPinned,
     content: item.content,
     description: item.description,
     language: item.language,
@@ -438,4 +598,3 @@ async function getValidCollectionIds(userId: string, collectionIds: string[]) {
   })
   return rows.map((r) => r.id)
 }
-

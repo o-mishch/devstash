@@ -5,6 +5,10 @@ import * as session from '@/lib/session'
 import * as rateLimit from '@/lib/infra/rate-limit'
 import { getOpenAIClient } from '@/lib/ai/openai'
 
+vi.mock('@/lib/db/items', () => ({
+  getItemAiMetadata: vi.fn().mockResolvedValue(null),
+}))
+
 vi.mock('@/lib/ai/openai', () => ({
   getOpenAIClient: vi.fn(),
   AI_MODELS: { TAG: 'gpt-4.1-nano', DEFAULT: 'gpt-5-mini' },
@@ -123,17 +127,19 @@ describe('generateDescription', () => {
     expect(call.input).toContain('File name: architecture.pdf')
   })
 
-  it('includes file metadata in the AI prompt', async () => {
+  it('includes file metadata and stored dimensions in the AI prompt', async () => {
+    const { getItemAiMetadata } = await import('@/lib/db/items')
+    vi.mocked(getItemAiMetadata).mockResolvedValueOnce({ imageWidth: 1920, imageHeight: 1080 })
+
     createResponse.mockResolvedValue({
       output_text: '{"description": "A wide dashboard screenshot."}',
     })
 
     const result = await generateDescription({
       itemType: 'image',
+      itemId: 'item-123',
       fileName: 'dashboard.png',
       fileSize: 1_048_576,
-      imageWidth: 1920,
-      imageHeight: 1080,
     })
 
     expect(result.status).toBe('ok')

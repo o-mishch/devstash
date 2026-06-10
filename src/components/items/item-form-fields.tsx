@@ -10,7 +10,7 @@ import { DrawerSection } from '@/components/items/drawer/drawer-shared'
 import { cn } from '@/lib/utils'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { type ItemFormBaseValues } from '@/lib/utils/validators'
-import type { CollectionWithTypes } from '@/types/collection'
+import type { CollectionPickerItem } from '@/types/collection'
 import { AutoDescriptionInput } from '@/components/items/auto-description-input'
 import { AutoTagInput } from '@/components/items/auto-tag-input'
 import { AiFieldBadgeIfPro } from '@/components/shared/ai-field-chrome'
@@ -48,9 +48,8 @@ export interface ItemFormFieldsProps {
   form: UseFormReturn<ItemFormBaseValues>
   itemContext: ItemFileContext
   watchedLanguage?: string
-  collections: CollectionWithTypes[]
+  collections: CollectionPickerItem[]
   variant?: 'dialog' | 'drawer'
-  imageProbeUrl?: string | null
 }
 
 export function ItemFormFields({
@@ -59,7 +58,6 @@ export function ItemFormFields({
   watchedLanguage,
   collections,
   variant = 'dialog',
-  imageProbeUrl,
 }: ItemFormFieldsProps) {
   const { itemType } = itemContext
   const Field = variant === 'drawer' ? DrawerField : DialogField
@@ -147,7 +145,6 @@ export function ItemFormFields({
         <AutoDescriptionInput
           form={form}
           itemContext={itemContext}
-          imageProbeUrl={imageProbeUrl}
           variant={variant}
         />
       </Field>
@@ -157,7 +154,6 @@ export function ItemFormFields({
         itemContext={itemContext}
         error={form.formState.errors.tags?.message}
         variant={variant}
-        imageProbeUrl={imageProbeUrl}
       />
 
       {collections.length > 0 && (

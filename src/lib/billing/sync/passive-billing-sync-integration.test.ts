@@ -173,7 +173,7 @@ describe('validateCheckoutEligibility', () => {
         id: 'cus_existing',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      } as Stripe.Customer,
+      } as unknown as Stripe.Customer,
     ])
     mockIterateCustomerSubscriptions.mockReturnValue(emptySubscriptionIterator())
 
@@ -190,7 +190,7 @@ describe('validateCheckoutEligibility', () => {
         id: 'cus_existing',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      } as Stripe.Customer,
+      } as unknown as Stripe.Customer,
     ])
     mockIterateCustomerSubscriptions.mockImplementation(async function* () {
       yield blockingSubscription
@@ -256,7 +256,7 @@ describe('syncSubscriptionStateForUser', () => {
         id: 'cus_123',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      } as Stripe.Customer,
+      } as unknown as Stripe.Customer,
     ])
     mockIterateCustomerSubscriptions.mockImplementation(async function* () {
       yield blockingSubscription

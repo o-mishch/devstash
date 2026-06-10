@@ -16,7 +16,6 @@ import type { ItemFormBaseValues } from '@/lib/utils/validators'
 interface AutoDescriptionInputProps {
   form: UseFormReturn<ItemFormBaseValues>
   itemContext: ItemFileContext
-  imageProbeUrl?: string | null
   variant?: 'dialog' | 'drawer'
 }
 
@@ -37,13 +36,11 @@ function getDisabledReason(
 export function AutoDescriptionInput({
   form,
   itemContext,
-  imageProbeUrl,
   variant = 'dialog',
 }: AutoDescriptionInputProps) {
   const { payload } = useItemAiContext({
     form,
     itemContext,
-    imageProbeUrl,
   })
 
   const disabledReason = getDisabledReason(

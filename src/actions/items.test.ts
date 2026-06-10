@@ -4,9 +4,14 @@ vi.mock('@/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
   getCachedVerifiedProAccess: vi.fn().mockResolvedValue(false),
 }))
-vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn(), toggleItemFavorite: vi.fn(), toggleItemPinned: vi.fn() }))
-vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn() }))
-vi.mock('@/lib/storage/image-thumbnails', () => ({ deleteStoredImageFiles: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemForAuth: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn(), toggleItemFavorite: vi.fn(), toggleItemPinned: vi.fn() }))
+vi.mock('@/lib/infra/cache', () => ({
+  invalidateItemsCache: vi.fn(),
+  invalidateCollectionsCache: vi.fn(),
+}))
+vi.mock('@/lib/storage/image-thumbnails', () => ({
+  deleteStoredImageFiles: vi.fn(),
+}))
 vi.mock('@/lib/db/usage', () => ({
   canCreateItem: vi.fn(),
   FREE_TIER_ITEM_LIMIT: 50,
@@ -15,13 +20,15 @@ vi.mock('@/lib/db/usage', () => ({
 import { deleteStoredImageFiles } from '@/lib/storage/image-thumbnails'
 import { canCreateItem } from '@/lib/db/usage'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
+import { invalidateCollectionsCache } from '@/lib/infra/cache'
 
 const mockDeleteStoredImageFiles = deleteStoredImageFiles as ReturnType<typeof vi.fn>
 const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
 const mockGetCachedVerifiedProAccess = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
+const mockInvalidateCollectionsCache = invalidateCollectionsCache as ReturnType<typeof vi.fn>
 
 import { auth } from '@/auth'
-import { updateItem, deleteItem, getItemById, createItem, toggleItemFavorite, toggleItemPinned } from '@/lib/db/items'
+import { updateItem, deleteItem, getItemForAuth, createItem, toggleItemFavorite, toggleItemPinned } from '@/lib/db/items'
 import {
   updateItemAction,
   deleteItemAction,
@@ -34,7 +41,7 @@ import {
 const mockAuth = auth as ReturnType<typeof vi.fn>
 const mockUpdateItem = updateItem as ReturnType<typeof vi.fn>
 const mockDeleteItem = deleteItem as ReturnType<typeof vi.fn>
-const mockGetItemById = getItemById as ReturnType<typeof vi.fn>
+const mockGetItemById = getItemForAuth as ReturnType<typeof vi.fn>
 const mockCreateItem = createItem as ReturnType<typeof vi.fn>
 const mockToggleItemFavorite = toggleItemFavorite as ReturnType<typeof vi.fn>
 const mockToggleItemPinned = toggleItemPinned as ReturnType<typeof vi.fn>
@@ -61,6 +68,8 @@ const validCreateInput = {
   fileUrl: null,
   fileName: null,
   fileSize: null,
+  imageWidth: null,
+  imageHeight: null,
 }
 
 beforeEach(() => {
@@ -143,6 +152,7 @@ describe('createItemAction', () => {
     const result = await createItemAction(validCreateInput)
     expect(result.status).toBe('created')
     expect(result.data).toEqual(mockItem)
+    expect(mockInvalidateCollectionsCache).not.toHaveBeenCalled()
   })
 
   it('returns CREATED when fileUrl belongs to the authenticated user (requires Pro)', async () => {
@@ -163,6 +173,7 @@ describe('createItemAction', () => {
       'user-1',
       expect.objectContaining({ collectionIds })
     )
+    expect(mockInvalidateCollectionsCache).toHaveBeenCalledWith('user-1')
   })
 
   it('passes empty collectionIds when none provided', async () => {
@@ -241,6 +252,7 @@ describe('updateItemAction', () => {
     const result = await updateItemAction('item-1', validInput)
     expect(result.status).toBe('ok')
     expect(result.data).toEqual(mockItem)
+    expect(mockInvalidateCollectionsCache).toHaveBeenCalledWith('user-1')
   })
 
   it('allows empty string for optional fields (url, description) and transforms to null', async () => {
@@ -321,6 +333,7 @@ describe('deleteItemAction', () => {
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('ok')
     expect(mockDeleteStoredImageFiles).not.toHaveBeenCalled()
+    expect(mockInvalidateCollectionsCache).toHaveBeenCalledWith('user-1')
   })
 
   it('deletes file from filebase before removing the DB row', async () => {
