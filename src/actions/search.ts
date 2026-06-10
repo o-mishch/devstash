@@ -6,8 +6,8 @@ import { withAuth } from '@/lib/session'
 import { parseOrFail } from '@/lib/utils/validators'
 import { createLogger } from '@/lib/infra/logger'
 import type { ApiBody } from '@/types/api'
-import type { LightItem } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
+import type { SearchResultItem } from '@/types/item'
+import type { SidebarCollection } from '@/types/collection'
 import { globalSearch } from '@/lib/db/search'
 
 const log = createLogger('search')
@@ -17,8 +17,8 @@ const searchSchema = z.object({
 })
 
 export interface SearchResult {
-  items: LightItem[]
-  collections: CollectionWithTypes[]
+  items: SearchResultItem[]
+  collections: SidebarCollection[]
 }
 
 export async function globalSearchAction(raw: { query: string }): Promise<ApiBody<SearchResult | null>> {

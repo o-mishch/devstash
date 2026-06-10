@@ -1,4 +1,4 @@
-import { getAllCollections } from './collections'
+import { getSidebarCollections } from './collections'
 import { getSidebarItemTypes } from './items'
 import { createLogger } from '@/lib/infra/logger'
 import { cache } from 'react'
@@ -10,7 +10,7 @@ const EMPTY_SIDEBAR: Omit<SidebarData, 'user'> = { collections: [], itemTypes: [
 
 const fetchSidebarDataInternal = cache(async (userId: string | null) => {
   const [collections, itemTypes] = await Promise.all([
-    userId ? getAllCollections(userId) : Promise.resolve([]),
+    userId ? getSidebarCollections(userId) : Promise.resolve([]),
     getSidebarItemTypes(userId),
   ])
   return { collections, itemTypes }

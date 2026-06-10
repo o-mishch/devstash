@@ -1,4 +1,4 @@
-import { unstable_cache, revalidatePath, revalidateTag as _revalidateTag } from 'next/cache'
+import { unstable_cache, revalidateTag as _revalidateTag } from 'next/cache'
 import { cache } from 'react'
 import { createLogger } from '@/lib/infra/logger'
 
@@ -30,10 +30,13 @@ export const CacheTags = {
   itemStats: (userId: string) => ({ tag: `user:${userId}:item-stats`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   sidebarTypes: (userId: string) => ({ tag: `user:${userId}:sidebar-types`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   allCollections: (userId: string) => ({ tag: `user:${userId}:collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
+  sidebarCollections: (userId: string) => ({ tag: `user:${userId}:sidebar-collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   favoriteCollections: (userId: string) => ({ tag: `user:${userId}:favorite-collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   collectionById: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   itemById: (userId: string, itemId: string) => ({ tag: `user:${userId}:item:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   itemDetails: (userId: string, itemId: string) => ({ tag: `user:${userId}:item-details:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
+  itemContent: (userId: string, itemId: string) => ({ tag: `user:${userId}:item-content:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
+  downloadItem: (userId: string, itemId: string) => ({ tag: `user:${userId}:download-item:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   itemsByCollection: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}:items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
   collectionStats: (userId: string) => ({ tag: `user:${userId}:collection-stats`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
   profile: (userId: string) => ({ tag: `user:${userId}:profile`, revalidate: CacheRevalidate.profile }),
@@ -82,9 +85,6 @@ export async function withDataCache<T>(
 export function invalidateCollectionsCache(userId: string): void {
   getRequestCache().clear()
   revalidateTag(`collections-${userId}`)
-  revalidatePath('/dashboard')
-  revalidatePath('/collections', 'layout')
-  revalidatePath('/favorites')
   log.info(`INVALIDATED collections for user:${userId}`)
 }
 
@@ -92,7 +92,6 @@ export function invalidateCollectionsCache(userId: string): void {
 export function invalidateProfileCache(userId: string): void {
   getRequestCache().clear()
   revalidateTag(CacheTags.profile(userId).tag)
-  revalidatePath('/profile', 'page')
   log.info(`INVALIDATED profile for user:${userId}`)
 }
 
@@ -104,9 +103,5 @@ export function invalidateItemsCache(userId?: string): void {
   if (userId) {
     revalidateTag(`items-${userId}`)
   }
-  revalidatePath('/dashboard')
-  revalidatePath('/items')
-  revalidatePath('/collections', 'layout')
-  revalidatePath('/favorites')
   log.info(`INVALIDATED items for user:${userId ?? 'all'}`)
 }

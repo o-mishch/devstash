@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import Image from 'next/image'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -9,6 +9,7 @@ import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { useAppUser } from '@/context/app-user-context'
 import { getDownloadUrl } from '@/lib/utils/url'
+import { useProDownloadSrc } from '@/hooks/use-pro-download-src'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 
@@ -21,27 +22,41 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
   const { openDrawer } = useItemDrawer()
   const { isPro } = useAppUser()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
+  const previewSrc = useProDownloadSrc(item.id, true)
+  const isLoaded = previewSrc !== null && loadedSrc === previewSrc
+
+  function handleCardKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    openDrawer(item)
+  }
 
   return (
     <Card
-      className="card-interactive group/card relative h-full min-w-0 w-full overflow-hidden p-0"
-      style={{ '--item-color': item.itemType.color } as CSSProperties}
+      role="button"
+      tabIndex={0}
+      className="card-interactive group/card relative h-full min-w-0 w-full overflow-visible p-0 focus-visible:ring-2 focus-visible:ring-ring"
       onClick={() => openDrawer(item)}
+      onKeyDown={handleCardKeyDown}
     >
-      <div className="relative aspect-video w-full h-full overflow-hidden bg-muted/30">
+      <div className="relative aspect-video h-full w-full overflow-hidden rounded-xl bg-muted/30">
         {!isLoaded && (
           <Skeleton className="absolute inset-0 z-0 h-full w-full rounded-none" />
         )}
-        <Image
-          src={getDownloadUrl(item.id, { preview: true })}
-          alt={item.title}
-          fill
-          unoptimized
-          priority={priority}
-          onLoad={() => setIsLoaded(true)}
-          className={`object-cover transition-all duration-300 group-hover/card:scale-105 z-10 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-        />
+        {previewSrc ? (
+          <Image
+            src={previewSrc}
+            alt={item.title}
+            fill
+            unoptimized
+            crossOrigin="anonymous"
+            priority={priority}
+            loading={priority ? undefined : 'lazy'}
+            onLoad={() => setLoadedSrc(previewSrc)}
+            className={`object-cover transition-all duration-300 group-hover/card:scale-105 z-10 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+          />
+        ) : null}
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-12 z-20">
           <div className="flex items-end justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">

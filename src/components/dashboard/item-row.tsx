@@ -6,6 +6,7 @@ import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { ItemTags } from '@/components/shared/item-tags'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { formatDate } from '@/lib/utils'
+import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 
 interface ItemRowProps {
@@ -21,7 +22,7 @@ export function ItemRow({ item }: ItemRowProps) {
     <button
       type="button"
       className="card-interactive app-row h-14 text-left gap-3 rounded-xl border-l-2 border-l-[var(--item-color)] px-2 ring-1 ring-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      style={{ '--item-color': itemType.color } as CSSProperties}
+      style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
       onClick={() => openDrawer(item)}
     >
       <ItemIconWrapper itemType={itemType} wrapperClassName="size-7" iconClassName="size-3.5" />

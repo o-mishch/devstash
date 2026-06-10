@@ -12,6 +12,7 @@ import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { getDownloadUrl } from '@/lib/utils/url'
+import { getProDownloadUrl, useProDownloadSrc } from '@/hooks/use-pro-download-src'
 import { useItemDrawer } from '@/context/item-drawer-context'
 import { useAppUser } from '@/context/app-user-context'
 import { useRestrictedDownload } from '@/hooks/use-restricted-download'
@@ -26,29 +27,34 @@ function FileSectionContent({ item }: FileSectionProps) {
   const { closeDrawer } = useItemDrawer()
   const { isPro } = useAppUser()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
+  const previewSrc = useProDownloadSrc(item.id, item.itemType.name === 'image')
   const { handleDownload, showError } = useRestrictedDownload(
     getDownloadUrl(item.id),
     item.fileName ?? item.title,
     isRestricted,
     false,
-    closeDrawer
+    closeDrawer,
+    isPro ? () => getProDownloadUrl(item.id) : undefined
   )
-
-  if (!item.fileUrl) return <p className="text-sm text-muted-foreground">—</p>
 
   if (item.itemType.name === 'image') {
     return (
       <div className="flex justify-center">
         <div className="group relative flex max-w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted/30">
-          <Image
-            src={getDownloadUrl(item.id, { preview: true })}
-            alt={item.fileName ?? item.title}
-            width={0}
-            height={0}
-            unoptimized
-            priority
-            className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
-          />
+          {previewSrc ? (
+            <Image
+              src={previewSrc}
+              alt={item.fileName ?? item.title}
+              width={0}
+              height={0}
+              unoptimized
+              crossOrigin="anonymous"
+              priority
+              className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
+            />
+          ) : (
+            <Skeleton className="h-64 w-96 max-w-full rounded-none" />
+          )}
           <button
             onClick={handleDownload}
             className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100"
@@ -80,12 +86,13 @@ function FileSectionContent({ item }: FileSectionProps) {
 interface ItemDrawerViewContentProps {
   item: LightItem | FullItem
   isLight: boolean
+  contentLoading?: boolean
   onClose: () => void
   onEdit: () => void
   onDeleted: () => void
 }
 
-export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDeleted }: ItemDrawerViewContentProps) {
+export function ItemDrawerViewContent({ item, isLight, contentLoading = false, onClose, onEdit, onDeleted }: ItemDrawerViewContentProps) {
   const { itemType } = item
   const fullItem = isFullItem(item) ? item : null
   const description = isFullItem(item) ? item.description : item.descriptionPreview
@@ -115,7 +122,7 @@ export function ItemDrawerViewContent({ item, isLight, onClose, onEdit, onDelete
     >
       {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
         <DrawerSection label="Content" className="flex flex-col flex-1 min-h-0">
-          {isLight ? (
+          {isLight || contentLoading ? (
             <Skeleton className="w-full rounded-md flex-1 h-0 min-h-[120px]" />
           ) : (
             <div className="overflow-hidden rounded-lg flex flex-col flex-1 h-0 min-h-[120px]">

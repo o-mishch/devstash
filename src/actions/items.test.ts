@@ -4,9 +4,11 @@ vi.mock('@/auth', () => ({ auth: vi.fn() }))
 vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
   getCachedVerifiedProAccess: vi.fn().mockResolvedValue(false),
 }))
-vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemById: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn(), toggleItemFavorite: vi.fn(), toggleItemPinned: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ updateItem: vi.fn(), deleteItem: vi.fn(), getItemForAuth: vi.fn(), createItem: vi.fn(), getRecentItemsPage: vi.fn(), getItemsByTypePage: vi.fn(), getItemsByCollectionPage: vi.fn(), getFavoriteItemsPage: vi.fn(), toggleItemFavorite: vi.fn(), toggleItemPinned: vi.fn() }))
 vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn() }))
-vi.mock('@/lib/storage/image-thumbnails', () => ({ deleteStoredImageFiles: vi.fn() }))
+vi.mock('@/lib/storage/image-thumbnails', () => ({
+  deleteStoredImageFiles: vi.fn(),
+}))
 vi.mock('@/lib/db/usage', () => ({
   canCreateItem: vi.fn(),
   FREE_TIER_ITEM_LIMIT: 50,
@@ -21,7 +23,7 @@ const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
 const mockGetCachedVerifiedProAccess = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 
 import { auth } from '@/auth'
-import { updateItem, deleteItem, getItemById, createItem, toggleItemFavorite, toggleItemPinned } from '@/lib/db/items'
+import { updateItem, deleteItem, getItemForAuth, createItem, toggleItemFavorite, toggleItemPinned } from '@/lib/db/items'
 import {
   updateItemAction,
   deleteItemAction,
@@ -34,7 +36,7 @@ import {
 const mockAuth = auth as ReturnType<typeof vi.fn>
 const mockUpdateItem = updateItem as ReturnType<typeof vi.fn>
 const mockDeleteItem = deleteItem as ReturnType<typeof vi.fn>
-const mockGetItemById = getItemById as ReturnType<typeof vi.fn>
+const mockGetItemById = getItemForAuth as ReturnType<typeof vi.fn>
 const mockCreateItem = createItem as ReturnType<typeof vi.fn>
 const mockToggleItemFavorite = toggleItemFavorite as ReturnType<typeof vi.fn>
 const mockToggleItemPinned = toggleItemPinned as ReturnType<typeof vi.fn>

@@ -6,7 +6,8 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate, cn } from '@/lib/utils'
-import type { FullItem, ItemType } from '@/types/item'
+import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
+import type { FullItem, SlimItemType } from '@/types/item'
 
 interface DrawerContainerProps {
   header: ReactNode
@@ -32,7 +33,7 @@ function DrawerContainer({ header, actions, children, style }: DrawerContainerPr
 }
 
 interface DrawerLayoutProps {
-  itemType: ItemType
+  itemType: SlimItemType
   onClose: () => void
   titleArea: ReactNode
   actionArea: ReactNode
@@ -42,7 +43,7 @@ interface DrawerLayoutProps {
 export function DrawerLayout({ itemType, onClose, titleArea, actionArea, children }: DrawerLayoutProps) {
   return (
     <DrawerContainer
-      style={{ '--item-color': itemType.color } as CSSProperties}
+      style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
       header={
         <>
           <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0" iconClassName="size-4.5" />

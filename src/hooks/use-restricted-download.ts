@@ -8,7 +8,8 @@ export function useRestrictedDownload(
   fileName: string,
   isRestricted: boolean,
   stopPropagation = false,
-  onUpgrade?: () => void
+  onUpgrade?: () => void,
+  resolveHref?: () => Promise<string>
 ) {
   const { showError, flash } = useRestrictedAction({
     title: 'Pro feature',
@@ -16,15 +17,16 @@ export function useRestrictedDownload(
     onUpgrade,
   })
 
-  function handleDownload(e: MouseEvent) {
+  async function handleDownload(e: MouseEvent) {
     if (stopPropagation) e.stopPropagation()
     if (isRestricted) {
       flash()
       return
     }
+    const resolvedHref = resolveHref ? await resolveHref().catch(() => href) : href
     // Programmatic anchor is the only way to trigger a named file download in the browser
     const a = document.createElement('a')
-    a.href = href
+    a.href = resolvedHref
     a.download = fileName
     a.click()
   }

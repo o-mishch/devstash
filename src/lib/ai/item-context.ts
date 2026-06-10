@@ -6,12 +6,9 @@ import { SYSTEM_TYPE_ORDER } from '@/lib/utils/constants'
 export const itemTypeSchema = z.enum(SYSTEM_TYPE_ORDER as [string, ...string[]])
 
 export const MAX_AI_FILE_SIZE_BYTES = 50_000_000
-export const MAX_AI_IMAGE_DIMENSION = 50_000
 
 export const itemAiFileMetadataSchema = {
   fileSize: z.number().int().positive().max(MAX_AI_FILE_SIZE_BYTES).optional(),
-  imageWidth: z.number().int().positive().max(MAX_AI_IMAGE_DIMENSION).optional(),
-  imageHeight: z.number().int().positive().max(MAX_AI_IMAGE_DIMENSION).optional(),
 }
 
 export interface ItemAiContextInput {
@@ -29,8 +26,6 @@ export interface ItemAiContextInput {
 export type ItemFileContext = Pick<ItemAiContextInput, 'itemType'> & {
   fileName?: string | null
   fileSize?: number | null
-  imageWidth?: number | null
-  imageHeight?: number | null
 }
 
 export function trimOptionalAiField(

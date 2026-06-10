@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/infra/prisma'
 import { withDataCache, CacheTags } from '@/lib/infra/cache'
-import type { CollectionWithTypes, CollectionStats } from '@/types/collection'
+import type { CollectionWithTypes, CollectionStats, SidebarCollection } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
 
+// Used only for single-record mutation returns (create/update) where the items join on one row is acceptable
 export const COLLECTION_SELECT = {
   id: true,
   name: true,
@@ -25,6 +26,99 @@ export const COLLECTION_SELECT = {
 } as const
 
 type CollectionRow = Prisma.CollectionGetPayload<{ select: typeof COLLECTION_SELECT }>
+
+// Slim base select for list/getById reads — type counts fetched via a separate groupBy raw query
+const COLLECTION_BASE_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  isFavorite: true,
+  createdAt: true,
+  _count: { select: { items: true } },
+} as const
+
+type CollectionBaseRow = Prisma.CollectionGetPayload<{ select: typeof COLLECTION_BASE_SELECT }>
+
+interface CollectionTypeCount {
+  collectionId: string
+  id: string
+  name: string
+  icon: string
+  color: string
+  isSystem: boolean
+  count: number
+}
+
+function groupTypeCountsByCollection(typeCounts: CollectionTypeCount[]): Map<string, CollectionTypeCount[]> {
+  const map = new Map<string, CollectionTypeCount[]>()
+  for (const tc of typeCounts) {
+    const arr = map.get(tc.collectionId) ?? []
+    arr.push(tc)
+    map.set(tc.collectionId, arr)
+  }
+  return map
+}
+
+// Raw SQL required: Prisma groupBy cannot group across relation fields (item.itemTypeId from ItemCollection)
+async function getCollectionTypeCounts(collectionIds: string[]): Promise<CollectionTypeCount[]> {
+  if (collectionIds.length === 0) return []
+  return prisma.$queryRaw<CollectionTypeCount[]>`
+    SELECT
+      ic."collectionId",
+      it.id,
+      it.name,
+      it.icon,
+      it.color,
+      it."isSystem",
+      COUNT(*)::int AS count
+    FROM item_collections ic
+    JOIN items i ON ic."itemId" = i.id
+    JOIN item_types it ON i."itemTypeId" = it.id
+    WHERE ic."collectionId" = ANY(${collectionIds}::text[])
+    GROUP BY ic."collectionId", it.id, it.name, it.icon, it.color, it."isSystem"
+    ORDER BY count DESC
+  `
+}
+
+function mapCollectionBase(col: CollectionBaseRow, typeCounts: CollectionTypeCount[]): CollectionWithTypes {
+  const types = typeCounts.slice(0, 4).map(tc => ({
+    id: tc.id,
+    name: tc.name,
+    icon: tc.icon,
+    color: tc.color,
+    isSystem: tc.isSystem,
+  }))
+  return {
+    id: col.id,
+    name: col.name,
+    description: col.description,
+    isFavorite: col.isFavorite,
+    createdAt: col.createdAt,
+    itemCount: col._count.items,
+    dominantColor: typeCounts[0]?.color ?? null,
+    types,
+  }
+}
+
+export const SIDEBAR_COLLECTION_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  isFavorite: true,
+  _count: { select: { items: true } },
+} as const
+
+type SidebarCollectionRow = Prisma.CollectionGetPayload<{ select: typeof SIDEBAR_COLLECTION_SELECT }>
+
+export function mapSidebarCollection(col: SidebarCollectionRow): SidebarCollection {
+  return {
+    id: col.id,
+    name: col.name,
+    description: col.description,
+    isFavorite: col.isFavorite,
+    itemCount: col._count.items,
+  }
+}
 
 export function mapCollection(col: CollectionRow): CollectionWithTypes {
   const typeCounts = new Map<string, { count: number; type: CollectionWithTypes['types'][number] }>()
@@ -56,14 +150,29 @@ export function mapCollection(col: CollectionRow): CollectionWithTypes {
   }
 }
 
+export async function getSidebarCollections(userId: string): Promise<SidebarCollection[]> {
+  return withDataCache(CacheTags.sidebarCollections(userId), async () => {
+    const collections = await prisma.collection.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+      select: SIDEBAR_COLLECTION_SELECT,
+    })
+    return collections.map(mapSidebarCollection)
+  })
+}
+
 export async function getAllCollections(userId: string): Promise<CollectionWithTypes[]> {
   return withDataCache(CacheTags.allCollections(userId), async () => {
     const collections = await prisma.collection.findMany({
       where: { userId },
       orderBy: { updatedAt: 'desc' },
-      select: COLLECTION_SELECT,
+      select: COLLECTION_BASE_SELECT,
     })
-    return collections.map(mapCollection)
+    if (collections.length === 0) return []
+    const ids = collections.map(c => c.id)
+    const typeCounts = await getCollectionTypeCounts(ids)
+    const countsByCollection = groupTypeCountsByCollection(typeCounts)
+    return collections.map(col => mapCollectionBase(col, countsByCollection.get(col.id) ?? []))
   })
 }
 
@@ -72,9 +181,13 @@ export async function getFavoriteCollections(userId: string): Promise<Collection
     const collections = await prisma.collection.findMany({
       where: { userId, isFavorite: true },
       orderBy: { updatedAt: 'desc' },
-      select: COLLECTION_SELECT,
+      select: COLLECTION_BASE_SELECT,
     })
-    return collections.map(mapCollection)
+    if (collections.length === 0) return []
+    const ids = collections.map(c => c.id)
+    const typeCounts = await getCollectionTypeCounts(ids)
+    const countsByCollection = groupTypeCountsByCollection(typeCounts)
+    return collections.map(col => mapCollectionBase(col, countsByCollection.get(col.id) ?? []))
   })
 }
 
@@ -82,10 +195,11 @@ export async function getCollectionById(userId: string, collectionId: string): P
   return withDataCache(CacheTags.collectionById(userId, collectionId), async () => {
     const col = await prisma.collection.findFirst({
       where: { id: collectionId, userId },
-      select: COLLECTION_SELECT,
+      select: COLLECTION_BASE_SELECT,
     })
     if (!col) return null
-    return mapCollection(col)
+    const typeCounts = await getCollectionTypeCounts([col.id])
+    return mapCollectionBase(col, typeCounts)
   })
 }
 

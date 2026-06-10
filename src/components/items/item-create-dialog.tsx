@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useState, type SyntheticEvent, type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Plus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -32,16 +31,16 @@ import { createItemAction } from '@/actions/items'
 import { apiFetch } from '@/lib/api/api-fetch'
 import { createLogger } from '@/lib/infra/logger'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
-import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
-import { FREE_TIER_ITEM_LIMIT } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES, FREE_TIER_ITEM_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
 import { useAppUser } from '@/context/app-user-context'
+import { ItemsStoreActionType, useItemsStore } from '@/context/items-store-context'
 
 import { itemFormBaseSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import type { SidebarItemType } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
+import type { CollectionPickerItem } from '@/types/collection'
 import type { FileItemType } from '@/lib/utils/constants'
 
 const log = createLogger('items')
@@ -55,7 +54,7 @@ async function deleteOrphanedFile(file: UploadedFile): Promise<void> {
 
 interface CreateItemDialogProps {
   itemTypes: SidebarItemType[]
-  collections: CollectionWithTypes[]
+  collections: CollectionPickerItem[]
   initialType?: string
   trigger?: ReactNode
   open?: boolean
@@ -63,7 +62,7 @@ interface CreateItemDialogProps {
 }
 
 export function CreateItemDialog({ itemTypes, collections, initialType, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
-  const router = useRouter()
+  const { dispatch } = useItemsStore()
   const { isPro, canCreateItem } = useAppUser()
   const { showUpgradePrompt } = useUpgradePrompt()
   const validInitialType = (initialType && PRO_ITEM_TYPE_NAMES.has(initialType) && !isPro) ? itemTypes[0]?.name : initialType
@@ -142,6 +141,8 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
         fileUrl: uploadedFile?.fileUrl ?? null,
         fileName: uploadedFile?.fileName ?? null,
         fileSize: uploadedFile?.fileSize ?? null,
+        imageWidth: uploadedFile?.imageWidth ?? null,
+        imageHeight: uploadedFile?.imageHeight ?? null,
         collectionIds: data.collectionIds,
       })
 
@@ -149,7 +150,9 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
         toast.success('Item created successfully')
         savedRef.current = true
         handleOpenChange(false)
-        router.refresh()
+        if (result.data) {
+          dispatch({ type: ItemsStoreActionType.PrependItem, item: result.data })
+        }
       } else {
         if (result.status === 'forbidden') {
           toast.warning(result.message ?? 'Upgrade to Pro to continue.')
@@ -241,8 +244,6 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
                     ? {
                         fileName: uploadedFile.fileName,
                         fileSize: uploadedFile.fileSize,
-                        imageWidth: uploadedFile.imageWidth,
-                        imageHeight: uploadedFile.imageHeight,
                       }
                     : {}),
                 }}

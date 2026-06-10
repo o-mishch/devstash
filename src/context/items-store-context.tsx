@@ -10,6 +10,7 @@ export const ItemsStoreActionType = {
   RemoveItem: 'REMOVE_ITEM',
   SetLoading: 'SET_LOADING',
   UpdateItemFields: 'UPDATE_ITEM_FIELDS',
+  PrependItem: 'PREPEND_ITEM',
 } as const
 
 export interface ItemsStoreState {
@@ -27,6 +28,7 @@ export type ItemsStoreAction =
   | { type: 'REMOVE_ITEM'; id: string }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'UPDATE_ITEM_FIELDS'; id: string; fields: Partial<LightItem> }
+  | { type: 'PREPEND_ITEM'; item: LightItem }
 
 export const itemsStoreInitialState: ItemsStoreState = {
   pageKey: '',
@@ -80,6 +82,13 @@ export function itemsStoreReducer(state: ItemsStoreState, action: ItemsStoreActi
         items = sortGridItems(items)
       }
       return { ...state, items }
+    }
+    case ItemsStoreActionType.PrependItem: {
+      // Only add to pages where this item type belongs: recent or matching type page
+      const typeName = action.item.itemType.name
+      const matchesPage = state.pageKey === 'recent' || state.pageKey === `type:${typeName}`
+      if (!matchesPage) return state
+      return { ...state, items: sortGridItems([action.item, ...state.items]) }
     }
   }
 }

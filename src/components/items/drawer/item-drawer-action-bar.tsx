@@ -46,7 +46,6 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     {
       onSuccess: (next) => {
         dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isFavorite: next } })
-        router.refresh()
       },
       errorLabel: 'Failed to toggle favorite',
     }
@@ -58,7 +57,6 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     {
       onSuccess: (next) => {
         dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isPinned: next } })
-        router.refresh()
       },
       errorLabel: 'Failed to toggle pin',
     }

@@ -1,13 +1,11 @@
 # Current Feature
 
-## Status
-
-Not Started
+## Status: Not Started
 
 ## Goals
 
-<!-- Bullet points of what success looks like -->
+<!-- Add goals here -->
 
 ## Notes
 
-<!-- Additional context, constraints, or details from spec -->
+<!-- Add notes here -->

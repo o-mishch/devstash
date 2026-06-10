@@ -8,7 +8,7 @@ import { canCreateItem, FREE_TIER_ITEM_LIMIT } from '@/lib/db/usage'
 import {
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
-  getItemById as dbGetItemById,
+  getItemForAuth as dbGetItemForAuth,
   createItem as dbCreateItem,
   getRecentItemsPage,
   getItemsByTypePage,
@@ -23,7 +23,7 @@ import { deleteStoredImageFiles } from '@/lib/storage/image-thumbnails'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { parseOrFail, isOwnedFileReference } from '@/lib/utils/validators'
 import type { ApiBody } from '@/types/api'
-import type { LightItem, FullItem, FetchItemsQuery, ItemsPage } from '@/types/item'
+import type { LightItem, ItemSavedDetails, FetchItemsQuery, ItemsPage } from '@/types/item'
 
 const log = createLogger('items')
 
@@ -53,6 +53,8 @@ const createItemSchema = itemMutationSchema.extend({
   fileUrl: z.string().trim().optional().nullable().transform((v) => v || null),
   fileName: z.string().trim().optional().nullable().transform((v) => v || null),
   fileSize: z.number().int().positive().optional().nullable().transform((v) => v ?? null),
+  imageWidth: z.number().int().positive().optional().nullable().transform((v) => v ?? null),
+  imageHeight: z.number().int().positive().optional().nullable().transform((v) => v ?? null),
 }).refine((data) => {
   if (ITEM_TYPES_WITH_URL.has(data.itemTypeName) && !data.url) return false
   return true
@@ -84,7 +86,7 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Li
       return ApiResponse.FORBIDDEN('Invalid file reference.')
     }
 
-    const created = await dbCreateItem(userId, data)
+    const created = await dbCreateItem(userId, { ...data, imageWidth: data.imageWidth ?? null, imageHeight: data.imageHeight ?? null })
     if (!created) return ApiResponse.INTERNAL_ERROR('Failed to create item.')
 
     invalidateItemsCache(userId)
@@ -96,9 +98,9 @@ export async function createItemAction(raw: CreateItemInput): Promise<ApiBody<Li
 export async function updateItemAction(
   itemId: string,
   raw: UpdateItemInput
-): Promise<ApiBody<FullItem | null>> {
+): Promise<ApiBody<ItemSavedDetails | null>> {
   return withValidatedAuth(itemMutationSchema, raw, async ({ userId, isPro }, data: UpdateItemInput) => {
-    const existing = await dbGetItemById(userId, itemId)
+    const existing = await dbGetItemForAuth(userId, itemId)
     if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
 
     if (PRO_ITEM_TYPE_NAMES.has(existing.itemType.name) && !isPro) {
@@ -116,7 +118,7 @@ export async function updateItemAction(
 
 export async function deleteItemAction(itemId: string): Promise<ApiBody<void>> {
   return withAuth(async ({ userId }) => {
-    const existing = await dbGetItemById(userId, itemId)
+    const existing = await dbGetItemForAuth(userId, itemId)
     if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
 
     if (existing.fileUrl) {
@@ -165,5 +167,3 @@ export async function fetchMoreItemsAction(query: FetchItemsQuery, cursor?: stri
 export const toggleItemFavoriteAction = createToggleAction(dbToggleItemFavorite, invalidateItemsCache, 'item')
 
 export const toggleItemPinnedAction = createToggleAction(dbToggleItemPinned, invalidateItemsCache, 'item')
-
-

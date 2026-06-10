@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useRouter } from 'next/navigation'
 import { X, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useForm, Controller, useWatch } from 'react-hook-form'
@@ -15,7 +14,6 @@ import { ItemFormFields } from '@/components/items/item-form-fields'
 import { updateItemAction } from '@/actions/items'
 import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
-import { getDownloadUrl } from '@/lib/utils/url'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import type { FullItem } from '@/types/item'
@@ -42,7 +40,6 @@ interface ItemDrawerEditContentProps {
 }
 
 export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel }: ItemDrawerEditContentProps) {
-  const router = useRouter()
   const { itemType } = item
   const typeName = itemType.name
 
@@ -63,7 +60,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
 
   const watchedLanguage = useWatch({ control: form.control, name: 'language' })
   const saving = form.formState.isSubmitting
-  
+
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(typeName)
 
   const handleSubmit = form.handleSubmit(async (data: DrawerFormValues) => {
@@ -84,9 +81,17 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
       return
     }
 
+    const fullUpdated: FullItem = {
+      ...item,
+      ...result.data,
+      title: data.title.trim(),
+      content: data.content || null,
+      language: data.language?.trim() || null,
+      descriptionPreview: (data.description?.trim() || null)?.slice(0, 150) ?? null,
+      contentPreview: (data.content || null)?.slice(0, 150) ?? null,
+    }
+    onSave(fullUpdated)
     toast.success('Item saved')
-    router.refresh()
-    onSave(result.data as FullItem)
   })
 
   return (
@@ -154,9 +159,6 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
         watchedLanguage={watchedLanguage}
         collections={collections}
         variant="drawer"
-        imageProbeUrl={
-          typeName === 'image' && item.fileUrl ? getDownloadUrl(item.id) : undefined
-        }
       />
 
       <DrawerDetailsSection item={item} />
