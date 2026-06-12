@@ -1,5 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('@/lib/infra/redis', () => ({
+  getRedis: vi.fn(() => null),
+}))
+
+vi.mock('@/lib/billing/subscription/subscription-state-redis-cache', () => ({
+  invalidateSubscriptionStateCache: vi.fn(),
+}))
+
+vi.mock('@/lib/billing/access/pro-access-cache', () => ({
+  invalidateProAccessForUserIds: vi.fn(),
+}))
+
 vi.mock('@/lib/infra/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }))

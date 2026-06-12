@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { X, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useForm, Controller, useWatch } from 'react-hook-form'
@@ -42,6 +43,7 @@ interface ItemDrawerEditContentProps {
 export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel }: ItemDrawerEditContentProps) {
   const { itemType } = item
   const typeName = itemType.name
+  const queryClient = useQueryClient()
 
   const formSchema = useMemo(() => createDrawerFormSchema(typeName), [typeName])
 
@@ -91,6 +93,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
       contentPreview: (data.content || null)?.slice(0, 150) ?? null,
     }
     onSave(fullUpdated)
+    void queryClient.invalidateQueries({ queryKey: ['items'] })
     toast.success('Item saved')
   })
 

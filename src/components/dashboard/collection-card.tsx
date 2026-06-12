@@ -1,4 +1,7 @@
+'use client'
+
 import type { CSSProperties } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
@@ -10,12 +13,15 @@ interface CollectionCardProps {
 }
 
 export function CollectionCard({ collection }: CollectionCardProps) {
+  const router = useRouter()
+  const href = `/collections/${collection.id}`
+
   return (
     <Card
       className="card-interactive group/card relative h-20 gap-0 overflow-visible py-0 border-l-2 border-l-[var(--item-color)]"
       style={{ '--item-color': collection.dominantColor ?? undefined } as CSSProperties}
     >
-      <Link href={`/collections/${collection.id}`} className="absolute inset-0 z-10 rounded-xl" aria-label={`View ${collection.name}`} />
+      <Link href={href} prefetch={false} onMouseEnter={() => router.prefetch(href)} className="absolute inset-0 z-10 rounded-xl" aria-label={`View ${collection.name}`} />
       <CardContent className="flex h-full flex-col justify-center p-3 sm:p-4 pr-20">
         <div className="min-w-0 w-full">
           <p className="truncate font-medium text-sm">{collection.name}</p>

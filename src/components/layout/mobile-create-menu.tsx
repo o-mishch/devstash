@@ -15,8 +15,8 @@ import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
 import { FREE_TIER_ITEM_LIMIT, FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
 import { getInitialTypeFromPathname } from '@/lib/utils/url'
-import { useAppUser } from '@/context/app-user-context'
-import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
+import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionPickerItem } from '@/types/collection'
 
@@ -26,8 +26,8 @@ interface MobileCreateMenuProps {
 }
 
 export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuProps) {
-  const { canCreateItem, canCreateCollection } = useAppUser()
-  const { showUpgradePrompt } = useUpgradePrompt()
+  const { canCreateItem, canCreateCollection } = useAppUserFlagsStore()
+  const { openPrompt } = useUpgradePromptStore()
   const [itemOpen, setItemOpen] = useState(false)
   const [collectionOpen, setCollectionOpen] = useState(false)
   const pathname = usePathname()
@@ -63,7 +63,7 @@ export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuPro
           <DropdownMenuItem onClick={(e) => {
             if (!canCreateItem) {
               e.preventDefault()
-              showUpgradePrompt({ title: 'Item limit reached', description: `You've used all ${FREE_TIER_ITEM_LIMIT} free items.` })
+              openPrompt({ title: 'Item limit reached', description: `You've used all ${FREE_TIER_ITEM_LIMIT} free items.` })
               return
             }
             setItemOpen(true)
@@ -75,7 +75,7 @@ export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuPro
           <DropdownMenuItem onClick={(e) => {
             if (!canCreateCollection) {
               e.preventDefault()
-              showUpgradePrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
+              openPrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
               return
             }
             setCollectionOpen(true)

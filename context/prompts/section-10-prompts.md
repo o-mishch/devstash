@@ -58,3 +58,9 @@ context/features/stripe-phase-2-spec.md
 we need a clear way to upgrade the user. Free isers should see a button in the header that says "Upgrade". Instead of that taking them directly to the Stripe checkout, create a / upgrade page that displays the features much like we have in the pricing area of the homepage. They should be able to select the PLN 20 monthly or PLN 270 yearly. Then they can click to upgrade from there to go through checkout
 
 see src/lib/utils/constants.ts PRICING
+
+
+
+review @.agents/rules/ai-interaction.md from point of view al-agent (you), 
+in case something (or evem majorly) you would chnage to make it more convinient for you to use that rule, please improve.
+you can research in context7, or ask any question

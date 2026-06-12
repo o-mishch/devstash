@@ -1,16 +1,14 @@
 import { StatsCards } from '@/components/dashboard/stats-cards'
-import { getItemStats } from '@/lib/db/items'
-import { getCollectionStats } from '@/lib/db/collections'
+import type { ItemStats } from '@/types/item'
+import type { CollectionStats } from '@/types/collection'
 
 interface DashboardStatsProps {
-  userId: string
+  statsPromise: Promise<ItemStats>
+  collectionStatsPromise: Promise<CollectionStats>
 }
 
-export async function DashboardStats({ userId }: DashboardStatsProps) {
-  const [itemStats, collectionStats] = await Promise.all([
-    getItemStats(userId),
-    getCollectionStats(userId),
-  ])
+export async function DashboardStats({ statsPromise, collectionStatsPromise }: DashboardStatsProps) {
+  const [itemStats, collectionStats] = await Promise.all([statsPromise, collectionStatsPromise])
 
   return (
     <StatsCards

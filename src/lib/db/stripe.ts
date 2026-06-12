@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { Prisma } from '@/generated/prisma'
 import { prisma } from '@/lib/infra/prisma'
 import { createLogger } from '@/lib/infra/logger'
@@ -79,7 +81,7 @@ export async function clearStripeCustomerByCustomerId(stripeCustomerId: string) 
     },
   })
   const userIds = users.map((user) => user.id)
-  log.info('stripe_customer_cleared', { stripeCustomerId, count: result.count }, 'Cleared Stripe customer link from local users')
+  log.info('DB: stripe_customer_cleared', { stripeCustomerId, count: result.count }, 'Cleared Stripe customer link from local users')
   return { count: result.count, userIds }
 }
 
@@ -104,7 +106,7 @@ async function clearConflictingStripeSubscriptionLink(
   })
   if (!owner || owner.id === targetUserId) return []
 
-  log.warn('Clearing stale stripeSubscriptionId from another user before reassignment', {
+  log.warn('DB: Clearing stale stripeSubscriptionId from another user before reassignment', {
     stripeSubscriptionId,
     previousUserId: owner.id,
     targetUserId,
@@ -123,7 +125,7 @@ async function clearConflictingStripeCustomerLink(
   })
   if (!owner || owner.id === targetUserId) return []
 
-  log.warn('Clearing stale stripeCustomerId from another user before reassignment', {
+  log.warn('DB: Clearing stale stripeCustomerId from another user before reassignment', {
     stripeCustomerId,
     previousUserId: owner.id,
     targetUserId,
@@ -175,12 +177,12 @@ export async function updateUserStripeSubscription(userId: string, params: Updat
         ...(subscriptionInterval && { subscriptionInterval }),
       },
     })
-    log.info('subscription_state_updated', { userId, isPro, stripeSubscriptionId, subscriptionInterval }, 'Updated user Stripe subscription link')
+    log.info('DB: subscription_state_updated', { userId, isPro, stripeSubscriptionId, subscriptionInterval }, 'Updated user Stripe subscription link')
     return { result, userIds: [...new Set([userId, ...conflictClearedUserIds])] }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const target = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target ?? 'unknown')
-      log.error('Unique constraint prevented Stripe subscription link — manual reconciliation required', {
+      log.error('DB: Unique constraint prevented Stripe subscription link — manual reconciliation required', {
         userId,
         stripeCustomerId,
         stripeSubscriptionId,
@@ -226,6 +228,6 @@ export async function clearStripeSubscriptionBySubId(stripeSubscriptionId: strin
       ...(proExpiredAt && { proExpiredAt }),
     },
   })
-  log.info('subscription_link_cleared', { stripeSubscriptionId, proExpiredAt }, 'Cleared local Stripe subscription link')
+  log.info('DB: subscription_link_cleared', { stripeSubscriptionId, proExpiredAt }, 'Cleared local Stripe subscription link')
   return { count: result.count, userIds }
 }

@@ -1,33 +1,30 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { CodeEditor, MarkdownEditor, MarkdownViewer } from './dynamic-editors'
+import { useEffect } from 'react'
+import { loader } from '@monaco-editor/react'
 
 export function EditorPreloader() {
-  const [shouldLoad, setShouldLoad] = useState(false)
-
   useEffect(() => {
-    // requestIdleCallback is not provided by Next.js or React — use the browser native API
-    // directly (falls back to setTimeout for Safari < 16.4).
-    if ('requestIdleCallback' in globalThis) {
-      requestIdleCallback(() => setShouldLoad(true))
+    // Defer Monaco initialization during browser idle time (lazyOnload pattern).
+    // This prevents Monaco CDN requests from blocking page interactivity.
+    // requestIdleCallback waits for the browser to have no pending work before initializing.
+    const initMonaco = () => {
+      try {
+        loader.init()
+      } catch {
+        // Silently fail if preload doesn't work — Monaco will still load on first use
+      }
+    }
+
+    if ('requestIdleCallback' in window) {
+      // Safari 15.1+, Chrome 76+: defer to idle time with 3-second safety timeout
+      requestIdleCallback(initMonaco, { timeout: 3000 })
     } else {
-      setTimeout(() => setShouldLoad(true), 1000)
+      // Fallback for older browsers: defer with 2-second delay
+      const timeoutId = setTimeout(initMonaco, 2000)
+      return () => clearTimeout(timeoutId)
     }
   }, [])
 
-  if (!shouldLoad) return null
-
-  // Mounting the components in a visually hidden, non-interactive container forces React to fully resolve 
-  // the next/dynamic boundaries and initializes the heavy editors (like Monaco) in the background.
-  return (
-    <div 
-      style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: '1px', height: '1px', overflow: 'hidden' }} 
-      aria-hidden="true"
-    >
-      <CodeEditor value="" readOnly />
-      <MarkdownEditor value="" onChange={() => {}} />
-      <MarkdownViewer value="" />
-    </div>
-  )
+  return null
 }

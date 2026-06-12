@@ -15,6 +15,7 @@ import {
 import { getUserById } from '@/lib/db/users'
 import { retrieveStripeCustomer } from '@/lib/billing/stripe-api'
 import { invalidateProAccessForUserIds } from '@/lib/billing/access/pro-access-cache'
+import { invalidateSubscriptionStateCache } from '@/lib/billing/subscription/subscription-state-redis-cache'
 import { createLogger } from '@/lib/infra/logger'
 
 type ClearStripeCustomerResult = Awaited<ReturnType<typeof clearStripeCustomerByCustomerIdInDb>>
@@ -52,6 +53,7 @@ export async function updateSubscriptionState(
   data: UpdateSubscriptionStateData,
 ) {
   const result = await withProCacheInvalidation(() => updateSubscriptionStateInDb(stripeSubscriptionId, data))
+  await invalidateSubscriptionStateCache(stripeSubscriptionId)
   return { count: result.count }
 }
 
@@ -62,6 +64,7 @@ export async function clearStripeSubscriptionBySubId(
   const result = await withProCacheInvalidation(() =>
     clearStripeSubscriptionBySubIdInDb(stripeSubscriptionId, proExpiredAt),
   )
+  await invalidateSubscriptionStateCache(stripeSubscriptionId)
   return { count: result.count }
 }
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api/api-fetch'
 import { getDownloadUrl } from '@/lib/utils/url'
-import { useAppUser } from '@/context/app-user-context'
+import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import type { SignedDownloadUrlResponse } from '@/types/item'
 
 interface SignedSrcState {
@@ -67,7 +67,7 @@ async function resolveSignedDownloadUrl(itemId: string, preview = false): Promis
 }
 
 export function useProDownloadSrc(itemId: string, preview = false): string | null {
-  const { isPro } = useAppUser()
+  const { isPro } = useAppUserFlagsStore()
   const proxyUrl = getDownloadUrl(itemId, { preview })
   const [signedSrc, setSignedSrc] = useState<SignedSrcState | null>(() => {
     const cached = getCachedSignedDownloadUrl(itemId, preview)
@@ -98,3 +98,10 @@ export function useProDownloadSrc(itemId: string, preview = false): string | nul
 
   return proxyUrl
 }
+
+export function clearSignedDownloadUrlCache(itemId: string, preview: boolean): void {
+  signedDownloadUrlCache.delete(getSignedDownloadUrlCacheKey(itemId, preview))
+  inFlightRequests.delete(getSignedDownloadUrlCacheKey(itemId, preview))
+}
+
+export const getSignedDownloadUrl = resolveSignedDownloadUrl

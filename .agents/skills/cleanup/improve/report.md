@@ -7,7 +7,7 @@ User-facing report. **STOP** after report unless user requests fixes.
 ```markdown
 # Code quality audit
 
-**Run #N** · [date] · [N] uncommitted files reviewed
+[date] · [N] uncommitted files reviewed
 
 ---
 
@@ -19,8 +19,6 @@ User-facing report. **STOP** after report unless user requests fixes.
 | **Major** | N · **Minor** | N |
 | **LOC (`src/`)** | +A −B (net Δ) · ↓ good / → watch / ↑ creep |
 | **KISS (−LOC)** | N opportunities · est. **−XXX** lines recoverable |
-| **Audit reconcile** | N/N IDs challenged (open · implemented · accepted · watchlist) |
-| **Since last run** | ⚠️ N regressions · 🆕 N new findings |
 
 _One sentence: biggest takeaway — tie to KISS/LOC (e.g. "+340 LOC creep; est. −120 recoverable via merges below")._
 
@@ -34,96 +32,34 @@ _One sentence: biggest takeaway — tie to KISS/LOC (e.g. "+340 LOC creep; est. 
 
 ## KISS — decrease LOC
 
-_Primary improve lever. List every −LOC opportunity (P2, SSR, redesign). Omit section only if zero._
+_Primary improve lever. List every −LOC opportunity: repeated patterns (incl. those whose other call sites are outside the changeset), existing-util/library-idiom applications, P2 merges, SSR conversions, redesigns. Omit section only if zero._
 
 | ID | Cut / merge / simplify | est. LOC |
 | --- | --- | --- |
-| P2-5 | Merge `a.ts` + `b.ts` | **−45** |
+| P2-5 | Merge `a.ts` + `b.ts` (same helper) | **−45** |
+| P2-7 | Pattern repeated in 4 files → extract `useX` / apply existing util | **−60** |
 | P5-1 | `foo.tsx` → server component | **−12** |
-| | **Total recoverable** | **−57** |
+| | **Total recoverable** | **−117** |
 
-_If net LOC is already ↓, note what drove the decrease. If ↑ creep, lead with biggest −LOC wins._
-
----
-
-## Needs your decision
-
-_List only Open findings. Major first, then Minor. If none: "Nothing blocking — optional minor items below."_
-
-### 🔴 Fix now (Major)
-
-**[P4-1] Short title**
-Problem in plain language.
-→ *Suggested fix:* one concrete action · **est. LOC:** −N / ≈0 / +N _(prefer −; if +, name what to delete/merge)_
-
-### 🟡 Optional (Minor)
-
-**[P5-6] Short title**
-Problem.
-→ *Suggested fix:* … · **est. LOC:** −N / ≈0 / +N
+_If net LOC is already ↓, note what drove the decrease. If ↑ creep, lead with biggest −LOC wins. For a library-idiom swap, cite the context7-confirmed API._
 
 ---
 
-## Regressions
+## Findings
 
-_Include when any Implemented / Accepted / Watchlist reconcile → ⚠️, or other regression. Otherwise omit._
-
-⚠️ **[P3-1] Title** — Implemented run #2; [what broke again].  
-→ Revert or re-apply: …
-
----
-
-## Audit reconcile
-
-_Mandatory when **any** audit table is non-empty. Challenge every ID in code — notebook presence ≠ pass. One row per ID per subsection; none omitted._
-
-### Still open
-
-| ID | Pri | Code check | Outcome |
-| --- | --- | --- | --- |
-| P3-1 | Major | `updateUserEmail` still in customer webhook | **Still open** → Needs your decision |
-| P2-1 | Minor | hook inlined, file deleted | **Fixed** |
-
-_Still open → also in **Needs your decision**. Outcomes: **Still open**, **Fixed**, **Obsolete** (+ why)._
-
-### Implemented
-
-| ID | Code check | Outcome |
-| --- | --- | --- |
-| P3-1 | `StripeWebhookRetryError` still re-thrown in route | ✅ Holds |
-| P4-3 | layout revalidation removed | ⚠️ Regression → see Regressions |
-
-### Accepted tradeoffs
-
-| ID | Code check | Outcome |
-| --- | --- | --- |
-| P1-1 | billing module still ~70 files, no new coupling | ✅ Holds |
-| P2-4 | net LOC +833, no merge attempted | ✅ Holds |
-
-### Regression watchlist
-
-| ID | Quick check | Outcome |
-| --- | --- | --- |
-| P3-2 | DB fail-open branch still at pro-access-resolution L82–93 | ✅ Pass |
-
-_Omit empty subsections. First run with all tables empty: omit entire **Audit reconcile** section._
-
----
-
-## All findings
-
-_Group by P1→P5. Omit priorities with zero findings. Use this card shape:_
+_The complete catalogue — every finding stated **once**, referenced by ID. Group by P1→P5; omit priorities with zero findings. Within each priority, **Major (🔴) before Minor (🟡)**. The user picks fixes by ID from here. Card shape:_
 
 ### P4 — Bugs & logging
 
-**[P4-5] Minor — Webhook retry logged as unhandled**
-- **Problem:** …
+**🔴 [P4-1] Major — Error on critical path swallowed without `log.error`**
+- **Problem:** … _(plain language)_
+- **Evidence:** `route.ts:42` — _quote the offending line / shape_
 - **Why it matters:** …
-- **Fix:** … _(prefer inline/merge; est. LOC Δ)_
-- **Leaner option:** … _(if primary fix adds lines)_
-- **Files:** `api.ts`, `route.ts`
+- **Fix:** one concrete action · **est. LOC:** −N / ≈0 / +N _(prefer −; if +, name what to delete/merge)_
+- **Leaner option:** … _(only if the primary fix adds lines)_
+- **Rule:** _coding-standards § Logging_ _(P4/P5 only; omit otherwise)_
 
-_If none:_ `No issues found.`
+_If none across all priorities:_ `No issues found.` _(state what you checked — see checklist.md criticality note)_
 
 ---
 
@@ -135,12 +71,6 @@ _Include a table **only** when it helps scan many related items. Skip empty tabl
 
 | ID | Risk | What could go wrong | Fix |
 | --- | --- | --- | --- |
-
-**KISS detail** _(extra P2 rows if many — same data as **KISS — decrease LOC**, sorted −LOC first)_
-
-| ID | Current | Simpler option | est. LOC |
-| --- | --- | --- | --- |
-| P2-1 | 3 files, same helper | merge into `foo.ts` | **−45** |
 
 **Redesign** _(if P1 structural)_
 
@@ -195,12 +125,7 @@ Major redesigns need explicit approval before I edit code.
 
 ## Agent notes (not in user report)
 
-- **Audit reconcile = mandatory.** Every non-empty audit table: challenge 100% of IDs in code. Notebook row ≠ pass.
-- **Still open** still broken → **Needs your decision** + **All findings**. Never skip because reported last run.
-- **Implemented** → ✅ Holds or ⚠️ Regression. Never assume fixed without **Verify** hint.
-- **Accepted** → ✅ Holds or ⚠️ Violated. Never treat as permanently off-limits.
-- **Watchlist** → ✅ Pass or ⚠️ Regression. Prior pass does not carry forward.
-- Missing any audit ID from **Audit reconcile** → invalid run.
 - **At a glance → Overall:** 🔴 if any Major; 🟡 if Minor only; 🟢 if zero findings.
 - **KISS / LOC:** `git diff --shortstat HEAD -- src/`. Always fill **KISS — decrease LOC** with every −LOC opportunity + total. Net **+** → **↑ creep** + P2 finding. Every recommendation needs est. LOC; default delete/merge/inline.
-- Keep **Needs your decision** ≤ 10 items visible; rest stay in **All findings** only if many.
+- **Findings** is the single catalogue: every finding once, grouped P1→P5, Major (🔴) before Minor (🟡). A −LOC finding also gets a row in **KISS — decrease LOC**; a per-area tally lands in **Summary**. Don't restate the finding's problem/fix anywhere but its **Findings** card.
+- **Summary** counts must reconcile with **At a glance** totals and the **Findings** cards — same numbers, three views (totals · per-area · full).

@@ -3,16 +3,16 @@
 import { useState } from 'react'
 import { Star, Pin, Pencil, Trash2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRestrictedAction } from '@/hooks/use-restricted-action'
 import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { deleteItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } from '@/actions/items'
-import { useRouter } from 'next/navigation'
-import { ItemsStoreActionType, useItemsStore } from '@/context/items-store-context'
-import { useItemDrawer } from '@/context/item-drawer-context'
-import { useAppUser } from '@/context/app-user-context'
+import { useItemsStore } from '@/stores/items'
+import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import { ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { getDownloadUrl } from '@/lib/utils/url'
@@ -27,10 +27,10 @@ interface ItemDrawerActionBarProps {
 }
 
 export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted }: ItemDrawerActionBarProps) {
-  const router = useRouter()
-  const { dispatch } = useItemsStore()
-  const { closeDrawer } = useItemDrawer()
-  const { isPro } = useAppUser()
+  const queryClient = useQueryClient()
+  const { updateItem } = useItemsStore()
+  const { closeDrawer } = useItemDrawerStore()
+  const { isPro } = useAppUserFlagsStore()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -45,7 +45,8 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     (next) => toggleItemFavoriteAction(item.id, next),
     {
       onSuccess: (next) => {
-        dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isFavorite: next } })
+        updateItem({ ...item, isFavorite: next })
+        void queryClient.invalidateQueries({ queryKey: ['items'] })
       },
       errorLabel: 'Failed to toggle favorite',
     }
@@ -56,7 +57,8 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     (next) => toggleItemPinnedAction(item.id, next),
     {
       onSuccess: (next) => {
-        dispatch({ type: ItemsStoreActionType.UpdateItemFields, id: item.id, fields: { isPinned: next } })
+        updateItem({ ...item, isPinned: next })
+        void queryClient.invalidateQueries({ queryKey: ['items'] })
       },
       errorLabel: 'Failed to toggle pin',
     }
@@ -81,7 +83,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
       toast.success('Item deleted')
       setDeleteDialogOpen(false)
       onDeleted()
-      router.refresh()
+      void queryClient.invalidateQueries({ queryKey: ['items'] })
     } else {
       toast.error(result.message ?? 'Failed to delete item')
     }

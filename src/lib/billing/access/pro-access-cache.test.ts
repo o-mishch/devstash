@@ -34,7 +34,7 @@ describe('pro-access-cache', () => {
     expect(mockGet).toHaveBeenCalledWith('stripe:pro-access:user-1')
 
     await writeProAccessCache('user-1', false)
-    expect(mockSet).toHaveBeenCalledWith('stripe:pro-access:user-1', false, { ex: 60 })
+    expect(mockSet).toHaveBeenCalledWith('stripe:pro-access:user-1', false, { ex: 300 })
   })
 
   it('invalidates Redis and memory cache entries', async () => {

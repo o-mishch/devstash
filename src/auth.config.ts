@@ -13,6 +13,7 @@ interface AuthorizedParams {
 }
 
 export const authConfig: NextAuthConfig = {
+  trustHost: true,
   pages: {
     signIn: '/sign-in',
   },

@@ -1,9 +1,7 @@
 import { notFound } from 'next/navigation'
-import { getCurrentUserId } from '@/lib/session'
-import { getItemTypeBySlug, getItemsByTypePage, getItemCountByType } from '@/lib/db/items'
+import { getItemTypeBySlug } from '@/lib/db/items'
 import { getTypeLabel } from '@/lib/utils'
 import { ItemsGrid } from '@/components/items/items-grid'
-import type { ItemsPage } from '@/types/item'
 
 interface ItemsPageProps {
   params: Promise<{ type: string }>
@@ -12,32 +10,12 @@ interface ItemsPageProps {
 export default async function ItemsPage({ params }: ItemsPageProps) {
   const { type: typeSlug } = await params
 
-  const [itemType, userId] = await Promise.all([
-    getItemTypeBySlug(typeSlug),
-    getCurrentUserId(),
-  ])
-
+  const itemType = await getItemTypeBySlug(typeSlug)
   if (!itemType) notFound()
-
-  const emptyPage: ItemsPage = { items: [], nextCursor: null, hasMore: false }
-  let firstPage = emptyPage
-  let totalCount = 0
-
-  if (userId) {
-    const [page, count] = await Promise.all([
-      getItemsByTypePage(userId, itemType.name),
-      getItemCountByType(userId, itemType.id)
-    ])
-    firstPage = page
-    totalCount = count
-  }
-
-  const label = getTypeLabel(itemType.name)
 
   return (
     <div className="app-page gap-6 p-6">
-      <h1 className="text-xl font-semibold">{label} <span className="text-muted-foreground font-normal text-lg">({totalCount})</span></h1>
-      <ItemsGrid firstPage={firstPage} typeName={itemType.name} />
+      <ItemsGrid typeName={itemType.name} typeLabel={getTypeLabel(itemType.name)} />
     </div>
   )
 }

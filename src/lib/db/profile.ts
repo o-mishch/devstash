@@ -1,8 +1,14 @@
+import 'server-only'
+
+import { cacheTag, cacheLife } from 'next/cache'
 import { prisma } from '@/lib/infra/prisma'
-import { withDataCache, CacheTags } from '@/lib/infra/cache'
+import { CacheTags } from '@/lib/infra/cache'
+import { createLogger } from '@/lib/infra/logger'
 import { compareBySystemTypeOrder, PROVIDER_LABELS } from '@/lib/utils/constants'
 import type { EditorPreferences } from '@/types/editor-preferences'
 import type { Prisma } from '@/generated/prisma/client'
+
+const log = createLogger('db:profile')
 
 export interface LinkedAccount {
   id: string
@@ -56,7 +62,24 @@ export function getProfileAccountSummary(user: Pick<ProfileUser, 'email' | 'hasP
   return { accountTypes, availableEmails }
 }
 
-async function fetchProfileData(userId: string): Promise<ProfileData | null> {
+export async function getEditorPreferences(userId: string): Promise<EditorPreferences | null> {
+  'use cache'
+  const cacheKey = CacheTags.profile(userId)
+  cacheTag(cacheKey)
+  cacheLife('max')
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { editorPreferences: true },
+  })
+  return user?.editorPreferences as unknown as EditorPreferences | null
+}
+
+export async function getProfileData(userId: string): Promise<ProfileData | null> {
+  'use cache'
+  const cacheKey = CacheTags.profile(userId)
+  cacheTag(cacheKey)
+  cacheLife('max')
+  const start = Date.now()
   const [user, itemTypes] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
@@ -77,8 +100,12 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
       include: { _count: { select: { items: { where: { userId } } } } },
     }),
   ])
+  const duration = Date.now() - start
 
-  if (!user) return null
+  if (!user) {
+    log.info('DB: getProfileData', { userId, cacheKey, found: false, duration })
+    return null
+  }
 
   const itemTypeCounts: ItemTypeCount[] = itemTypes
     .map((t) => ({
@@ -89,7 +116,7 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
     }))
     .sort(compareBySystemTypeOrder)
 
-  return {
+  const result = {
     user: {
       id: user.id,
       name: user.name,
@@ -102,26 +129,28 @@ async function fetchProfileData(userId: string): Promise<ProfileData | null> {
     },
     stats: { totalItems: user._count.items, totalCollections: user._count.collections, itemTypeCounts },
   }
-}
 
-export async function getProfileData(userId: string): Promise<ProfileData | null> {
-  return withDataCache(
-    CacheTags.profile(userId),
-    () => fetchProfileData(userId)
-  )
+  log.info('DB: getProfileData', { userId, cacheKey, found: true, itemCount: user._count.items, collectionCount: user._count.collections, duration })
+  return result
 }
 
 export async function updateUserEmail(userId: string, email: string): Promise<void> {
+  const start = Date.now()
   await prisma.user.update({ where: { id: userId }, data: { email } })
+  log.info('DB: updateUserEmail', { userId, duration: Date.now() - start })
 }
 
 export async function updateUserName(userId: string, name: string): Promise<void> {
+  const start = Date.now()
   await prisma.user.update({ where: { id: userId }, data: { name } })
+  log.info('DB: updateUserName', { userId, duration: Date.now() - start })
 }
 
 export async function updateEditorPreferences(userId: string, preferences: EditorPreferences): Promise<void> {
+  const start = Date.now()
   await prisma.user.update({
     where: { id: userId },
     data: { editorPreferences: preferences as unknown as Prisma.InputJsonValue },
   })
+  log.info('DB: updateEditorPreferences', { userId, duration: Date.now() - start })
 }

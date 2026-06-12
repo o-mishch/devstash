@@ -1,14 +1,11 @@
 'use client'
 
-import { useMemo } from 'react'
-import { useInfiniteItemsFetch } from '@/hooks/use-infinite-items-fetch'
-import { VirtualImageGrid } from '@/components/items/virtual-image-grid'
-import { VirtualItemGrid } from '@/components/items/virtual-item-grid'
-import { VirtualFileList } from '@/components/items/virtual-file-list'
+import { useInfiniteItems } from '@/hooks/use-infinite-items'
 import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'
 import { EmptyCard } from '@/components/shared/empty-card'
-import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_IMAGE_GRID } from '@/lib/utils/constants'
+import { triggerCreateItemButton } from '@/lib/utils/dom'
 import type { ItemsPage } from '@/types/item'
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
@@ -19,10 +16,7 @@ interface CollectionItemsGridProps {
 }
 
 export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItemsGridProps) {
-  const pageKey = `collection:${collectionId}`
-  const { items, fetchMore } = useInfiniteItemsFetch(pageKey, firstPage, { type: 'collection', collectionId })
-
-  const uniqueTypeCount = useMemo(() => new Set(items.map((i) => i.itemType.name)).size, [items])
+  const { items, hasNextPage, fetchNextPage } = useInfiniteItems({ type: 'collection', collectionId }, firstPage)
 
   if (items.length === 0) {
     return (
@@ -31,7 +25,7 @@ export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItems
           <Button
             variant="ghost"
             className="text-muted-foreground hover:text-foreground"
-            onClick={() => document.querySelector<HTMLButtonElement>('[data-create-item-trigger]')?.click()}
+            onClick={triggerCreateItemButton}
           >
             Create your first item <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -40,22 +34,24 @@ export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItems
     )
   }
 
-  if (uniqueTypeCount === 1) {
-    const typeName = items[0].itemType.name
-    if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) return <VirtualImageGrid pageKey={pageKey} onFetchMore={fetchMore} />
-    if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) return <VirtualFileList pageKey={pageKey} onFetchMore={fetchMore} />
-    return <VirtualItemGrid pageKey={pageKey} onFetchMore={fetchMore} />
-  }
-
-  // Mixed types: non-virtualized grid (variable row heights)
+  // Mixed types or single type: render grid with load more button
   return (
-    <div className="app-grid card-grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-      {items.map((item, index) => {
-        if (ITEM_TYPES_WITH_IMAGE_GRID.has(item.itemType.name)) {
-          return <ImageCard key={item.id} item={item} priority={index < 8} />
-        }
-        return <ItemCard key={item.id} item={item} />
-      })}
+    <div className="flex flex-col gap-4">
+      <div className="app-grid card-grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+        {items.map((item, index) => {
+          if (ITEM_TYPES_WITH_IMAGE_GRID.has(item.itemType.name)) {
+            return <ImageCard key={item.id} item={item} priority={index < 8} />
+          }
+          return <ItemCard key={item.id} item={item} />
+        })}
+      </div>
+      {hasNextPage && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={() => void fetchNextPage()}>
+            Load more
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

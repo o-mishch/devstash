@@ -2,15 +2,14 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { useItemDrawer } from '@/context/item-drawer-context'
-import { useInfiniteScrollFetch } from '@/hooks/use-infinite-scroll-fetch'
+import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useInfiniteItems } from '@/hooks/use-infinite-items'
+import { useAutoFetchNextPage } from '@/hooks/use-auto-fetch-next-page'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FavoriteItemRow } from './favorite-item-row'
 import { compareBySystemTypeOrder, SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
 import type { ItemsPage, LightItem, SlimItemType } from '@/types/item'
-
-const PAGE_KEY = 'favorites:items'
 
 interface ItemGroup {
   itemType: SlimItemType
@@ -36,8 +35,9 @@ interface FavoriteItemsListProps {
 }
 
 export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsListProps) {
-  const { openDrawer } = useItemDrawer()
-  const { items, hasMore, loading, sentinelRef } = useInfiniteScrollFetch(PAGE_KEY, firstPage, { type: 'favorites' })
+  const { openDrawer } = useItemDrawerStore()
+  const { items, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteItems({ type: 'favorites' }, firstPage)
+  const { sentinelRef } = useAutoFetchNextPage(hasNextPage, isFetchingNextPage, fetchNextPage)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const groups = useMemo(
@@ -98,8 +98,8 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
         )
       })}
 
-      {hasMore && <div ref={sentinelRef} className="h-px" aria-hidden="true" />}
-      {loading && (
+      {hasNextPage && <div ref={sentinelRef} className="h-px" aria-hidden="true" />}
+      {isFetchingNextPage && (
         <div className="flex flex-col pl-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-1.5">

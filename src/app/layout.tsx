@@ -1,10 +1,13 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import type { WithChildren } from "@/types/common";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { Analytics } from "@vercel/analytics/next";
 import { ThemeProvider } from "@/providers/theme-provider";
+import { AppQueryClientProvider } from "@/providers/query-client-provider";
 import { ServiceWorkerRegistration } from "@/components/shared/service-worker-registration";
+import { ThemeInitializer } from "@/components/shared/theme-initializer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,10 +34,15 @@ export default function RootLayout({ children }: Readonly<WithChildren>) {
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased scroll-smooth`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col bg-background text-foreground">
-        <ThemeProvider attribute="data-theme" defaultTheme="vscode" enableSystem={false}>
-          {children}
-          <Toaster />
-        </ThemeProvider>
+        <AppQueryClientProvider>
+          <Suspense>
+            <ThemeProvider attribute="data-theme" defaultTheme="vscode" enableSystem={false}>
+              <ThemeInitializer />
+              {children}
+              <Toaster />
+            </ThemeProvider>
+          </Suspense>
+        </AppQueryClientProvider>
         <Analytics />
         <ServiceWorkerRegistration />
       </body>

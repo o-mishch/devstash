@@ -84,13 +84,17 @@ export async function withAuth<T>(
   fn: (ctx: SessionContext) => Promise<ApiBody<T>>,
   context?: string
 ): Promise<ApiBody<T>> {
+  const actionName = context ?? 'action'
   const session = await getCachedSession()
   if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.') as ApiBody<T>
+  log.info('actionRequest', { actionName })
   try {
     const isPro = await getCachedVerifiedProAccess(session.user.id)
-    return await fn({ userId: session.user.id, isPro })
+    const result = await fn({ userId: session.user.id, isPro })
+    log.info('actionResponse', { actionName, status: result.status })
+    return result
   } catch (error) {
-    log.error('Auth action failed', { context: context ?? 'action', error })
+    log.error('Auth action failed', { context: actionName, error })
     return ApiResponse.INTERNAL_ERROR() as ApiBody<T>
   }
 }

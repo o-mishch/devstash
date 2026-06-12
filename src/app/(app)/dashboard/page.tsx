@@ -1,42 +1,35 @@
-import { getCollectionsPreview } from '@/lib/db/collections'
-import { getItemStats, getRecentItemsPage } from '@/lib/db/items'
-import { DashboardStats } from '@/components/dashboard/dashboard-stats'
-import { CollectionsGrid } from '@/components/dashboard/collections-grid'
-import Link from 'next/link'
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import { DashboardPinned } from '@/components/dashboard/dashboard-pinned'
-import { DashboardRecentList } from '@/components/dashboard/dashboard-recent-list'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
-import { loadAppSidebarData } from '@/lib/app/sidebar-data'
 import { getCachedSession } from '@/lib/session'
+import { getCollectionsPreview, getCollectionStats } from '@/lib/db/collections'
+import { getItemStats, getRecentItemsPage, getPinnedItems } from '@/lib/db/items'
+import { loadAppSidebarData } from '@/lib/app/sidebar-data'
+import { Button } from '@/components/ui/button'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
+import { DashboardStats } from '@/components/dashboard/dashboard-stats'
+import { DashboardContent } from '@/components/dashboard/dashboard-content'
+import { StatsCardsSkeleton } from '@/components/dashboard/dashboard-skeletons'
 
 export default async function DashboardPage() {
   const session = await getCachedSession()
   const userId = session?.user?.id
   if (!userId) redirect('/sign-in')
 
-  const sidebarData = await loadAppSidebarData(session)
+  // Kick off all parallel fetches immediately — all backed by 'use cache'
+  const statsPromise = getItemStats(userId)
+  const collectionsPromise = getCollectionsPreview(userId)
+  const recentItemsPromise = getRecentItemsPage(userId)
+  const pinnedItemsPromise = getPinnedItems(userId)
+  const collectionStatsPromise = getCollectionStats(userId)
 
-  const [firstPage, itemStats, collections] = await Promise.all([
-    getRecentItemsPage(userId),
-    getItemStats(userId),
-    getCollectionsPreview(userId),
-  ])
-  const isEmpty = itemStats.totalItems === 0
+  // stats is needed to branch empty state — it's 'use cache' so resolves fast
+  const stats = await statsPromise
 
-  return (
-    <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6">
-      <div className="hidden sm:block">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Your developer knowledge hub</p>
-      </div>
-
-      <DashboardStats userId={userId} />
-
-      {isEmpty ? (
+  if (stats.totalItems === 0) {
+    const sidebarData = await loadAppSidebarData(session)
+    return (
+      <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6">
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border p-8 text-center sm:p-12 mt-4 bg-muted/20">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 mb-4">
             <Plus className="h-6 w-6 text-primary" />
@@ -51,32 +44,26 @@ export default async function DashboardPage() {
             trigger={<Button>Create your first item &rarr;</Button>}
           />
         </div>
-      ) : (
-        <>
-          <Card className="overflow-visible">
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <CardTitle className="text-sm font-semibold">Collections</CardTitle>
-              <Link href="/collections" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                View all
-              </Link>
-            </CardHeader>
-            <CardContent className="overflow-visible pt-0">
-              <CollectionsGrid collections={collections} />
-            </CardContent>
-          </Card>
-          <DashboardPinned userId={userId} />
-          {firstPage.items.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold">Recent Items</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <DashboardRecentList firstPage={firstPage} />
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6">
+      <div className="hidden sm:block">
+        <h1 className="text-xl font-semibold">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Your developer knowledge hub</p>
+      </div>
+
+      <Suspense fallback={<StatsCardsSkeleton />}>
+        <DashboardStats statsPromise={statsPromise} collectionStatsPromise={collectionStatsPromise} />
+      </Suspense>
+
+      <DashboardContent
+        collectionsPromise={collectionsPromise}
+        recentItemsPromise={recentItemsPromise}
+        pinnedItemsPromise={pinnedItemsPromise}
+      />
     </div>
   )
 }

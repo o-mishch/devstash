@@ -103,7 +103,11 @@ vi.mock('@/lib/infra/rate-limit', () => ({
   rateLimitAction: vi.fn(async () => null),
 }))
 vi.mock('@/lib/utils/url', () => ({ getBaseUrl: vi.fn(() => 'https://devstash.io') }))
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+  revalidateTag: vi.fn(),
+  unstable_cache: <T extends (...args: never[]) => Promise<unknown>>(fn: T) => fn,
+}))
 
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'

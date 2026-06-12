@@ -17,7 +17,6 @@ import {
   resolveLayoutBillingSidebarOptions,
   loadAppSidebarData,
   SIDEBAR_DEFAULT_OPTIONS,
-  SIDEBAR_FRESH_OPTIONS,
 } from '@/lib/app/sidebar-data'
 
 const mockMaybeReconcileBilling = vi.mocked(maybeReconcileBillingStateForUser)
@@ -51,24 +50,26 @@ describe('resolveLayoutBillingSidebarOptions', () => {
     expect(mockMaybeReconcileBilling).not.toHaveBeenCalled()
   })
 
-  it('returns fresh options when passive sync mutates local state', async () => {
+  it('always returns default options immediately (billing sync deferred to background)', async () => {
     mockMaybeReconcileBilling.mockResolvedValue({ status: 'updated' })
     mockMaybeReconcileOrphan.mockResolvedValue(false)
 
-    expect(await resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_FRESH_OPTIONS)
+    // Function returns immediately with default options; sync happens in background
+    expect(await resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
   })
 
-  it('returns fresh options when orphan reconcile links a subscription', async () => {
+  it('defers billing sync to background when reconcile would mutate state', async () => {
     mockMaybeReconcileBilling.mockResolvedValue(null)
     mockMaybeReconcileOrphan.mockResolvedValue(true)
 
-    expect(await resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_FRESH_OPTIONS)
+    // Function returns immediately with default options; sync queued in background
+    expect(await resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
   })
 
-  it('returns default options when neither reconcile path mutates state', async () => {
-    mockMaybeReconcileBilling.mockResolvedValue({ status: 'unchanged' })
-    mockMaybeReconcileOrphan.mockResolvedValue(false)
+  it('handles errors in background billing sync gracefully', async () => {
+    mockMaybeReconcileBilling.mockRejectedValue(new Error('Stripe API unavailable'))
 
+    // Function still returns default options even if sync would fail
     expect(await resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
   })
 })

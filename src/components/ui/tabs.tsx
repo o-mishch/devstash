@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -8,12 +9,23 @@ import { cn } from "@/lib/utils/index"
 function Tabs({
   className,
   orientation = "horizontal",
+  defaultValue,
+  value,
+  onValueChange,
   ...props
 }: TabsPrimitive.Root.Props) {
+  const [tabValue, setTabValue] = React.useState(defaultValue || value)
+
   return (
     <TabsPrimitive.Root
+      orientation={orientation}
       data-slot="tabs"
       data-orientation={orientation}
+      value={value !== undefined ? value : tabValue}
+      onValueChange={(v, e) => {
+        setTabValue(v)
+        if (onValueChange) onValueChange(v, e)
+      }}
       className={cn(
         "group/tabs flex gap-2 data-horizontal:flex-col",
         className

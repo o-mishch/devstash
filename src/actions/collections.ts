@@ -10,7 +10,8 @@ import {
   createCollection as dbCreateCollection,
   updateCollection as dbUpdateCollection,
   deleteCollection as dbDeleteCollection,
-  toggleCollectionFavorite as dbToggleCollectionFavorite
+  toggleCollectionFavorite as dbToggleCollectionFavorite,
+  getAllCollections as dbGetAllCollections
 } from '@/lib/db/collections'
 import { createLogger } from '@/lib/infra/logger'
 import { invalidateCollectionsCache } from '@/lib/infra/cache'
@@ -57,3 +58,10 @@ export async function deleteCollectionAction(collectionId: string): Promise<ApiB
 }
 
 export const toggleCollectionFavoriteAction = createToggleAction(dbToggleCollectionFavorite, invalidateCollectionsCache, 'collection')
+
+export async function getCollectionPickerItemsAction(): Promise<ApiBody<CollectionWithTypes[]>> {
+  return withAuth(async ({ userId }) => {
+    const collections = await dbGetAllCollections(userId)
+    return ApiResponse.OK(collections)
+  }, 'getCollectionPickerItemsAction')
+}

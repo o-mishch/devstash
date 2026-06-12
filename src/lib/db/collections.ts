@@ -1,7 +1,13 @@
+import 'server-only'
+
+import { cacheTag, cacheLife } from 'next/cache'
 import { prisma } from '@/lib/infra/prisma'
-import { withDataCache, CacheTags } from '@/lib/infra/cache'
+import { CacheTags } from '@/lib/infra/cache'
+import { createLogger } from '@/lib/infra/logger'
 import type { CollectionWithTypes, CollectionStats, SidebarCollection } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
+
+const log = createLogger('db:collections')
 
 // Used only for single-record mutation returns (create/update) where the items join on one row is acceptable
 export const COLLECTION_SELECT = {
@@ -192,44 +198,81 @@ async function fetchCollectionsWithTypes(
 }
 
 export async function getSidebarCollections(userId: string): Promise<SidebarCollection[]> {
-  return withDataCache(CacheTags.sidebarCollections(userId), async () => {
-    const collections = await prisma.collection.findMany({
-      where: { userId },
-      orderBy: { updatedAt: 'desc' },
-      select: SIDEBAR_COLLECTION_SELECT,
-    })
-    if (collections.length === 0) return []
-    const typeCounts = await getCollectionTypeCounts(collections.map((c) => c.id))
-    const countsByCollection = groupTypeCountsByCollection(typeCounts)
-    return collections.map((col) => mapSidebarCollection(col, countsByCollection.get(col.id)?.[0]?.color ?? null))
+  'use cache'
+  const cacheKey = CacheTags.sidebarCollections(userId)
+  cacheTag(cacheKey, CacheTags.collectionGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const collections = await prisma.collection.findMany({
+    where: { userId },
+    orderBy: { updatedAt: 'desc' },
+    select: SIDEBAR_COLLECTION_SELECT,
   })
+  const duration = Date.now() - start
+
+  if (collections.length === 0) {
+    log.info('DB: getSidebarCollections', { userId, cacheKey, count: 0, duration })
+    return []
+  }
+
+  const typeCounts = await getCollectionTypeCounts(collections.map((c) => c.id))
+  const countsByCollection = groupTypeCountsByCollection(typeCounts)
+  const result = collections.map((col) => mapSidebarCollection(col, countsByCollection.get(col.id)?.[0]?.color ?? null))
+
+  log.info('DB: getSidebarCollections', { userId, cacheKey, count: result.length, duration })
+  return result
 }
 
 export async function getAllCollections(userId: string): Promise<CollectionWithTypes[]> {
-  return withDataCache(CacheTags.allCollections(userId), () => fetchCollectionsWithTypes(userId))
+  'use cache'
+  const cacheKey = CacheTags.allCollections(userId)
+  cacheTag(cacheKey, CacheTags.collectionGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const result = await fetchCollectionsWithTypes(userId)
+  log.info('DB: getAllCollections', { userId, cacheKey, count: result.length, duration: Date.now() - start })
+  return result
 }
 
 export async function getCollectionsPreview(
   userId: string,
   limit = DASHBOARD_COLLECTIONS_PREVIEW_LIMIT,
 ): Promise<CollectionWithTypes[]> {
-  return withDataCache(CacheTags.collectionsPreview(userId), () => fetchCollectionsWithTypes(userId, { limit }))
+  'use cache'
+  const cacheKey = CacheTags.collectionsPreview(userId)
+  cacheTag(cacheKey, CacheTags.collectionGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const result = await fetchCollectionsWithTypes(userId, { limit })
+  log.info('DB: getCollectionsPreview', { userId, cacheKey, count: result.length, limit, duration: Date.now() - start })
+  return result
 }
 
 export async function getFavoriteCollections(userId: string): Promise<CollectionWithTypes[]> {
-  return withDataCache(CacheTags.favoriteCollections(userId), () => fetchCollectionsWithTypes(userId, { favoritesOnly: true }))
+  'use cache'
+  const cacheKey = CacheTags.favoriteCollections(userId)
+  cacheTag(cacheKey, CacheTags.collectionGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const result = await fetchCollectionsWithTypes(userId, { favoritesOnly: true })
+  log.info('DB: getFavoriteCollections', { userId, cacheKey, count: result.length, duration: Date.now() - start })
+  return result
 }
 
 export async function getCollectionById(userId: string, collectionId: string): Promise<CollectionWithTypes | null> {
-  return withDataCache(CacheTags.collectionById(userId, collectionId), async () => {
-    const col = await prisma.collection.findFirst({
-      where: { id: collectionId, userId },
-      select: COLLECTION_BASE_SELECT,
-    })
-    if (!col) return null
-    const typeCounts = await getCollectionTypeCounts([col.id])
-    return mapCollectionBase(col, typeCounts)
+  'use cache'
+  const cacheKey = CacheTags.collectionById(userId, collectionId)
+  cacheTag(cacheKey, CacheTags.collectionGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const col = await prisma.collection.findFirst({
+    where: { id: collectionId, userId },
+    select: COLLECTION_BASE_SELECT,
   })
+  log.info('DB: getCollectionById', { userId, collectionId, cacheKey, found: Boolean(col), duration: Date.now() - start })
+  if (!col) return null
+  const typeCounts = await getCollectionTypeCounts([col.id])
+  return mapCollectionBase(col, typeCounts)
 }
 
 export interface CreateCollectionInput {
@@ -238,6 +281,7 @@ export interface CreateCollectionInput {
 }
 
 export async function createCollection(userId: string, input: CreateCollectionInput): Promise<CollectionWithTypes> {
+  const start = Date.now()
   const col = await prisma.collection.create({
     data: {
       name: input.name,
@@ -246,20 +290,27 @@ export async function createCollection(userId: string, input: CreateCollectionIn
     },
     select: COLLECTION_SELECT,
   })
+  const duration = Date.now() - start
+  log.info('DB: createCollection', { userId, collectionId: col.id, name: input.name, duration })
   return mapCollection(col)
 }
 
 export async function getCollectionStats(userId: string): Promise<CollectionStats> {
-  return withDataCache(CacheTags.collectionStats(userId), async () => {
-    const rows = await prisma.collection.groupBy({
-      by: ['isFavorite'],
-      where: { userId },
-      _count: true,
-    })
-    const totalCollections = rows.reduce((sum, r) => sum + r._count, 0)
-    const favoriteCollections = rows.find((r) => r.isFavorite)?._count ?? 0
-    return { totalCollections, favoriteCollections }
+  'use cache'
+  const cacheKey = CacheTags.collectionStats(userId)
+  cacheTag(cacheKey, CacheTags.collectionGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const rows = await prisma.collection.groupBy({
+    by: ['isFavorite'],
+    where: { userId },
+    _count: true,
   })
+  const duration = Date.now() - start
+  const totalCollections = rows.reduce((sum, r) => sum + r._count, 0)
+  const favoriteCollections = rows.find((r) => r.isFavorite)?._count ?? 0
+  log.info('DB: getCollectionStats', { userId, cacheKey, totalCollections, favoriteCollections, duration })
+  return { totalCollections, favoriteCollections }
 }
 
 export interface UpdateCollectionInput {
@@ -269,24 +320,33 @@ export interface UpdateCollectionInput {
 }
 
 export async function updateCollection(userId: string, collectionId: string, input: UpdateCollectionInput): Promise<CollectionWithTypes> {
+  const start = Date.now()
   const col = await prisma.collection.update({
     where: { id: collectionId, userId },
     data: input,
     select: COLLECTION_SELECT,
   })
+  const duration = Date.now() - start
+  log.info('DB: updateCollection', { userId, collectionId, duration })
   return mapCollection(col)
 }
 
 export async function deleteCollection(userId: string, collectionId: string): Promise<void> {
+  const start = Date.now()
   await prisma.collection.delete({
     where: { id: collectionId, userId },
   })
+  const duration = Date.now() - start
+  log.info('DB: deleteCollection', { userId, collectionId, duration })
 }
 
 export async function toggleCollectionFavorite(userId: string, collectionId: string, isFavorite: boolean): Promise<boolean> {
+  const start = Date.now()
   const result = await prisma.collection.updateMany({
     where: { id: collectionId, userId },
     data: { isFavorite },
   })
+  const duration = Date.now() - start
+  log.info('DB: toggleCollectionFavorite', { userId, collectionId, isFavorite, updated: result.count > 0, duration })
   return result.count > 0
 }

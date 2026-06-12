@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { ItemTags } from '@/components/shared/item-tags'
-import { useItemDrawer } from '@/context/item-drawer-context'
+import { useItemDrawerStore } from '@/stores/item-drawer'
 import { formatDate } from '@/lib/utils'
 import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
@@ -15,7 +15,7 @@ interface ItemRowProps {
 
 export function ItemRow({ item }: ItemRowProps) {
   const { itemType } = item
-  const { openDrawer } = useItemDrawer()
+  const { openDrawer } = useItemDrawerStore()
   const subtitle = item.descriptionPreview || item.contentPreview || item.url
 
   return (

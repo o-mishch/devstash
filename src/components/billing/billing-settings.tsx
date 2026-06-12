@@ -6,7 +6,7 @@ import {
 } from '@/lib/billing/checkout/checkout-return-params'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { getUserUsage } from '@/lib/db/usage'
+import { getUserUsageStats } from '@/lib/db/usage'
 import { loadBillingPageContext } from '@/lib/billing/sync/user-billing-state'
 import {
   BILLING_UNAVAILABLE_MESSAGE,
@@ -37,7 +37,7 @@ export async function BillingSettings({
   const needsFreshBilling = checkoutNotification !== null
 
   const [usage, billingPage] = await Promise.all([
-    getUserUsage(userId),
+    getUserUsageStats(userId),
     loadBillingPageContext(userId, fallbackIsPro, { freshBillingContext: needsFreshBilling }),
   ])
 

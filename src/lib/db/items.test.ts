@@ -10,17 +10,18 @@ vi.mock('@/lib/infra/prisma', () => ({
 }))
 
 vi.mock('@/lib/infra/cache', () => ({
-  withDataCache: vi.fn((_config, fetcher) => fetcher()),
   CacheTags: {
-    itemTypeBySlug: (slug: string) => ({ tag: `item-type:slug:${slug}`, revalidate: 3600 }),
-    systemItemTypes: () => ({ tag: 'system-item-types', revalidate: 3600 }),
-    sidebarTypes: (userId: string) => ({ tag: `user:${userId}:sidebar-types`, revalidate: 60 }),
-    pinnedItems: (userId: string) => ({ tag: `user:${userId}:pinned-items`, revalidate: 60 }),
-    recentItems: (userId: string) => ({ tag: `user:${userId}:recent-items`, revalidate: 60 }),
-    itemsByType: (userId: string, type: string) => ({ tag: `user:${userId}:items:${type}`, revalidate: 60 }),
-    itemsByCollection: (userId: string, id: string) => ({ tag: `user:${userId}:collection:${id}:items`, revalidate: 60 }),
-    itemStats: (userId: string) => ({ tag: `user:${userId}:item-stats`, revalidate: 60 }),
-    downloadItem: (userId: string, itemId: string) => ({ tag: `user:${userId}:download-item:${itemId}`, revalidate: 60 }),
+    itemGroup: (userId: string) => `items-${userId}`,
+    collectionGroup: (userId: string) => `collections-${userId}`,
+    itemTypeBySlug: (slug: string) => `item-type:slug:${slug}`,
+    systemItemTypes: () => 'system-item-types',
+    sidebarTypes: (userId: string) => `user:${userId}:sidebar-types`,
+    pinnedItems: (userId: string) => `user:${userId}:pinned-items`,
+    recentItems: (userId: string) => `user:${userId}:recent-items`,
+    itemsByType: (userId: string, type: string) => `user:${userId}:items:${type}`,
+    itemsByCollection: (userId: string, id: string) => `user:${userId}:collection:${id}:items`,
+    itemStats: (userId: string) => `user:${userId}:item-stats`,
+    downloadItem: (userId: string, itemId: string) => `user:${userId}:download-item:${itemId}`,
   },
 }))
 

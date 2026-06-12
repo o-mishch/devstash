@@ -140,10 +140,7 @@ export function DrawerCollectionsSkeleton() {
   return (
     <section className="shrink-0">
       <Skeleton className="mb-2 h-3 w-20" />
-      <div className="flex flex-wrap gap-1.5">
-        <Skeleton className="h-6 w-24 rounded-md" />
-        <Skeleton className="h-6 w-20 rounded-md" />
-      </div>
+      <Skeleton className="h-7 w-40 rounded-md" />
     </section>
   )
 }
@@ -197,11 +194,15 @@ export function DrawerSkeleton() {
         <Skeleton className="h-4 w-2/3" />
       </section>
       <section className="shrink-0">
+        <Skeleton className="mb-2 h-3 w-16" />
+        <Skeleton className="h-4 w-1/3" />
+      </section>
+      <section className="shrink-0">
         <Skeleton className="mb-2 h-3 w-10" />
-        <div className="flex gap-1.5">
-          <Skeleton className="h-5 w-16 rounded-full" />
-          <Skeleton className="h-5 w-12 rounded-full" />
-          <Skeleton className="h-5 w-20 rounded-full" />
+        <div className="flex flex-wrap gap-1.5">
+          <Skeleton className="h-6 w-16 rounded-full" />
+          <Skeleton className="h-6 w-20 rounded-full" />
+          <Skeleton className="h-6 w-14 rounded-full" />
         </div>
       </section>
       <DrawerCollectionsSkeleton />

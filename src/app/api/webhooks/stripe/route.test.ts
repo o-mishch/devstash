@@ -27,6 +27,7 @@ const {
   mockGetUserIdByStripeCustomerId,
   mockGetUserIdsByStripeSubscriptionId,
   mockResolveAppUserIdForSubscription,
+  mockInvalidateSubscriptionStateCache,
 } = vi.hoisted(() => ({
   mockConstructStripeWebhookEvent: vi.fn(),
   mockCancelAbandonedSubscription: vi.fn(),
@@ -54,6 +55,7 @@ const {
   mockGetUserIdByStripeCustomerId: vi.fn(),
   mockGetUserIdsByStripeSubscriptionId: vi.fn(),
   mockResolveAppUserIdForSubscription: vi.fn(),
+  mockInvalidateSubscriptionStateCache: vi.fn(),
 }))
 
 vi.mock('@/lib/stripe', () => ({
@@ -125,6 +127,18 @@ vi.mock('@/lib/billing/webhook/stripe-webhook-idempotency', async (importOrigina
   }
 })
 
+vi.mock('@/lib/infra/redis', () => ({
+  getRedis: vi.fn(() => null),
+}))
+
+vi.mock('@/lib/billing/subscription/subscription-state-redis-cache', () => ({
+  invalidateSubscriptionStateCache: mockInvalidateSubscriptionStateCache,
+}))
+
+vi.mock('@/lib/billing/access/pro-access-cache', () => ({
+  invalidateProAccessForUserIds: vi.fn(),
+}))
+
 vi.mock('@/lib/infra/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }))
@@ -190,6 +204,7 @@ beforeEach(() => {
   mockUpdateUserStripeSubscription.mockResolvedValue(undefined)
   mockUpdateSubscriptionState.mockResolvedValue({ count: 1 })
   mockClearStripeSubscriptionBySubId.mockResolvedValue({ count: 1 })
+  mockInvalidateSubscriptionStateCache.mockResolvedValue(undefined)
   mockReconcileSubscriptionById.mockResolvedValue({
     status: 'active',
     currentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),

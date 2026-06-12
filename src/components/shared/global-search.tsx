@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
 import { useRouter } from 'next/navigation'
 import { Search, X } from 'lucide-react'
@@ -11,8 +11,8 @@ import {
   CommandGroup,
   CommandItem,
 } from '@/components/ui/command'
-import { useItemsStore } from '@/context/items-store-context'
-import { useItemDrawer } from '@/context/item-drawer-context'
+import { useItemsStore } from '@/stores/items'
+import { useItemDrawerStore } from '@/stores/item-drawer'
 import type { SidebarCollection } from '@/types/collection'
 import { searchResultToLightItem, isSearchResultItem } from '@/types/item'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
@@ -27,24 +27,25 @@ interface GlobalSearchProps {
 export function GlobalSearch({ collections }: GlobalSearchProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  
-  const { state: itemsStore } = useItemsStore()
-  const { openDrawer, closeDrawer } = useItemDrawer()
+
+  const storeItems = useItemsStore((state) => state.items)
+  const items = useMemo(() => Array.from(storeItems.values()), [storeItems])
+  const { openDrawer, closeDrawer } = useItemDrawerStore()
   const router = useRouter()
 
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useGlobalSearchShortcuts({ inputRef, containerRef, setOpen, closeDrawer })
-  const { loading, displayItems, displayCollections } = useGlobalSearch(query, itemsStore.items, collections)
+  const { loading, displayItems, displayCollections } = useGlobalSearch(query, items, collections)
 
   const handleSelect = useCallback((type: 'item' | 'collection', id: string) => {
     setOpen(false)
     setQuery('')
     inputRef.current?.blur()
-    
+
     if (type === 'item') {
-      const storeItem = itemsStore.items.find(i => i.id === id)
+      const storeItem = items.find(i => i.id === id)
       const displayHit = displayItems.find(i => i.id === id)
       const item = storeItem ?? (displayHit && isSearchResultItem(displayHit)
         ? searchResultToLightItem(displayHit)
@@ -56,7 +57,7 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
     } else {
       router.push(`/collections/${id}`)
     }
-  }, [router, displayItems, itemsStore.items, openDrawer])
+  }, [router, displayItems, items, openDrawer])
 
   const hasQuery = query.trim().length > 0
   const hasResults = displayItems.length > 0 || displayCollections.length > 0
