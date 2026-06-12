@@ -34,6 +34,7 @@ const log = createLogger('stripe-subscription')
 export interface ApplySubscriptionStateParams {
   subscriptionId: string
   isPro: boolean
+  stripeSubscriptionStatus?: string | null
   currentPeriodEnd?: Date | null
   cancelAtPeriodEnd?: boolean
   subscriptionInterval?: SubscriptionInterval
@@ -53,6 +54,7 @@ export async function applySubscriptionStateWithBackfill(
   const {
     subscriptionId,
     isPro,
+    stripeSubscriptionStatus,
     currentPeriodEnd,
     cancelAtPeriodEnd,
     subscriptionInterval,
@@ -67,10 +69,11 @@ export async function applySubscriptionStateWithBackfill(
 
   const updateResult = await updateSubscriptionState(subscriptionId, {
     isPro,
-    ...(cancelAtPeriodEnd !== undefined && { cancelAtPeriodEnd }),
-    ...(currentPeriodEnd !== undefined && { currentPeriodEnd }),
-    ...(subscriptionInterval && { subscriptionInterval }),
-    lastStripeSyncAt: new Date(),
+    ...(stripeSubscriptionStatus !== undefined && { stripeSubscriptionStatus }),
+    ...(cancelAtPeriodEnd !== undefined && { stripeCancelAtPeriodEnd: cancelAtPeriodEnd }),
+    ...(currentPeriodEnd !== undefined && { stripeCurrentPeriodEnd: currentPeriodEnd }),
+    ...(subscriptionInterval && { stripeSubscriptionInterval: subscriptionInterval }),
+    stripeLastSyncAt: new Date(),
   })
 
   if (updateResult.count === 0 && userId && customerId) {
@@ -78,11 +81,12 @@ export async function applySubscriptionStateWithBackfill(
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscriptionId,
       isPro,
-      ...(subscriptionStart && { subscriptionStart }),
-      ...(currentPeriodEnd !== undefined && { currentPeriodEnd }),
-      ...(subscriptionInterval && { subscriptionInterval }),
-      ...(cancelAtPeriodEnd !== undefined && { cancelAtPeriodEnd }),
-      lastStripeSyncAt: new Date(),
+      ...(stripeSubscriptionStatus !== undefined && { stripeSubscriptionStatus }),
+      ...(subscriptionStart && { stripeSubscriptionStart: subscriptionStart }),
+      ...(currentPeriodEnd !== undefined && { stripeCurrentPeriodEnd: currentPeriodEnd }),
+      ...(subscriptionInterval && { stripeSubscriptionInterval: subscriptionInterval }),
+      ...(cancelAtPeriodEnd !== undefined && { stripeCancelAtPeriodEnd: cancelAtPeriodEnd }),
+      stripeLastSyncAt: new Date(),
     })
     return { rowsUpdated: 1 }
   }
@@ -127,15 +131,8 @@ export async function applySubscriptionAccessFromStripe(
     subscriptionStart,
   } = params
 
-  if (missingFromStripe) {
-    await clearStripeSubscriptionBySubId(subscriptionId, currentPeriodEnd ?? undefined)
-    invalidateStripeSubscriptionCache(subscriptionId)
-    if (userId) invalidateBillingCache(userId)
-    return 'cleared'
-  }
-
   const grantsAccess = explicitGrantsAccess ?? subscriptionHasProAccess(status)
-  if (!grantsAccess && subscriptionShouldClearLocalLink(status)) {
+  if (missingFromStripe || (!grantsAccess && subscriptionShouldClearLocalLink(status))) {
     await clearStripeSubscriptionBySubId(subscriptionId, currentPeriodEnd ?? undefined)
     invalidateStripeSubscriptionCache(subscriptionId)
     if (userId) invalidateBillingCache(userId)
@@ -145,6 +142,7 @@ export async function applySubscriptionAccessFromStripe(
   const { rowsUpdated } = await applySubscriptionStateWithBackfill({
     subscriptionId,
     isPro: grantsAccess,
+    stripeSubscriptionStatus: status,
     currentPeriodEnd,
     cancelAtPeriodEnd,
     subscriptionInterval,
@@ -153,8 +151,6 @@ export async function applySubscriptionAccessFromStripe(
     subscriptionStart,
   })
 
-  // Invalidate the persistent Stripe subscription cache so the next page load
-  // gets a fresh live state instead of serving a stale cached result.
   invalidateStripeSubscriptionCache(subscriptionId)
   if (userId) invalidateBillingCache(userId)
 
@@ -227,8 +223,9 @@ export async function persistSubscriptionFromStripe(
     return { persisted: false, grantsAccess: false, outcome: 'cleared' }
   }
 
+  const eventType = forceActivate ? 'checkout.session.async_payment_succeeded' : 'checkout.session.completed'
   log.info(
-    forceActivate ? 'checkout.session.async_payment_succeeded' : 'checkout.session.completed',
+    eventType,
     {
       userId,
       subscriptionId,
@@ -239,7 +236,7 @@ export async function persistSubscriptionFromStripe(
       startedAt: subscription.startDate.toISOString(),
       outcome,
     },
-    getStripeEventDescription(forceActivate ? 'checkout.session.async_payment_succeeded' : 'checkout.session.completed')
+    getStripeEventDescription(eventType)
   )
 
   return { persisted: true, grantsAccess, outcome }

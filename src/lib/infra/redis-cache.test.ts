@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/infra/redis', () => ({
-  getRedis: vi.fn(),
-}))
+vi.mock('@/lib/infra/redis', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/infra/redis')>()
+  return { ...actual, getRedis: vi.fn() }
+})
 
 vi.mock('@/lib/infra/logger', () => ({
   createLogger: vi.fn(),
@@ -58,14 +59,14 @@ describe('read', () => {
     const cache = makeCache()
     mockRedis.get.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }))
     await expect(cache.read('k')).resolves.toBeNull()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache read timed out', { key: 'k' })
+    expect(mockLog.warn).toHaveBeenCalledWith('Cache read timed out', expect.objectContaining({ key: 'k' }))
   })
 
   it('warns and falls through on TimeoutError', async () => {
     const cache = makeCache()
     mockRedis.get.mockRejectedValue(Object.assign(new Error('timeout'), { name: 'TimeoutError' }))
     await expect(cache.read('k')).resolves.toBeNull()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache read timed out', { key: 'k' })
+    expect(mockLog.warn).toHaveBeenCalledWith('Cache read timed out', expect.objectContaining({ key: 'k' }))
   })
 
   it('warns and falls through on generic Redis error', async () => {
@@ -95,7 +96,7 @@ describe('write', () => {
     const cache = makeCache()
     mockRedis.set.mockRejectedValue(Object.assign(new Error('timeout'), { name: 'TimeoutError' }))
     await expect(cache.write('k', 'v')).resolves.toBeUndefined()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache write timed out', { key: 'k' })
+    expect(mockLog.warn).toHaveBeenCalledWith('Cache write timed out', expect.objectContaining({ key: 'k' }))
   })
 
   it('warns on generic write error and does not throw', async () => {
@@ -128,7 +129,7 @@ describe('invalidate', () => {
     const cache = makeCache()
     mockRedis.del.mockRejectedValue(Object.assign(new Error('t'), { name: 'TimeoutError' }))
     await expect(cache.invalidate('k')).resolves.toBeUndefined()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache invalidation timed out', { key: 'k' })
+    expect(mockLog.warn).toHaveBeenCalledWith('Cache invalidation timed out', expect.objectContaining({ key: 'k' }))
   })
 })
 

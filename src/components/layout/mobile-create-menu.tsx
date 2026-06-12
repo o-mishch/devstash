@@ -14,7 +14,7 @@ import {
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
 import { FREE_TIER_ITEM_LIMIT, FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
-import { getInitialTypeFromPathname } from '@/lib/utils/url'
+import { getInitialTypeFromPathname, getCollectionIdFromPathname } from '@/lib/utils/url'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import type { SidebarItemType } from '@/types/item'
@@ -32,6 +32,7 @@ export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuPro
   const [collectionOpen, setCollectionOpen] = useState(false)
   const pathname = usePathname()
   const initialType = getInitialTypeFromPathname(pathname, itemTypes)
+  const initialCollectionId = getCollectionIdFromPathname(pathname)
 
   return (
     <>
@@ -42,6 +43,7 @@ export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuPro
           open={itemOpen}
           onOpenChange={setItemOpen}
           initialType={initialType}
+          initialCollectionId={initialCollectionId}
           trigger={<></>}
         />
       )}

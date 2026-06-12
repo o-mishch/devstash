@@ -27,7 +27,6 @@ const {
   mockGetUserIdByStripeCustomerId,
   mockGetUserIdsByStripeSubscriptionId,
   mockResolveAppUserIdForSubscription,
-  mockInvalidateSubscriptionStateCache,
 } = vi.hoisted(() => ({
   mockConstructStripeWebhookEvent: vi.fn(),
   mockCancelAbandonedSubscription: vi.fn(),
@@ -55,7 +54,6 @@ const {
   mockGetUserIdByStripeCustomerId: vi.fn(),
   mockGetUserIdsByStripeSubscriptionId: vi.fn(),
   mockResolveAppUserIdForSubscription: vi.fn(),
-  mockInvalidateSubscriptionStateCache: vi.fn(),
 }))
 
 vi.mock('@/lib/stripe', () => ({
@@ -131,14 +129,6 @@ vi.mock('@/lib/infra/redis', () => ({
   getRedis: vi.fn(() => null),
 }))
 
-vi.mock('@/lib/billing/subscription/subscription-state-redis-cache', () => ({
-  invalidateSubscriptionStateCache: mockInvalidateSubscriptionStateCache,
-}))
-
-vi.mock('@/lib/billing/access/pro-access-cache', () => ({
-  invalidateProAccessForUserIds: vi.fn(),
-}))
-
 vi.mock('@/lib/infra/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }))
@@ -204,7 +194,6 @@ beforeEach(() => {
   mockUpdateUserStripeSubscription.mockResolvedValue(undefined)
   mockUpdateSubscriptionState.mockResolvedValue({ count: 1 })
   mockClearStripeSubscriptionBySubId.mockResolvedValue({ count: 1 })
-  mockInvalidateSubscriptionStateCache.mockResolvedValue(undefined)
   mockReconcileSubscriptionById.mockResolvedValue({
     status: 'active',
     currentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),
@@ -479,8 +468,8 @@ describe('Stripe webhook route', () => {
       'sub_123',
       expect.objectContaining({
         isPro: true,
-        cancelAtPeriodEnd: false,
-        subscriptionInterval: 'month',
+        stripeCancelAtPeriodEnd: false,
+        stripeSubscriptionInterval: 'month',
       }),
     )
   })
@@ -688,8 +677,8 @@ describe('Stripe webhook route', () => {
       'sub_paused',
       expect.objectContaining({
         isPro: false,
-        currentPeriodEnd: new Date(1_783_200_000 * 1000),
-        subscriptionInterval: 'month',
+        stripeCurrentPeriodEnd: new Date(1_783_200_000 * 1000),
+        stripeSubscriptionInterval: 'month',
       }),
     )
   })
@@ -756,8 +745,8 @@ describe('Stripe webhook route', () => {
       'sub_123',
       expect.objectContaining({
         isPro: false,
-        currentPeriodEnd: new Date(1_783_200_000 * 1000),
-        subscriptionInterval: 'month',
+        stripeCurrentPeriodEnd: new Date(1_783_200_000 * 1000),
+        stripeSubscriptionInterval: 'month',
       }),
     )
     expect(mockClearStripeSubscriptionBySubId).not.toHaveBeenCalled()
@@ -888,8 +877,8 @@ describe('Stripe webhook route', () => {
       'sub_updated',
       expect.objectContaining({
         isPro: true,
-        currentPeriodEnd: new Date(1_783_200_000 * 1000),
-        subscriptionInterval: 'year',
+        stripeCurrentPeriodEnd: new Date(1_783_200_000 * 1000),
+        stripeSubscriptionInterval: 'year',
       }),
     )
   })
@@ -1021,7 +1010,7 @@ describe('Stripe webhook route', () => {
     expect(mockUpdateSubscriptionState).toHaveBeenCalledWith(
       'sub_renewed',
       expect.not.objectContaining({
-        currentPeriodEnd: expect.any(Date),
+        stripeCurrentPeriodEnd: expect.any(Date),
       }),
     )
   })
@@ -1180,8 +1169,8 @@ describe('Stripe webhook route', () => {
       'sub_pending_expired',
       expect.objectContaining({
         isPro: true,
-        currentPeriodEnd: new Date(1_783_200_000 * 1000),
-        subscriptionInterval: 'year',
+        stripeCurrentPeriodEnd: new Date(1_783_200_000 * 1000),
+        stripeSubscriptionInterval: 'year',
       }),
     )
     expect(mockCreatePortalSession).not.toHaveBeenCalled()

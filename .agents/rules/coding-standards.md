@@ -281,6 +281,7 @@ export async function createItemAction(_prev: ApiBody<null> | null, formData: Fo
 - No unused imports or variables
 - Keep functions under 50 lines when possible
 - Avoid over-decomposition: do not extract a function, component, or file that is only used in one place and adds indirection without benefit. A single-use 3-line helper, a pass-through wrapper component, or a one-export file whose only caller is adjacent are signs of over-decomposition. Inline it instead.
+- **Prefer modern array methods over imperative loops** for synchronous iteration. Use `.map()`, `.filter()`, `.flatMap()`, `.forEach()`, `.reduce()`, `.find()`, `.some()`, `.every()` instead of `for`, `for...of`, or `while`. Exception: use `for...of` when you need `await` inside the loop body — `await` inside `.forEach` / `.map` does not behave correctly.
 
 ### Errors (KISS)
 

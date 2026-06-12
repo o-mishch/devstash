@@ -18,7 +18,7 @@ export async function getUserIdByStripeCustomerId(stripeCustomerId: string): Pro
 export async function touchUserLastStripeSyncAt(userId: string): Promise<void> {
   await prisma.user.update({
     where: { id: userId },
-    data: { lastStripeSyncAt: new Date() },
+    data: { stripeLastSyncAt: new Date() },
   })
 }
 
@@ -26,12 +26,13 @@ export interface UserStripeInfo {
   email: string
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
+  stripeSubscriptionStatus: string | null
   isPro: boolean
-  subscriptionStart: Date | null
-  currentPeriodEnd: Date | null
-  subscriptionInterval: SubscriptionInterval | null
-  cancelAtPeriodEnd: boolean
-  lastStripeSyncAt: Date | null
+  stripeSubscriptionStart: Date | null
+  stripeCurrentPeriodEnd: Date | null
+  stripeSubscriptionInterval: SubscriptionInterval | null
+  stripeCancelAtPeriodEnd: boolean
+  stripeLastSyncAt: Date | null
   proExpiredAt: Date | null
 }
 
@@ -42,12 +43,13 @@ export async function getUserStripeInfo(userId: string): Promise<UserStripeInfo 
       email: true,
       stripeCustomerId: true,
       stripeSubscriptionId: true,
+      stripeSubscriptionStatus: true,
       isPro: true,
-      subscriptionStart: true,
-      currentPeriodEnd: true,
-      subscriptionInterval: true,
-      cancelAtPeriodEnd: true,
-      lastStripeSyncAt: true,
+      stripeSubscriptionStart: true,
+      stripeCurrentPeriodEnd: true,
+      stripeSubscriptionInterval: true,
+      stripeCancelAtPeriodEnd: true,
+      stripeLastSyncAt: true,
       proExpiredAt: true,
     },
   })
@@ -74,10 +76,11 @@ export async function clearStripeCustomerByCustomerId(stripeCustomerId: string) 
       isPro: false,
       stripeCustomerId: null,
       stripeSubscriptionId: null,
-      currentPeriodEnd: null,
-      subscriptionInterval: null,
-      cancelAtPeriodEnd: false,
-      lastStripeSyncAt: new Date(),
+      stripeSubscriptionStatus: null,
+      stripeCurrentPeriodEnd: null,
+      stripeSubscriptionInterval: null,
+      stripeCancelAtPeriodEnd: false,
+      stripeLastSyncAt: new Date(),
     },
   })
   const userIds = users.map((user) => user.id)
@@ -89,11 +92,12 @@ interface UpdateUserStripeSubscriptionParams {
   stripeCustomerId: string
   stripeSubscriptionId: string
   isPro: boolean
-  subscriptionStart?: Date
-  currentPeriodEnd?: Date | null
-  lastStripeSyncAt?: Date
-  subscriptionInterval?: SubscriptionInterval
-  cancelAtPeriodEnd?: boolean
+  stripeSubscriptionStatus?: string | null
+  stripeSubscriptionStart?: Date
+  stripeCurrentPeriodEnd?: Date | null
+  stripeLastSyncAt?: Date
+  stripeSubscriptionInterval?: SubscriptionInterval
+  stripeCancelAtPeriodEnd?: boolean
 }
 
 async function clearConflictingStripeSubscriptionLink(
@@ -136,10 +140,11 @@ async function clearConflictingStripeCustomerLink(
       isPro: false,
       stripeCustomerId: null,
       stripeSubscriptionId: null,
-      currentPeriodEnd: null,
-      subscriptionInterval: null,
-      cancelAtPeriodEnd: false,
-      lastStripeSyncAt: new Date(),
+      stripeSubscriptionStatus: null,
+      stripeCurrentPeriodEnd: null,
+      stripeSubscriptionInterval: null,
+      stripeCancelAtPeriodEnd: false,
+      stripeLastSyncAt: new Date(),
     },
   })
   return [owner.id]
@@ -150,11 +155,12 @@ export async function updateUserStripeSubscription(userId: string, params: Updat
     stripeCustomerId,
     stripeSubscriptionId,
     isPro,
-    subscriptionStart,
-    currentPeriodEnd,
-    lastStripeSyncAt,
-    subscriptionInterval,
-    cancelAtPeriodEnd,
+    stripeSubscriptionStatus,
+    stripeSubscriptionStart,
+    stripeCurrentPeriodEnd,
+    stripeLastSyncAt,
+    stripeSubscriptionInterval,
+    stripeCancelAtPeriodEnd,
   } = params
 
   const conflictClearedUserIds = [
@@ -169,15 +175,16 @@ export async function updateUserStripeSubscription(userId: string, params: Updat
         isPro,
         stripeCustomerId,
         stripeSubscriptionId,
-        cancelAtPeriodEnd: cancelAtPeriodEnd ?? false,
+        stripeCancelAtPeriodEnd: stripeCancelAtPeriodEnd ?? false,
+        ...(stripeSubscriptionStatus !== undefined && { stripeSubscriptionStatus }),
         ...(isPro ? { proExpiredAt: null } : {}),
-        ...(subscriptionStart && { subscriptionStart }),
-        ...(currentPeriodEnd !== undefined && { currentPeriodEnd }),
-        ...(lastStripeSyncAt && { lastStripeSyncAt }),
-        ...(subscriptionInterval && { subscriptionInterval }),
+        ...(stripeSubscriptionStart && { stripeSubscriptionStart }),
+        ...(stripeCurrentPeriodEnd !== undefined && { stripeCurrentPeriodEnd }),
+        ...(stripeLastSyncAt && { stripeLastSyncAt }),
+        ...(stripeSubscriptionInterval && { stripeSubscriptionInterval }),
       },
     })
-    log.info('DB: subscription_state_updated', { userId, isPro, stripeSubscriptionId, subscriptionInterval }, 'Updated user Stripe subscription link')
+    log.info('DB: subscription_state_updated', { userId, isPro, stripeSubscriptionId, stripeSubscriptionInterval }, 'Updated user Stripe subscription link')
     return { result, userIds: [...new Set([userId, ...conflictClearedUserIds])] }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -195,10 +202,11 @@ export async function updateUserStripeSubscription(userId: string, params: Updat
 
 interface UpdateSubscriptionStateData {
   isPro?: boolean
-  cancelAtPeriodEnd?: boolean
-  subscriptionInterval?: SubscriptionInterval
-  currentPeriodEnd?: Date | null
-  lastStripeSyncAt?: Date
+  stripeSubscriptionStatus?: string | null
+  stripeCancelAtPeriodEnd?: boolean
+  stripeSubscriptionInterval?: SubscriptionInterval
+  stripeCurrentPeriodEnd?: Date | null
+  stripeLastSyncAt?: Date
 }
 
 export async function updateSubscriptionState(
@@ -220,11 +228,12 @@ export async function clearStripeSubscriptionBySubId(stripeSubscriptionId: strin
     data: {
       isPro: false,
       stripeSubscriptionId: null,
-      currentPeriodEnd: null,
-      lastStripeSyncAt: new Date(),
-      subscriptionInterval: null,
-      cancelAtPeriodEnd: false,
-      // subscriptionStart kept as a historical record of when they first went Pro
+      stripeSubscriptionStatus: null,
+      stripeCurrentPeriodEnd: null,
+      stripeLastSyncAt: new Date(),
+      stripeSubscriptionInterval: null,
+      stripeCancelAtPeriodEnd: false,
+      // stripeSubscriptionStart kept as a historical record of when they first went Pro
       ...(proExpiredAt && { proExpiredAt }),
     },
   })

@@ -6,8 +6,6 @@ import {
   REQUIRED_STRIPE_WEBHOOK_EVENTS,
   shouldPassiveSyncBilling,
   shouldRunOrphanReconcile,
-  shouldTrustCachedProAccess,
-  STRIPE_OUTAGE_FALLBACK_MS,
   SUBSCRIPTION_DISPLAY_LIVE_CHECK_MS,
   subscriptionNeedsBillingPortalRecovery,
   validateStripeWebhookConfiguration,
@@ -85,45 +83,6 @@ describe('subscriptionNeedsBillingPortalRecovery', () => {
   })
 })
 
-describe('shouldTrustCachedProAccess', () => {
-  const now = Date.UTC(2026, 5, 8, 12, 0, 0)
-
-  it('returns false when user is not Pro', () => {
-    expect(shouldTrustCachedProAccess(false, new Date(now), now)).toBe(false)
-  })
-
-  it('returns false when last sync timestamp is missing', () => {
-    expect(shouldTrustCachedProAccess(true, null, now)).toBe(false)
-  })
-
-  it('returns true when sync is within the outage fallback window', () => {
-    const recentSync = new Date(now - STRIPE_OUTAGE_FALLBACK_MS + 60_000)
-    expect(shouldTrustCachedProAccess(true, recentSync, now)).toBe(true)
-  })
-
-  it('returns false when sync is older than the outage fallback window', () => {
-    const staleSync = new Date(now - STRIPE_OUTAGE_FALLBACK_MS - 1)
-    expect(shouldTrustCachedProAccess(true, staleSync, now)).toBe(false)
-  })
-
-  it('returns false when the billing period already ended in local state', () => {
-    const recentSync = new Date(now - 60_000)
-    expect(shouldTrustCachedProAccess(true, recentSync, now, {
-      currentPeriodEnd: new Date(now - 1),
-    })).toBe(false)
-    expect(shouldTrustCachedProAccess(true, recentSync, now, {
-      currentPeriodEnd: new Date(now - 1),
-    })).toBe(false)
-  })
-
-  it('returns false when proExpiredAt is in the past', () => {
-    const recentSync = new Date(now - 60_000)
-    expect(shouldTrustCachedProAccess(true, recentSync, now, {
-      proExpiredAt: new Date(now - 1),
-    })).toBe(false)
-  })
-})
-
 describe('shouldPassiveSyncBilling', () => {
   const now = Date.UTC(2026, 5, 8, 12, 0, 0)
 
@@ -133,8 +92,8 @@ describe('shouldPassiveSyncBilling', () => {
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       isPro: false,
-      lastStripeSyncAt: null,
-      currentPeriodEnd: null,
+      stripeLastSyncAt: null,
+      stripeCurrentPeriodEnd: null,
     }, now)).toBe(false)
   })
 
@@ -144,8 +103,8 @@ describe('shouldPassiveSyncBilling', () => {
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: 'sub_123',
       isPro: true,
-      lastStripeSyncAt: new Date(now - 60_000),
-      currentPeriodEnd: new Date(now + 86_400_000),
+      stripeLastSyncAt: new Date(now - 60_000),
+      stripeCurrentPeriodEnd: new Date(now + 86_400_000),
     }, now)).toBe(false)
   })
 
@@ -155,19 +114,8 @@ describe('shouldPassiveSyncBilling', () => {
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: 'sub_123',
       isPro: true,
-      lastStripeSyncAt: new Date(now - SUBSCRIPTION_DISPLAY_LIVE_CHECK_MS - 1),
-      currentPeriodEnd: new Date(now + 86_400_000),
-    }, now)).toBe(true)
-  })
-
-  it('syncs when a linked customer is not Pro', () => {
-    expect(shouldPassiveSyncBilling({
-      email: 'user@example.com',
-      stripeCustomerId: 'cus_123',
-      stripeSubscriptionId: 'sub_123',
-      isPro: false,
-      lastStripeSyncAt: new Date(now - 60_000),
-      currentPeriodEnd: new Date(now + 86_400_000),
+      stripeLastSyncAt: new Date(now - SUBSCRIPTION_DISPLAY_LIVE_CHECK_MS - 1),
+      stripeCurrentPeriodEnd: new Date(now + 86_400_000),
     }, now)).toBe(true)
   })
 })
@@ -181,8 +129,8 @@ describe('shouldRunOrphanReconcile', () => {
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       isPro: false,
-      lastStripeSyncAt: null,
-      currentPeriodEnd: null,
+      stripeLastSyncAt: null,
+      stripeCurrentPeriodEnd: null,
     }, now)).toBe(true)
   })
 
@@ -192,8 +140,8 @@ describe('shouldRunOrphanReconcile', () => {
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       isPro: false,
-      lastStripeSyncAt: new Date(now - 60_000),
-      currentPeriodEnd: null,
+      stripeLastSyncAt: new Date(now - 60_000),
+      stripeCurrentPeriodEnd: null,
     }, now)).toBe(false)
   })
 
@@ -203,8 +151,8 @@ describe('shouldRunOrphanReconcile', () => {
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       isPro: false,
-      lastStripeSyncAt: new Date(now - ORPHAN_RECONCILE_INTERVAL_MS - 1),
-      currentPeriodEnd: null,
+      stripeLastSyncAt: new Date(now - ORPHAN_RECONCILE_INTERVAL_MS - 1),
+      stripeCurrentPeriodEnd: null,
     }, now)).toBe(true)
   })
 })

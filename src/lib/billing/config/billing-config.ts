@@ -14,11 +14,8 @@ export type {
   StripeWebhookValidationResult,
 } from './stripe-webhook-config'
 
-/** Max age of `lastStripeSyncAt` during which DB `isPro` is trusted when live Stripe is unavailable. */
-export const STRIPE_OUTAGE_FALLBACK_MS = 6 * 60 * 60 * 1000
-
-/** How long display views can trust DB subscription fields before passive sync runs. */
-export const SUBSCRIPTION_DISPLAY_LIVE_CHECK_MS = 15 * 60 * 1000
+/** Passive sync interval — 24h because webhooks keep the DB current. */
+export const SUBSCRIPTION_DISPLAY_LIVE_CHECK_MS = 24 * 60 * 60 * 1000
 
 /** Minimum interval between Stripe orphan-subscription lookups for users without a local sub ID. */
 export const ORPHAN_RECONCILE_INTERVAL_MS = 60 * 60 * 1000
@@ -37,51 +34,29 @@ export function subscriptionNeedsBillingPortalRecovery(
   return status != null && BILLING_RECOVERY_STATUS_SET.has(status)
 }
 
-export interface ProAccessTrustContext {
-  currentPeriodEnd?: Date | null
-  proExpiredAt?: Date | null
-}
-
-/**
- * Fail-open Pro access when Stripe is unreachable but DB was recently synced.
- * Denies when period or `proExpiredAt` has passed. Webhooks and passive sync heal state after recovery.
- */
-export function shouldTrustCachedProAccess(
-  isPro: boolean,
-  lastStripeSyncAt: Date | null | undefined,
-  now = Date.now(),
-  context?: ProAccessTrustContext,
-): boolean {
-  if (!isPro || !lastStripeSyncAt) return false
-  if (context?.proExpiredAt && context.proExpiredAt.getTime() <= now) return false
-  if (context?.currentPeriodEnd && context.currentPeriodEnd.getTime() <= now) return false
-  return now - lastStripeSyncAt.getTime() < STRIPE_OUTAGE_FALLBACK_MS
-}
-
 export interface PassiveBillingSyncInput {
   email: string | null
   stripeCustomerId: string | null
   stripeSubscriptionId: string | null
   isPro: boolean
-  lastStripeSyncAt: Date | null
-  currentPeriodEnd: Date | null
+  stripeLastSyncAt: Date | null
+  stripeCurrentPeriodEnd: Date | null
 }
 
-/** Whether a passive Stripe sync is worth running to heal missed webhooks or stale DB fields. */
+/** Whether a passive Stripe sync is worth running as a safety net for missed webhooks. */
 export function shouldPassiveSyncBilling(user: PassiveBillingSyncInput, now = Date.now()): boolean {
   if (!user.stripeSubscriptionId) return false
-  if (!user.lastStripeSyncAt) return true
-  if (now - user.lastStripeSyncAt.getTime() >= SUBSCRIPTION_DISPLAY_LIVE_CHECK_MS) return true
-  if (user.stripeCustomerId && !user.isPro) return true
-  if (user.currentPeriodEnd && user.currentPeriodEnd.getTime() <= now) return true
+  if (!user.stripeLastSyncAt) return true
+  if (now - user.stripeLastSyncAt.getTime() >= SUBSCRIPTION_DISPLAY_LIVE_CHECK_MS) return true
+  if (user.stripeCurrentPeriodEnd && user.stripeCurrentPeriodEnd.getTime() <= now) return true
   return false
 }
 
 /** Whether to look up a missed Stripe subscription on billing-sensitive pages. */
 export function shouldRunOrphanReconcile(user: PassiveBillingSyncInput, now = Date.now()): boolean {
   if (!user.email || user.stripeSubscriptionId) return false
-  if (!user.lastStripeSyncAt) return true
-  return now - user.lastStripeSyncAt.getTime() >= ORPHAN_RECONCILE_INTERVAL_MS
+  if (!user.stripeLastSyncAt) return true
+  return now - user.stripeLastSyncAt.getTime() >= ORPHAN_RECONCILE_INTERVAL_MS
 }
 
 /**

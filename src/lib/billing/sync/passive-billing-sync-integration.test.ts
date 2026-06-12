@@ -4,14 +4,6 @@ vi.mock('@/lib/infra/redis', () => ({
   getRedis: vi.fn(() => null),
 }))
 
-vi.mock('@/lib/billing/subscription/subscription-state-redis-cache', () => ({
-  invalidateSubscriptionStateCache: vi.fn(),
-}))
-
-vi.mock('@/lib/billing/access/pro-access-cache', () => ({
-  invalidateProAccessForUserIds: vi.fn(),
-}))
-
 vi.mock('@/lib/infra/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }))
@@ -323,9 +315,9 @@ describe('syncSubscriptionStateForUser', () => {
       'sub_123',
       expect.objectContaining({
         isPro: true,
-        cancelAtPeriodEnd: false,
-        currentPeriodEnd: periodEnd,
-        subscriptionInterval: 'month',
+        stripeCancelAtPeriodEnd: false,
+        stripeCurrentPeriodEnd: periodEnd,
+        stripeSubscriptionInterval: 'month',
       }),
     )
   })
@@ -374,8 +366,8 @@ describe('syncSubscriptionStateForUser', () => {
       'sub_123',
       expect.objectContaining({
         isPro: false,
-        currentPeriodEnd: periodEnd,
-        subscriptionInterval: 'month',
+        stripeCurrentPeriodEnd: periodEnd,
+        stripeSubscriptionInterval: 'month',
       }),
     )
     expect(mockClearStripeSubscriptionBySubId).not.toHaveBeenCalled()
@@ -427,8 +419,8 @@ describe('syncSubscriptionStateForUser', () => {
       'sub_123',
       expect.objectContaining({
         isPro: false,
-        currentPeriodEnd: periodEnd,
-        subscriptionInterval: 'month',
+        stripeCurrentPeriodEnd: periodEnd,
+        stripeSubscriptionInterval: 'month',
       }),
     )
     expect(mockClearStripeSubscriptionBySubId).not.toHaveBeenCalled()
@@ -442,8 +434,8 @@ describe('maybeReconcileBillingStateForUser', () => {
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: 'sub_123',
       isPro: true,
-      lastStripeSyncAt: new Date(),
-      currentPeriodEnd: new Date('2026-12-31T00:00:00.000Z'),
+      stripeLastSyncAt: new Date(),
+      stripeCurrentPeriodEnd: new Date('2026-12-31T00:00:00.000Z'),
     })
 
     const result = await maybeReconcileBillingStateForUser('user-1')
@@ -452,14 +444,15 @@ describe('maybeReconcileBillingStateForUser', () => {
     expect(mockFetchLiveSubscriptionState).not.toHaveBeenCalled()
   })
 
-  it('runs sync when billing recovery signals are present', async () => {
+  it('runs sync when the last sync is older than the 24h threshold', async () => {
+    const staleSync = new Date(Date.now() - 25 * 60 * 60 * 1000)
     mockGetUserStripeInfo.mockResolvedValue({
       email: 'user@example.com',
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: 'sub_123',
-      isPro: false,
-      lastStripeSyncAt: new Date(),
-      currentPeriodEnd: new Date('2026-12-31T00:00:00.000Z'),
+      isPro: true,
+      stripeLastSyncAt: staleSync,
+      stripeCurrentPeriodEnd: new Date('2026-12-31T00:00:00.000Z'),
     })
     mockFetchLiveSubscriptionState.mockResolvedValue({
       exists: true,

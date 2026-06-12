@@ -12,7 +12,6 @@ import {
   getSubscriptionBadgeConfig,
   getSubscriptionCardAccent,
   shouldShowAccessEnds,
-  usesAccentPeriodValueClass,
   type SubscriptionBadgeIcon,
 } from '@/lib/billing/subscription/billing-subscription-display'
 import { getProContentRetentionHint, getBillingRecoveryHint } from '@/lib/billing/messages/billing-messages.client'
@@ -41,20 +40,17 @@ function BillingDetailRow({ label, value, valueClassName }: BillingDetailRowProp
 }
 
 interface BillingSubscriptionStatusBadgeProps {
-  cancelAtPeriodEnd: boolean
-  stripeStatus: BillingSubscriptionStatus | null
-  liveStripeUnavailable?: boolean
+  stripeCancelAtPeriodEnd: boolean
+  stripeSubscriptionStatus: BillingSubscriptionStatus | null
 }
 
 function BillingSubscriptionStatusBadge({
-  cancelAtPeriodEnd,
-  stripeStatus,
-  liveStripeUnavailable = false,
+  stripeCancelAtPeriodEnd,
+  stripeSubscriptionStatus,
 }: BillingSubscriptionStatusBadgeProps) {
   const { label, icon, className } = getSubscriptionBadgeConfig(
-    cancelAtPeriodEnd,
-    stripeStatus,
-    liveStripeUnavailable,
+    stripeCancelAtPeriodEnd,
+    stripeSubscriptionStatus,
   )
   const Icon = BADGE_ICONS[icon]
 
@@ -67,30 +63,27 @@ function BillingSubscriptionStatusBadge({
 }
 
 interface BillingProPlanCardProps {
-  cancelAtPeriodEnd: boolean
-  stripeStatus: BillingSubscriptionStatus | null
-  liveStripeUnavailable?: boolean
-  subscriptionStart: Date | null
-  currentPeriodEnd: Date | null
+  stripeCancelAtPeriodEnd: boolean
+  stripeSubscriptionStatus: BillingSubscriptionStatus | null
+  stripeSubscriptionStart: Date | null
+  stripeCurrentPeriodEnd: Date | null
   planLabel: string
   planPrice: string
   planUnit: string
 }
 
 function BillingProPlanCard({
-  cancelAtPeriodEnd,
-  stripeStatus,
-  liveStripeUnavailable = false,
-  subscriptionStart,
-  currentPeriodEnd,
+  stripeCancelAtPeriodEnd,
+  stripeSubscriptionStatus,
+  stripeSubscriptionStart,
+  stripeCurrentPeriodEnd,
   planLabel,
   planPrice,
   planUnit,
 }: BillingProPlanCardProps) {
-  const accent = getSubscriptionCardAccent(cancelAtPeriodEnd, stripeStatus, liveStripeUnavailable)
+  const accent = getSubscriptionCardAccent(stripeCancelAtPeriodEnd, stripeSubscriptionStatus)
   const HeaderIcon = BADGE_ICONS[accent.icon]
-  const showAccessEnds = shouldShowAccessEnds(cancelAtPeriodEnd, stripeStatus, liveStripeUnavailable)
-  const useAccentPeriodClass = usesAccentPeriodValueClass(cancelAtPeriodEnd, stripeStatus, liveStripeUnavailable)
+  const showAccessEnds = shouldShowAccessEnds(stripeCancelAtPeriodEnd, stripeSubscriptionStatus)
 
   return (
     <div className={`rounded-lg border divide-y ${accent.borderClassName}`}>
@@ -100,33 +93,32 @@ function BillingProPlanCard({
           <span className="text-sm font-semibold">DevStash Pro</span>
         </div>
         <BillingSubscriptionStatusBadge
-          cancelAtPeriodEnd={cancelAtPeriodEnd}
-          stripeStatus={stripeStatus}
-          liveStripeUnavailable={liveStripeUnavailable}
+          stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
+          stripeSubscriptionStatus={stripeSubscriptionStatus}
         />
       </div>
 
       <BillingDetailRow label="Plan" value={`${planLabel} · ${planPrice} / ${planUnit}`} />
-      {subscriptionStart && (
-        <BillingDetailRow label="Pro since" value={formatDate(subscriptionStart, true)} />
+      {stripeSubscriptionStart && (
+        <BillingDetailRow label="Pro since" value={formatDate(stripeSubscriptionStart, true)} />
       )}
       {showAccessEnds ? (
         <BillingDetailRow
           label="Access ends"
-          value={currentPeriodEnd ? formatDate(currentPeriodEnd, true) : '—'}
-          valueClassName={useAccentPeriodClass ? 'text-amber-500' : undefined}
+          value={stripeCurrentPeriodEnd ? formatDate(stripeCurrentPeriodEnd, true) : '—'}
+          valueClassName={showAccessEnds ? 'text-amber-500' : undefined}
         />
       ) : (
         <BillingDetailRow
           label="Next renewal"
-          value={currentPeriodEnd ? formatDate(currentPeriodEnd, true) : '—'}
+          value={stripeCurrentPeriodEnd ? formatDate(stripeCurrentPeriodEnd, true) : '—'}
         />
       )}
 
-      {cancelAtPeriodEnd && currentPeriodEnd && (
+      {stripeCancelAtPeriodEnd && stripeCurrentPeriodEnd && (
         <div className="px-4 py-3 bg-amber-500/5">
           <p className="text-xs text-amber-600 dark:text-amber-400">
-            Your subscription won&apos;t renew. Pro access continues until <strong>{formatDate(currentPeriodEnd, true)}</strong>, then you&apos;ll move to the free plan.
+            Your subscription won&apos;t renew. Pro access continues until <strong>{formatDate(stripeCurrentPeriodEnd, true)}</strong>, then you&apos;ll move to the free plan.
           </p>
         </div>
       )}
@@ -135,11 +127,10 @@ function BillingProPlanCard({
 }
 
 interface BillingProPlanSectionProps {
-  cancelAtPeriodEnd: boolean
-  stripeStatus: BillingSubscriptionStatus | null
-  liveStripeUnavailable: boolean
-  subscriptionStart: Date | null
-  currentPeriodEnd: Date | null
+  stripeCancelAtPeriodEnd: boolean
+  stripeSubscriptionStatus: BillingSubscriptionStatus | null
+  stripeSubscriptionStart: Date | null
+  stripeCurrentPeriodEnd: Date | null
   planLabel: string
   planPrice: string
   planUnit: string
@@ -147,11 +138,10 @@ interface BillingProPlanSectionProps {
 }
 
 export function BillingProPlanSection({
-  cancelAtPeriodEnd,
-  stripeStatus,
-  liveStripeUnavailable,
-  subscriptionStart,
-  currentPeriodEnd,
+  stripeCancelAtPeriodEnd,
+  stripeSubscriptionStatus,
+  stripeSubscriptionStart,
+  stripeCurrentPeriodEnd,
   planLabel,
   planPrice,
   planUnit,
@@ -160,11 +150,10 @@ export function BillingProPlanSection({
   return (
     <>
       <BillingProPlanCard
-        cancelAtPeriodEnd={cancelAtPeriodEnd}
-        stripeStatus={stripeStatus}
-        liveStripeUnavailable={liveStripeUnavailable}
-        subscriptionStart={subscriptionStart}
-        currentPeriodEnd={currentPeriodEnd}
+        stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
+        stripeSubscriptionStatus={stripeSubscriptionStatus}
+        stripeSubscriptionStart={stripeSubscriptionStart}
+        stripeCurrentPeriodEnd={stripeCurrentPeriodEnd}
         planLabel={planLabel}
         planPrice={planPrice}
         planUnit={planUnit}

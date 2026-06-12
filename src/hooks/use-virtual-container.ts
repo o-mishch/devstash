@@ -1,10 +1,9 @@
 'use client'
 
-import { useRef, useEffect, useState, useCallback } from 'react'
-import debounce from 'lodash.debounce'
+import { type RefObject, useRef, useEffect, useState, useCallback } from 'react'
 
 interface VirtualContainerResult {
-  containerRef: React.RefObject<HTMLDivElement | null>
+  containerRef: RefObject<HTMLDivElement | null>
   cols: number
   containerWidth: number
   getScrollElement: () => HTMLElement | null
@@ -28,17 +27,22 @@ export function useVirtualContainer(getColumns?: (width: number) => number): Vir
     }
   }, [getColumns])
 
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
 
     measure()
 
-    const debouncedMeasure = debounce(measure, 100)
+    const debouncedMeasure = () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(measure, 100)
+    }
 
     const ro = new ResizeObserver(debouncedMeasure)
     ro.observe(el)
-    
+
     const scrollEl = el.closest('main')
     if (scrollEl) {
       ro.observe(scrollEl)
@@ -46,6 +50,7 @@ export function useVirtualContainer(getColumns?: (width: number) => number): Vir
 
     return () => {
       ro.disconnect()
+      if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [measure])
 

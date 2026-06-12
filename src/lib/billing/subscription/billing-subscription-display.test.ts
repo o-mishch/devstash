@@ -18,8 +18,8 @@ describe('getSubscriptionBadgeConfig', () => {
     expect(getSubscriptionBadgeConfig(false, 'active').label).toBe('Active')
   })
 
-  it('returns status unavailable when live Stripe is unreachable', () => {
-    expect(getSubscriptionBadgeConfig(false, null, true).label).toBe('Status unavailable')
+  it('returns active badge when status is null', () => {
+    expect(getSubscriptionBadgeConfig(false, null).label).toBe('Active')
   })
 })
 

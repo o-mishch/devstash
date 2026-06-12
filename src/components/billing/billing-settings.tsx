@@ -50,17 +50,17 @@ export async function BillingSettings({
     canManageBilling,
   } = billingPage
 
-  const subscriptionStart = billing?.subscriptionStart ?? null
-  const currentPeriodEnd = billing?.currentPeriodEnd ?? null
-  const cancelAtPeriodEnd = billing?.cancelAtPeriodEnd ?? false
-  const stripeStatus = billing?.stripeStatus ?? null
-  const billingIssueMessage = getBillingIssueMessage(stripeStatus, isPro)
-  const planInfo = isPro ? getSubscriptionIntervalInfo(billing?.subscriptionInterval ?? null) : null
+  const stripeSubscriptionStart = billing?.stripeSubscriptionStart ?? null
+  const stripeCurrentPeriodEnd = billing?.stripeCurrentPeriodEnd ?? null
+  const stripeCancelAtPeriodEnd = billing?.stripeCancelAtPeriodEnd ?? false
+  const stripeSubscriptionStatus = billing?.stripeSubscriptionStatus ?? null
+  const billingIssueMessage = getBillingIssueMessage(stripeSubscriptionStatus, isPro)
+  const planInfo = isPro ? getSubscriptionIntervalInfo(billing?.stripeSubscriptionInterval ?? null) : null
 
   const billingActions = (
     <BillingActions
       isPro={isPro}
-      isCanceling={cancelAtPeriodEnd}
+      isCanceling={stripeCancelAtPeriodEnd}
       canManageBilling={canManageBilling}
       showUpgradeCta={!checkoutDisabled}
       billingUnavailable={billingUnavailable}
@@ -71,11 +71,10 @@ export async function BillingSettings({
   if (isPro && !billingUnavailable && planInfo) {
     billingBody = (
       <BillingProPlanSection
-        cancelAtPeriodEnd={cancelAtPeriodEnd}
-        stripeStatus={stripeStatus}
-        liveStripeUnavailable={billing?.liveStripeUnavailable ?? false}
-        subscriptionStart={subscriptionStart}
-        currentPeriodEnd={currentPeriodEnd}
+        stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
+        stripeSubscriptionStatus={stripeSubscriptionStatus}
+        stripeSubscriptionStart={stripeSubscriptionStart}
+        stripeCurrentPeriodEnd={stripeCurrentPeriodEnd}
         planLabel={planInfo.label}
         planPrice={planInfo.price}
         planUnit={planInfo.unit}

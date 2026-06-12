@@ -19,15 +19,16 @@ model User {
   name                 String?
   image                String?
   password             String?
-  isPro                Boolean   @default(false)
-  stripeCustomerId     String?   @unique
-  stripeSubscriptionId String?   @unique
-  subscriptionStart    DateTime?
-  currentPeriodEnd     DateTime?
-  proExpiredAt         DateTime?
-  lastStripeSyncAt     DateTime?
-  subscriptionInterval SubscriptionInterval?
-  cancelAtPeriodEnd    Boolean               @default(false)
+  isPro                      Boolean               @default(false)
+  proExpiredAt               DateTime?
+  stripeCustomerId           String?               @unique
+  stripeSubscriptionId       String?               @unique
+  stripeSubscriptionStatus   String?
+  stripeSubscriptionStart    DateTime?
+  stripeCurrentPeriodEnd     DateTime?
+  stripeLastSyncAt           DateTime?
+  stripeSubscriptionInterval SubscriptionInterval?
+  stripeCancelAtPeriodEnd    Boolean               @default(false)
   editorPreferences    Json?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt

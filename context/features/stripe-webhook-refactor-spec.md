@@ -13,20 +13,15 @@
 | `updateSubscriptionState` accepts `isPro` | ✅ Done (field is part of `UpdateSubscriptionStateData`) |
 | Add `customer.subscription.created` handler | ❌ Pending |
 | Add `customer.subscription.updated` handler | ❌ Pending |
-| Remove `checkout.session.completed` provisioning | ❌ Pending — **blocked on Open Question below** |
+| Strip provisioning from `checkout.session.completed` (keep event registered) | ❌ Pending |
 
 ---
 
-## Decision Required Before Implementation
+## Decision: Keep `checkout.session.completed`, strip provisioning from it
 
-> **Q: Should we support asynchronous payment methods (SEPA, Boleto, ACH Debit, etc.)?**
->
-> This choice determines whether we can remove `checkout.session.completed` at all:
->
-> - **Yes (support async methods):** Keep `checkout.session.completed` but strip provisioning from it. Rely on `customer.subscription.created` for standard card payments (status `active`) and `checkout.session.async_payment_succeeded` for delayed payments. This is the most robust long-term path.
-> - **No (card-only for now):** Subscriptions always start `active` immediately. Safe to remove `checkout.session.completed` provisioning entirely and rely solely on `customer.subscription.created`.
->
-> **Current behaviour:** `handleCheckoutSessionCompleted` calls `persistSubscriptionFromStripe` which accepts `paymentStatus` and `forceActivate` to handle `paid` vs `unpaid` vs `no_payment_required` states. Removing it breaks async payment method support if that's ever enabled.
+**Decision:** Option A — keep `checkout.session.completed` registered but remove provisioning logic from it. `customer.subscription.created` becomes the primary provisioning path. This preserves async payment method support without code changes if SEPA/ACH/Boleto are ever enabled.
+
+**Rationale:** Removing `checkout.session.completed` entirely would block future async payment method expansion. The correct Stripe pattern is to let `customer.subscription.created` handle provisioning for immediate-pay checkouts and `checkout.session.async_payment_succeeded` for delayed payments. `checkout.session.completed` stays registered as a fallback signal but does no provisioning work.
 
 ---
 
@@ -187,6 +182,21 @@ stripe trigger customer.subscription.created
 ```
 
 Check server logs for `subscription.created` event processed, DB row updated, `isPro = true`.
+
+---
+
+## Known Behavior: Double Redis Read per Request
+
+On every authenticated app navigation, Redis pro-access is read twice for the same `userId` in the same request:
+
+1. **NextAuth JWT callback** (`src/auth.ts:187`) calls `resolveSessionUserIsPro(userId)` → `getCachedVerifiedProAccess(userId)` → Redis read
+2. **App layout** (`src/app/(app)/layout.tsx:91`) calls `getCachedVerifiedProAccess(userId)` → Redis read
+
+React's `cache()` deduplicates within the React render tree, but the NextAuth JWT callback runs outside it — so both reads hit Redis independently. On cache miss (cold Redis / first request after TTL), both fall through to a live Stripe check and both write the result back, producing two writes for the same key 100–200ms apart.
+
+**This is safe** — the writes are idempotent (same value, same TTL). The only cost is two Stripe API calls on cold cache instead of one.
+
+**To optimize:** share the result between the JWT callback path and the React render by storing the resolved value in a module-level request-scoped structure before the layout renders. This requires coordinating across the NextAuth boundary and is non-trivial. Deferred until the double Stripe call is observed to be a real cost.
 
 ---
 

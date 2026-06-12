@@ -17,10 +17,8 @@ export interface SubscriptionCardAccentConfig {
 function resolveSubscriptionDisplayState(
   cancelAtPeriodEnd: boolean,
   stripeStatus: BillingSubscriptionStatus | null,
-  liveStripeUnavailable: boolean,
 ): SubscriptionDisplayState {
   if (cancelAtPeriodEnd) return 'canceling'
-  if (liveStripeUnavailable && stripeStatus == null) return 'unavailable'
   if (stripeStatus === 'past_due' || stripeStatus === 'unpaid') return 'payment_issue'
   if (stripeStatus === 'paused') return 'paused'
   if (stripeStatus === 'trialing') return 'trial'
@@ -96,35 +94,24 @@ const ACCENT_BY_STATE: Record<SubscriptionDisplayState, SubscriptionCardAccentCo
 export function getSubscriptionBadgeConfig(
   cancelAtPeriodEnd: boolean,
   stripeStatus: BillingSubscriptionStatus | null,
-  liveStripeUnavailable = false,
 ): SubscriptionBadgeConfig {
-  const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus, liveStripeUnavailable)
+  const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus)
   return BADGE_BY_STATE[state]
 }
 
 export function getSubscriptionCardAccent(
   cancelAtPeriodEnd: boolean,
   stripeStatus: BillingSubscriptionStatus | null,
-  liveStripeUnavailable = false,
 ): SubscriptionCardAccentConfig {
-  const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus, liveStripeUnavailable)
+  const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus)
   return ACCENT_BY_STATE[state]
 }
 
 export function shouldShowAccessEnds(
   cancelAtPeriodEnd: boolean,
   stripeStatus: BillingSubscriptionStatus | null,
-  liveStripeUnavailable = false,
 ): boolean {
-  const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus, liveStripeUnavailable)
+  const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus)
   return state === 'canceling' || state === 'payment_issue' || state === 'paused'
 }
 
-export function usesAccentPeriodValueClass(
-  cancelAtPeriodEnd: boolean,
-  stripeStatus: BillingSubscriptionStatus | null,
-  liveStripeUnavailable = false,
-): boolean {
-  const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus, liveStripeUnavailable)
-  return state === 'canceling' || state === 'payment_issue' || state === 'paused'
-}

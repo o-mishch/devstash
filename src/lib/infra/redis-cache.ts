@@ -1,11 +1,7 @@
 import 'server-only'
 
-import { getRedis } from '@/lib/infra/redis'
+import { getRedis, isAbortOrTimeout } from '@/lib/infra/redis'
 import { createLogger } from '@/lib/infra/logger'
-
-function isAbortOrTimeout(error: unknown): boolean {
-  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
-}
 
 function shouldUseMemoryFallback(): boolean {
   return process.env.NODE_ENV !== 'production'
@@ -43,12 +39,19 @@ export function makeRedisCache<T>(options: RedisCacheOptions) {
     if (redis) {
       try {
         const cached = await redis.get<T>(buildKey(key))
-        if (cached !== null && cached !== undefined) return cached
+        if (cached !== null && cached !== undefined) {
+          log.info('Cache hit', { key, redisKey: buildKey(key) })
+          return cached
+        }
       } catch (error) {
         if (isAbortOrTimeout(error)) {
-          log.warn('Cache read timed out', { key })
+          log.warn('Cache read timed out', {
+            key,
+            redisKey: buildKey(key),
+            errorMessage: error instanceof Error ? error.message : String(error),
+          })
         } else {
-          log.warn('Cache read failed', { key, error })
+          log.warn('Cache read failed', { key, redisKey: buildKey(key), error })
         }
       }
     } else {
@@ -71,11 +74,17 @@ export function makeRedisCache<T>(options: RedisCacheOptions) {
     if (redis) {
       try {
         await redis.set(buildKey(key), value, { ex: ttlSeconds })
+        log.info('Cache write', { key, redisKey: buildKey(key), ttlSeconds })
       } catch (error) {
         if (isAbortOrTimeout(error)) {
-          log.warn('Cache write timed out', { key })
+          log.warn('Cache write timed out', {
+            key,
+            redisKey: buildKey(key),
+            ttlSeconds,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          })
         } else {
-          log.warn('Cache write failed', { key, error })
+          log.warn('Cache write failed', { key, redisKey: buildKey(key), ttlSeconds, error })
         }
       }
     } else {
@@ -95,11 +104,16 @@ export function makeRedisCache<T>(options: RedisCacheOptions) {
     if (redis) {
       try {
         await redis.del(buildKey(key))
+        log.info('Cache invalidated', { key, redisKey: buildKey(key) })
       } catch (error) {
         if (isAbortOrTimeout(error)) {
-          log.warn('Cache invalidation timed out', { key })
+          log.warn('Cache invalidation timed out', {
+            key,
+            redisKey: buildKey(key),
+            errorMessage: error instanceof Error ? error.message : String(error),
+          })
         } else {
-          log.warn('Cache invalidation failed', { key, error })
+          log.warn('Cache invalidation failed', { key, redisKey: buildKey(key), error })
         }
       }
     }

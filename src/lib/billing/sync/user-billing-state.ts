@@ -14,14 +14,14 @@ import {
   getExistingSubscriptionMessage,
 } from '@/lib/billing/messages/billing-messages'
 import { CHECKOUT_NOT_CONFIGURED_MESSAGE } from '@/lib/billing/messages/billing-messages.client'
-import { resolveProAccessForBillingContext } from '@/lib/billing/access/pro-access-resolution'
+import type { BillingSubscriptionStatus } from '@/types/billing'
 import { CacheTags } from '@/lib/infra/cache'
 import { createLogger } from '@/lib/infra/logger'
 
 const log = createLogger('billing-state')
 
 export interface FreshBillingContextOptions {
-  /** Bypass request-scoped caches for the DB Stripe row (and Pro access when combined with bypass). */
+  /** Bypass request-scoped caches for the DB Stripe row. */
   freshBillingContext?: boolean
 }
 
@@ -35,20 +35,17 @@ async function fetchCachedLiveSubscriptionState(subscriptionId: string): Promise
   'use cache'
   cacheTag(CacheTags.stripeSubscription(subscriptionId))
   // stale: 30s (serve stale while revalidating), revalidate: 120s, expire: 120s
-  // Short enough to pick up subscription changes quickly; long enough to avoid
-  // hammering Stripe on every page load during passive sync.
+  // Used by passive sync only — not on the primary Pro access check path.
   cacheLife({ stale: 30, revalidate: 120, expire: 120 })
   return fetchLiveSubscriptionState(subscriptionId)
 }
 
-/** Request-scoped Stripe subscription fetch — deduplicates within a render; persistent cache across requests. */
+/** Request-scoped Stripe subscription fetch — used by passive background sync. */
 export const getCachedLiveSubscriptionState = cache(fetchCachedLiveSubscriptionState)
 
 export interface CheckoutUiStateInput {
   needsBillingRecovery: boolean
   billingUnavailable: boolean
-  /** Live Stripe fetch failed for a linked subscription — block checkout without recovery copy. */
-  liveStripeUnavailable?: boolean
   hasLinkedSubscription?: boolean
   checkoutConfigured: boolean
   subscriptionStatus?: Stripe.Subscription.Status
@@ -67,9 +64,6 @@ export function resolveCheckoutUiState(input: CheckoutUiStateInput): CheckoutUiS
   if (!input.checkoutConfigured) {
     return { checkoutDisabled: true, checkoutDisabledMessage: CHECKOUT_NOT_CONFIGURED_MESSAGE }
   }
-  if (input.liveStripeUnavailable && input.hasLinkedSubscription) {
-    return { checkoutDisabled: true, checkoutDisabledMessage: BILLING_UNAVAILABLE_MESSAGE }
-  }
   if (input.needsBillingRecovery) {
     return {
       checkoutDisabled: true,
@@ -81,30 +75,21 @@ export function resolveCheckoutUiState(input: CheckoutUiStateInput): CheckoutUiS
 
 /**
  * Billing display for settings and upgrade UI.
- * DB fields come from passive sync and throttled orphan reconcile in the app layout;
- * Pro access and Stripe status share the request-scoped live check in pro-access-resolution.
+ * All fields read from local DB — kept current by Stripe webhooks.
+ * No live Stripe API call on this path (Stripe's recommended pattern).
  */
 
 export interface UserBillingState {
   email: string | null
-  /** From the local database — updated by webhooks and passive sync. */
   stripeCustomerId: string | null
-  /** From the local database — updated by webhooks and passive sync. */
   stripeSubscriptionId: string | null
-  /** Live Stripe check — may differ briefly from the database `isPro` flag. */
   isPro: boolean
-  /** From the local database — updated by webhooks and passive sync. */
-  subscriptionStart: Date | null
-  /** From the local database — updated by webhooks and passive sync. */
-  currentPeriodEnd: Date | null
-  /** From the local database — updated by webhooks and passive sync. */
-  subscriptionInterval: SubscriptionInterval | null
-  /** From the local database — updated by webhooks and passive sync. */
-  cancelAtPeriodEnd: boolean
-  /** Live Stripe check — shares the request-scoped fetch with Pro enforcement. */
-  stripeStatus: LiveSubscriptionState['status']
-  /** True when live Stripe status could not be fetched for a linked subscription. */
-  liveStripeUnavailable: boolean
+  /** Last known Stripe subscription status — stored by webhooks, used for billing display only. */
+  stripeSubscriptionStatus: BillingSubscriptionStatus | null
+  stripeSubscriptionStart: Date | null
+  stripeCurrentPeriodEnd: Date | null
+  stripeSubscriptionInterval: SubscriptionInterval | null
+  stripeCancelAtPeriodEnd: boolean
 }
 
 export async function getUserBillingState(
@@ -116,27 +101,16 @@ export async function getUserBillingState(
     : await getCachedUserStripeInfo(userId)
   if (!stripeInfo) return null
 
-  const [isPro, stripeStatusResult] = await Promise.all([
-    resolveProAccessForBillingContext(userId, options),
-    stripeInfo.stripeSubscriptionId
-      ? getCachedLiveSubscriptionState(stripeInfo.stripeSubscriptionId).then((live) => ({
-          status: live?.status ?? null,
-          unavailable: live === null,
-        }))
-      : Promise.resolve({ status: null, unavailable: false }),
-  ])
-
   return {
     email: stripeInfo.email,
     stripeCustomerId: stripeInfo.stripeCustomerId,
     stripeSubscriptionId: stripeInfo.stripeSubscriptionId,
-    isPro,
-    subscriptionStart: stripeInfo.subscriptionStart,
-    currentPeriodEnd: stripeInfo.currentPeriodEnd,
-    subscriptionInterval: stripeInfo.subscriptionInterval,
-    cancelAtPeriodEnd: stripeInfo.cancelAtPeriodEnd,
-    stripeStatus: stripeStatusResult.status,
-    liveStripeUnavailable: stripeStatusResult.unavailable,
+    isPro: stripeInfo.isPro,
+    stripeSubscriptionStatus: stripeInfo.stripeSubscriptionStatus as BillingSubscriptionStatus | null,
+    stripeSubscriptionStart: stripeInfo.stripeSubscriptionStart,
+    stripeCurrentPeriodEnd: stripeInfo.stripeCurrentPeriodEnd,
+    stripeSubscriptionInterval: stripeInfo.stripeSubscriptionInterval,
+    stripeCancelAtPeriodEnd: stripeInfo.stripeCancelAtPeriodEnd,
   }
 }
 
@@ -154,7 +128,7 @@ export function resolveNeedsBillingRecovery(
   billing: UserBillingState | null,
 ): boolean {
   if (isPro || !billing?.stripeCustomerId) return false
-  return subscriptionNeedsBillingPortalRecovery(billing.stripeStatus)
+  return subscriptionNeedsBillingPortalRecovery(billing.stripeSubscriptionStatus)
 }
 
 /** Shared billing display state for settings and upgrade pages. */
@@ -211,10 +185,9 @@ export async function loadBillingPageContext(
   const { checkoutDisabled, checkoutDisabledMessage } = resolveCheckoutUiState({
     needsBillingRecovery: displayContext.needsBillingRecovery,
     billingUnavailable: displayContext.unavailable,
-    liveStripeUnavailable: displayContext.billing?.liveStripeUnavailable ?? false,
     hasLinkedSubscription: Boolean(displayContext.billing?.stripeSubscriptionId),
     checkoutConfigured,
-    subscriptionStatus: displayContext.billing?.stripeStatus ?? undefined,
+    subscriptionStatus: displayContext.billing?.stripeSubscriptionStatus as Stripe.Subscription.Status ?? undefined,
   })
 
   return {

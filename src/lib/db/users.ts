@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { prisma } from '@/lib/infra/prisma'
 import type { Prisma } from '@/generated/prisma'
 
@@ -9,7 +11,7 @@ export async function getUserSessionInfo(id: string) {
       password: true,
       isPro: true,
       stripeSubscriptionId: true,
-      lastStripeSyncAt: true,
+      stripeLastSyncAt: true,
     },
   })
 }

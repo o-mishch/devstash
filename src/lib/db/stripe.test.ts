@@ -48,8 +48,8 @@ describe('updateUserStripeSubscription', () => {
         isPro: false,
         stripeCustomerId: null,
         stripeSubscriptionId: null,
-        subscriptionInterval: null,
-        cancelAtPeriodEnd: false,
+        stripeSubscriptionInterval: null,
+        stripeCancelAtPeriodEnd: false,
       }),
     })
   })

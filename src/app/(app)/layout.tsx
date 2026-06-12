@@ -25,9 +25,11 @@ import { UpgradePromptProvider } from '@/providers/upgrade-prompt-provider'
 import { ItemDrawerProvider } from '@/providers/item-drawer-provider'
 export default function DashboardLayout({ children }: WithChildren) {
   return (
-    <Suspense fallback={<DashboardLayoutSkeleton>{children}</DashboardLayoutSkeleton>}>
-      <DashboardLayoutInner>{children}</DashboardLayoutInner>
-    </Suspense>
+    <ItemDrawerProvider>
+      <Suspense fallback={<DashboardLayoutSkeleton>{children}</DashboardLayoutSkeleton>}>
+        <DashboardLayoutInner>{children}</DashboardLayoutInner>
+      </Suspense>
+    </ItemDrawerProvider>
   )
 }
 
@@ -107,7 +109,6 @@ async function DashboardLayoutInner({ children }: WithChildren) {
       />
       <EditorPreferencesInitializer preferences={preferences} />
       <UpgradePromptProvider>
-        <ItemDrawerProvider>
           <div className="flex h-screen flex-col overflow-hidden bg-background">
             <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">
               <MobileDrawer sidebarData={sidebarData} />
@@ -177,7 +178,6 @@ async function DashboardLayoutInner({ children }: WithChildren) {
               </main>
             </div>
           </div>
-        </ItemDrawerProvider>
       </UpgradePromptProvider>
     </>
   )

@@ -1,59 +1,71 @@
+'use client'
+
 import { useState, useEffect, useMemo } from 'react'
-import debounce from 'lodash.debounce'
+import { useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
 import { globalSearchAction, type SearchResult } from '@/actions/search'
-import type { LightItem, SearchResultItem } from '@/types/item'
+import type { LightItem, SearchResultItem, ItemsPage } from '@/types/item'
 import type { SidebarCollection } from '@/types/collection'
 
 export type DisplaySearchItem = LightItem | SearchResultItem
 
+const EMPTY_RESULT: SearchResult = { items: [], collections: [] }
+
+function readItemsFromCache(queryClient: QueryClient): LightItem[] {
+  const seen = new Set<string>()
+  return queryClient
+    .getQueriesData<InfiniteData<ItemsPage>>({ queryKey: ['items'] })
+    .flatMap(([, data]) => data?.pages ?? [])
+    .flatMap((page) => page.items)
+    .filter((item) => {
+      if (seen.has(item.id)) return false
+      seen.add(item.id)
+      return true
+    })
+}
+
 export function useGlobalSearch(
   query: string,
-  localItemsData: LightItem[],
+  zustandItems: LightItem[],
   localCollectionsData: SidebarCollection[]
 ) {
-  const [loading, setLoading] = useState(false)
-  const [remoteResults, setRemoteResults] = useState<SearchResult>({ items: [], collections: [] })
+  const queryClient = useQueryClient()
 
-  const debouncedSearch = useMemo(
-    () =>
-      debounce(async (q: string) => {
-        if (!q.trim()) {
-          setRemoteResults({ items: [], collections: [] })
-          setLoading(false)
-          return
-        }
-        setLoading(true)
-        try {
-          const res = await globalSearchAction({ query: q })
-          if (res.status === 'ok' && res.data) {
-            setRemoteResults(res.data)
-          } else {
-            setRemoteResults({ items: [], collections: [] })
-          }
-        } finally {
-          setLoading(false)
-        }
-      }, 300),
-    []
+  // Part 1: local data — TanStack cache (all loaded pages) merged with Zustand
+  // Zustand wins on conflict since it carries optimistic updates
+  const [cachedItems, setCachedItems] = useState<LightItem[]>(() =>
+    readItemsFromCache(queryClient)
   )
 
   useEffect(() => {
-    debouncedSearch(query)
-    return () => debouncedSearch.cancel()
-  }, [query, debouncedSearch])
+    const unsub = queryClient.getQueryCache().subscribe((event) => {
+      if (event?.query.queryKey[0] === 'items') {
+        // TanStack Query can fire cache events synchronously during another component's render
+        // (e.g. when useInfiniteQuery receives initialData). Defer to avoid setState-in-render.
+        queueMicrotask(() => setCachedItems(readItemsFromCache(queryClient)))
+      }
+    })
+    return unsub
+  }, [queryClient])
 
   const localItems = useMemo(() => {
+    const map = new Map<string, LightItem>()
+    cachedItems.forEach((i) => map.set(i.id, i))
+    zustandItems.forEach((i) => map.set(i.id, i))
+    return Array.from(map.values())
+  }, [cachedItems, zustandItems])
+
+  const filteredLocalItems = useMemo(() => {
     const q = query.toLowerCase()
-    if (!q) return localItemsData.slice(0, 10)
-    return localItemsData.filter(
+    if (!q) return localItems.slice(0, 10)
+    return localItems.filter(
       (item) =>
         item.title.toLowerCase().includes(q) ||
         item.descriptionPreview?.toLowerCase().includes(q) ||
-        item.tags.some(t => t.toLowerCase().includes(q))
+        item.tags.some((t) => t.toLowerCase().includes(q))
     )
-  }, [localItemsData, query])
+  }, [localItems, query])
 
-  const localCollections = useMemo(() => {
+  const filteredLocalCollections = useMemo(() => {
     const q = query.toLowerCase()
     if (!q) return localCollectionsData.slice(0, 10)
     return localCollectionsData.filter(
@@ -63,25 +75,45 @@ export function useGlobalSearch(
     )
   }, [localCollectionsData, query])
 
+  // Part 2: debounced remote search via TanStack Query — caches results per query string
+  const [debouncedQuery, setDebouncedQuery] = useState(query)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const { data: remoteData, isFetching: remoteLoading } = useQuery({
+    queryKey: ['search', debouncedQuery],
+    queryFn: async () => {
+      const res = await globalSearchAction({ query: debouncedQuery })
+      if (res.status === 'ok' && res.data) return res.data
+      return EMPTY_RESULT
+    },
+    enabled: !!debouncedQuery.trim(),
+    staleTime: 30_000,
+  })
+
+  const remoteResults = remoteData ?? EMPTY_RESULT
+
   const displayItems = useMemo(() => {
     const map = new Map<string, DisplaySearchItem>()
-    localItems.forEach((i) => map.set(i.id, i))
+    filteredLocalItems.forEach((i) => map.set(i.id, i))
     remoteResults.items.forEach((i) => {
       if (!map.has(i.id)) map.set(i.id, i)
     })
     return Array.from(map.values())
-  }, [localItems, remoteResults.items])
+  }, [filteredLocalItems, remoteResults.items])
 
   const displayCollections = useMemo(() => {
     const map = new Map<string, SidebarCollection>()
-    localCollections.forEach((c) => map.set(c.id, c))
+    filteredLocalCollections.forEach((c) => map.set(c.id, c))
     remoteResults.collections.forEach((c) => map.set(c.id, c))
     return Array.from(map.values())
-  }, [localCollections, remoteResults.collections])
+  }, [filteredLocalCollections, remoteResults.collections])
 
   return {
-    loading,
+    loading: remoteLoading,
     displayItems,
-    displayCollections
+    displayCollections,
   }
 }

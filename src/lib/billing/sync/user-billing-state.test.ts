@@ -4,10 +4,8 @@ import {
   resolveNeedsBillingRecovery,
 } from './user-billing-state'
 
-const { mockGetUserStripeInfo, mockResolveProAccessForBillingContext, mockGetCachedLiveSubscriptionState } = vi.hoisted(() => ({
+const { mockGetUserStripeInfo } = vi.hoisted(() => ({
   mockGetUserStripeInfo: vi.fn(),
-  mockResolveProAccessForBillingContext: vi.fn(),
-  mockGetCachedLiveSubscriptionState: vi.fn(),
 }))
 
 vi.mock('@/lib/db/stripe', () => ({
@@ -15,23 +13,20 @@ vi.mock('@/lib/db/stripe', () => ({
 }))
 
 vi.mock('@/lib/billing/stripe-api', () => ({
-  fetchLiveSubscriptionState: mockGetCachedLiveSubscriptionState,
-}))
-
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
-  resolveProAccessForBillingContext: mockResolveProAccessForBillingContext,
+  fetchLiveSubscriptionState: vi.fn(),
 }))
 
 const baseStripeInfo = {
   email: 'user@example.com',
   stripeCustomerId: 'cus_1',
   stripeSubscriptionId: 'sub_1',
+  stripeSubscriptionStatus: 'active',
   isPro: false,
-  subscriptionStart: null,
-  currentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),
-  subscriptionInterval: 'month' as const,
-  cancelAtPeriodEnd: false,
-  lastStripeSyncAt: new Date('2026-06-01T00:00:00.000Z'),
+  stripeSubscriptionStart: null,
+  stripeCurrentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),
+  stripeSubscriptionInterval: 'month' as const,
+  stripeCancelAtPeriodEnd: false,
+  stripeLastSyncAt: new Date('2026-06-01T00:00:00.000Z'),
   proExpiredAt: null,
 }
 
@@ -39,46 +34,38 @@ describe('loadBillingDisplayContext', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetUserStripeInfo.mockResolvedValue(baseStripeInfo)
-    mockResolveProAccessForBillingContext.mockResolvedValue(false)
-    mockGetCachedLiveSubscriptionState.mockResolvedValue({ status: 'active' })
   })
 
-  it('returns billing fields from the database with live Pro and status checks', async () => {
-    mockResolveProAccessForBillingContext.mockResolvedValue(true)
+  it('returns billing fields from the database', async () => {
+    mockGetUserStripeInfo.mockResolvedValue({ ...baseStripeInfo, isPro: true })
 
     const result = await loadBillingDisplayContext('user_1', false)
 
     expect(result.unavailable).toBe(false)
     expect(result.isPro).toBe(true)
-    expect(result.billing?.currentPeriodEnd?.toISOString()).toBe('2026-07-01T00:00:00.000Z')
-    expect(result.billing?.stripeStatus).toBe('active')
+    expect(result.billing?.stripeCurrentPeriodEnd?.toISOString()).toBe('2026-07-01T00:00:00.000Z')
+    expect(result.billing?.stripeSubscriptionStatus).toBe('active')
   })
 
-  it('reuses cached Pro access when the app layout already refreshed entitlements', async () => {
-    mockResolveProAccessForBillingContext.mockResolvedValue(true)
-
-    const result = await loadBillingDisplayContext('user_1', false, { freshBillingContext: true })
-
-    expect(mockResolveProAccessForBillingContext).toHaveBeenCalledWith('user_1', { freshBillingContext: true })
-    expect(result.isPro).toBe(true)
-  })
-
-  it('reads fresh Stripe row and Pro access after a billing write', async () => {
+  it('reads fresh DB row after a billing write', async () => {
     mockGetUserStripeInfo.mockResolvedValue({
       ...baseStripeInfo,
       stripeSubscriptionId: 'sub_linked',
+      isPro: true,
     })
-    mockResolveProAccessForBillingContext.mockResolvedValue(true)
 
     const result = await loadBillingDisplayContext('user_1', false, { freshBillingContext: true })
 
-    expect(mockResolveProAccessForBillingContext).toHaveBeenCalledWith('user_1', { freshBillingContext: true })
     expect(result.billing?.stripeSubscriptionId).toBe('sub_linked')
     expect(result.isPro).toBe(true)
   })
 
   it('flags billing portal recovery for unpaid subscriptions with a linked customer', async () => {
-    mockGetCachedLiveSubscriptionState.mockResolvedValue({ status: 'unpaid' })
+    mockGetUserStripeInfo.mockResolvedValue({
+      ...baseStripeInfo,
+      stripeSubscriptionStatus: 'unpaid',
+      isPro: false,
+    })
 
     const result = await loadBillingDisplayContext('user_1', false)
 
@@ -86,13 +73,16 @@ describe('loadBillingDisplayContext', () => {
     expect(result.needsBillingRecovery).toBe(true)
   })
 
-  it('does not flag portal recovery when live Stripe is unavailable but subscription is linked', async () => {
-    mockGetCachedLiveSubscriptionState.mockResolvedValue(null)
+  it('does not flag portal recovery when status is null', async () => {
+    mockGetUserStripeInfo.mockResolvedValue({
+      ...baseStripeInfo,
+      stripeSubscriptionStatus: null,
+      isPro: false,
+    })
 
     const result = await loadBillingDisplayContext('user_1', false)
 
     expect(result.needsBillingRecovery).toBe(false)
-    expect(result.billing?.liveStripeUnavailable).toBe(true)
   })
 
   it('preserves session fallback Pro status when billing lookup fails', async () => {
@@ -113,24 +103,22 @@ describe('resolveNeedsBillingRecovery', () => {
   it('returns false for Pro users even when Stripe status needs portal recovery', () => {
     expect(resolveNeedsBillingRecovery(true, {
       stripeCustomerId: 'cus_1',
-      stripeStatus: 'past_due',
+      stripeSubscriptionStatus: 'past_due',
     } as never)).toBe(false)
   })
 
   it('returns true for non-Pro users with a linked customer and recovery status', () => {
     expect(resolveNeedsBillingRecovery(false, {
       stripeCustomerId: 'cus_1',
-      stripeStatus: 'unpaid',
-      liveStripeUnavailable: false,
+      stripeSubscriptionStatus: 'unpaid',
     } as never)).toBe(true)
   })
 
-  it('returns false when live Stripe is unavailable but status is not a recovery state', () => {
+  it('returns false when status is null', () => {
     expect(resolveNeedsBillingRecovery(false, {
       stripeCustomerId: 'cus_1',
       stripeSubscriptionId: 'sub_1',
-      stripeStatus: null,
-      liveStripeUnavailable: true,
+      stripeSubscriptionStatus: null,
     } as never)).toBe(false)
   })
 })
@@ -159,21 +147,6 @@ describe('resolveCheckoutUiState', () => {
     })).toEqual({
       checkoutDisabled: true,
       checkoutDisabledMessage: CHECKOUT_NOT_CONFIGURED_MESSAGE,
-    })
-  })
-
-  it('disables checkout when live Stripe is unavailable for a linked subscription', async () => {
-    const { resolveCheckoutUiState } = await import('./user-billing-state')
-    const { BILLING_UNAVAILABLE_MESSAGE } = await import('../messages/billing-messages')
-    expect(resolveCheckoutUiState({
-      needsBillingRecovery: false,
-      billingUnavailable: false,
-      liveStripeUnavailable: true,
-      hasLinkedSubscription: true,
-      checkoutConfigured: true,
-    })).toEqual({
-      checkoutDisabled: true,
-      checkoutDisabledMessage: BILLING_UNAVAILABLE_MESSAGE,
     })
   })
 

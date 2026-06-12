@@ -1,5 +1,10 @@
+import 'server-only'
+
 import { getRedis } from '@/lib/infra/redis'
 import { generateSecureToken } from '@/lib/auth/tokens'
+import { createLogger } from '@/lib/infra/logger'
+
+const log = createLogger('pending-link')
 
 
 export interface PendingLinkData {
@@ -30,7 +35,8 @@ export async function createPendingLink(data: PendingLinkData): Promise<string |
     const ttl = 60 * 15 // 15 minutes
     await redis.set(key, data, { ex: ttl })
     return token
-  } catch {
+  } catch (error) {
+    log.warn('Failed to create pending link in Redis', { error })
     return null
   }
 }
@@ -40,7 +46,8 @@ export async function getPendingLink(token: string): Promise<PendingLinkData | n
     const redis = getRedis()
     if (!redis) return null
     return await redis.get<PendingLinkData>(`pending-link:${token}`)
-  } catch {
+  } catch (error) {
+    log.warn('Failed to read pending link from Redis', { error })
     return null
   }
 }
@@ -62,7 +69,8 @@ export async function createLinkIntent(userId: string): Promise<string | null> {
     const token = generateSecureToken()
     await redis.set(`link-intent:${token}`, { userId } as LinkIntentData, { ex: 60 * 5 })
     return token
-  } catch {
+  } catch (error) {
+    log.warn('Failed to create link intent in Redis', { userId, error })
     return null
   }
 }
@@ -72,7 +80,8 @@ export async function getLinkIntent(token: string): Promise<LinkIntentData | nul
     const redis = getRedis()
     if (!redis) return null
     return await redis.get<LinkIntentData>(`link-intent:${token}`)
-  } catch {
+  } catch (error) {
+    log.warn('Failed to read link intent from Redis', { error })
     return null
   }
 }

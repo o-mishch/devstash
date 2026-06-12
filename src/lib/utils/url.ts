@@ -40,3 +40,7 @@ export function getInitialTypeFromPathname(
   const match = pathname.match(/^\/items\/(\w+)$/)
   return itemTypes.find((t) => getTypePlural(t.name) === match?.[1])?.name
 }
+
+export function getCollectionIdFromPathname(pathname: string): string | undefined {
+  return pathname.match(/^\/collections\/([^/]+)$/)?.[1]
+}

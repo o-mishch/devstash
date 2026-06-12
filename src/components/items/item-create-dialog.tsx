@@ -53,12 +53,13 @@ interface CreateItemDialogProps {
   itemTypes: SidebarItemType[]
   collections: CollectionPickerItem[]
   initialType?: string
+  initialCollectionId?: string
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }
 
-export function CreateItemDialog({ itemTypes, collections, initialType, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
+export function CreateItemDialog({ itemTypes, collections, initialType, initialCollectionId, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
   const queryClient = useQueryClient()
   const { updateItem } = useItemsStore()
   const { isPro, canCreateItem } = useAppUserFlagsStore()
@@ -80,7 +81,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
       url: '',
       language: '',
       tags: '',
-      collectionIds: [],
+      collectionIds: initialCollectionId ? [initialCollectionId] : [],
     }
   })
 
@@ -99,7 +100,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
       savedRef.current = false
       setUploadedFile(null)
       setFileError(null)
-      form.reset()
+      form.reset({ title: '', description: '', content: '', url: '', language: '', tags: '', collectionIds: initialCollectionId ? [initialCollectionId] : [] })
     }
   })
 

@@ -179,7 +179,7 @@ export function ItemDetailDrawer({
           />
         )}
 
-        {item && (
+        {item ? (
           <ItemDetailDrawerInner
             key={item.id}
             item={item}
@@ -188,6 +188,11 @@ export function ItemDetailDrawer({
             onItemSaved={onItemSaved}
             onItemDeleted={onItemDeleted}
           />
+        ) : (
+          <>
+            <SheetTitle className="sr-only">Loading…</SheetTitle>
+            <DrawerSkeleton />
+          </>
         )}
       </SheetContent>
     </Sheet>

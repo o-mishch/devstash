@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createLogger } from '@/lib/infra/logger'
-import { getRedis } from '@/lib/infra/redis'
+import { getRedis, isAbortOrTimeout } from '@/lib/infra/redis'
 import {
   claimStripeWebhookEventInDb,
   markStripeWebhookEventProcessedInDb,
@@ -84,7 +84,14 @@ async function claimWithRedis(eventId: string, eventType: string): Promise<boole
   try {
     return await claimWithRedisOnce(redis, eventId, eventType, true)
   } catch (error) {
-    log.warn('Redis webhook claim failed — falling back to DB idempotency', { eventId, error })
+    if (isAbortOrTimeout(error)) {
+      log.warn('Redis webhook claim timed out — falling back to DB idempotency', {
+        eventId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      })
+    } else {
+      log.warn('Redis webhook claim failed — falling back to DB idempotency', { eventId, error })
+    }
     return null
   }
 }
@@ -94,7 +101,8 @@ export async function claimStripeWebhookEvent(eventId: string, eventType: string
   let dbClaimed: boolean
   try {
     dbClaimed = await claimStripeWebhookEventInDb(eventId, eventType)
-  } catch {
+  } catch (error) {
+    log.error('DB webhook claim failed', { eventId, error })
     throw new Error(`Failed to claim webhook event ${eventId} after stale reclaim retries`)
   }
   if (!dbClaimed) return false
@@ -119,8 +127,9 @@ export async function markStripeWebhookEventProcessed(eventId: string, eventType
         { ex: WEBHOOK_EVENT_TTL_SECONDS }
       )
     }
-  } catch {
-    // Redis marker is optional once processing succeeded.
+  } catch (error) {
+    // Redis marker is optional — DB is authoritative. Log so we notice persistent Redis issues.
+    log.warn('Redis webhook processed marker failed', { eventId, eventType, error })
   }
 
   try {
@@ -143,8 +152,9 @@ export async function releaseStripeWebhookEvent(eventId: string): Promise<void> 
   try {
     const redis = getRedis()
     if (redis) await redis.del(getWebhookEventKey(eventId))
-  } catch {
-    // Continue to DB release so Stripe retries can reclaim the event.
+  } catch (error) {
+    // Non-fatal — event expires via TTL. Log so persistent Redis issues are visible.
+    log.warn('Redis webhook event release failed', { eventId, error })
   }
 
   try {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useMemo } from 'react'
+import { flushSync } from 'react-dom'
 import { Command as CommandPrimitive } from 'cmdk'
 import { useRouter } from 'next/navigation'
 import { Search, X } from 'lucide-react'
@@ -51,8 +52,8 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
         ? searchResultToLightItem(displayHit)
         : displayHit ?? undefined)
       if (item && 'tags' in item) {
+        flushSync(() => openDrawer(item))
         router.push(`/items/${item.itemType.name}s`)
-        openDrawer(item)
       }
     } else {
       router.push(`/collections/${id}`)

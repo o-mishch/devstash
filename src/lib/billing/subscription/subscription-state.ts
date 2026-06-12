@@ -1,7 +1,7 @@
 import 'server-only'
 
 /**
- * Canonical Stripe subscription write path — DB mutations plus Pro cache invalidation.
+ * Canonical Stripe subscription write path — DB mutations only.
  * Webhooks, passive sync, checkout finalization, and account lifecycle should import from here.
  */
 import {
@@ -14,37 +14,25 @@ import {
 } from '@/lib/db/stripe'
 import { getUserById } from '@/lib/db/users'
 import { retrieveStripeCustomer } from '@/lib/billing/stripe-api'
-import { invalidateProAccessForUserIds } from '@/lib/billing/access/pro-access-cache'
-import { invalidateSubscriptionStateCache } from '@/lib/billing/subscription/subscription-state-redis-cache'
 import { createLogger } from '@/lib/infra/logger'
 
 type ClearStripeCustomerResult = Awaited<ReturnType<typeof clearStripeCustomerByCustomerIdInDb>>
 type UpdateUserStripeSubscriptionParams = Parameters<typeof updateUserStripeSubscriptionInDb>[1]
 type UpdateSubscriptionStateData = Parameters<typeof updateSubscriptionStateInDb>[1]
 
-interface StripeWriteWithUserIds {
-  userIds: string[]
-}
-
 const resolveLog = createLogger('stripe-subscription-resolve')
-
-async function withProCacheInvalidation<T extends StripeWriteWithUserIds>(write: () => Promise<T>): Promise<T> {
-  const result = await write()
-  await invalidateProAccessForUserIds(result.userIds)
-  return result
-}
 
 export async function clearStripeCustomerByCustomerId(
   stripeCustomerId: string,
 ): Promise<ClearStripeCustomerResult> {
-  return withProCacheInvalidation(() => clearStripeCustomerByCustomerIdInDb(stripeCustomerId))
+  return clearStripeCustomerByCustomerIdInDb(stripeCustomerId)
 }
 
 export async function updateUserStripeSubscription(
   userId: string,
   params: UpdateUserStripeSubscriptionParams,
 ) {
-  const result = await withProCacheInvalidation(() => updateUserStripeSubscriptionInDb(userId, params))
+  const result = await updateUserStripeSubscriptionInDb(userId, params)
   return result.result
 }
 
@@ -52,8 +40,7 @@ export async function updateSubscriptionState(
   stripeSubscriptionId: string,
   data: UpdateSubscriptionStateData,
 ) {
-  const result = await withProCacheInvalidation(() => updateSubscriptionStateInDb(stripeSubscriptionId, data))
-  await invalidateSubscriptionStateCache(stripeSubscriptionId)
+  const result = await updateSubscriptionStateInDb(stripeSubscriptionId, data)
   return { count: result.count }
 }
 
@@ -61,14 +48,11 @@ export async function clearStripeSubscriptionBySubId(
   stripeSubscriptionId: string,
   proExpiredAt?: Date,
 ) {
-  const result = await withProCacheInvalidation(() =>
-    clearStripeSubscriptionBySubIdInDb(stripeSubscriptionId, proExpiredAt),
-  )
-  await invalidateSubscriptionStateCache(stripeSubscriptionId)
+  const result = await clearStripeSubscriptionBySubIdInDb(stripeSubscriptionId, proExpiredAt)
   return { count: result.count }
 }
 
-/** Throttle-only timestamp — does not invalidate Pro access. */
+/** Throttle-only timestamp — does not affect Pro access. */
 export async function touchUserLastStripeSyncAt(userId: string): Promise<void> {
   await touchUserLastStripeSyncAtInDb(userId)
 }
@@ -97,6 +81,7 @@ export async function resolveAppUserIdForSubscription(
         })
         return fromDb
       }
+      if (fromDb) return fromSubscription
     }
     const metadataUser = await getUserById(fromSubscription)
     if (!metadataUser) {

@@ -2,16 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const reactCacheStore = new Map<string, unknown>()
 
-const {
-  mockGetCachedLiveSubscriptionState,
-  mockGetCachedUserStripeInfo,
-  mockReadProAccessCache,
-  mockWriteProAccessCache,
-} = vi.hoisted(() => ({
-  mockGetCachedLiveSubscriptionState: vi.fn(),
+const { mockGetCachedUserStripeInfo } = vi.hoisted(() => ({
   mockGetCachedUserStripeInfo: vi.fn(),
-  mockReadProAccessCache: vi.fn(),
-  mockWriteProAccessCache: vi.fn(),
 }))
 
 vi.mock('react', () => ({
@@ -29,13 +21,6 @@ vi.mock('react', () => ({
 vi.mock('@/lib/billing/sync/user-billing-state', () => ({
   getCachedUserStripeInfo: mockGetCachedUserStripeInfo,
   getFreshUserStripeInfo: vi.fn(),
-  getCachedLiveSubscriptionState: mockGetCachedLiveSubscriptionState,
-}))
-
-vi.mock('@/lib/billing/access/pro-access-cache', () => ({
-  readProAccessCache: mockReadProAccessCache,
-  writeProAccessCache: mockWriteProAccessCache,
-  PRO_ACCESS_OUTAGE_DENY_TTL_SECONDS: 30,
 }))
 
 vi.mock('@/lib/infra/logger', () => ({
@@ -49,17 +34,12 @@ import { resolveSessionUserIsPro } from '@/lib/billing/access/pro-access-resolut
 beforeEach(() => {
   reactCacheStore.clear()
   vi.clearAllMocks()
-  mockReadProAccessCache.mockResolvedValue(true)
   mockGetCachedUserStripeInfo.mockResolvedValue({
     stripeSubscriptionId: 'sub_1',
     isPro: true,
-    currentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),
+    stripeCurrentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),
     proExpiredAt: null,
-    lastStripeSyncAt: new Date('2026-06-08T10:00:00.000Z'),
-  })
-  mockGetCachedLiveSubscriptionState.mockResolvedValue({
-    exists: true,
-    status: 'active',
+    stripeLastSyncAt: new Date('2026-06-08T10:00:00.000Z'),
   })
 })
 
@@ -69,7 +49,7 @@ describe('resolveSessionUserIsPro', () => {
   })
 
   it('returns false when Pro resolution throws', async () => {
-    mockReadProAccessCache.mockRejectedValue(new Error('Redis unavailable'))
+    mockGetCachedUserStripeInfo.mockRejectedValue(new Error('DB unavailable'))
 
     await expect(resolveSessionUserIsPro('user-1')).resolves.toBe(false)
   })

@@ -17,3 +17,7 @@ export function getRedis(): Redis | null {
 
 // Namespace prefix used by @upstash/ratelimit — keys take the form `rl:<action>:<identifier>`
 export const RATE_LIMIT_NS = 'rl'
+
+export function isAbortOrTimeout(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
+}
