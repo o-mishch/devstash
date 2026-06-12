@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type CSSProperties } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Star,
@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { SidebarData } from '@/types/sidebar'
-import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { UserDropdownMenuContent } from './user-dropdown'
 import { getTypeHref, sidebarLinkClass, handleProGatedTypeClick } from './utils'
 
@@ -34,7 +34,8 @@ interface ExpandedSidebarProps {
 
 export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProps) {
   const pathname = usePathname()
-  const { showUpgradePrompt } = useUpgradePrompt()
+  const router = useRouter()
+  const { openPrompt } = useUpgradePromptStore()
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
 
@@ -62,6 +63,8 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
               <Link
                 href="/dashboard"
                 onClick={onClose}
+                prefetch={false}
+                onMouseEnter={() => router.prefetch('/dashboard')}
                 className={sidebarLinkClass(pathname === '/dashboard')}
               >
                 <Home className="size-4 shrink-0" />
@@ -70,6 +73,8 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
               <Link
                 href="/collections"
                 onClick={onClose}
+                prefetch={false}
+                onMouseEnter={() => router.prefetch('/collections')}
                 className={sidebarLinkClass(pathname === '/collections')}
               >
                 <Archive className="size-4 shrink-0" />
@@ -85,20 +90,33 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
             <ChevronDown className={cn('size-3 transition-transform duration-300 ease-in-out', !typesOpen && '-rotate-90')} />
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-0.5 px-2">
-            {sidebarData.itemTypes.map((t) => (
+            {sidebarData.itemTypes.map((t) => {
+              const typeHref = getTypeHref(t.name)
+              const isCurrentPage = pathname === typeHref
+              const isPro = sidebarData.user?.isPro ?? false
+              const isProGated = PRO_ITEM_TYPE_NAMES.has(t.name)
+
+              return (
               <Link
                 key={t.id}
-                href={getTypeHref(t.name)}
+                href={typeHref}
+                prefetch={false}
+                onMouseEnter={() => {
+                  // Only prefetch if: (1) not current page, (2) not Pro-gated OR user is Pro
+                  if (!isCurrentPage && (!isProGated || isPro)) {
+                    router.prefetch(typeHref)
+                  }
+                }}
                 onClick={(e) => {
                   const blocked = handleProGatedTypeClick(e, {
-                    isPro: sidebarData.user?.isPro ?? false,
+                    isPro: isPro,
                     count: t.count,
                     typeName: t.name,
-                    showUpgradePrompt,
+                    showUpgradePrompt: openPrompt,
                   })
                   if (!blocked) onClose?.()
                 }}
-                className={sidebarLinkClass(pathname === getTypeHref(t.name))}
+                className={sidebarLinkClass(isCurrentPage)}
               >
                 <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
                 {PRO_ITEM_TYPE_NAMES.has(t.name) && (
@@ -107,7 +125,8 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                 <span className="flex-1">{getTypeLabel(t.name)}</span>
                 <span className="text-xs tabular-nums pr-2">{t.count}</span>
               </Link>
-            ))}
+              )
+            })}
           </CollapsibleContent>
         </Collapsible>
 
@@ -129,7 +148,9 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                     <Link
                       key={c.id}
                       href={`/collections/${c.id}`}
+                      prefetch={false}
                       onClick={onClose}
+                      onMouseEnter={() => router.prefetch(`/collections/${c.id}`)}
                       className={sidebarLinkClass(pathname === `/collections/${c.id}`)}
                     >
                       <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
@@ -151,7 +172,9 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                     <Link
                       key={c.id}
                       href={`/collections/${c.id}`}
+                      prefetch={false}
                       onClick={onClose}
+                      onMouseEnter={() => router.prefetch(`/collections/${c.id}`)}
                       className={sidebarLinkClass(pathname === `/collections/${c.id}`)}
                     >
                       <span
@@ -170,6 +193,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
               <Link
                 href="/collections"
                 onClick={onClose}
+                prefetch={false}
                 className="text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
               >
                 View all collections →

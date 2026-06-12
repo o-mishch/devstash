@@ -5,7 +5,10 @@ let _client: Redis | null = null
 export function getRedis(): Redis | null {
   if (_client) return _client
   try {
-    _client = Redis.fromEnv()
+    // 5s timeout per call — generous enough for serverless cold-start DNS+TLS overhead
+    // while still preventing hung connections. `cache: 'no-store'` opts out of Next.js's
+    // fetch cache layer, which has no benefit for transient Redis commands.
+    _client = Redis.fromEnv({ signal: () => AbortSignal.timeout(5000), cache: 'no-store' })
     return _client
   } catch {
     return null

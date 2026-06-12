@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -16,7 +17,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { deleteAccountAction } from '@/actions/profile'
-import { THEME_STORAGE_KEY } from '@/lib/utils/constants'
+import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
 interface DeleteAccountDialogProps {
@@ -25,13 +26,14 @@ interface DeleteAccountDialogProps {
 
 export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialogProps) {
   const router = useRouter()
+  const { setTheme } = useTheme()
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
   const [isPending, startTransition] = useTransition()
 
   function handleDelete() {
     startTransition(async () => {
-      localStorage.removeItem(THEME_STORAGE_KEY)
+      setTheme(DEFAULT_EDITOR_PREFERENCES.appTheme)
       const result = await deleteAccountAction(hasPassword ? password : undefined)
       if (result.status !== 'ok') {
         toast.error(result.message ?? 'Failed to delete account. Please try again.')

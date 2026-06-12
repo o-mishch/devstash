@@ -27,14 +27,14 @@ import {
   SelectTrigger,
 } from '@/components/ui/select'
 
+import { useQueryClient } from '@tanstack/react-query'
 import { createItemAction } from '@/actions/items'
 import { apiFetch } from '@/lib/api/api-fetch'
-import { createLogger } from '@/lib/infra/logger'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES, FREE_TIER_ITEM_LIMIT, type FileItemType } from '@/lib/utils/constants'
-import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
-import { useAppUser } from '@/context/app-user-context'
-import { ItemsStoreActionType, useItemsStore } from '@/context/items-store-context'
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
+import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useItemsStore } from '@/stores/items'
 
 import { itemFormBaseSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
@@ -42,12 +42,10 @@ import { useControllableOpen } from '@/hooks/use-controllable-open'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionPickerItem } from '@/types/collection'
 
-const log = createLogger('items')
-
 async function deleteOrphanedFile(file: UploadedFile): Promise<void> {
   const result = await apiFetch(`/api/upload?key=${encodeURIComponent(file.fileUrl)}`, { method: 'DELETE' })
   if (result.status !== 'ok') {
-    log.error(`Failed to delete orphaned file: ${file.fileUrl} — ${result.message}`)
+    console.error(`Failed to delete orphaned file: ${file.fileUrl} — ${result.message}`)
   }
 }
 
@@ -61,9 +59,10 @@ interface CreateItemDialogProps {
 }
 
 export function CreateItemDialog({ itemTypes, collections, initialType, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
-  const { dispatch } = useItemsStore()
-  const { isPro, canCreateItem } = useAppUser()
-  const { showUpgradePrompt } = useUpgradePrompt()
+  const queryClient = useQueryClient()
+  const { updateItem } = useItemsStore()
+  const { isPro, canCreateItem } = useAppUserFlagsStore()
+  const { openPrompt } = useUpgradePromptStore()
   const validInitialType = (initialType && PRO_ITEM_TYPE_NAMES.has(initialType) && !isPro) ? itemTypes[0]?.name : initialType
   const defaultItemType = validInitialType || itemTypes[0]?.name || ''
 
@@ -107,7 +106,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
   function handleTypeChange(val: string | null) {
     if (!val) return
     if (PRO_ITEM_TYPE_NAMES.has(val) && !isPro) {
-      showUpgradePrompt({ title: 'Pro feature', description: 'File and image uploads are only available on the Pro plan.', onUpgrade: () => handleOpenChange(false) })
+      openPrompt({ title: 'Pro feature', description: 'File and image uploads are only available on the Pro plan.', onUpgrade: () => handleOpenChange(false) })
       return
     }
     setItemType(val)
@@ -150,8 +149,9 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
         savedRef.current = true
         handleOpenChange(false)
         if (result.data) {
-          dispatch({ type: ItemsStoreActionType.PrependItem, item: result.data })
+          updateItem(result.data)
         }
+        void queryClient.invalidateQueries({ queryKey: ['items'] })
       } else {
         if (result.status === 'forbidden') {
           toast.warning(result.message ?? 'Upgrade to Pro to continue.')
@@ -174,7 +174,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, trigger,
       <span onClick={(e) => {
         if (!canCreateItem) {
           e.preventDefault()
-          showUpgradePrompt({ title: 'Item limit reached', description: `You've used all ${FREE_TIER_ITEM_LIMIT} free items.` })
+          openPrompt({ title: 'Item limit reached', description: `You've used all ${FREE_TIER_ITEM_LIMIT} free items.` })
           return
         }
         handleOpenChange(true)

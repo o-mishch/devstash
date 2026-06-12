@@ -1,108 +1,93 @@
-import { unstable_cache, revalidateTag as _revalidateTag } from 'next/cache'
-import { cache } from 'react'
+import 'server-only'
+
+import { revalidateTag } from 'next/cache'
+import { after } from 'next/server'
 import { createLogger } from '@/lib/infra/logger'
 
 const log = createLogger('cache')
 
-// In some Next.js 15 canary versions, revalidateTag strictly requires a second `profile` argument
-// for the new cacheLife API, even though at runtime 1 argument is valid. We cast it to avoid TS errors.
-const revalidateTag = _revalidateTag as unknown as (tag: string) => void
-
-export interface DataCacheConfig {
-  tag: string
-  revalidate: number | false
-  tags?: string[]
-}
-
-const CacheRevalidate = {
-  items: false, // Use on-demand invalidation
-  collections: false, // Use on-demand invalidation
-  profile: false, // Use on-demand invalidation
-  itemTypes: 86400, // 24 hours
-} as const
+// ─── Cache tag helpers ────────────────────────────────────────────────────────
+// Single source of truth for all tag strings used by 'use cache' functions
+// and invalidation calls in server actions.
 
 export const CacheTags = {
-  pinnedItems: (userId: string) => ({ tag: `user:${userId}:pinned-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  favoriteItems: (userId: string) => ({ tag: `user:${userId}:favorite-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  favoriteItemTypeCounts: (userId: string) => ({ tag: `user:${userId}:favorite-item-type-counts`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  recentItems: (userId: string) => ({ tag: `user:${userId}:recent-items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  itemsByType: (userId: string, type: string) => ({ tag: `user:${userId}:items:${type}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  itemStats: (userId: string) => ({ tag: `user:${userId}:item-stats`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  sidebarTypes: (userId: string) => ({ tag: `user:${userId}:sidebar-types`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  allCollections: (userId: string) => ({ tag: `user:${userId}:collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
-  collectionsPreview: (userId: string) => ({ tag: `user:${userId}:collections-preview`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
-  sidebarCollections: (userId: string) => ({ tag: `user:${userId}:sidebar-collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
-  favoriteCollections: (userId: string) => ({ tag: `user:${userId}:favorite-collections`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
-  collectionById: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
-  itemById: (userId: string, itemId: string) => ({ tag: `user:${userId}:item:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  itemDetails: (userId: string, itemId: string) => ({ tag: `user:${userId}:item-details:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  itemContent: (userId: string, itemId: string) => ({ tag: `user:${userId}:item-content:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  downloadItem: (userId: string, itemId: string) => ({ tag: `user:${userId}:download-item:${itemId}`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  itemsByCollection: (userId: string, collectionId: string) => ({ tag: `user:${userId}:collection:${collectionId}:items`, revalidate: CacheRevalidate.items, tags: [`items-${userId}`] }),
-  collectionStats: (userId: string) => ({ tag: `user:${userId}:collection-stats`, revalidate: CacheRevalidate.collections, tags: [`collections-${userId}`] }),
-  profile: (userId: string) => ({ tag: `user:${userId}:profile`, revalidate: CacheRevalidate.profile }),
-  itemTypeBySlug: (slug: string) => ({ tag: `item-type:slug:${slug}`, revalidate: CacheRevalidate.itemTypes }),
-  systemItemTypes: () => ({ tag: `system-item-types`, revalidate: CacheRevalidate.itemTypes }),
+  // Group tags — used for bulk eviction on mutation
+  itemGroup: (userId: string) => `items-${userId}`,
+  collectionGroup: (userId: string) => `collections-${userId}`,
+
+  // Item tags
+  pinnedItems: (userId: string) => `user:${userId}:pinned-items`,
+  recentItems: (userId: string) => `user:${userId}:recent-items`,
+  favoriteItems: (userId: string) => `user:${userId}:favorite-items`,
+  favoriteItemTypeCounts: (userId: string) => `user:${userId}:favorite-item-type-counts`,
+  itemsByType: (userId: string, type: string) => `user:${userId}:items:${type}`,
+  itemStats: (userId: string) => `user:${userId}:item-stats`,
+  sidebarTypes: (userId: string) => `user:${userId}:sidebar-types`,
+  itemById: (userId: string, itemId: string) => `user:${userId}:item:${itemId}`,
+  itemDetails: (userId: string, itemId: string) => `user:${userId}:item-details:${itemId}`,
+  itemContent: (userId: string, itemId: string) => `user:${userId}:item-content:${itemId}`,
+  downloadItem: (userId: string, itemId: string) => `user:${userId}:download-item:${itemId}`,
+  itemsByCollection: (userId: string, collectionId: string) => `user:${userId}:collection:${collectionId}:items`,
+  usageItemCount: (userId: string) => `user:${userId}:usage:item-count`,
+
+  // Collection tags
+  allCollections: (userId: string) => `user:${userId}:collections`,
+  collectionsPreview: (userId: string) => `user:${userId}:collections-preview`,
+  sidebarCollections: (userId: string) => `user:${userId}:sidebar-collections`,
+  favoriteCollections: (userId: string) => `user:${userId}:favorite-collections`,
+  collectionById: (userId: string, collectionId: string) => `user:${userId}:collection:${collectionId}`,
+  collectionStats: (userId: string) => `user:${userId}:collection-stats`,
+  usageCollectionCount: (userId: string) => `user:${userId}:usage:collection-count`,
+
+  // Profile tag
+  profile: (userId: string) => `user:${userId}:profile`,
+
+  // Billing tags
+  billingDisplayContext: (userId: string) => `billing-display-context:${userId}`,
+  billingPageContext: (userId: string) => `billing-page-context:${userId}`,
+
+  // Stripe subscription live state
+  stripeSubscription: (subscriptionId: string) => `stripe:subscription:${subscriptionId}`,
+
+  // System / shared tags (no userId — system-wide)
+  itemTypeBySlug: (slug: string) => `item-type:slug:${slug}`,
+  systemItemTypes: () => `system-item-types`,
 } as const
 
-// React.cache is scoped per-request. We use it to create a per-request Map
-// which allows us to deduplicate unstable_cache calls across different components
-// in the same render pass, using the string config.tag as the key.
-const getRequestCache = cache(() => new Map<string, Promise<unknown>>())
 
-export async function withDataCache<T>(
-  config: DataCacheConfig,
-  fetcher: () => Promise<T>
-): Promise<T> {
-  const requestCache = getRequestCache()
+// ─── Invalidation ─────────────────────────────────────────────────────────────
+// Called after mutations in server actions. `revalidateTag` with `'max'` marks
+// entries stale-while-revalidate across all Vercel containers in the region.
 
-  if (requestCache.has(config.tag)) {
-    return requestCache.get(config.tag)! as Promise<T>
+function scheduleTagInvalidation(tag: string): void {
+  try {
+    after(() => {
+      revalidateTag(tag, 'max')
+      log.info('cache tag revalidated', { tag })
+    })
+  } catch (err) {
+    // Expected in tests/prerendering — log unexpected failures
+    log.warn('Cache invalidation skipped', {}, err instanceof Error ? err.message : String(err))
   }
-
-  const promise = unstable_cache(
-    async () => {
-      log.info(`MISSED/ABSENT ${config.tag}`)
-      const start = Date.now()
-      const result = await fetcher()
-      log.info(`FETCHED/PRESENT ${config.tag} in ${Date.now() - start}ms`)
-      // Strip Prisma proxies and non-serializable objects to guarantee successful caching
-      return JSON.parse(JSON.stringify(result)) as T
-    },
-    [config.tag],
-    {
-      revalidate: config.revalidate === false ? false : config.revalidate,
-      tags: config.tags ? [config.tag, ...config.tags] : [config.tag]
-    }
-  )()
-
-  requestCache.set(config.tag, promise)
-  return promise
 }
 
-// Called after collection mutations (create, update, delete).
-// The group tag `collections-${userId}` sweeps all collection cache entries automatically —
-// no need to enumerate specific tags here when adding new collection caches.
+export function invalidateItemsCache(userId: string): void {
+  scheduleTagInvalidation(CacheTags.itemGroup(userId))
+}
+
 export function invalidateCollectionsCache(userId: string): void {
-  getRequestCache().clear()
-  revalidateTag(`collections-${userId}`)
-  log.info(`INVALIDATED collections for user:${userId}`)
+  scheduleTagInvalidation(CacheTags.collectionGroup(userId))
 }
 
-// Called after profile mutations (password change, unlink provider).
 export function invalidateProfileCache(userId: string): void {
-  getRequestCache().clear()
-  revalidateTag(CacheTags.profile(userId).tag)
-  log.info(`INVALIDATED profile for user:${userId}`)
+  scheduleTagInvalidation(CacheTags.profile(userId))
 }
 
-// Called after item mutations (create, update, delete).
-// Any cache entry that includes `items-${userId}` in its tags is swept automatically —
-// no need to enumerate specific tags here when adding new item caches.
-export function invalidateItemsCache(userId?: string): void {
-  getRequestCache().clear()
-  if (userId) {
-    revalidateTag(`items-${userId}`)
-  }
-  log.info(`INVALIDATED items for user:${userId ?? 'all'}`)
+export function invalidateStripeSubscriptionCache(subscriptionId: string): void {
+  scheduleTagInvalidation(CacheTags.stripeSubscription(subscriptionId))
+}
+
+export function invalidateBillingCache(userId: string): void {
+  scheduleTagInvalidation(CacheTags.billingDisplayContext(userId))
+  scheduleTagInvalidation(CacheTags.billingPageContext(userId))
 }

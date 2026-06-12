@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, type ReactNode } from 'react'
-import { Check, X } from 'lucide-react'
+import { Check, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +11,7 @@ import {
   AiProHint,
   AiSuggestionPanel,
 } from '@/components/shared/ai-field-chrome'
-import { useAppUser } from '@/context/app-user-context'
+import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
 import type { ApiBody } from '@/types/api'
 
@@ -32,7 +32,7 @@ export function AiTagsField({
   actionClassName,
   children,
 }: AiTagsFieldProps) {
-  const { isPro } = useAppUser()
+  const { isPro } = useAppUserFlagsStore()
   const [suggestedTags, setSuggestedTags] = useState<string[]>([])
 
   const handleSuccess = useCallback((tags: string[]) => {
@@ -81,40 +81,47 @@ export function AiTagsField({
         <AiProHint>AI tag suggestions are available on Pro.</AiProHint>
       )}
 
-      {suggestedTags.length > 0 && (
+      {(isLoading || suggestedTags.length > 0) && (
         <AiSuggestionPanel label="AI tags">
-          <div className="flex flex-wrap gap-2">
-            {suggestedTags.map((tag) => (
-              <div
-                key={tag}
-                className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-background/80 pl-2.5 pr-1 py-0.5"
-              >
-                <Badge variant="secondary" className="h-auto border-0 bg-transparent px-0 py-0 text-xs font-medium shadow-none">
-                  {tag}
-                </Badge>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => handleAccept(tag)}
-                  className="size-6 text-primary hover:text-primary"
-                  aria-label={`Accept ${tag}`}
+          {isLoading ? (
+            <div className="flex items-center gap-2 py-2">
+              <Loader2 className="size-4 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">Generating tags...</span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {suggestedTags.map((tag) => (
+                <div
+                  key={tag}
+                  className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-background/80 pl-2.5 pr-1 py-0.5"
                 >
-                  <Check className="size-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => handleReject(tag)}
-                  className="size-6 text-muted-foreground hover:text-destructive"
-                  aria-label={`Dismiss ${tag}`}
-                >
-                  <X className="size-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
+                  <Badge variant="secondary" className="h-auto border-0 bg-transparent px-0 py-0 text-xs font-medium shadow-none">
+                    {tag}
+                  </Badge>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => handleAccept(tag)}
+                    className="size-6 text-primary hover:text-primary"
+                    aria-label={`Accept ${tag}`}
+                  >
+                    <Check className="size-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => handleReject(tag)}
+                    className="size-6 text-muted-foreground hover:text-destructive"
+                    aria-label={`Dismiss ${tag}`}
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </AiSuggestionPanel>
       )}
     </div>

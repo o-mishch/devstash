@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: 'bottom-right',
   },
+  experimental: {
+    staleTimes: {
+      dynamic: 300,
+    },
+  },
   serverExternalPackages: ['@prisma/client', '@prisma/adapter-neon', '@neondatabase/serverless', '@aws-sdk/client-s3'],
   turbopack: {
     rules: {
@@ -16,12 +21,7 @@ const nextConfig: NextConfig = {
       '*.svg': { loaders: ['raw-loader'], as: '*.js' },
     },
   },
-  experimental: {
-    staleTimes: {
-      dynamic: 30,
-      static: 180,
-    },
-  },
+  cacheComponents: true,
 };
 
 export default nextConfig;

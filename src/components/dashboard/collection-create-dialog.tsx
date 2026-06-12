@@ -4,7 +4,7 @@ import { type ReactNode } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { createCollectionAction } from '@/actions/collections'
-import { useAppUser } from '@/context/app-user-context'
+import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { CollectionFormDialog } from './collection-form-dialog'
 
 interface CollectionCreateDialogProps {
@@ -14,7 +14,7 @@ interface CollectionCreateDialogProps {
 }
 
 export function CollectionCreateDialog({ trigger, open, onOpenChange }: CollectionCreateDialogProps) {
-  const { canCreateCollection } = useAppUser()
+  const { canCreateCollection } = useAppUserFlagsStore()
   const triggerEl = trigger ?? (
     <Button variant="outline" size="sm" className="hidden sm:flex">
       <FolderPlus className="size-4" />

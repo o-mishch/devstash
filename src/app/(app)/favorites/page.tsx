@@ -21,36 +21,19 @@ export default async function FavoritesPage() {
   const totalFavorites = totalItemCount + favoriteCollections.length
   const isEmpty = totalFavorites === 0
 
-  return (
-    <Tabs defaultValue={totalItemCount > 0 ? 'items' : 'collections'} className="app-page gap-6 p-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+  if (isEmpty) {
+    return (
+      <div className="app-page gap-6 p-6">
         <div className="flex items-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-lg bg-amber-500/10">
             <Star className="size-4 fill-amber-400 text-amber-400" />
           </div>
           <div>
             <h1 className="text-xl font-semibold leading-tight">Favorites</h1>
-            <p className="text-sm text-muted-foreground">
-              {isEmpty
-                ? 'Nothing favorited yet'
-                : `${totalFavorites} starred ${totalFavorites === 1 ? 'item' : 'items'}`}
-            </p>
+            <p className="text-sm text-muted-foreground">Nothing favorited yet</p>
           </div>
         </div>
 
-        {!isEmpty && (
-          <TabsList>
-            <TabsTrigger value="items" disabled={totalItemCount === 0}>
-              Items <span className="ml-1.5 rounded-full bg-muted-foreground/15 px-2 py-0.5 text-xs">{totalItemCount}</span>
-            </TabsTrigger>
-            <TabsTrigger value="collections" disabled={favoriteCollections.length === 0}>
-              Collections <span className="ml-1.5 rounded-full bg-muted-foreground/15 px-2 py-0.5 text-xs">{favoriteCollections.length}</span>
-            </TabsTrigger>
-          </TabsList>
-        )}
-      </div>
-
-      {isEmpty ? (
         <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border py-20 text-center">
           <div className="flex size-14 items-center justify-center rounded-full bg-amber-500/10">
             <Star className="size-6 text-amber-400/60" />
@@ -62,21 +45,50 @@ export default async function FavoritesPage() {
             </p>
           </div>
         </div>
-      ) : (
-        <>
-          <TabsContent value="items" className="mt-0">
-            <FavoriteItemsList firstPage={firstPage} itemTypeCounts={itemTypeCounts} />
-          </TabsContent>
+      </div>
+    )
+  }
 
-          <TabsContent value="collections" className="mt-0">
-            <div className="flex flex-col">
-              {favoriteCollections.map((collection) => (
-                <FavoriteCollectionRow key={collection.id} collection={collection} />
-              ))}
-            </div>
-          </TabsContent>
-        </>
-      )}
+  return (
+    <Tabs defaultValue={totalItemCount > 0 ? 'items' : 'collections'} className="app-page gap-6 p-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-amber-500/10">
+            <Star className="size-4 fill-amber-400 text-amber-400" />
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold leading-tight">Favorites</h1>
+            <p className="text-sm text-muted-foreground">
+              {totalFavorites} starred {totalFavorites === 1 ? 'item' : 'items'}
+            </p>
+          </div>
+        </div>
+
+        <TabsList>
+          <TabsTrigger value="items" disabled={totalItemCount === 0}>
+            Items <span className="ml-1.5 rounded-full bg-muted-foreground/15 px-2 py-0.5 text-xs">{totalItemCount}</span>
+          </TabsTrigger>
+          <TabsTrigger value="collections" disabled={favoriteCollections.length === 0}>
+            Collections <span className="ml-1.5 rounded-full bg-muted-foreground/15 px-2 py-0.5 text-xs">{favoriteCollections.length}</span>
+          </TabsTrigger>
+        </TabsList>
+      </div>
+
+      <TabsContent value="items" className="mt-0">
+        {totalItemCount > 0 ? (
+          <FavoriteItemsList firstPage={firstPage} itemTypeCounts={itemTypeCounts} />
+        ) : null}
+      </TabsContent>
+
+      <TabsContent value="collections" className="mt-0">
+        {favoriteCollections.length > 0 ? (
+          <div className="flex flex-col">
+            {favoriteCollections.map((collection) => (
+              <FavoriteCollectionRow key={collection.id} collection={collection} />
+            ))}
+          </div>
+        ) : null}
+      </TabsContent>
     </Tabs>
   )
 }

@@ -1,10 +1,12 @@
+'server-only'
+
 const isDev = process.env.NODE_ENV === 'development'
 
 // ANSI color codes — only applied in dev (terminals support them; log aggregators don't)
 const RESET = '\x1b[0m'
 const BOLD = '\x1b[1m'
 const CYAN = '\x1b[36m'
-const YELLOW = '\x1b[33m'
+const YELLOW = '\x1b[38;5;178m'
 const RED = '\x1b[31m'
 const DIM = '\x1b[2m'
 
@@ -14,7 +16,13 @@ function level(label: string, color: string): string {
 
 function fmt(tag: string, label: string, labelColor: string, message: string): string {
   if (isDev) {
-    const ts = `${DIM}${new Date().toTimeString().slice(0, 8)}${RESET}`
+    const now = new Date()
+    const h = String(now.getHours()).padStart(2, '0')
+    const m = String(now.getMinutes()).padStart(2, '0')
+    const s = String(now.getSeconds()).padStart(2, '0')
+    const ms = String(now.getMilliseconds()).padStart(3, '0')
+    const us = String(Math.floor((performance.now() % 1000) * 1000)).padStart(6, '0')
+    const ts = `${DIM}${h}:${m}:${s}:${ms}:${us}${RESET}`
     const scope = `${CYAN}[${tag}]${RESET}`
     return `${ts} ${scope} ${level(label, labelColor)} ${message}`
   }
@@ -35,6 +43,7 @@ interface ScopedLogger {
   warn(message: string, context?: unknown, description?: string): void
   error(message: string, context?: unknown, description?: string): void
 }
+
 
 export function toErrorMessage(err: unknown, fallback?: string): string {
   return err instanceof Error ? err.message : (fallback ?? String(err))
@@ -75,3 +84,4 @@ export function createLogger(tag?: string): ScopedLogger {
     error: (message, context, description) => console.error(fmt(resolvedTag, 'ERROR', RED, withContext(message, context, description))),
   }
 }
+

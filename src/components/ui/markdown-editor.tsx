@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
-import { useEditorPreferences } from '@/providers/editor-preferences-provider'
+import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import { EDITOR_THEME_COLORS } from '@/types/editor-preferences'
 
 const MarkdownViewer = dynamic(
@@ -22,9 +22,9 @@ interface MarkdownEditorProps {
 export function MarkdownEditor({ value, onChange, readOnly = false, className }: MarkdownEditorProps) {
   const [activeTabState, setActiveTab] = useState<'write' | 'preview'>('write')
   const activeTab = readOnly ? 'preview' : activeTabState
-  const { preferences } = useEditorPreferences()
-  
-  const { bg: themeBg, text: themeText } = EDITOR_THEME_COLORS[preferences.theme]
+  const { theme, fontSize, tabSize, wordWrap } = useEditorPreferencesStore()
+
+  const { bg: themeBg, text: themeText } = EDITOR_THEME_COLORS[theme]
   const bgStyle = { backgroundColor: themeBg }
 
   return (
@@ -85,9 +85,9 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
             placeholder="Write markdown..."
             className="absolute inset-0 w-full h-full resize-none overflow-y-auto font-mono outline-none border-0 p-4 leading-relaxed placeholder:text-white/30"
             style={{
-              fontSize: `${preferences.fontSize}px`,
-              tabSize: preferences.tabSize,
-              whiteSpace: preferences.wordWrap === 'on' ? 'pre-wrap' : 'pre',
+              fontSize: `${fontSize}px`,
+              tabSize,
+              whiteSpace: wordWrap === 'on' ? 'pre-wrap' : 'pre',
               backgroundColor: themeBg,
               color: themeText,
             }}

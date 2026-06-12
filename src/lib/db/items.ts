@@ -1,8 +1,14 @@
+import 'server-only'
+
+import { cacheTag, cacheLife } from 'next/cache'
 import { prisma } from '@/lib/infra/prisma'
-import { withDataCache, CacheTags } from '@/lib/infra/cache'
+import { CacheTags } from '@/lib/infra/cache'
+import { createLogger } from '@/lib/infra/logger'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { FullItem, ItemDetails, ItemSavedDetails, ItemContent, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
 import { Prisma, ContentType } from '@/generated/prisma/client'
+
+const log = createLogger('db:items')
 
 const ITEM_SELECT = {
   id: true,
@@ -152,42 +158,53 @@ export function toLightItem(item: LightItemRow, textPreviews = new Map<string, T
 const PINNED_LIMIT = 20
 
 export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Promise<LightItem[]> {
-  return withDataCache(CacheTags.pinnedItems(userId), async () => {
-    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), PINNED_LIMIT)
-    const items = await prisma.item.findMany({
-      where: { userId, isPinned: true },
-      orderBy: { updatedAt: 'desc' },
-      take: safeLimit,
-      select: LIGHT_ITEM_SELECT,
-    })
-    const textPreviews = await fetchTextPreviews(items.map((r) => r.id))
-    return items.map((r) => toLightItem(r, textPreviews))
+  'use cache'
+  const cacheKey = CacheTags.pinnedItems(userId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), PINNED_LIMIT)
+  const items = await prisma.item.findMany({
+    where: { userId, isPinned: true },
+    orderBy: { updatedAt: 'desc' },
+    take: safeLimit,
+    select: LIGHT_ITEM_SELECT,
   })
+  log.info('DB: getPinnedItems', { userId, cacheKey, count: items.length, duration: Date.now() - start })
+  const textPreviews = await fetchTextPreviews(items.map((r) => r.id))
+  return items.map((r) => toLightItem(r, textPreviews))
 }
 
-
 export async function getItemStats(userId: string): Promise<ItemStats> {
-  return withDataCache(CacheTags.itemStats(userId), async () => {
-    const rows = await prisma.item.groupBy({
-      by: ['isFavorite'],
-      where: { userId },
-      _count: true,
-    })
-    const totalItems = rows.reduce((sum, r) => sum + r._count, 0)
-    const favoriteItems = rows.find((r) => r.isFavorite)?._count ?? 0
-    return { totalItems, favoriteItems }
+  'use cache'
+  const cacheKey = CacheTags.itemStats(userId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const rows = await prisma.item.groupBy({
+    by: ['isFavorite'],
+    where: { userId },
+    _count: true,
   })
+  const totalItems = rows.reduce((sum, r) => sum + r._count, 0)
+  const favoriteItems = rows.find((r) => r.isFavorite)?._count ?? 0
+  log.info('DB: getItemStats', { userId, cacheKey, totalItems, favoriteItems, duration: Date.now() - start })
+  return { totalItems, favoriteItems }
 }
 
 export async function getItemById(userId: string, itemId: string): Promise<FullItem | null> {
-  return withDataCache(CacheTags.itemById(userId, itemId), async () => {
-    const item = await prisma.item.findFirst({
-      where: { id: itemId, userId },
-      select: ITEM_SELECT,
-    })
-    if (!item) return null
-    return toFullItem(item)
+  'use cache'
+  const cacheKey = CacheTags.itemById(userId, itemId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const item = await prisma.item.findFirst({
+    where: { id: itemId, userId },
+    select: ITEM_SELECT,
   })
+  log.info('DB: getItemById', { userId, itemId, cacheKey, found: Boolean(item), duration: Date.now() - start })
+  if (!item) return null
+  return toFullItem(item)
 }
 
 export const DOWNLOAD_ITEM_SELECT = {
@@ -199,12 +216,17 @@ export const DOWNLOAD_ITEM_SELECT = {
 } as const
 
 export async function getDownloadItem(userId: string, itemId: string): Promise<DownloadItem | null> {
-  return withDataCache(CacheTags.downloadItem(userId, itemId), () =>
-    prisma.item.findFirst({
-      where: { id: itemId, userId },
-      select: DOWNLOAD_ITEM_SELECT,
-    })
-  )
+  'use cache'
+  const cacheKey = CacheTags.downloadItem(userId, itemId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const result = await prisma.item.findFirst({
+    where: { id: itemId, userId },
+    select: DOWNLOAD_ITEM_SELECT,
+  })
+  log.info('DB: getDownloadItem', { userId, itemId, cacheKey, found: Boolean(result), duration: Date.now() - start })
+  return result
 }
 
 /** GET /details — only fields LightItem doesn't carry */
@@ -241,20 +263,25 @@ export interface ItemAuthData {
 }
 
 export async function getItemForAuth(userId: string, itemId: string): Promise<ItemAuthData | null> {
-  return prisma.item.findFirst({
+  const start = Date.now()
+  const result = await prisma.item.findFirst({
     where: { id: itemId, userId },
     select: ITEM_AUTH_SELECT,
   })
+  log.info('DB: getItemForAuth', { userId, itemId, found: Boolean(result), duration: Date.now() - start })
+  return result
 }
 
 export async function getItemAiMetadata(
   userId: string,
   itemId: string,
 ): Promise<ItemAiMetadata | null> {
+  const start = Date.now()
   const row = await prisma.item.findFirst({
     where: { id: itemId, userId },
     select: { imageWidth: true, imageHeight: true },
   })
+  log.info('DB: getItemAiMetadata', { userId, itemId, found: Boolean(row), duration: Date.now() - start })
   return row ?? null
 }
 
@@ -264,29 +291,36 @@ export const ITEM_CONTENT_SELECT = {
 } as const
 
 export async function getItemDetails(userId: string, itemId: string): Promise<ItemDetails | null> {
-  return withDataCache(CacheTags.itemDetails(userId, itemId), async () => {
-    const row = await prisma.item.findUnique({
-      where: { id: itemId, userId },
-      select: ITEM_DETAILS_SELECT,
-    })
-    if (!row) return null
-
-    return {
-      ...row,
-      collections: row.collections.map((ic) => ic.collection),
-    }
+  'use cache'
+  const cacheKey = CacheTags.itemDetails(userId, itemId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const row = await prisma.item.findUnique({
+    where: { id: itemId, userId },
+    select: ITEM_DETAILS_SELECT,
   })
+  log.info('DB: getItemDetails', { userId, itemId, cacheKey, found: Boolean(row), duration: Date.now() - start })
+  if (!row) return null
+  return {
+    ...row,
+    collections: row.collections.map((ic) => ic.collection),
+  }
 }
 
 export async function getItemContent(userId: string, itemId: string): Promise<ItemContent | null> {
-  return withDataCache(CacheTags.itemContent(userId, itemId), async () => {
-    const row = await prisma.item.findUnique({
-      where: { id: itemId, userId },
-      select: ITEM_CONTENT_SELECT,
-    })
-    if (!row) return null
-    return row
+  'use cache'
+  const cacheKey = CacheTags.itemContent(userId, itemId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const row = await prisma.item.findUnique({
+    where: { id: itemId, userId },
+    select: ITEM_CONTENT_SELECT,
   })
+  log.info('DB: getItemContent', { userId, itemId, cacheKey, found: Boolean(row), duration: Date.now() - start })
+  if (!row) return null
+  return row
 }
 
 export interface CreateItemInput {
@@ -306,13 +340,17 @@ export interface CreateItemInput {
 }
 
 export async function createItem(userId: string, data: CreateItemInput): Promise<LightItem | null> {
-  // system types are cached for 1h — avoids a DB round trip on every item creation
+  const start = Date.now()
+  // system types are cached for 1 day — avoids a DB round trip on every item creation
   const systemTypes = await getSystemItemTypes()
   const itemType =
     systemTypes.find((t) => t.name === data.itemTypeName) ??
     (await prisma.itemType.findFirst({ where: { name: data.itemTypeName, userId } }))
 
-  if (!itemType) return null
+  if (!itemType) {
+    log.warn('DB: createItem: itemType not found', { userId, itemTypeName: data.itemTypeName })
+    return null
+  }
 
   let contentType: ContentType = ContentType.TEXT
   if (ITEM_TYPES_WITH_URL.has(data.itemTypeName)) contentType = ContentType.URL
@@ -347,6 +385,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
     select: LIGHT_ITEM_SELECT,
   })
 
+  log.info('DB: createItem', { userId, itemId: created.id, itemTypeName: data.itemTypeName, duration: Date.now() - start })
   return toLightItem(created)
 }
 
@@ -361,6 +400,7 @@ export interface UpdateItemInput {
 }
 
 export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<ItemSavedDetails | null> {
+  const start = Date.now()
   const validCollectionIds = await getValidCollectionIds(userId, data.collectionIds)
 
   try {
@@ -385,180 +425,239 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
       },
       select: ITEM_UPDATE_SELECT,
     })
+    log.info('DB: updateItem', { userId, itemId, duration: Date.now() - start })
     return {
       ...updated,
       tags: updated.tags.map((t: { name: string }) => t.name),
       collections: updated.collections.map((ic) => ic.collection),
     }
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      log.warn('DB: updateItem: not found', { userId, itemId, duration: Date.now() - start })
+      return null
+    }
     throw error
   }
 }
 
 export async function deleteItem(userId: string, itemId: string): Promise<boolean> {
+  const start = Date.now()
   const result = await prisma.item.deleteMany({
     where: { id: itemId, userId },
   })
+  log.info('DB: deleteItem', { userId, itemId, deleted: result.count > 0, duration: Date.now() - start })
   return result.count > 0
 }
 
 export async function toggleItemFavorite(userId: string, itemId: string, isFavorite: boolean): Promise<boolean> {
+  const start = Date.now()
   const result = await prisma.item.updateMany({
     where: { id: itemId, userId },
     data: { isFavorite },
   })
+  log.info('DB: toggleItemFavorite', { userId, itemId, isFavorite, updated: result.count > 0, duration: Date.now() - start })
   return result.count > 0
 }
 
 export async function toggleItemPinned(userId: string, itemId: string, isPinned: boolean): Promise<boolean> {
+  const start = Date.now()
   const result = await prisma.item.updateMany({
     where: { id: itemId, userId },
     data: { isPinned },
   })
+  log.info('DB: toggleItemPinned', { userId, itemId, isPinned, updated: result.count > 0, duration: Date.now() - start })
   return result.count > 0
 }
 
-async function getPaginatedItems(
+const DEFAULT_ITEMS_ORDER: Prisma.ItemOrderByWithRelationInput[] = [
+  { isPinned: 'desc' },
+  { createdAt: 'desc' },
+  { id: 'desc' },
+]
+
+// Pure DB loader — no caching. Used directly for cursor-based pagination and
+// internally from cached first-page wrappers.
+async function runPaginatedQuery(
   where: Prisma.ItemWhereInput,
-  cacheKey: import('@/lib/infra/cache').DataCacheConfig,
   cursor?: string,
-  orderBy: Prisma.ItemOrderByWithRelationInput[] = [{ isPinned: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+  orderBy: Prisma.ItemOrderByWithRelationInput[] = DEFAULT_ITEMS_ORDER,
   typeName?: string,
   selectOverride?: typeof LIGHT_ITEM_SELECT_COLLECTION,
 ): Promise<ItemsPage> {
   const take = ITEMS_PAGE_SIZE + 1
   const select = selectOverride ?? resolveLightItemSelect(typeName)
+  const needsTextPreviews = typeName !== 'image' && typeName !== 'file'
   const query = { where, orderBy, take, select }
 
-  const needsTextPreviews = typeName !== 'image' && typeName !== 'file'
-
-  async function loadPage(c?: string): Promise<ItemsPage> {
-    const rows = c
-      ? await prisma.item.findMany({ ...query, skip: 1, cursor: { id: c } })
-      : await prisma.item.findMany(query)
-    const hasMore = rows.length > ITEMS_PAGE_SIZE
-    const page = rows.slice(0, ITEMS_PAGE_SIZE)
-    const textPreviews = needsTextPreviews
-      ? await fetchTextPreviews(page.map((r) => r.id))
-      : new Map<string, TextPreview>()
-    return {
-      items: page.map((r) => toLightItem(r, textPreviews)),
-      nextCursor: hasMore ? page[page.length - 1].id : null,
-      hasMore,
-    }
+  const start = Date.now()
+  const rows = cursor
+    ? await prisma.item.findMany({ ...query, skip: 1, cursor: { id: cursor } })
+    : await prisma.item.findMany(query)
+  const hasMore = rows.length > ITEMS_PAGE_SIZE
+  const page = rows.slice(0, ITEMS_PAGE_SIZE)
+  log.info('DB: runPaginatedQuery', { typeName: typeName ?? 'mixed', cursor: Boolean(cursor), count: page.length, hasMore, duration: Date.now() - start })
+  const textPreviews = needsTextPreviews
+    ? await fetchTextPreviews(page.map((r) => r.id))
+    : new Map<string, TextPreview>()
+  return {
+    items: page.map((r) => toLightItem(r, textPreviews)),
+    nextCursor: hasMore ? page[page.length - 1].id : null,
+    hasMore,
   }
+}
 
-  return cursor ? loadPage(cursor) : withDataCache(cacheKey, () => loadPage())
+// Cached first-page fetchers — only page 1 (no cursor) is cached.
+// Cursor pages always hit DB directly via runPaginatedQuery.
+
+async function fetchRecentItemsFirstPage(userId: string): Promise<ItemsPage> {
+  'use cache'
+  const cacheKey = CacheTags.recentItems(userId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  return runPaginatedQuery({ userId })
 }
 
 export async function getRecentItemsPage(userId: string, cursor?: string): Promise<ItemsPage> {
-  return getPaginatedItems({ userId }, CacheTags.recentItems(userId), cursor)
+  if (cursor) return runPaginatedQuery({ userId }, cursor)
+  return fetchRecentItemsFirstPage(userId)
+}
+
+async function fetchItemsByTypeFirstPage(userId: string, typeName: string): Promise<ItemsPage> {
+  'use cache'
+  const cacheKey = CacheTags.itemsByType(userId, typeName)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  return runPaginatedQuery({ userId, itemType: { name: typeName } }, undefined, undefined, typeName)
 }
 
 export async function getItemsByTypePage(userId: string, typeName: string, cursor?: string): Promise<ItemsPage> {
-  return getPaginatedItems(
-    { userId, itemType: { name: typeName } },
-    CacheTags.itemsByType(userId, typeName),
-    cursor,
-    undefined,
-    typeName,
-  )
+  if (cursor) return runPaginatedQuery({ userId, itemType: { name: typeName } }, cursor, undefined, typeName)
+  return fetchItemsByTypeFirstPage(userId, typeName)
 }
 
 export async function getItemCountByType(userId: string, itemTypeId: string): Promise<number> {
-  return withDataCache(CacheTags.itemsByType(userId, `${itemTypeId}:count`), () =>
-    prisma.item.count({ where: { userId, itemTypeId } })
-  )
+  'use cache'
+  const cacheKey = CacheTags.itemsByType(userId, `${itemTypeId}:count`)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const count = await prisma.item.count({ where: { userId, itemTypeId } })
+  log.info('DB: getItemCountByType', { userId, itemTypeId, cacheKey, count, duration: Date.now() - start })
+  return count
 }
 
-export async function getItemsByCollectionPage(userId: string, collectionId: string, cursor?: string): Promise<ItemsPage> {
-  return getPaginatedItems(
+async function fetchItemsByCollectionFirstPage(userId: string, collectionId: string): Promise<ItemsPage> {
+  'use cache'
+  const cacheKey = CacheTags.itemsByCollection(userId, collectionId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  return runPaginatedQuery(
     { userId, collections: { some: { collectionId } } },
-    CacheTags.itemsByCollection(userId, collectionId),
-    cursor,
+    undefined,
     undefined,
     undefined,
     LIGHT_ITEM_SELECT_COLLECTION,
   )
 }
 
+export async function getItemsByCollectionPage(userId: string, collectionId: string, cursor?: string): Promise<ItemsPage> {
+  if (cursor) return runPaginatedQuery({ userId, collections: { some: { collectionId } } }, cursor, undefined, undefined, LIGHT_ITEM_SELECT_COLLECTION)
+  return fetchItemsByCollectionFirstPage(userId, collectionId)
+}
+
 export async function getFavoriteItemTypeCounts(userId: string): Promise<Record<string, number>> {
-  return withDataCache(CacheTags.favoriteItemTypeCounts(userId), async () => {
-    // $queryRaw needed: Prisma groupBy doesn't support grouping by relation field (item_types.name)
-    const rows = await prisma.$queryRaw<Array<{ name: string; count: bigint }>>`
-      SELECT it.name, COUNT(i.id)::int AS count
-      FROM items i
-      JOIN item_types it ON i."itemTypeId" = it.id
-      WHERE i."userId" = ${userId} AND i."isFavorite" = true
-      GROUP BY it.name`
-    return Object.fromEntries(rows.map((r) => [r.name, Number(r.count)]))
-  })
+  'use cache'
+  const cacheKey = CacheTags.favoriteItemTypeCounts(userId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  // $queryRaw needed: Prisma groupBy doesn't support grouping by relation field (item_types.name)
+  const rows = await prisma.$queryRaw<Array<{ name: string; count: bigint }>>`
+    SELECT it.name, COUNT(i.id)::int AS count
+    FROM items i
+    JOIN item_types it ON i."itemTypeId" = it.id
+    WHERE i."userId" = ${userId} AND i."isFavorite" = true
+    GROUP BY it.name`
+  log.info('DB: getFavoriteItemTypeCounts', { userId, cacheKey, typeCount: rows.length, duration: Date.now() - start })
+  return Object.fromEntries(rows.map((r) => [r.name, Number(r.count)]))
+}
+
+async function fetchFavoriteItemsFirstPage(userId: string): Promise<ItemsPage> {
+  'use cache'
+  const cacheKey = CacheTags.favoriteItems(userId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  return runPaginatedQuery({ userId, isFavorite: true }, undefined, [{ updatedAt: 'desc' }, { id: 'desc' }])
 }
 
 export async function getFavoriteItemsPage(userId: string, cursor?: string): Promise<ItemsPage> {
-  return getPaginatedItems(
-    { userId, isFavorite: true },
-    CacheTags.favoriteItems(userId),
-    cursor,
-    [{ updatedAt: 'desc' }, { id: 'desc' }]
-  )
+  if (cursor) return runPaginatedQuery({ userId, isFavorite: true }, cursor, [{ updatedAt: 'desc' }, { id: 'desc' }])
+  return fetchFavoriteItemsFirstPage(userId)
 }
 
 export async function getItemTypeBySlug(slug: string) {
-  return withDataCache(CacheTags.itemTypeBySlug(slug), () => {
-    const candidates = [slug]
-    if (slug.endsWith('ies')) candidates.push(slug.slice(0, -3) + 'y')
-    if (slug.endsWith('es')) candidates.push(slug.slice(0, -2))
-    if (slug.endsWith('s')) candidates.push(slug.slice(0, -1))
+  'use cache'
+  const cacheKey = CacheTags.itemTypeBySlug(slug)
+  cacheTag(cacheKey)
+  cacheLife('days')
+  const start = Date.now()
+  const candidates = [slug]
+  if (slug.endsWith('ies')) candidates.push(slug.slice(0, -3) + 'y')
+  if (slug.endsWith('es')) candidates.push(slug.slice(0, -2))
+  if (slug.endsWith('s')) candidates.push(slug.slice(0, -1))
 
-    return prisma.itemType.findFirst({
-      where: { name: { in: candidates } },
-      select: { id: true, name: true, icon: true, color: true, isSystem: true },
-    })
+  const result = await prisma.itemType.findFirst({
+    where: { name: { in: candidates } },
+    select: { id: true, name: true, icon: true, color: true, isSystem: true },
   })
+  log.info('DB: getItemTypeBySlug', { slug, cacheKey, found: Boolean(result), duration: Date.now() - start })
+  return result
 }
 
 async function getSystemItemTypes() {
-  return withDataCache(CacheTags.systemItemTypes(), async () => {
-    const types = await prisma.itemType.findMany({
-      where: { isSystem: true, userId: null },
-      select: { id: true, name: true, icon: true, color: true, isSystem: true },
-    })
-    return types.sort(compareBySystemTypeOrder)
+  'use cache'
+  const cacheKey = CacheTags.systemItemTypes()
+  cacheTag(cacheKey)
+  cacheLife('days')
+  const start = Date.now()
+  const types = await prisma.itemType.findMany({
+    where: { isSystem: true, userId: null },
+    select: { id: true, name: true, icon: true, color: true, isSystem: true },
   })
+  log.info('DB: getSystemItemTypes', { cacheKey, count: types.length, duration: Date.now() - start })
+  return types.sort(compareBySystemTypeOrder)
+}
+
+async function fetchSidebarItemTypesForUser(userId: string): Promise<SidebarItemType[]> {
+  'use cache'
+  const cacheKey = CacheTags.sidebarTypes(userId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const types = await getSystemItemTypes()
+  const start = Date.now()
+  const typeCounts = await prisma.item.groupBy({
+    by: ['itemTypeId'],
+    where: { userId },
+    _count: true,
+  })
+  const duration = Date.now() - start
+  log.info('DB: getSidebarItemTypes', { userId, cacheKey, typeCount: typeCounts.length, duration })
+  const countMap = new Map(typeCounts.map((tc) => [tc.itemTypeId, tc._count]))
+  return types.map((t) => ({
+    id: t.id,
+    name: t.name,
+    icon: t.icon,
+    color: t.color,
+    count: countMap.get(t.id) || 0,
+  }))
 }
 
 export async function getSidebarItemTypes(userId: string | null): Promise<SidebarItemType[]> {
-  const types = await getSystemItemTypes()
-
   if (!userId) {
-    return types.map((t) => ({
-      id: t.id,
-      name: t.name,
-      icon: t.icon,
-      color: t.color,
-      count: 0,
-    }))
+    const types = await getSystemItemTypes()
+    return types.map((t) => ({ id: t.id, name: t.name, icon: t.icon, color: t.color, count: 0 }))
   }
-
-  return withDataCache(CacheTags.sidebarTypes(userId), async () => {
-    const typeCounts = await prisma.item.groupBy({
-      by: ['itemTypeId'],
-      where: { userId },
-      _count: true,
-    })
-
-    const countMap = new Map(typeCounts.map((tc) => [tc.itemTypeId, tc._count]))
-
-    return types.map((t) => ({
-      id: t.id,
-      name: t.name,
-      icon: t.icon,
-      color: t.color,
-      count: countMap.get(t.id) || 0,
-    }))
-  })
+  return fetchSidebarItemTypesForUser(userId)
 }
 
 function toFullItem(item: ItemWithRelations): FullItem {

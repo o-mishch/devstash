@@ -1,3 +1,6 @@
+'use client'
+
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { CollectionWithTypes } from '@/types/collection'
 import { formatDate } from '@/lib/utils'
@@ -8,11 +11,15 @@ interface FavoriteCollectionRowProps {
 }
 
 export function FavoriteCollectionRow({ collection }: FavoriteCollectionRowProps) {
+  const router = useRouter()
+  const href = `/collections/${collection.id}`
   const dotColor = collection.dominantColor ?? '#6b7280'
 
   return (
     <Link
-      href={`/collections/${collection.id}`}
+      href={href}
+      prefetch={false}
+      onMouseEnter={() => router.prefetch(href)}
       className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left"
     >
       <FolderOpen

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { apiFetch } from '@/lib/api/api-fetch'
@@ -10,13 +11,12 @@ import { DrawerSkeleton } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT } from '@/lib/utils/constants'
 import type { LightItem, FullItem, ItemDetails, ItemContent } from '@/types/item'
 import { isFullItem } from '@/types/item'
-import type { CollectionPickerItem } from '@/types/collection'
+import { getCollectionPickerItemsAction } from '@/actions/collections'
 
 interface ItemDetailDrawerProps {
   item: LightItem | FullItem | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  collections: CollectionPickerItem[]
   onFullItemFetched: (item: FullItem) => void
   onItemSaved: (item: FullItem) => void
   onItemDeleted: (id: string) => void
@@ -38,7 +38,6 @@ function mergeDrawerItem(
 
 function ItemDetailDrawerInner({
   item,
-  collections,
   onOpenChange,
   onFullItemFetched,
   onItemSaved,
@@ -46,37 +45,49 @@ function ItemDetailDrawerInner({
 }: Omit<ItemDetailDrawerProps, 'open'>) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [savedItem, setSavedItem] = useState<FullItem | null>(null)
-  const [details, setDetails] = useState<ItemDetails | null>(() =>
-    item && isFullItem(item)
-      ? { description: item.description, updatedAt: item.updatedAt, collections: item.collections }
-      : null
-  )
-  const [content, setContent] = useState<ItemContent | null>(() =>
-    item && isFullItem(item) && ITEM_TYPES_WITH_CONTENT.has(item.itemType.name)
-      ? { content: item.content, language: item.language }
-      : null
-  )
 
   const itemId = item?.id ?? null
   const needsDetailsFetch = item !== null && !isFullItem(item)
   const needsContent = item !== null && ITEM_TYPES_WITH_CONTENT.has(item.itemType.name) && !isFullItem(item)
-  // Ref guard: fires fetch exactly once per item mount, even under React StrictMode double-invoke
-  const hasFetched = useRef(false)
 
-  useEffect(() => {
-    if (!itemId || !needsDetailsFetch || hasFetched.current) return
-    hasFetched.current = true
+  const { data: fetchedDetails } = useQuery({
+    queryKey: ['item', itemId, 'details'],
+    queryFn: async () => {
+      const result = await apiFetch<ItemDetails>(`/api/items/${itemId}/details`)
+      return result.status === 'ok' ? result.data ?? null : null
+    },
+    enabled: needsDetailsFetch && itemId !== null,
+  })
 
-    apiFetch<ItemDetails>(`/api/items/${itemId}/details`).then((result) => {
-      if (result.status === 'ok' && result.data) setDetails(result.data)
-    })
+  const { data: fetchedContent } = useQuery({
+    queryKey: ['item', itemId, 'content'],
+    queryFn: async () => {
+      const result = await apiFetch<ItemContent>(`/api/items/${itemId}/content`)
+      return result.status === 'ok' ? result.data ?? null : null
+    },
+    enabled: needsContent && itemId !== null,
+  })
 
-    if (needsContent) {
-      apiFetch<ItemContent>(`/api/items/${itemId}/content`).then((result) => {
-        if (result.status === 'ok' && result.data) setContent(result.data)
-      })
-    }
-  }, [itemId, needsDetailsFetch, needsContent])
+  const { data: collections = [] } = useQuery({
+    queryKey: ['collections', 'picker'],
+    queryFn: async () => {
+      const result = await getCollectionPickerItemsAction()
+      return result.status === 'ok' ? result.data ?? [] : []
+    },
+    enabled: editingItemId !== null,
+  })
+
+  const initialDetails: ItemDetails | null =
+    item && isFullItem(item)
+      ? { description: item.description, updatedAt: item.updatedAt, collections: item.collections }
+      : null
+  const initialContent: ItemContent | null =
+    item && isFullItem(item) && ITEM_TYPES_WITH_CONTENT.has(item.itemType.name)
+      ? { content: item.content, language: item.language }
+      : null
+
+  const details = fetchedDetails ?? initialDetails
+  const content = fetchedContent ?? initialContent
 
   useEffect(() => {
     if (!item || !details) return
@@ -137,7 +148,6 @@ export function ItemDetailDrawer({
   item,
   open,
   onOpenChange,
-  collections,
   onFullItemFetched,
   onItemSaved,
   onItemDeleted,
@@ -173,7 +183,6 @@ export function ItemDetailDrawer({
           <ItemDetailDrawerInner
             key={item.id}
             item={item}
-            collections={collections}
             onOpenChange={onOpenChange}
             onFullItemFetched={onFullItemFetched}
             onItemSaved={onItemSaved}

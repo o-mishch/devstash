@@ -27,3 +27,11 @@ vi.mock('next/headers', () => ({
     delete: vi.fn(),
   })),
 }))
+
+vi.mock('next/cache', () => ({
+  revalidateTag: vi.fn(),
+  revalidatePath: vi.fn(),
+  unstable_cache: <T extends (...args: never[]) => Promise<unknown>>(fn: T) => fn,
+  cacheTag: vi.fn(),
+  cacheLife: vi.fn(),
+}))

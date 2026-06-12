@@ -1,12 +1,12 @@
 import 'server-only'
 
 import { cache } from 'react'
+import { after } from 'next/server'
 import { createLogger } from '@/lib/infra/logger'
 import { fetchSidebarData } from '@/lib/db/sidebar'
 import {
   maybeReconcileBillingStateForUser,
   maybeReconcileOrphanSubscriptionForUser,
-  subscriptionSyncMutatedLocalState,
 } from '@/lib/billing/sync/passive-billing-sync'
 import { resolveProAccessForBillingContext } from '@/lib/billing/access/pro-access-resolution'
 import type { FreshBillingContextOptions } from '@/lib/billing/sync/user-billing-state'
@@ -51,11 +51,25 @@ export async function resolveLayoutBillingSidebarOptions(
 ): Promise<FreshBillingContextOptions> {
   if (!userId) return SIDEBAR_DEFAULT_OPTIONS
 
-  const syncResult = await maybeReconcileBillingStateForUser(userId)
-  const orphanLinked = await maybeReconcileOrphanSubscriptionForUser(userId)
-  return subscriptionSyncMutatedLocalState(syncResult) || orphanLinked
-    ? SIDEBAR_FRESH_OPTIONS
-    : SIDEBAR_DEFAULT_OPTIONS
+  // Defer passive billing sync to background (non-blocking).
+  // Webhooks + next request will heal any stale state if sync would have mutated state.
+  try {
+    after(async () => {
+      try {
+        await maybeReconcileBillingStateForUser(userId)
+        await maybeReconcileOrphanSubscriptionForUser(userId)
+      } catch (error) {
+        log.warn('Background billing sync failed', { userId, error })
+      }
+    })
+  } catch {
+    // `after()` requires a request scope (not available in tests or during prerendering).
+    // In test/prerender contexts, billing sync simply doesn't run — this is acceptable
+    // since these are non-critical operations that webhooks will handle.
+  }
+
+  // Return immediately with default options — sidebar renders without waiting for Stripe API calls.
+  return SIDEBAR_DEFAULT_OPTIONS
 }
 
 async function loadSidebarData(

@@ -8,7 +8,7 @@ import { EditorWindowDots } from '@/components/ui/editor-window-dots'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 import type { editor } from 'monaco-editor'
-import { useEditorPreferences } from '@/providers/editor-preferences-provider'
+import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import { monokaiTheme, githubDarkTheme } from '@/lib/editor/monaco-themes'
 
 interface CodeEditorProps {
@@ -21,13 +21,13 @@ interface CodeEditorProps {
 
 export function CodeEditor({ value, onChange, language, readOnly = false, className }: CodeEditorProps) {
   const monacoLanguage = language || 'plaintext'
-  const { preferences } = useEditorPreferences()
+  const { fontSize, minimap, wordWrap, tabSize, theme } = useEditorPreferencesStore()
 
   const editorOptions = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     readOnly,
-    minimap: { enabled: preferences.minimap },
+    minimap: { enabled: minimap },
     scrollBeyondLastLine: false,
-    wordWrap: preferences.wordWrap,
+    wordWrap,
     lineNumbers: "on",
     padding: { top: 16, bottom: 16 },
     automaticLayout: true,
@@ -38,12 +38,12 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
       useShadows: false,
     },
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-    fontSize: preferences.fontSize,
-    tabSize: preferences.tabSize,
+    fontSize,
+    tabSize,
     renderLineHighlight: "none",
     hideCursorInOverviewRuler: true,
     overviewRulerBorder: false,
-  }), [readOnly, preferences])
+  }), [readOnly, fontSize, minimap, wordWrap, tabSize])
 
   const handleEditorWillMount: BeforeMount = (monaco) => {
     monaco.editor.defineTheme('monokai', monokaiTheme as editor.IStandaloneThemeData)
@@ -76,7 +76,7 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
             language={monacoLanguage}
             value={value}
             onChange={onChange}
-            theme={preferences.theme}
+            theme={theme}
             options={editorOptions}
             beforeMount={handleEditorWillMount}
           />

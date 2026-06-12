@@ -1,7 +1,6 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
 import {
   createCheckoutSession,
   createPortalSession,
@@ -21,9 +20,9 @@ import {
 import { applyLiveSubscriptionAccessFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'
 import { getExistingSubscriptionMessage } from '@/lib/billing/messages/billing-messages'
 import { validateCheckoutEligibility } from '@/lib/billing/checkout/stripe-checkout'
-import { reconcileOrphanStripeSubscriptionForUser } from '@/lib/billing/sync/passive-billing-sync'
-import { syncSubscriptionStateForUser } from '@/lib/billing/sync/passive-billing-sync'
+import { reconcileOrphanStripeSubscriptionForUser, syncSubscriptionStateForUser } from '@/lib/billing/sync/passive-billing-sync'
 import { isAllowedCheckoutPriceId, isStripeCheckoutConfigured } from '@/lib/billing/config/billing-pricing'
+import { invalidateBillingCache } from '@/lib/infra/cache'
 import { requireAuthSessionWithRateLimit, withAuthAndRateLimit } from '@/lib/session'
 import { ApiResponse } from '@/lib/api'
 import { createLogger } from '@/lib/infra/logger'
@@ -63,7 +62,7 @@ async function toggleCancelSubscription(cancel: boolean): Promise<ApiBody<null>>
       })
       const isPro = await getFreshVerifiedProAccess(userId)
       markFreshProAccessResolved(userId, isPro)
-      revalidatePath('/settings')
+      invalidateBillingCache(userId)
       log.info(cancel ? 'Canceled subscription' : 'Reactivated subscription', {
         userId,
         subscriptionId: user.stripeSubscriptionId,

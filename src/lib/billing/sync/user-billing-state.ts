@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { cache } from 'react'
+import { cacheTag, cacheLife } from 'next/cache'
 import type Stripe from 'stripe'
 import type { SubscriptionInterval } from '@/generated/prisma'
 import { getUserStripeInfo } from '@/lib/db/stripe'
@@ -14,6 +15,7 @@ import {
 } from '@/lib/billing/messages/billing-messages'
 import { CHECKOUT_NOT_CONFIGURED_MESSAGE } from '@/lib/billing/messages/billing-messages.client'
 import { resolveProAccessForBillingContext } from '@/lib/billing/access/pro-access-resolution'
+import { CacheTags } from '@/lib/infra/cache'
 import { createLogger } from '@/lib/infra/logger'
 
 const log = createLogger('billing-state')
@@ -29,10 +31,18 @@ export const getCachedUserStripeInfo = cache(getUserStripeInfo)
 /** Uncached read — use after billing writes in the same request. */
 export const getFreshUserStripeInfo = getUserStripeInfo
 
-/** Request-scoped Stripe subscription fetch — shared by sync, Pro checks, and billing display. */
-export const getCachedLiveSubscriptionState = cache((subscriptionId: string) =>
-  fetchLiveSubscriptionState(subscriptionId),
-)
+async function fetchCachedLiveSubscriptionState(subscriptionId: string): Promise<LiveSubscriptionState | null> {
+  'use cache'
+  cacheTag(CacheTags.stripeSubscription(subscriptionId))
+  // stale: 30s (serve stale while revalidating), revalidate: 120s, expire: 120s
+  // Short enough to pick up subscription changes quickly; long enough to avoid
+  // hammering Stripe on every page load during passive sync.
+  cacheLife({ stale: 30, revalidate: 120, expire: 120 })
+  return fetchLiveSubscriptionState(subscriptionId)
+}
+
+/** Request-scoped Stripe subscription fetch — deduplicates within a render; persistent cache across requests. */
+export const getCachedLiveSubscriptionState = cache(fetchCachedLiveSubscriptionState)
 
 export interface CheckoutUiStateInput {
   needsBillingRecovery: boolean
@@ -153,6 +163,9 @@ export async function loadBillingDisplayContext(
   sessionFallbackIsPro: boolean,
   options?: FreshBillingContextOptions,
 ): Promise<BillingDisplayContext> {
+  'use cache'
+  cacheTag(CacheTags.billingDisplayContext(userId))
+  cacheLife('max')
   try {
     const billing = options?.freshBillingContext
       ? await getUserBillingState(userId, { freshBillingContext: true })
@@ -190,6 +203,9 @@ export async function loadBillingPageContext(
   sessionFallbackIsPro: boolean,
   options?: FreshBillingContextOptions,
 ): Promise<BillingPageContext> {
+  'use cache'
+  cacheTag(CacheTags.billingPageContext(userId))
+  cacheLife('max')
   const displayContext = await loadBillingDisplayContext(userId, sessionFallbackIsPro, options)
   const { configured: checkoutConfigured, monthly: priceIdMonthly, yearly: priceIdYearly } = getCheckoutConfig()
   const { checkoutDisabled, checkoutDisabledMessage } = resolveCheckoutUiState({

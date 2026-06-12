@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useUpgradePrompt, type UpgradePromptConfig } from '@/context/upgrade-prompt-context'
+import { useUpgradePromptStore, type UpgradePromptConfig } from '@/stores/upgrade-prompt'
 
 export function useRestrictedAction(config: UpgradePromptConfig) {
-  const { showUpgradePrompt } = useUpgradePrompt()
+  const { openPrompt } = useUpgradePromptStore()
   const [showError, setShowError] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -13,7 +13,7 @@ export function useRestrictedAction(config: UpgradePromptConfig) {
   function flash() {
     if (timerRef.current) clearTimeout(timerRef.current)
     setShowError(true)
-    showUpgradePrompt(config)
+    openPrompt(config)
     timerRef.current = setTimeout(() => setShowError(false), 2000)
   }
 

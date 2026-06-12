@@ -1,45 +1,117 @@
 'use client'
 
-import { useInfiniteItemsFetch } from '@/hooks/use-infinite-items-fetch'
-import { VirtualImageGrid } from '@/components/items/virtual-image-grid'
-import { VirtualItemGrid } from '@/components/items/virtual-item-grid'
-import { VirtualFileList } from '@/components/items/virtual-file-list'
+import { useInfiniteItems } from '@/hooks/use-infinite-items'
+import { TanStackVirtualGrid } from '@/components/items/tanstack-virtual-grid'
+import { ItemCard } from '@/components/items/item-card'
+import { ImageCard } from '@/components/items/image-card'
+import { FileRow } from '@/components/items/file-row'
 import { EmptyCard } from '@/components/shared/empty-card'
+import { ImageGridSkeleton, FileListSkeleton, CardGridSkeleton } from '@/components/shared/skeletons'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
-import type { ItemsPage } from '@/types/item'
+import { triggerCreateItemButton } from '@/lib/utils/dom'
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
 
 interface ItemsGridProps {
-  firstPage: ItemsPage
   typeName: string
+  typeLabel: string
 }
 
-export function ItemsGrid({ firstPage, typeName }: ItemsGridProps) {
-  const pageKey = `type:${typeName}`
-  const { items, fetchMore } = useInfiniteItemsFetch(pageKey, firstPage, { type: 'type', typeName })
+export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
+  const { items, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteItems({ type: 'type', typeName })
+
+  const displayCount = !isLoading ? (hasNextPage ? `${items.length}+` : String(items.length)) : null
+
+  const heading = (
+    <h1 className="text-xl font-semibold">
+      {typeLabel}
+      {displayCount !== null && <span className="text-muted-foreground font-normal text-lg"> ({displayCount})</span>}
+    </h1>
+  )
+
+  // Show type-specific skeletons during initial loading
+  if (isLoading && items.length === 0) {
+    if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {
+      return <>{heading}<ImageGridSkeleton count={6} columns={3} columnGap={12} rowGap={12} /></>
+    }
+    if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) {
+      return <>{heading}<FileListSkeleton count={6} rowGap={6} /></>
+    }
+    return <>{heading}<CardGridSkeleton count={6} columns={3} columnGap={16} rowGap={14} /></>
+  }
 
   if (items.length === 0) {
     return (
-      <EmptyCard
-        action={
-          <Button
-            variant="ghost"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => document.querySelector<HTMLButtonElement>('[data-create-item-trigger]')?.click()}
-          >
-            Create your first {typeName} <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        }
-      />
+      <>
+        {heading}
+        <EmptyCard
+          action={
+            <Button
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={triggerCreateItemButton}
+            >
+              Create your first {typeName} <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          }
+        />
+      </>
     )
   }
 
+  const onLoadMore = () => { void fetchNextPage() }
+  const hasMore = hasNextPage ?? false
+
   if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {
-    return <VirtualImageGrid pageKey={pageKey} onFetchMore={fetchMore} />
+    return (
+      <>
+        {heading}
+        <TanStackVirtualGrid
+          items={items}
+          hasMore={hasMore}
+          isLoading={isFetchingNextPage}
+          onLoadMore={onLoadMore}
+          columns={3}
+          itemHeight={240}
+          columnGap={12}
+          rowGap={12}
+          renderItem={(item, index) => <ImageCard item={item} priority={index < 12} />}
+        />
+      </>
+    )
   }
   if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) {
-    return <VirtualFileList pageKey={pageKey} onFetchMore={fetchMore} />
+    return (
+      <>
+        {heading}
+        <TanStackVirtualGrid
+          items={items}
+          hasMore={hasMore}
+          isLoading={isFetchingNextPage}
+          onLoadMore={onLoadMore}
+          columns={1}
+          itemHeight={40}
+          columnGap={0}
+          rowGap={6}
+          renderItem={(item) => <FileRow item={item} />}
+        />
+      </>
+    )
   }
-  return <VirtualItemGrid pageKey={pageKey} onFetchMore={fetchMore} />
+  return (
+    <>
+      {heading}
+      <TanStackVirtualGrid
+        items={items}
+        hasMore={hasMore}
+        isLoading={isFetchingNextPage}
+        onLoadMore={onLoadMore}
+        columns={3}
+        itemHeight={80}
+        columnGap={16}
+        rowGap={14}
+        renderItem={(item) => <ItemCard item={item} />}
+      />
+    </>
+  )
 }

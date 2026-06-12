@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Sparkles, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useAppUser } from '@/context/app-user-context'
+import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { cn } from '@/lib/utils'
 
 interface AiFieldFrameProps {
@@ -13,7 +13,7 @@ interface AiFieldFrameProps {
 }
 
 export function AiFieldFrame({ children, className }: AiFieldFrameProps) {
-  const { isPro } = useAppUser()
+  const { isPro } = useAppUserFlagsStore()
 
   return (
     <div
@@ -48,6 +48,7 @@ export function AiFieldAction({
   className,
 }: AiFieldActionProps) {
   const showDisabledTooltip = disabled && !isLoading
+  const tooltipText = showDisabledTooltip ? tooltipDisabled : tooltipEnabled
 
   return (
     <Tooltip>
@@ -82,8 +83,8 @@ export function AiFieldAction({
           <span className="text-[11px] font-bold uppercase tracking-wider">AI</span>
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="top">
-        {showDisabledTooltip ? tooltipDisabled : tooltipEnabled}
+      <TooltipContent side="top" className={tooltipText ? '' : 'hidden'}>
+        {tooltipText}
       </TooltipContent>
     </Tooltip>
   )
@@ -131,15 +132,15 @@ export function AiProHint({ children }: AiProHintProps) {
 
 export function AiFieldBadge() {
   return (
-    <span className="inline-flex h-4 items-center gap-0.5 rounded-full border border-primary/40 bg-primary/10 px-1.5 text-[9px] font-bold uppercase tracking-wider text-primary">
-      <Sparkles className="size-2.5" />
+    <span className="inline-flex h-5 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 text-[10px] font-bold uppercase tracking-wider text-primary">
+      <Sparkles className="size-3" />
       AI
     </span>
   )
 }
 
 export function AiFieldBadgeIfPro() {
-  const { isPro } = useAppUser()
+  const { isPro } = useAppUserFlagsStore()
   if (!isPro) return null
   return <AiFieldBadge />
 }

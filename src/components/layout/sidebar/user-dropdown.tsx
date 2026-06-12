@@ -10,7 +10,6 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { signOut } from 'next-auth/react'
-import { THEME_STORAGE_KEY } from '@/lib/utils/constants'
 import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
 
 interface UserDropdownMenuContentProps {
@@ -29,20 +28,19 @@ export function UserDropdownMenuContent({
   return (
     <DropdownMenuContent side={side} align={align} className="w-52">
       <DropdownMenuItem render={
-        <Link href="/profile" onClick={() => onClose?.()}>
+        <Link href="/profile" onClick={() => onClose?.()} prefetch={false}>
           <User className="size-4" />
           Profile
         </Link>
       } />
       <DropdownMenuItem render={
-        <Link href="/settings" onClick={() => onClose?.()}>
+        <Link href="/settings" onClick={() => onClose?.()} prefetch={false}>
           <Settings className="size-4" />
           Settings
         </Link>
       } />
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => {
-        localStorage.removeItem(THEME_STORAGE_KEY)
         setTheme(DEFAULT_EDITOR_PREFERENCES.appTheme)
         signOut({ redirectTo: '/' })
         onClose?.()

@@ -27,6 +27,7 @@ import {
   updateSubscriptionState,
   updateUserStripeSubscription,
 } from '@/lib/billing/subscription/subscription-state'
+import { invalidateBillingCache, invalidateStripeSubscriptionCache } from '@/lib/infra/cache'
 
 const log = createLogger('stripe-subscription')
 
@@ -128,12 +129,16 @@ export async function applySubscriptionAccessFromStripe(
 
   if (missingFromStripe) {
     await clearStripeSubscriptionBySubId(subscriptionId, currentPeriodEnd ?? undefined)
+    invalidateStripeSubscriptionCache(subscriptionId)
+    if (userId) invalidateBillingCache(userId)
     return 'cleared'
   }
 
   const grantsAccess = explicitGrantsAccess ?? subscriptionHasProAccess(status)
   if (!grantsAccess && subscriptionShouldClearLocalLink(status)) {
     await clearStripeSubscriptionBySubId(subscriptionId, currentPeriodEnd ?? undefined)
+    invalidateStripeSubscriptionCache(subscriptionId)
+    if (userId) invalidateBillingCache(userId)
     return 'cleared'
   }
 
@@ -147,6 +152,11 @@ export async function applySubscriptionAccessFromStripe(
     customerId,
     subscriptionStart,
   })
+
+  // Invalidate the persistent Stripe subscription cache so the next page load
+  // gets a fresh live state instead of serving a stale cached result.
+  invalidateStripeSubscriptionCache(subscriptionId)
+  if (userId) invalidateBillingCache(userId)
 
   if (!grantsAccess) return rowsUpdated > 0 ? 'revoked' : 'unchanged'
   return rowsUpdated > 0 ? 'updated' : 'unchanged'

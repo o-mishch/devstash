@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { Prisma } from '@/generated/prisma'
 import { prisma } from '@/lib/infra/prisma'
 import { createLogger } from '@/lib/infra/logger'
@@ -22,7 +24,7 @@ export async function releaseStaleStripeWebhookEvents(now = Date.now()): Promise
     },
   })
   if (result.count > 0) {
-    log.info('stale_webhook_claims_released', { count: result.count })
+    log.info('DB: stale_webhook_claims_released', { count: result.count })
   }
   return result.count
 }
@@ -45,7 +47,7 @@ export async function claimStripeWebhookEventInDb(eventId: string, eventType: st
           select: { status: true, createdAt: true },
         })
         if (existing?.status === 'processing' && isStaleWebhookProcessing(existing.createdAt, Date.now())) {
-          log.warn('Reclaiming stale webhook processing claim', { eventId, attempt: attempt + 1 })
+          log.warn('DB: Reclaiming stale webhook processing claim', { eventId, attempt: attempt + 1 })
           await prisma.stripeWebhookEvent.delete({ where: { id: eventId } })
           continue
         }
@@ -85,6 +87,6 @@ export async function pruneOldStripeWebhookEvents(now = Date.now()): Promise<voi
     },
   })
   if (result.count > 0) {
-    log.info('old_webhook_events_pruned', { count: result.count })
+    log.info('DB: old_webhook_events_pruned', { count: result.count })
   }
 }

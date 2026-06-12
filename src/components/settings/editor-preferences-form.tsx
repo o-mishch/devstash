@@ -1,7 +1,8 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEditorPreferences } from '@/providers/editor-preferences-provider'
+import { useTheme } from 'next-themes'
+import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import { EDITOR_FONT_SIZE_OPTIONS, EDITOR_TAB_SIZE_OPTIONS, EDITOR_THEME_OPTIONS, APP_THEME_OPTIONS, APP_THEME_SWATCH_CLASSES, type EditorTheme, type AppTheme } from '@/types/editor-preferences'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -28,7 +29,14 @@ function PreferenceRow({ title, description, children }: PreferenceRowProps) {
 }
 
 export function EditorPreferencesForm() {
-  const { preferences, updatePreference } = useEditorPreferences()
+  const store = useEditorPreferencesStore()
+  const { updatePreference } = store
+  const { setTheme } = useTheme()
+
+  const handleAppThemeChange = (theme: AppTheme) => {
+    updatePreference('appTheme', theme)
+    setTheme(theme)
+  }
 
   const handleNumberChange = (key: 'fontSize' | 'tabSize') => (value: string | null) => {
     if (value) updatePreference(key, parseInt(value, 10))
@@ -46,12 +54,12 @@ export function EditorPreferencesForm() {
         <CardContent>
           <div className="app-grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             {APP_THEME_OPTIONS.map((theme) => {
-              const isActive = preferences.appTheme === theme.value;
+              const isActive = store.appTheme === theme.value;
               const { bg, accent } = APP_THEME_SWATCH_CLASSES[theme.value as AppTheme]
               return (
                 <button
                   key={theme.value}
-                  onClick={() => updatePreference('appTheme', theme.value)}
+                  onClick={() => handleAppThemeChange(theme.value as AppTheme)}
                   className={cn(
                     "flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-all hover:bg-foreground/5",
                     isActive ? "border-primary" : "border-border"
@@ -85,12 +93,12 @@ export function EditorPreferencesForm() {
       <CardContent className="space-y-6">
         <PreferenceRow title="Theme" description="Select the editor color theme">
           <Select 
-            value={preferences.theme} 
+            value={store.theme} 
             onValueChange={(value: EditorTheme | null) => { if (value) updatePreference('theme', value) }}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Theme">
-                {EDITOR_THEME_OPTIONS.find((t) => t.value === preferences.theme)?.label}
+                {EDITOR_THEME_OPTIONS.find((t) => t.value === store.theme)?.label}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -105,12 +113,12 @@ export function EditorPreferencesForm() {
 
         <PreferenceRow title="Font Size" description="Editor font size in pixels">
           <Select 
-            value={String(preferences.fontSize)} 
+            value={String(store.fontSize)} 
             onValueChange={handleNumberChange('fontSize')}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Font Size">
-                {preferences.fontSize}px
+                {store.fontSize}px
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -125,12 +133,12 @@ export function EditorPreferencesForm() {
 
         <PreferenceRow title="Tab Size" description="Number of spaces per tab">
           <Select 
-            value={String(preferences.tabSize)} 
+            value={String(store.tabSize)} 
             onValueChange={handleNumberChange('tabSize')}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Tab Size">
-                {EDITOR_TAB_SIZE_OPTIONS.find((t) => t.value === preferences.tabSize)?.label}
+                {EDITOR_TAB_SIZE_OPTIONS.find((t) => t.value === store.tabSize)?.label}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -145,14 +153,14 @@ export function EditorPreferencesForm() {
 
         <PreferenceRow title="Word Wrap" description="Wrap lines that exceed the editor width">
           <Switch 
-            checked={preferences.wordWrap === 'on'} 
+            checked={store.wordWrap === 'on'} 
             onCheckedChange={(checked) => updatePreference('wordWrap', checked ? 'on' : 'off')}
           />
         </PreferenceRow>
 
         <PreferenceRow title="Minimap" description="Show code minimap on the right">
           <Switch 
-            checked={preferences.minimap} 
+            checked={store.minimap} 
             onCheckedChange={(checked) => updatePreference('minimap', checked)}
           />
         </PreferenceRow>

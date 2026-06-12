@@ -114,8 +114,7 @@
  *  DARK MODE THEMES
  *
  *  Default (.dark) = VS Code Dark+
- *  Overrides applied via data-theme attribute set by
- *  EditorPreferencesProvider on <html>.
+ *  Overrides applied via data-theme attribute on <html>.
  * ============================================================ */
 
 /* ------------------------------------------------------------------
@@ -337,6 +336,24 @@
     }
     button, [role="button"] {
         cursor: pointer;
+    }
+}
+
+/* ============================================================
+ *  CUSTOM ANIMATIONS
+ * ============================================================ */
+@keyframes spin-left {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(-360deg);
+    }
+}
+
+@layer utilities {
+    .animate-spin-left {
+        animation: spin-left 1s linear infinite;
     }
 }
 

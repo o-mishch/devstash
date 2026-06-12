@@ -52,3 +52,13 @@ Read the following files for detailed rules before making any changes:
 - `.agents/rules/security.md` — IDOR prevention, auth patterns, input validation, token handling
 - `.agents/rules/testing.md` — Vitest conventions, what to test, mocking patterns
 - `.agents/rules/api-contract.md` — ApiBody shape, apiRoute wrapper, apiFetch, status codes
+
+<!-- stripe-projects-cli managed:agents-md:start -->
+## Stripe Projects CLI
+
+This repository is initialized for the Stripe project "devstash".
+
+## Tools used
+
+- [Stripe CLI](https://docs.stripe.com/stripe-cli) with the `projects` plugin to manage third-party services, credentials, and deployments for this project. Use the stripe-projects-cli to manage deploying and access to third party services.
+<!-- stripe-projects-cli managed:agents-md:end -->

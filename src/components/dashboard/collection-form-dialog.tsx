@@ -20,7 +20,7 @@ import { CollectionFormFields } from '@/components/shared/collection-form-fields
 import { collectionFormSchema } from '@/lib/utils/validators'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
-import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import type { ApiBody } from '@/types/api'
 
 type FormValues = z.input<typeof collectionFormSchema>
@@ -58,7 +58,7 @@ export function CollectionFormDialog({
   canCreate = true,
 }: CollectionFormDialogProps) {
   const router = useRouter()
-  const { showUpgradePrompt } = useUpgradePrompt()
+  const { openPrompt } = useUpgradePromptStore()
 
   const form = useForm<FormValues>({
     resolver: zodResolver(collectionFormSchema),
@@ -106,7 +106,7 @@ export function CollectionFormDialog({
     <span onClick={(e) => {
       if (!canCreate) {
         e.preventDefault()
-        showUpgradePrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
+        openPrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
         return
       }
       handleOpenChange(true)

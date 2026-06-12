@@ -1,8 +1,18 @@
 # Improve — Evaluation Checklist
 
-Apply **P1 → P5** across the whole changeset (holistic, not per-file). **KISS = decrease LOC** — always scan P2 for −LOC wins. Zero findings → `No issues found.`
+Five priority lenses, applied across the whole changeset (holistic, not per-file). **KISS = decrease LOC** — always scan P2 for −LOC wins.
 
-**Finding shape:** `[ID]` · **Major|Minor** · `path(s)` — Title · Issue · Evidence · Recommendation · Rule (P4/P5 only)
+| Lens | Name | Asks |
+| --- | --- | --- |
+| **P1** | Architecture & SOLID | Is logic in the right layer? Would a redesign remove structure? |
+| **P2** | KISS & duplication | Can this be deleted, merged, or replaced by an existing util / library idiom? |
+| **P3** | Security & access | Leak, auth bypass, IDOR, or wrong grant/deny at scale? |
+| **P4** | Bugs, regressions & logging | Production break, behavior regression, or missing/ noisy logs? |
+| **P5** | Convention, hygiene & tests | Project rules (`coding-standards`, `api-contract`), hygiene, test gaps? |
+
+**Be critical — the bar is not "compiles and is clean."** Most changesets carry at least one repeated pattern or simplification; assume so until you have looked across sibling files, callers, and similar code (the WIDEN + PATTERN PASS steps in SKILL.md) to rule it out. `No issues found.` is a strong claim — only make it after that wide pass, and state *what you checked* so the user can trust the zero. Doubt about whether a library offers a leaner API is **not** grounds to pass: resolve it with context7 (`context7-mcp` skill → `mcp__context7__*`) and let the answer drive the finding.
+
+**Finding ID:** `P{n}-{seq}` (e.g. `P2-3`) — assigned per priority, unique within this report; the user references findings by ID. **Output shape:** see the card in `improve/report.md` — that template is the single source for what a rendered finding looks like. While scanning, jot each finding as `[ID] · Major|Minor · path:line · one-line evidence` so the report write-up is mechanical.
 
 ---
 
@@ -12,8 +22,9 @@ Apply **P1 → P5** across the whole changeset (holistic, not per-file). **KISS 
 
 | Signal | Look for |
 | --- | --- |
-| FE/BE leak | `'use client'` imports `lib/db`, prisma, Stripe SDK, server env |
-| UI owns rules | billing/access/validation logic in components |
+| Bundle leak | `'use client'` file imports `lib/db/`, `lib/infra/`, `lib/auth/`, `lib/billing/`, `lib/storage/`, `lib/stripe/`, `lib/session.ts`, or `lib/api/index.ts` — these use Node.js APIs / secret env vars and must not enter the browser bundle |
+| Missing guard | Node.js-only module in `lib/db/`, `lib/infra/`, `lib/auth/`, `lib/billing/`, `lib/storage/`, `lib/stripe/`, `lib/app/`, `lib/session.ts`, `lib/api/index.ts` missing `'server-only'` as first line |
+| UI owns rules | access checks or input validation in components |
 | BE in UI | DB/Stripe calls in components or thin routes |
 | Data layer | `prisma.*` outside `src/lib/db/` (except `auth.ts` adapter) |
 | Boundaries | fat actions; logic that belongs in `src/lib/` |
@@ -29,19 +40,22 @@ Major redesign → include: current shape → proposed shape → benefit
 
 **KISS = decrease LOC.** The simplest correct solution has the fewest lines, files, and layers. Every improve run must hunt for −LOC wins — not only flag creep.
 
-*Lens: delete/merge/inline before adding. Single source of truth. Net `src/` LOC ↓ is the primary KISS signal.*
+*Lens: delete/merge/inline before adding. Single source of truth. Net `src/` LOC ↓ is the primary KISS signal.* This is the highest-yield lens and where the audit most often under-reports — work it hardest.
 
 | Signal | Look for |
 | --- | --- |
+| **Repeated pattern** | the **same shape** in 2+ files — a guard, a conditional, a data transform, a prop interface, a `fetch`→`map`, an error map. `rg` the codebase (changed *and* unchanged files) for each non-trivial shape in the changeset; 2+ hits → propose one source of truth |
+| **Reinvented idiom** | hand-rolled logic a library already gives (React hooks/`use`, Next.js `cache`/`redirect`/route helpers, Prisma `select`/`include`/`groupBy`, Zod refinements, TanStack Query/Virtual, Zustand selectors, shadcn primitives) — **confirm the leaner API via context7 before recommending** |
+| Existing util not reused | a helper in `src/lib/utils/` (or sibling module) already does this, but the changeset re-implements it |
 | Over-decompose | one-liner wrapper; single-export single-use file; deep import chain |
 | Over-engineer | one-impl abstraction; unused generic; premature cache/state machine |
-| Duplicate | same rule in 2+ files (Pro access, subscription status, billing display) |
+| Duplicate rule | same rule derived in 2+ places (e.g. an access check, a status derivation, a formatted display value) — collapse to one source |
 | LOC creep | changeset or prior fixes grew `src/` without removing equivalent code — **always P2** |
 | −LOC opportunity | duplicate, dead file, wrapper, over-split module, client→server — **report even if Minor** |
 | Additive fix | recommendation only adds lines — **required:** leaner −LOC variant |
 | Growth without payoff | net +LOC for logging/tests/helpers that could be inline or merged |
 
-Every P2 finding: **est. LOC Δ** (show **−N** prominently for cuts). Default fix: merge/delete/inline. Adding lines needs explicit why no −LOC path exists. Surface top −LOC items in report **KISS — decrease LOC** section.
+Every P2 finding: **est. LOC Δ** (show **−N** prominently for cuts). Default fix: merge/delete/inline, or apply the existing util / library idiom. Adding lines needs explicit why no −LOC path exists. Surface top −LOC items in report **KISS — decrease LOC** section. A repeated pattern found across the codebase is reported even when only one instance is in the changeset — note the other call sites as the dedupe target.
 
 ---
 
@@ -55,11 +69,12 @@ Every P2 finding: **est. LOC Δ** (show **−N** prominently for cuts). Default 
 | IDOR | `userId` from input not session |
 | Input | external data without Zod |
 | Tokens | weak/reusable token; missing expiry |
+| Password | hash returned to client or logged; password change without verifying the current password |
 | Rate limit | new auth-adjacent endpoint unprotected |
 | Webhook | no signature verify or idempotency |
 | Exposure | secrets, stack traces, internal errors to client |
-| Access | stale Pro/billing cache after write; sync/webhook race |
-| Outage | Stripe/DB error in layout blocks app; checkout↔webhook↔sync race |
+| Access | stale cache after write; sync/webhook race granting wrong access |
+| Outage | external-service/DB error in a layout or shared loader blocks the app; multi-step write race (e.g. checkout↔webhook↔sync) |
 
 Major → row in Security & access risks table (`Fix now`).
 
@@ -72,15 +87,14 @@ Major → row in Security & access risks table (`Fix now`).
 | Signal | Look for |
 | --- | --- |
 | Logic | wrong branch; null/empty edge; partial write no rollback |
-| Race | checkout↔webhook↔sync; stale cache after write |
+| Race | multi-step async write (e.g. checkout↔webhook↔sync); stale cache after write |
 | Contract | changed API breaks caller in changeset |
-| Access | wrong Pro grant/deny; subscription transition gap |
+| Access | wrong grant/deny; state transition gap |
 | Async | missing `await`; floating promise |
 | Hydration | client/server boundary bug |
 | Tests | weakened/removed assertions |
-| Regression | Prior fix or accepted tradeoff broken in code (cite audit ID + run #) |
-| Dropped audit ID | any audit-table ID missing from report **Audit reconcile** — **process failure** |
-| Dead end | checkout/portal/upgrade with no recovery |
+| Regression | changeset reverts or breaks a behavior that git history / tests show was working |
+| Dead end | a user flow (checkout, upgrade, multi-step form) with no recovery path |
 
 Major bug → row in Bugs & regressions table (`Fix now`).
 
@@ -89,7 +103,7 @@ Major bug → row in Bugs & regressions table (`Fix now`).
 | Signal | Look for |
 | --- | --- |
 | Missing | critical state change / API call / webhook not logged |
-| Swallowed | error on billing/auth/webhook path without `log.error` |
+| Swallowed | error on a critical path (auth, webhook, payment, write) without `log.error` |
 | Shape | no headline → context (IDs) → description when useful |
 | Noise | excessive low-signal logs; wrong level |
 | Wrapper | custom logger around `createLogger` |
@@ -103,13 +117,16 @@ Major bug → row in Bugs & regressions table (`Fix now`).
 | Area | Look for |
 | --- | --- |
 | TypeScript | inline types; `Foo & {}` on params; `any`; `@ts-ignore`; `const enum` |
-| React | class component; inline props; nested ternary; `React.` prefix |
-| Next.js | see **SSR** below |
+| Errors (KISS) | custom `class FooError extends Error`; `instanceof` / `error.name` routing control flow across layers — use plain `Error`, handle at the boundary (framework types like `ZodError` / `Stripe.errors` are exempt) |
+| React | class component; inline props; nested ternary; `React.` prefix; direct `window.` / `document.` access without a justifying comment |
+| Next.js | see **SSR** below; `'server-only'` missing in server-only modules (see P1 — also flag here if in scope) |
 | API | see **API surface** below |
+| Database | `prisma.$queryRaw` without a comment explaining why the ORM can't express it; raw SQL where an ORM query exists |
+| Naming | not PascalCase component · camelCase fn · SCREAMING_SNAKE const · PascalCase type (no prefix) |
 | Styling | `tailwind.config.*`; inline styles; redundant `cursor-pointer` on buttons |
 | Quality | commented-out code; unused imports; fn >50 lines; forbidden env vars |
 | Hygiene | ESLint; `console.log`; stale TODO; env.d.ts / `.env.example` drift |
-| Tests | changed `lib/` or `actions/` without meaningful test; weak mocks; missing edge cases |
+| Tests | changed `lib/` (except `lib/db/`, which is exempt) or `actions/` without meaningful test; weak mocks; missing edge cases; no component (`.tsx`) tests |
 
 ### API surface — `api.ts` / `api-response.ts` / `api-fetch.ts`
 
@@ -122,6 +139,7 @@ Major bug → row in Bugs & regressions table (`Fix now`).
 | Unwrapped route | handler exported without `apiRoute` / `authenticatedRoute` |
 | Client fetch | `fetch()` / `axios` in client components — use `apiFetch` or Server Action |
 | Action shape | Server Action returns bool/string instead of `ApiBody<T>` |
+| Action error handling | Server Action with no try/catch returning `ApiResponse.INTERNAL_ERROR()` on unexpected failure |
 | Justification missing | raw NextResponse/fetch present without comment explaining why helpers cannot apply |
 
 **Major** — API route bypasses `apiRoute` or returns non-`ApiBody` JSON to clients.  
@@ -142,7 +160,7 @@ Major bug → row in Bugs & regressions table (`Fix now`).
 | Form on client | submit handler + `fetch` where Server Action would work |
 | Prop drilling boundary | large props blob crossed client boundary when server child could own fetch |
 | Hydration risk | `Date.now()`, `Math.random()`, locale/timezone without `suppressHydrationWarning` where needed |
-| `'use client'` import leak | client file imports server-only module (also P1 FE/BE leak — **Major**) |
+| `'use client'` import leak | client file imports from `lib/db/`, `lib/infra/`, `lib/auth/`, `lib/billing/`, `lib/storage/`, `lib/stripe/`, `lib/session.ts`, `lib/api/index.ts` (also P1 bundle leak — **Major**) |
 
 **Minor** — can convert to server component or Server Action with est. LOC −.  
 **Major** — client boundary hides server-only imports or blocks critical server fetch path.
@@ -155,6 +173,4 @@ When components are in scope: include **SSR** detail table in report (file · cu
 
 | Major | Minor |
 | --- | --- |
-| Bug; audit regression; FE/BE leak; security/access outage; API violation (`apiRoute`/`ApiResponse`/`apiRedirect`/`apiFetch`); swallowed critical error; weak critical-path tests; redesign strongly warranted | KISS tweak; convention; hygiene; raw `NextResponse.redirect` without justification; unnecessary `'use client'` / client fetch (SSR); non-critical test gap |
-
-**Finding ID:** `P{n}-{seq}` — stable across runs.
+| Bug; regression; FE/BE leak; security/access outage; API violation (`apiRoute`/`ApiResponse`/`apiRedirect`/`apiFetch`); repeated pattern across 2+ files; swallowed critical error; weak critical-path tests; redesign strongly warranted | KISS tweak; convention; hygiene; raw `NextResponse.redirect` without justification; unnecessary `'use client'` / client fetch (SSR); non-critical test gap |

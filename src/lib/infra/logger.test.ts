@@ -99,7 +99,7 @@ describe('createLogger', () => {
     const [msg] = logSpy.mock.calls[0]
     // strip ANSI escape codes before matching
     const plain = (msg as string).replace(/\x1b\[\d+m/g, '')
-    expect(plain).toMatch(/^\d{2}:\d{2}:\d{2} \[[\w.]+\] INFO MISS user:abc:pinned-items$/)
+    expect(plain).toMatch(/^\d{2}:\d{2}:\d{2}:\d{3}:\d{6} \[[\w.]+\] INFO MISS user:abc:pinned-items$/)
     vi.unstubAllEnvs()
   })
 })

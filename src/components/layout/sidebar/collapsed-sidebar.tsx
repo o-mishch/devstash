@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { PanelRight, Star, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -10,8 +10,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { DropdownMenu, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn, getTypeLabel } from '@/lib/utils'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
+import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { SidebarData } from '@/types/sidebar'
-import { useUpgradePrompt } from '@/context/upgrade-prompt-context'
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { UserDropdownMenuContent } from './user-dropdown'
 import { getTypeHref, handleProGatedTypeClick } from './utils'
 
@@ -22,7 +23,8 @@ interface CollapsedSidebarProps {
 
 export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
   const pathname = usePathname()
-  const { showUpgradePrompt } = useUpgradePrompt()
+  const router = useRouter()
+  const { openPrompt } = useUpgradePromptStore()
   const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
 
   return (
@@ -36,20 +38,33 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
 
         <ScrollArea className="flex-1 min-h-0 w-full [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
           <div className="flex flex-col items-center gap-1 px-2">
-            {sidebarData.itemTypes.map((t) => (
+            {sidebarData.itemTypes.map((t) => {
+              const typeHref = getTypeHref(t.name)
+              const isCurrentPage = pathname === typeHref
+              const isPro = sidebarData.user?.isPro ?? false
+              const isProGated = PRO_ITEM_TYPE_NAMES.has(t.name)
+
+              return (
               <Tooltip key={t.id}>
                 <TooltipTrigger render={<span />}>
                   <Link
-                    href={getTypeHref(t.name)}
+                    href={typeHref}
+                    prefetch={false}
+                    onMouseEnter={() => {
+                      // Only prefetch if: (1) not current page, (2) not Pro-gated OR user is Pro
+                      if (!isCurrentPage && (!isProGated || isPro)) {
+                        router.prefetch(typeHref)
+                      }
+                    }}
                     onClick={(e) => handleProGatedTypeClick(e, {
-                      isPro: sidebarData.user?.isPro ?? false,
+                      isPro: isPro,
                       count: t.count,
                       typeName: t.name,
-                      showUpgradePrompt,
+                      showUpgradePrompt: openPrompt,
                     })}
                     className={cn(
                       'flex size-11 items-center justify-center rounded-lg transition-colors',
-                      pathname === getTypeHref(t.name)
+                      isCurrentPage
                         ? 'bg-foreground/10 text-foreground'
                         : 'hover:bg-foreground/5'
                     )}
@@ -59,7 +74,8 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
                 </TooltipTrigger>
                 <TooltipContent side="right">{getTypeLabel(t.name)}</TooltipContent>
               </Tooltip>
-            ))}
+              )
+            })}
 
             {favoriteCollections.length > 0 && (
               <>
@@ -69,6 +85,8 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
                     <TooltipTrigger render={<span />}>
                       <Link
                         href={`/collections/${c.id}`}
+                        prefetch={false}
+                        onMouseEnter={() => router.prefetch(`/collections/${c.id}`)}
                         className={cn(
                           'flex size-11 items-center justify-center rounded-lg transition-colors',
                           pathname === `/collections/${c.id}`
