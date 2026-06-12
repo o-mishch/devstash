@@ -1,5 +1,6 @@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent } from '@/components/ui/card'
+import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 
 interface PageHeaderSkeletonProps {
   actionWidthClass?: string
@@ -34,6 +35,7 @@ export function CardGridSkeleton({ count = 6, columns = 3, columnGap = 16, rowGa
         gap: `${rowGap}px ${columnGap}px`,
         width: '100%',
         minWidth: 0,
+        paddingTop: '8px',
       }}
     >
       {[...Array(count)].map((_, i) => (
@@ -101,6 +103,7 @@ export function ImageGridSkeleton({ count = 6, columns = 3, columnGap = 12, rowG
         gap: `${rowGap}px ${columnGap}px`,
         width: '100%',
         minWidth: 0,
+        paddingTop: '8px',
       }}
     >
       {[...Array(count)].map((_, i) => (
@@ -134,9 +137,9 @@ interface FileListSkeletonProps {
   rowGap?: number
 }
 
-export function FileListSkeleton({ count = 6, rowGap = 6 }: FileListSkeletonProps) {
+export function FileListSkeleton({ count = 6, rowGap = 10 }: FileListSkeletonProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: `${rowGap}px`, width: '100%', minWidth: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: `${rowGap}px`, width: '100%', minWidth: 0, paddingTop: '8px' }}>
       {[...Array(count)].map((_, i) => (
         <div key={i} style={{ height: '40px', width: '100%' }}>
           <FileRowSkeleton />
@@ -146,22 +149,16 @@ export function FileListSkeleton({ count = 6, rowGap = 6 }: FileListSkeletonProp
   )
 }
 
-interface ItemsPageSkeletonProps {
-  typeName?: string
+interface ItemsTypeSkeletonProps {
+  typeName: string
 }
 
-export function ItemsPageSkeleton({ typeName = 'snippet' }: ItemsPageSkeletonProps) {
-  return (
-    <>
-      {/* Page header skeleton - matches <h1> layout */}
-      <div className="text-xl font-semibold">
-        <Skeleton className="h-7 w-64" />
-      </div>
-
-      {/* Type-specific skeleton */}
-      {typeName === 'image' && <ImageGridSkeleton count={6} columns={3} columnGap={12} rowGap={12} itemHeight={240} />}
-      {typeName === 'file' && <FileListSkeleton count={6} rowGap={6} />}
-      {typeName !== 'image' && typeName !== 'file' && <CardGridSkeleton count={6} columns={3} columnGap={16} rowGap={14} />}
-    </>
-  )
+export function ItemsTypeSkeleton({ typeName }: ItemsTypeSkeletonProps) {
+  if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {
+    return <ImageGridSkeleton />
+  }
+  if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) {
+    return <FileListSkeleton />
+  }
+  return <CardGridSkeleton />
 }

@@ -6,7 +6,7 @@ import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'
 import { FileRow } from '@/components/items/file-row'
 import { EmptyCard } from '@/components/shared/empty-card'
-import { ImageGridSkeleton, FileListSkeleton, CardGridSkeleton } from '@/components/shared/skeletons'
+import { ItemsTypeSkeleton } from '@/components/shared/skeletons'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 import { triggerCreateItemButton } from '@/lib/utils/dom'
 import { Button } from '@/components/ui/button'
@@ -29,15 +29,8 @@ export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
     </h1>
   )
 
-  // Show type-specific skeletons during initial loading
   if (isLoading && items.length === 0) {
-    if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {
-      return <>{heading}<ImageGridSkeleton count={6} columns={3} columnGap={12} rowGap={12} /></>
-    }
-    if (ITEM_TYPES_WITH_FILE_LIST.has(typeName)) {
-      return <>{heading}<FileListSkeleton count={6} rowGap={6} /></>
-    }
-    return <>{heading}<CardGridSkeleton count={6} columns={3} columnGap={16} rowGap={14} /></>
+    return <>{heading}<ItemsTypeSkeleton typeName={typeName} /></>
   }
 
   if (items.length === 0) {
@@ -92,7 +85,7 @@ export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
           columns={1}
           itemHeight={40}
           columnGap={0}
-          rowGap={6}
+          rowGap={10}
           renderItem={(item) => <FileRow item={item} />}
         />
       </>
