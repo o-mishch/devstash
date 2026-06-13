@@ -1,9 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { X, Check } from 'lucide-react'
-import { toast } from 'sonner'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -12,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { LanguageInput } from '@/components/shared/item-content-input'
 import { ItemFormFields } from '@/components/items/item-form-fields'
-import { updateItemAction } from '@/actions/items'
+import { useUpdateItem } from '@/hooks/use-update-item'
 import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
@@ -43,7 +41,7 @@ interface ItemDrawerEditContentProps {
 export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel }: ItemDrawerEditContentProps) {
   const { itemType } = item
   const typeName = itemType.name
-  const queryClient = useQueryClient()
+  const updateItem = useUpdateItem()
 
   const formSchema = useMemo(() => createDrawerFormSchema(typeName), [typeName])
 
@@ -67,34 +65,19 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
 
   const handleSubmit = form.handleSubmit(async (data: DrawerFormValues) => {
     const tagArray = parseTagString(data.tags)
-
-    const result = await updateItemAction(item.id, {
-      title: data.title.trim(),
-      description: data.description?.trim() || null,
-      content: data.content || null,
-      url: data.url?.trim() || null,
-      language: data.language?.trim() || null,
-      tags: tagArray,
-      collectionIds: data.collectionIds,
-    })
-
-    if (result.status !== 'ok' || !result.data) {
-      toast.error(result.message ?? 'Failed to save item')
-      return
-    }
-
-    const fullUpdated: FullItem = {
-      ...item,
-      ...result.data,
-      title: data.title.trim(),
-      content: data.content || null,
-      language: data.language?.trim() || null,
-      descriptionPreview: (data.description?.trim() || null)?.slice(0, 150) ?? null,
-      contentPreview: (data.content || null)?.slice(0, 150) ?? null,
-    }
-    onSave(fullUpdated)
-    void queryClient.invalidateQueries({ queryKey: ['items'] })
-    toast.success('Item saved')
+    await updateItem(
+      item,
+      {
+        title: data.title.trim(),
+        description: data.description?.trim() || null,
+        content: data.content || null,
+        url: data.url?.trim() || null,
+        language: data.language?.trim() || null,
+        tags: tagArray,
+        collectionIds: data.collectionIds,
+      },
+      { onSave },
+    )
   })
 
   return (

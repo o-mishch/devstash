@@ -1,14 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { apiFetch } from '@/lib/api/api-fetch'
+import { get } from '@/lib/api/api-fetch'
 import { getDownloadUrl } from '@/lib/utils/url'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import type { SignedDownloadUrlResponse } from '@/types/item'
 
 interface SignedSrcState {
   itemId: string
-  preview: boolean
   url: string
 }
 
@@ -20,44 +19,45 @@ interface CachedSignedDownloadUrl {
 const SIGNED_URL_EXPIRY_BUFFER_MS = 30_000
 const signedDownloadUrlCache = new Map<string, CachedSignedDownloadUrl>()
 const inFlightRequests = new Map<string, Promise<string | null>>()
+// Tracks preview items/URLs that returned a non-200. Survives component remounts so
+// the browser never re-requests a URL that already failed (browsers don't cache 404).
+const failedPreviewItems = new Set<string>()
+// URL-level tracking: once a specific signed URL 404s, no component should retry it.
+const failedPreviewUrls = new Set<string>()
 
-function getSignedDownloadUrlCacheKey(itemId: string, preview: boolean): string {
-  return `${itemId}:${preview ? 'preview' : 'full'}`
+function cacheKey(itemId: string, preview: boolean): string {
+  return preview ? `${itemId}:preview` : itemId
 }
 
 function getCachedSignedDownloadUrl(itemId: string, preview: boolean): string | null {
-  const cached = signedDownloadUrlCache.get(getSignedDownloadUrlCacheKey(itemId, preview))
+  const cached = signedDownloadUrlCache.get(cacheKey(itemId, preview))
   if (!cached) return null
   if (cached.expiresAt - SIGNED_URL_EXPIRY_BUFFER_MS <= Date.now()) {
-    signedDownloadUrlCache.delete(getSignedDownloadUrlCacheKey(itemId, preview))
+    signedDownloadUrlCache.delete(cacheKey(itemId, preview))
     return null
   }
   return cached.url
 }
 
-function cacheSignedDownloadUrl(itemId: string, preview: boolean, data: SignedDownloadUrlResponse): void {
+function setCachedSignedDownloadUrl(itemId: string, data: SignedDownloadUrlResponse, preview: boolean): void {
   const expiresAt = new Date(data.expiresAt).getTime()
   if (!Number.isFinite(expiresAt)) return
-
-  signedDownloadUrlCache.set(getSignedDownloadUrlCacheKey(itemId, preview), {
-    url: data.url,
-    expiresAt,
-  })
+  signedDownloadUrlCache.set(cacheKey(itemId, preview), { url: data.url, expiresAt })
 }
 
 async function resolveSignedDownloadUrl(itemId: string, preview = false): Promise<string | null> {
   const cached = getCachedSignedDownloadUrl(itemId, preview)
   if (cached) return cached
 
-  const key = getSignedDownloadUrlCacheKey(itemId, preview)
+  const key = cacheKey(itemId, preview)
   const inFlight = inFlightRequests.get(key)
   if (inFlight) return inFlight
 
-  const query = preview ? '?preview=1' : ''
-  const request = apiFetch<SignedDownloadUrlResponse>(`/api/download/${itemId}/url${query}`).then((result) => {
+  const apiUrl = preview ? `/api/download/${itemId}/url?preview=1` : `/api/download/${itemId}/url`
+  const request = get<SignedDownloadUrlResponse>(apiUrl).then((result) => {
     inFlightRequests.delete(key)
     if (result.status === 'ok' && result.data?.url) {
-      cacheSignedDownloadUrl(itemId, preview, result.data)
+      setCachedSignedDownloadUrl(itemId, result.data, preview)
       return result.data.url
     }
     return null
@@ -68,40 +68,64 @@ async function resolveSignedDownloadUrl(itemId: string, preview = false): Promis
 
 export function useProDownloadSrc(itemId: string, preview = false): string | null {
   const { isPro } = useAppUserFlagsStore()
-  const proxyUrl = getDownloadUrl(itemId, { preview })
+
   const [signedSrc, setSignedSrc] = useState<SignedSrcState | null>(() => {
     const cached = getCachedSignedDownloadUrl(itemId, preview)
-    return cached ? { itemId, preview, url: cached } : null
+    return cached ? { itemId, url: cached } : null
   })
 
   useEffect(() => {
-    if (!isPro && !preview) return
+    // Previews are available to all users; full downloads require Pro.
+    if (!preview && !isPro) return
 
     const controller = new AbortController()
-
     resolveSignedDownloadUrl(itemId, preview).then((url) => {
       if (!controller.signal.aborted && url) {
-        setSignedSrc({ itemId, preview, url })
+        setSignedSrc({ itemId, url })
       }
     })
-
     return () => controller.abort()
-  }, [itemId, preview, isPro, proxyUrl])
+  }, [itemId, isPro, preview])
 
-  const signedUrl = signedSrc?.itemId === itemId && signedSrc.preview === preview
-    ? signedSrc.url
-    : getCachedSignedDownloadUrl(itemId, preview)
-
-  if (isPro || preview) {
+  if (preview) {
+    if (failedPreviewItems.has(itemId)) return null
+    const signedUrl = signedSrc?.itemId === itemId ? signedSrc.url : getCachedSignedDownloadUrl(itemId, true)
+    if (signedUrl && failedPreviewUrls.has(signedUrl)) return null
     return signedUrl ?? null
   }
 
-  return proxyUrl
+  if (isPro) {
+    const signedUrl = signedSrc?.itemId === itemId ? signedSrc.url : getCachedSignedDownloadUrl(itemId, false)
+    return signedUrl ?? null
+  }
+
+  return getDownloadUrl(itemId)
 }
 
-export function clearSignedDownloadUrlCache(itemId: string, preview: boolean): void {
-  signedDownloadUrlCache.delete(getSignedDownloadUrlCacheKey(itemId, preview))
-  inFlightRequests.delete(getSignedDownloadUrlCacheKey(itemId, preview))
+/**
+ * Pre-seeds the preview cache with a local blob URL (e.g. an ObjectURL from a freshly uploaded
+ * thumbnail). Prevents an immediate API round-trip for the given itemId — the normal signed URL
+ * fetch fires only after this entry expires.
+ */
+export function seedPreviewCache(itemId: string, localUrl: string, ttlMs = 5 * 60 * 1000): void {
+  signedDownloadUrlCache.set(cacheKey(itemId, true), { url: localUrl, expiresAt: Date.now() + ttlMs })
+}
+
+export function clearSignedDownloadUrlCache(itemId: string): void {
+  signedDownloadUrlCache.delete(itemId)
+  signedDownloadUrlCache.delete(`${itemId}:preview`)
+  inFlightRequests.delete(itemId)
+  inFlightRequests.delete(`${itemId}:preview`)
+  failedPreviewItems.delete(itemId)
+}
+
+export function markPreviewFailed(itemId: string, url?: string): void {
+  failedPreviewItems.add(itemId)
+  if (url) failedPreviewUrls.add(url)
+}
+
+export function isPreviewFailed(itemId: string): boolean {
+  return failedPreviewItems.has(itemId)
 }
 
 export const getSignedDownloadUrl = resolveSignedDownloadUrl

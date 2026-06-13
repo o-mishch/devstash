@@ -41,11 +41,9 @@ export function FileRow({ item }: FileRowProps) {
   const { isPro } = useAppUserFlagsStore()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const { handleDownload, showError } = useRestrictedDownload(
-    getDownloadUrl(item.id),
-    item.fileName ?? item.title,
+    item.id,
     isRestricted,
     true,
-    undefined
   )
 
   return (

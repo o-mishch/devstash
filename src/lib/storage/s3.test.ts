@@ -2,19 +2,23 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import {
-  uploadToFilebase,
-  deleteFromFilebase,
-  downloadFromFilebase,
-  fileExistsInFilebase,
+  uploadToS3,
+  deleteFromS3,
+  fileExistsInS3,
   getSignedDownloadUrl,
   getSignedUrlExpiresAt,
-} from './filebase'
-import type { Readable } from 'stream'
+  getPresignedPostCredential,
+} from './s3'
 
 // Mock the AWS SDK
 const mockSend = vi.fn()
-const { mockGetSignedUrl } = vi.hoisted(() => ({
+const { mockGetSignedUrl, mockCreatePresignedPost } = vi.hoisted(() => ({
   mockGetSignedUrl: vi.fn(),
+  mockCreatePresignedPost: vi.fn(),
+}))
+
+vi.mock('@aws-sdk/s3-presigned-post', () => ({
+  createPresignedPost: mockCreatePresignedPost,
 }))
 
 vi.mock('@aws-sdk/client-s3', () => {
@@ -33,19 +37,20 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: mockGetSignedUrl,
 }))
 
-describe('filebase utility', () => {
+describe('s3 utility', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useRealTimers()
-    process.env.FILEBASE_KEY = 'test-key'
-    process.env.FILEBASE_SECRET = 'test-secret'
-    process.env.FILEBASE_BUCKET = 'test-bucket'
+    process.env.AWS_ACCESS_KEY_ID = 'test-key'
+    process.env.AWS_SECRET_ACCESS_KEY = 'test-secret'
+    process.env.AWS_S3_BUCKET = 'test-bucket'
+    process.env.AWS_S3_REGION = 'eu-central-1'
   })
 
-  describe('uploadToFilebase', () => {
+  describe('uploadToS3', () => {
     it('sends PutObjectCommand with correct parameters', async () => {
       const buffer = Buffer.from('test data')
-      await uploadToFilebase('test/key.png', buffer, 'image/png')
+      await uploadToS3('test/key.png', buffer, 'image/png')
       
       expect(PutObjectCommand).toHaveBeenCalledWith({
         Bucket: 'test-bucket',
@@ -57,9 +62,9 @@ describe('filebase utility', () => {
     })
   })
 
-  describe('deleteFromFilebase', () => {
+  describe('deleteFromS3', () => {
     it('sends DeleteObjectCommand with correct parameters', async () => {
-      await deleteFromFilebase('test/key.png')
+      await deleteFromS3('test/key.png')
       
       expect(DeleteObjectCommand).toHaveBeenCalledWith({
         Bucket: 'test-bucket',
@@ -72,44 +77,17 @@ describe('filebase utility', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       mockSend.mockRejectedValueOnce(new Error('S3 error'))
       
-      await expect(deleteFromFilebase('test/key.png')).resolves.not.toThrow()
+      await expect(deleteFromS3('test/key.png')).resolves.not.toThrow()
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('delete failed: test/key.png | error="S3 error"'))
       consoleSpy.mockRestore()
     })
   })
 
-  describe('downloadFromFilebase', () => {
-    it('sends GetObjectCommand and returns Body stream', async () => {
-      const mockStream = {} as Readable
-      mockSend.mockResolvedValueOnce({ Body: mockStream })
-      
-      const result = await downloadFromFilebase('test/key.png')
-      
-      expect(GetObjectCommand).toHaveBeenCalledWith({
-        Bucket: 'test-bucket',
-        Key: 'test/key.png',
-      })
-      expect(mockSend).toHaveBeenCalled()
-      expect(result).toBe(mockStream)
-    })
-
-    it('returns null and logs error if download fails', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockSend.mockRejectedValueOnce(new Error('S3 error'))
-      
-      const result = await downloadFromFilebase('test/key.png')
-      
-      expect(result).toBeNull()
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('download failed: test/key.png | error="S3 error"'))
-      consoleSpy.mockRestore()
-    })
-  })
-
-  describe('fileExistsInFilebase', () => {
+describe('fileExistsInS3', () => {
     it('sends HeadObjectCommand and returns true when the file exists', async () => {
       mockSend.mockResolvedValueOnce({})
 
-      const result = await fileExistsInFilebase('test/key.png')
+      const result = await fileExistsInS3('test/key.png')
 
       expect(HeadObjectCommand).toHaveBeenCalledWith({
         Bucket: 'test-bucket',
@@ -122,7 +100,7 @@ describe('filebase utility', () => {
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       mockSend.mockRejectedValueOnce(new Error('missing'))
 
-      const result = await fileExistsInFilebase('test/key.png')
+      const result = await fileExistsInS3('test/key.png')
 
       expect(result).toBe(false)
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('head failed: test/key.png | error="missing"'))
@@ -139,6 +117,7 @@ describe('filebase utility', () => {
       expect(GetObjectCommand).toHaveBeenCalledWith({
         Bucket: 'test-bucket',
         Key: 'test/key.png',
+        ResponseCacheControl: 'max-age=840, private',
       })
       expect(getSignedUrl).toHaveBeenCalledWith(
         expect.anything(),
@@ -158,6 +137,43 @@ describe('filebase utility', () => {
         expect.anything(),
         { expiresIn: 60 },
       )
+    })
+
+    it('adds ResponseContentDisposition when fileName is provided', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce('https://signed.example/file.pdf')
+
+      await getSignedDownloadUrl('test/key.pdf', undefined, 'my report.pdf')
+
+      expect(GetObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Key: 'test/key.pdf',
+        ResponseContentDisposition: `attachment; filename="${encodeURIComponent('my report.pdf')}"`,
+        ResponseCacheControl: 'max-age=840, private',
+      })
+    })
+  })
+
+  describe('getPresignedPostCredential', () => {
+    it('returns url and fields with content-length-range condition baked in', async () => {
+      mockCreatePresignedPost.mockResolvedValueOnce({
+        url: 'https://s3.example/bucket',
+        fields: { 'Content-Type': 'image/png', Policy: 'abc', 'X-Amz-Signature': 'sig' },
+      })
+
+      const result = await getPresignedPostCredential('test/key.png', 'image/png', 5_000_000)
+
+      expect(mockCreatePresignedPost).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          Bucket: 'test-bucket',
+          Key: 'test/key.png',
+          Conditions: expect.arrayContaining([
+            ['content-length-range', 1, 5_000_000],
+          ]),
+        }),
+      )
+      expect(result.url).toBe('https://s3.example/bucket')
+      expect(result.fields['Content-Type']).toBe('image/png')
     })
   })
 

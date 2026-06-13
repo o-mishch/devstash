@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
-import { apiFetch } from '@/lib/api/api-fetch'
+import { get } from '@/lib/api/api-fetch'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
@@ -53,7 +53,7 @@ function ItemDetailDrawerInner({
   const { data: fetchedDetails } = useQuery({
     queryKey: ['item', itemId, 'details'],
     queryFn: async () => {
-      const result = await apiFetch<ItemDetails>(`/api/items/${itemId}/details`)
+      const result = await get<ItemDetails>(`/api/items/${itemId}/details`)
       return result.status === 'ok' ? result.data ?? null : null
     },
     enabled: needsDetailsFetch && itemId !== null,
@@ -62,7 +62,7 @@ function ItemDetailDrawerInner({
   const { data: fetchedContent } = useQuery({
     queryKey: ['item', itemId, 'content'],
     queryFn: async () => {
-      const result = await apiFetch<ItemContent>(`/api/items/${itemId}/content`)
+      const result = await get<ItemContent>(`/api/items/${itemId}/content`)
       return result.status === 'ok' ? result.data ?? null : null
     },
     enabled: needsContent && itemId !== null,

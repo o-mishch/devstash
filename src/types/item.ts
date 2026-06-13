@@ -101,6 +101,20 @@ export interface SignedDownloadUrlResponse {
   expiresAt: string
 }
 
+export interface PresignedPostCredential {
+  url: string
+  fields: Record<string, string>
+}
+
+export interface UploadUrlResult {
+  originalKey: string
+  original: PresignedPostCredential
+  maxBytes: number
+  thumbKey: string | null
+  thumbUrl: string | null
+  expiresAt: string
+}
+
 export interface SidebarItemType {
   id: string
   name: string

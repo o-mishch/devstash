@@ -1,9 +1,12 @@
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
-import type { Readable } from 'stream'
-import { createLogger } from '@/lib/infra/logger'
+'server-only'
 
-const log = createLogger('filebase')
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { createLogger } from '@/lib/infra/logger'
+import type { PresignedPostCredential } from '@/types/item'
+
+const log = createLogger('s3')
 
 const SIGNED_URL_TTL_SECONDS = 900
 
@@ -12,26 +15,21 @@ let _client: S3Client | null = null
 function getClient(): S3Client {
   if (!_client) {
     _client = new S3Client({
-      endpoint: 'https://s3.filebase.io',
-      region: 'us-east-1',
+      region: process.env.AWS_S3_REGION!,
       credentials: {
-        accessKeyId: process.env.FILEBASE_KEY!,
-        secretAccessKey: process.env.FILEBASE_SECRET!,
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
       },
-      forcePathStyle: true,
-      // Filebase doesn't support x-amz-checksum-mode — disable SDK checksum negotiation
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-      responseChecksumValidation: 'WHEN_REQUIRED',
     })
   }
   return _client
 }
 
 function getBucket(): string {
-  return process.env.FILEBASE_BUCKET!
+  return process.env.AWS_S3_BUCKET!
 }
 
-export async function uploadToFilebase(
+export async function uploadToS3(
   key: string,
   buffer: Buffer,
   contentType: string
@@ -44,7 +42,7 @@ export async function uploadToFilebase(
   }))
 }
 
-export async function deleteFromFilebase(key: string): Promise<void> {
+export async function deleteFromS3(key: string): Promise<void> {
   try {
     await getClient().send(new DeleteObjectCommand({
       Bucket: getBucket(),
@@ -55,30 +53,41 @@ export async function deleteFromFilebase(key: string): Promise<void> {
   }
 }
 
-export async function downloadFromFilebase(key: string): Promise<Readable | null> {
-  try {
-    const response = await getClient().send(new GetObjectCommand({
-      Bucket: getBucket(),
-      Key: key,
-    }))
-    return response.Body as Readable
-  } catch (err) {
-    // NoSuchKey is expected when a file was deleted from storage but the DB record remains.
-    if (err instanceof Error && err.name === 'NoSuchKey') {
-      log.warn(`file not found in storage: ${key}`)
-      return null
-    }
-    log.error(`download failed: ${key}`, err)
-    return null
-  }
-}
 
-export async function getSignedDownloadUrl(key: string, expiresIn = SIGNED_URL_TTL_SECONDS): Promise<string> {
+export async function getSignedDownloadUrl(
+  key: string,
+  expiresIn = SIGNED_URL_TTL_SECONDS,
+  fileName?: string,
+  cacheControl = `max-age=${SIGNED_URL_TTL_SECONDS - 60}, private`,
+): Promise<string> {
   const command = new GetObjectCommand({
     Bucket: getBucket(),
     Key: key,
+    ...(fileName && {
+      ResponseContentDisposition: `attachment; filename="${encodeURIComponent(fileName)}"`,
+    }),
+    ResponseCacheControl: cacheControl,
   })
   return getSignedUrl(getClient(), command, { expiresIn })
+}
+
+export async function getPresignedPostCredential(
+  key: string,
+  contentType: string,
+  maxBytes: number,
+  expiresIn = SIGNED_URL_TTL_SECONDS
+): Promise<PresignedPostCredential> {
+  const { url, fields } = await createPresignedPost(getClient(), {
+    Bucket: getBucket(),
+    Key: key,
+    Conditions: [
+      ['content-length-range', 1, maxBytes],
+      ['eq', '$Content-Type', contentType],
+    ],
+    Fields: { 'Content-Type': contentType },
+    Expires: expiresIn,
+  })
+  return { url, fields }
 }
 
 export async function getSignedUploadUrl(key: string, contentType: string, expiresIn = SIGNED_URL_TTL_SECONDS): Promise<string> {
@@ -94,7 +103,7 @@ export function getSignedUrlExpiresAt(expiresIn = SIGNED_URL_TTL_SECONDS): Date 
   return new Date(Date.now() + expiresIn * 1000)
 }
 
-export async function fileExistsInFilebase(key: string): Promise<boolean> {
+export async function fileExistsInS3(key: string): Promise<boolean> {
   try {
     await getClient().send(new HeadObjectCommand({
       Bucket: getBucket(),

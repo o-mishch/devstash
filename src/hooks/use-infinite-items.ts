@@ -1,14 +1,119 @@
 import { useMemo } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQueryClient, type InfiniteData, type Query } from '@tanstack/react-query'
 import { fetchMoreItemsAction } from '@/actions/items'
 import type { FetchItemsQuery, ItemsPage, LightItem } from '@/types/item'
+
+function itemsQueryKey(fetchParams: FetchItemsQuery) {
+  return ['items', JSON.stringify(fetchParams)]
+}
+
+function prependToPage(old: InfiniteData<ItemsPage> | undefined, item: LightItem): InfiniteData<ItemsPage> | undefined {
+  if (!old?.pages.length) return old
+  return {
+    ...old,
+    pages: [
+      { ...old.pages[0], items: [item, ...old.pages[0].items] },
+      ...old.pages.slice(1),
+    ],
+  }
+}
+
+export function usePrependItem() {
+  const queryClient = useQueryClient()
+  return async (item: LightItem, collectionIds?: string[]) => {
+    await queryClient.cancelQueries({ queryKey: ['items'] })
+    queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+      {
+        queryKey: ['items'],
+        predicate: (query: Query) => {
+          const raw = query.queryKey[1]
+          if (typeof raw !== 'string') return false
+          const params = JSON.parse(raw) as FetchItemsQuery
+          if (params.type === 'recent') return true
+          if (params.type === 'type') return params.typeName === item.itemType.name
+          if (params.type === 'favorites') return item.isFavorite
+          if (params.type === 'collection') return (collectionIds ?? []).includes(params.collectionId)
+          return false
+        },
+      },
+      (old) => prependToPage(old, item)
+    )
+  }
+}
+
+export function usePatchItem() {
+  const queryClient = useQueryClient()
+  return (id: string, patch: Partial<LightItem>) => {
+    queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+      { queryKey: ['items'] },
+      (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            items: page.items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+          })),
+        }
+      }
+    )
+    // refetchType: 'none' avoids an immediate refetch that would race against the
+    // server-side revalidateTag (which runs via after() — deferred post-response).
+    // Data will be refetched on next navigation/focus when the cache is truly stale.
+    void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
+  }
+}
+
+export function useRemoveItem() {
+  const queryClient = useQueryClient()
+  return (id: string) => {
+    queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+      { queryKey: ['items'] },
+      (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            items: page.items.filter((i) => i.id !== id),
+          })),
+        }
+      }
+    )
+    void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
+  }
+}
+
+export function useReplaceItem() {
+  const queryClient = useQueryClient()
+  return (tempId: string, realItem: LightItem) => {
+    queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+      { queryKey: ['items'] },
+      (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            items: page.items.map((i) => (i.id === tempId ? realItem : i)),
+          })),
+        }
+      }
+    )
+  }
+}
+
+export function useInvalidateItems() {
+  const queryClient = useQueryClient()
+  return () => void queryClient.invalidateQueries({ queryKey: ['items'] })
+}
 
 export function useInfiniteItems(
   fetchParams: FetchItemsQuery,
   initialData?: ItemsPage
 ) {
   const query = useInfiniteQuery({
-    queryKey: ['items', JSON.stringify(fetchParams)],
+    queryKey: itemsQueryKey(fetchParams),
     queryFn: async ({ pageParam }) => {
       const result = await fetchMoreItemsAction(fetchParams, pageParam as string | undefined)
       if (result.status !== 'ok' || !result.data) {
@@ -21,10 +126,10 @@ export function useInfiniteItems(
     ...(initialData && { initialData: { pages: [initialData], pageParams: [null] } }),
   })
 
-  const items: LightItem[] = useMemo(
-    () => query.data?.pages.flatMap(page => page.items) ?? [],
-    [query.data?.pages]
-  )
+  const items: LightItem[] = useMemo(() => {
+    const flat = query.data?.pages.flatMap(page => page.items) ?? []
+    return flat.slice().sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
+  }, [query.data?.pages])
 
   return { ...query, items }
 }

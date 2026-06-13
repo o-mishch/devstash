@@ -2,9 +2,10 @@ import crypto from 'crypto'
 import { z } from 'zod'
 import { lookup as mimeType } from 'mime-types'
 import { ApiResponse, authenticatedRoute } from '@/lib/api'
-import { getSignedUploadUrl, getSignedUrlExpiresAt } from '@/lib/storage/filebase'
+import { getPresignedPostCredential, getSignedUploadUrl, getSignedUrlExpiresAt } from '@/lib/storage/s3'
 import { getImageThumbnailKey, canGenerateImageThumbnail } from '@/lib/storage/image-thumbnails'
 import { ALLOWED_IMAGE_EXTS, ALLOWED_FILE_EXTS, IMAGE_MAX_BYTES, FILE_MAX_BYTES } from '@/lib/utils/constants'
+import type { UploadUrlResult } from '@/types/item'
 
 const uploadUrlSchema = z.object({
   fileName: z.string().trim().min(1),
@@ -12,14 +13,6 @@ const uploadUrlSchema = z.object({
   itemType: z.enum(['image', 'file']),
   hasThumb: z.boolean(),
 })
-
-interface UploadUrlResult {
-  originalKey: string
-  originalUrl: string
-  thumbKey: string | null
-  thumbUrl: string | null
-  expiresAt: string
-}
 
 export const POST = authenticatedRoute(async (request, _context, { userId, isPro }) => {
   if (!isPro) return ApiResponse.FORBIDDEN('Upgrade to Pro to upload files and images.')
@@ -45,7 +38,7 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
 
   const contentType = mimeType(fileName) || 'application/octet-stream'
   const originalKey = `${userId}/${crypto.randomUUID()}.${ext}`
-  const originalUrl = await getSignedUploadUrl(originalKey, contentType)
+  const original = await getPresignedPostCredential(originalKey, contentType, maxBytes)
 
   let thumbKey: string | null = null
   let thumbUrl: string | null = null
@@ -56,5 +49,5 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
 
   const expiresAt = getSignedUrlExpiresAt().toISOString()
 
-  return ApiResponse.OK<UploadUrlResult>({ originalKey, originalUrl, thumbKey, thumbUrl, expiresAt })
+  return ApiResponse.OK<UploadUrlResult>({ originalKey, original, maxBytes, thumbKey, thumbUrl, expiresAt })
 })

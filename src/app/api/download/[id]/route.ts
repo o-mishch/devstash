@@ -1,7 +1,6 @@
 import { ApiResponse, apiRedirect, authenticatedRoute } from '@/lib/api'
 import { getDownloadItem } from '@/lib/db/items'
-import { getSignedDownloadUrl } from '@/lib/storage/filebase'
-import { canGenerateImageThumbnail, getImageThumbnailKey } from '@/lib/storage/image-thumbnails'
+import { getSignedDownloadUrl, fileExistsInS3 } from '@/lib/storage/s3'
 import type { RouteContext } from '@/lib/api'
 import { createLogger } from '@/lib/infra/logger'
 
@@ -23,12 +22,13 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, { 
     return ApiResponse.FORBIDDEN('Upgrade to Pro to access this image.')
   }
 
-  const isImagePreview = item.itemType.name === 'image'
-  const storageKey = isImagePreview && canGenerateImageThumbnail(item.fileUrl)
-    ? getImageThumbnailKey(item.fileUrl)
-    : item.fileUrl
+  const exists = await fileExistsInS3(item.fileUrl)
+  if (!exists) {
+    log.warn('file not found in storage', { userId, itemId: item.id, key: item.fileUrl })
+    return ApiResponse.NOT_FOUND('The file no longer exists in storage.')
+  }
 
-  const signedUrl = await getSignedDownloadUrl(storageKey)
+  const signedUrl = await getSignedDownloadUrl(item.fileUrl, undefined, item.fileName ?? undefined)
   log.info('signedDownloadUrl', { userId, itemId: item.id, itemType: item.itemType.name })
   return apiRedirect(signedUrl)
 })

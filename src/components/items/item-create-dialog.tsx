@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useState, type SyntheticEvent, type ReactNode } from 'react'
-import { toast } from 'sonner'
 import { Plus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,14 +26,12 @@ import {
   SelectTrigger,
 } from '@/components/ui/select'
 
-import { useQueryClient } from '@tanstack/react-query'
-import { createItemAction } from '@/actions/items'
-import { apiFetch } from '@/lib/api/api-fetch'
+import { useCreateItem } from '@/hooks/use-create-item'
+import { del } from '@/lib/api/api-fetch'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES, FREE_TIER_ITEM_LIMIT, type FileItemType } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
-import { useItemsStore } from '@/stores/items'
 
 import { itemFormBaseSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
@@ -43,10 +40,7 @@ import type { SidebarItemType } from '@/types/item'
 import type { CollectionPickerItem } from '@/types/collection'
 
 async function deleteOrphanedFile(file: UploadedFile): Promise<void> {
-  const result = await apiFetch(`/api/upload?key=${encodeURIComponent(file.fileUrl)}`, { method: 'DELETE' })
-  if (result.status !== 'ok') {
-    console.error(`Failed to delete orphaned file: ${file.fileUrl} — ${result.message}`)
-  }
+  await del(`/api/upload?key=${encodeURIComponent(file.fileUrl)}`)
 }
 
 interface CreateItemDialogProps {
@@ -60,8 +54,7 @@ interface CreateItemDialogProps {
 }
 
 export function CreateItemDialog({ itemTypes, collections, initialType, initialCollectionId, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
-  const queryClient = useQueryClient()
-  const { updateItem } = useItemsStore()
+  const createItem = useCreateItem()
   const { isPro, canCreateItem } = useAppUserFlagsStore()
   const { openPrompt } = useUpgradePromptStore()
   const validInitialType = (initialType && PRO_ITEM_TYPE_NAMES.has(initialType) && !isPro) ? itemTypes[0]?.name : initialType
@@ -128,38 +121,32 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
       }
 
       const tagArray = parseTagString(data.tags)
+      const capturedFile = uploadedFile
 
-      const result = await createItemAction({
-        title: data.title,
-        description: data.description || null,
-        content: data.content || null,
-        url: data.url || null,
-        language: data.language || null,
-        tags: tagArray,
-        itemTypeName: itemType,
-        fileUrl: uploadedFile?.fileUrl ?? null,
-        fileName: uploadedFile?.fileName ?? null,
-        fileSize: uploadedFile?.fileSize ?? null,
-        imageWidth: uploadedFile?.imageWidth ?? null,
-        imageHeight: uploadedFile?.imageHeight ?? null,
-        collectionIds: data.collectionIds,
-      })
+      savedRef.current = true
+      handleOpenChange(false)
 
-      if (result.status === 'created' || result.status === 'ok') {
-        toast.success('Item created successfully')
-        savedRef.current = true
-        handleOpenChange(false)
-        if (result.data) {
-          updateItem(result.data)
-        }
-        void queryClient.invalidateQueries({ queryKey: ['items'] })
-      } else {
-        if (result.status === 'forbidden') {
-          toast.warning(result.message ?? 'Upgrade to Pro to continue.')
-        } else {
-          toast.error(result.message ?? 'Failed to create item')
-        }
+      await createItem(
+        {
+          title: data.title,
+          description: data.description || null,
+          content: data.content || null,
+          url: data.url || null,
+          language: data.language || null,
+          tags: tagArray,
+          itemTypeName: itemType,
+          fileUrl: capturedFile?.fileUrl ?? null,
+          fileName: capturedFile?.fileName ?? null,
+          fileSize: capturedFile?.fileSize ?? null,
+          imageWidth: capturedFile?.imageWidth ?? null,
+          imageHeight: capturedFile?.imageHeight ?? null,
+          collectionIds: data.collectionIds,
+        },
+        {
+        onRollback: capturedFile ? () => deleteOrphanedFile(capturedFile) : undefined,
+        localPreviewUrl: capturedFile?.localPreviewUrl,
       }
+      )
     })(e)
   }
 

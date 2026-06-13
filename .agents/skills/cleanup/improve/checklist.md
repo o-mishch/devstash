@@ -1,11 +1,11 @@
 # Improve — Evaluation Checklist
 
-Five priority lenses, applied across the whole changeset (holistic, not per-file). **KISS = decrease LOC** — always scan P2 for −LOC wins.
+Five priority lenses, applied across the whole changeset (holistic, not per-file). **KISS = simplicity** (fewer concepts, less indirection, easier to read) — not always fewer lines. **DRY = one source of truth** — always scan P2 for duplication.
 
 | Lens | Name | Asks |
 | --- | --- | --- |
 | **P1** | Architecture & SOLID | Is logic in the right layer? Would a redesign remove structure? |
-| **P2** | KISS & duplication | Can this be deleted, merged, or replaced by an existing util / library idiom? |
+| **P2** | KISS & DRY | Can this be deleted, merged, or replaced by an existing util / library idiom? Is there a single source of truth? |
 | **P3** | Security & access | Leak, auth bypass, IDOR, or wrong grant/deny at scale? |
 | **P4** | Bugs, regressions & logging | Production break, behavior regression, or missing/ noisy logs? |
 | **P5** | Convention, hygiene & tests | Project rules (`coding-standards`, `api-contract`), hygiene, test gaps? |
@@ -36,26 +36,28 @@ Major redesign → include: current shape → proposed shape → benefit
 
 ---
 
-## P2 — KISS & duplication
+## P2 — KISS & DRY
 
-**KISS = decrease LOC.** The simplest correct solution has the fewest lines, files, and layers. Every improve run must hunt for −LOC wins — not only flag creep.
+**KISS = simplicity.** The simplest correct solution has the fewest concepts, layers, and indirection — not necessarily the fewest lines. More lines can be simpler than a clever one-liner. Every improve run must hunt for simplification wins — not only flag creep.
 
-*Lens: delete/merge/inline before adding. Single source of truth. Net `src/` LOC ↓ is the primary KISS signal.* This is the highest-yield lens and where the audit most often under-reports — work it hardest.
+**DRY = one source of truth.** The same logic, rule, or shape in 2+ places is always a P2 finding. Every improve run must hunt for duplication across changed *and* unchanged files.
+
+*Lens: delete/merge/inline before adding. Prefer clarity over brevity — but eliminate redundancy.* This is the highest-yield lens and where the audit most often under-reports — work it hardest.
 
 | Signal | Look for |
 | --- | --- |
-| **Repeated pattern** | the **same shape** in 2+ files — a guard, a conditional, a data transform, a prop interface, a `fetch`→`map`, an error map. `rg` the codebase (changed *and* unchanged files) for each non-trivial shape in the changeset; 2+ hits → propose one source of truth |
-| **Reinvented idiom** | hand-rolled logic a library already gives (React hooks/`use`, Next.js `cache`/`redirect`/route helpers, Prisma `select`/`include`/`groupBy`, Zod refinements, TanStack Query/Virtual, Zustand selectors, shadcn primitives) — **confirm the leaner API via context7 before recommending** |
+| **Repeated pattern** (DRY) | the **same shape** in 2+ files — a guard, a conditional, a data transform, a prop interface, a `fetch`→`map`, an error map. `rg` the codebase (changed *and* unchanged files) for each non-trivial shape in the changeset; 2+ hits → propose one source of truth |
+| **Duplicate rule** (DRY) | same rule derived in 2+ places (e.g. an access check, a status derivation, a formatted display value) — collapse to one source |
+| **Reinvented idiom** (KISS) | hand-rolled logic a library already gives (React hooks/`use`, Next.js `cache`/`redirect`/route helpers, Prisma `select`/`include`/`groupBy`, Zod refinements, TanStack Query/Virtual, Zustand selectors, shadcn primitives) — **confirm the leaner API via context7 before recommending** |
 | Existing util not reused | a helper in `src/lib/utils/` (or sibling module) already does this, but the changeset re-implements it |
 | Over-decompose | one-liner wrapper; single-export single-use file; deep import chain |
 | Over-engineer | one-impl abstraction; unused generic; premature cache/state machine |
-| Duplicate rule | same rule derived in 2+ places (e.g. an access check, a status derivation, a formatted display value) — collapse to one source |
 | LOC creep | changeset or prior fixes grew `src/` without removing equivalent code — **always P2** |
 | −LOC opportunity | duplicate, dead file, wrapper, over-split module, client→server — **report even if Minor** |
-| Additive fix | recommendation only adds lines — **required:** leaner −LOC variant |
+| Additive fix | recommendation only adds lines — **required:** explain why no simpler path exists |
 | Growth without payoff | net +LOC for logging/tests/helpers that could be inline or merged |
 
-Every P2 finding: **est. LOC Δ** (show **−N** prominently for cuts). Default fix: merge/delete/inline, or apply the existing util / library idiom. Adding lines needs explicit why no −LOC path exists. Surface top −LOC items in report **KISS — decrease LOC** section. A repeated pattern found across the codebase is reported even when only one instance is in the changeset — note the other call sites as the dedupe target.
+Every P2 finding: **est. LOC Δ** (show **−N** prominently for cuts, but a complexity reduction with +LOC is still valid). Default fix: merge/delete/inline, or apply the existing util / library idiom. Adding lines needs explicit justification that the result is *simpler*, not just shorter. Surface top simplification and DRY items in report **KISS & DRY** section. A repeated pattern found across the codebase is reported even when only one instance is in the changeset — note the other call sites as the dedupe target.
 
 ---
 
@@ -173,4 +175,4 @@ When components are in scope: include **SSR** detail table in report (file · cu
 
 | Major | Minor |
 | --- | --- |
-| Bug; regression; FE/BE leak; security/access outage; API violation (`apiRoute`/`ApiResponse`/`apiRedirect`/`apiFetch`); repeated pattern across 2+ files; swallowed critical error; weak critical-path tests; redesign strongly warranted | KISS tweak; convention; hygiene; raw `NextResponse.redirect` without justification; unnecessary `'use client'` / client fetch (SSR); non-critical test gap |
+| Bug; regression; FE/BE leak; security/access outage; API violation (`apiRoute`/`ApiResponse`/`apiRedirect`/`apiFetch`); repeated pattern / duplicate rule across 2+ files (DRY); swallowed critical error; weak critical-path tests; redesign strongly warranted | KISS / DRY tweak; convention; hygiene; raw `NextResponse.redirect` without justification; unnecessary `'use client'` / client fetch (SSR); non-critical test gap |

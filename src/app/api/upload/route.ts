@@ -1,5 +1,5 @@
 import { ApiResponse, authenticatedRoute } from '@/lib/api'
-import { deleteStoredImageFiles } from '@/lib/storage/image-thumbnails'
+import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 
 export const DELETE = authenticatedRoute(async (request, _context, { userId }) => {
   const { searchParams } = new URL(request.url)
@@ -10,7 +10,7 @@ export const DELETE = authenticatedRoute(async (request, _context, { userId }) =
   // Only allow deleting keys that belong to this user
   if (!key.startsWith(`${userId}/`)) return ApiResponse.FORBIDDEN('Access denied.')
 
-  await deleteStoredImageFiles(key)
+  await deleteStoredFile(key)
 
   return ApiResponse.OK()
 })

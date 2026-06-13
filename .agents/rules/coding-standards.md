@@ -76,6 +76,28 @@ dispatch({ type: MyActionType.Foo, payload: '...' })
 - Avoid `window.` access — prefer DOM APIs, Next.js router, or React patterns. Only use `window` when there is no framework-level alternative and the browser global is genuinely required (e.g. `window.location` for hard redirects outside React). Always justify the usage in a comment if it is not self-evident.
 - Avoid direct `document.` manipulation — prefer React refs (`useRef`), event handlers, or library abstractions. Only use `document.` when no React or Next.js alternative exists (e.g. programmatically triggering a file download via a temporary anchor). Always justify the usage in a comment if it is not self-evident.
 - **State management**: use Zustand for UI state (drawer open/close, user flags, modal visibility); use TanStack Query for server state (items, collections, paginated data). Do not create new React Context providers — all UI state is covered by the existing stores in `src/stores/`.
+- **TanStack Query cache updaters belong in the hook file, not in components.** Any call to `setQueryData`, `setQueriesData`, or `invalidateQueries` must live in a named exported hook alongside the `useQuery`/`useInfiniteQuery` that owns that cache key. Components call the hook and invoke the returned function — they never call `useQueryClient()` directly.
+
+```typescript
+// ✅ correct — updater exported from the hook file
+// src/hooks/use-infinite-items.ts
+export function usePatchItem() {
+  const queryClient = useQueryClient()
+  return (id: string, patch: Partial<LightItem>) => {
+    queryClient.setQueriesData<InfiniteData<ItemsPage>>({ queryKey: ['items'] }, (old) => { ... })
+    void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
+  }
+}
+
+// component
+const patchItem = usePatchItem()
+patchItem(item.id, { isFavorite: next })
+
+// ❌ wrong — queryClient used directly in a component
+const queryClient = useQueryClient()
+queryClient.setQueriesData(...)
+queryClient.invalidateQueries(...)
+```
 
 ```tsx
 // ✅ correct
@@ -249,6 +271,7 @@ export async function getItemsByType(userId: string, type: string) {
 
 - Server components fetch via `src/lib/db/` helpers (not `prisma.*` inline)
 - Client components use Server Actions
+- Never use `fetch()` or `axios` directly — always use `apiFetch` from `src/lib/api/api-fetch.ts` for HTTP requests from client code
 
 ## Validation
 

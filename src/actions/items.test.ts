@@ -10,19 +10,19 @@ vi.mock('@/lib/infra/cache', () => ({
   invalidateCollectionsCache: vi.fn(),
 }))
 vi.mock('@/lib/storage/image-thumbnails', () => ({
-  deleteStoredImageFiles: vi.fn(),
+  deleteStoredFile: vi.fn(),
 }))
 vi.mock('@/lib/db/usage', () => ({
   canCreateItem: vi.fn(),
   FREE_TIER_ITEM_LIMIT: 50,
 }))
 
-import { deleteStoredImageFiles } from '@/lib/storage/image-thumbnails'
+import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 import { canCreateItem } from '@/lib/db/usage'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { invalidateCollectionsCache } from '@/lib/infra/cache'
 
-const mockDeleteStoredImageFiles = deleteStoredImageFiles as ReturnType<typeof vi.fn>
+const mockDeleteStoredFile = deleteStoredFile as ReturnType<typeof vi.fn>
 const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
 const mockGetCachedVerifiedProAccess = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 const mockInvalidateCollectionsCache = invalidateCollectionsCache as ReturnType<typeof vi.fn>
@@ -332,24 +332,24 @@ describe('deleteItemAction', () => {
     mockDeleteItem.mockResolvedValue(true)
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('ok')
-    expect(mockDeleteStoredImageFiles).not.toHaveBeenCalled()
+    expect(mockDeleteStoredFile).not.toHaveBeenCalled()
     expect(mockInvalidateCollectionsCache).toHaveBeenCalledWith('user-1')
   })
 
-  it('deletes file from filebase before removing the DB row', async () => {
+  it('deletes file from S3 before removing the DB row', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetItemById.mockResolvedValue({ ...mockItem, fileUrl: 'user-1/abc.pdf' })
     mockDeleteItem.mockResolvedValue(true)
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('ok')
-    expect(mockDeleteStoredImageFiles).toHaveBeenCalledWith('user-1/abc.pdf')
-    expect(mockDeleteStoredImageFiles.mock.invocationCallOrder[0]).toBeLessThan(mockDeleteItem.mock.invocationCallOrder[0])
+    expect(mockDeleteStoredFile).toHaveBeenCalledWith('user-1/abc.pdf')
+    expect(mockDeleteStoredFile.mock.invocationCallOrder[0]).toBeLessThan(mockDeleteItem.mock.invocationCallOrder[0])
   })
 
-  it('returns INTERNAL_ERROR when filebase delete fails and keeps the DB row', async () => {
+  it('returns INTERNAL_ERROR when S3 delete fails and keeps the DB row', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetItemById.mockResolvedValue({ ...mockItem, fileUrl: 'user-1/abc.pdf' })
-    mockDeleteStoredImageFiles.mockRejectedValue(new Error('R2 unavailable'))
+    mockDeleteStoredFile.mockRejectedValue(new Error('R2 unavailable'))
     const result = await deleteItemAction('item-1')
     expect(result.status).toBe('internal_error')
     expect(mockDeleteItem).not.toHaveBeenCalled()

@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { signInWithCredentials, signInWithGitHub, signInWithGoogle } from '@/actions/auth/login'
-import { apiFetch } from '@/lib/api/api-fetch'
+import { post } from '@/lib/api/api-fetch'
 import { ProviderIcon } from '@/components/shared/provider-icon'
 import { WarningBanner } from '@/components/shared/warning-banner'
 
@@ -62,10 +62,7 @@ export function SignInForm({ successMessage }: SignInFormProps) {
     const email = state?.data?.email
     if (!email) return
 
-    const data = await apiFetch<ResendResponse>('/api/auth/resend-verification', {
-      method: 'POST',
-      body: { email },
-    })
+    const data = await post<ResendResponse>('/api/auth/resend-verification', { email })
 
     if (data.status === 'ok') {
       toast.success('Verification email sent. Check your inbox.')

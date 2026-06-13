@@ -1,0 +1,162 @@
+# Upload Hardening
+
+## Overview
+
+Four security and reliability gaps in the file/image upload flow, addressed together because they share infrastructure (Redis, presigned POST policy).
+
+## Status
+
+Planned
+
+---
+
+## Issue 1 — Payload simplification
+
+**Current:** Client sends `{ fileName, fileSize, itemType, hasThumb }` to `POST /api/upload/url`.
+
+**Problem:** `itemType` and `hasThumb` are redundant — the server can derive both from the extension:
+- `itemType`: `ALLOWED_IMAGE_EXTS` and `ALLOWED_FILE_EXTS` are disjoint; extension alone determines which rule set applies
+- `hasThumb`: `canGenerateImageThumbnail(key)` already encodes the same logic (in allowed image set, not svg)
+
+**Fix:** Remove both fields from the Zod schema and derive them server-side. Minimal payload becomes `{ fileName, fileSize }`.
+
+`fileSize` stays: the server validates it and returns a user-friendly error before the client attempts the S3 POST.
+
+**Files:**
+- `src/app/api/upload/url/route.ts` — remove `itemType` and `hasThumb` from schema; derive both from extension
+- `src/components/shared/file-upload.tsx` — remove `itemType` and `hasThumb` from the `post('/api/upload/url', ...)` call body
+
+---
+
+## Issue 2 — Thumb size not enforced at storage layer
+
+**Current:** The original upload uses `createPresignedPost` with `content-length-range` baked into the signed policy — S3 enforces it. The thumb upload uses a PUT presigned URL (`getSignedUploadUrl`) which enforces `Content-Type` only, not size.
+
+**Why it matters:** A non-browser client can bypass `buildImageThumb` and POST an arbitrarily large object to the thumb PUT URL.
+
+**How POST policy enforcement works:** The policy JSON (including `content-length-range` and `Content-Type` conditions) is HMAC-SHA256 signed with the AWS secret key. The client receives the base64 policy + signature but cannot modify either without the secret key — S3 rejects any upload that violates a condition with 403. The constraint is cryptographically bound.
+
+**Fix:** Replace `getSignedUploadUrl` for thumbnails with `getPresignedPostCredential(thumbKey, 'image/webp', THUMB_MAX_BYTES)`. Update the client to use FormData POST for the thumb upload, same pattern as the original.
+
+**Constants to add:**
+```ts
+export const THUMB_MAX_BYTES = 100 * 1024  // 100 KB
+```
+
+**Files:**
+- `src/lib/utils/constants.ts` — add `THUMB_MAX_BYTES`
+- `src/app/api/upload/url/route.ts` — replace `getSignedUploadUrl(thumbKey, 'image/webp')` with `getPresignedPostCredential(thumbKey, 'image/webp', THUMB_MAX_BYTES)`
+- `src/lib/storage/s3.ts` — delete `getSignedUploadUrl` (no remaining callers after the route change)
+- `src/types/item.ts` — change `thumbUrl: string | null` in `UploadUrlResult` to `thumb: PresignedPostCredential | null`
+- `src/components/shared/file-upload.tsx` — replace PUT upload of thumb blob with FormData POST using the credential fields
+
+---
+
+## Issue 3 — No provenance validation on item creation
+
+**Current:** `createItemAction` accepts any `fileUrl` that starts with `${userId}/` (checked by `isOwnedFileReference`). It does not verify that the key was actually issued by `/api/upload/url` in this session. Consequences:
+- A client can reference an old orphaned key from a previous upload
+- `fileSize`, `fileName`, `imageWidth`, `imageHeight` are stored as-is from the client — never cross-checked against what the server issued
+- `content`, `language`, `url` can be sent for `image`/`file` item types and will be stored even though they are meaningless for those types
+
+**Fix — upload token:**
+
+1. In `/api/upload/url`, generate `uploadToken = crypto.randomUUID()`
+2. Store in Redis hash:
+   ```
+   HSET pending_uploads {uploadToken} JSON({ key, thumbKey, userId, createdAt })
+   ```
+3. Return `uploadToken` alongside the presigned credential
+4. In `createItemAction`, require `uploadToken` in the schema
+5. Look up the token: must exist, `userId` must match session, `key` must equal `fileUrl`
+6. On success: `HDEL pending_uploads {uploadToken}` — single-use, consumed immediately
+7. On lookup failure (missing, wrong user, key mismatch): return `ApiResponse.FORBIDDEN`
+
+**Fix — strip irrelevant fields:**
+
+Add cross-field cleanup to `createItemSchema` to zero out fields that don't apply to the item type:
+- `image`/`file` types: null out `content`, `language`, `url`
+- Other types: null out `fileUrl`, `fileName`, `fileSize`, `imageWidth`, `imageHeight`, `uploadToken`
+
+**Files:**
+- `src/app/api/upload/url/route.ts` — generate token, write to Redis hash, return in response
+- `src/types/item.ts` — add `uploadToken: string` to `UploadUrlResult`
+- `src/actions/items.ts` — add `uploadToken` to `createItemSchema`; add token lookup + consumption; add cross-type field cleanup
+- `src/components/shared/file-upload.tsx` — pass `uploadToken` from upload result to `onUpload` callback
+- `src/components/items/item-create-dialog.tsx` — include `uploadToken` in `createItemAction` payload
+- `src/lib/utils/validators.ts` — update or remove `isOwnedFileReference` (superseded by token validation)
+
+---
+
+## Issue 4 — Orphaned S3 objects on page refresh / crash
+
+**Current:** The create dialog calls `deleteOrphanedFile` when the user explicitly closes it without saving. But if the user refreshes the page or closes the tab after the S3 upload completes, the cleanup callback never fires. The S3 object lives forever with no linked DB record.
+
+**Fix — lazy sweep using `after()`:**
+
+No external scheduler is needed. Every `POST /api/upload/url` response triggers a background sweep via `after()` from `next/server`. The sweep runs after the response is sent and does not block the client.
+
+**Sweep logic:**
+1. `HGETALL pending_uploads` — fetch all pending entries
+2. For each entry where `createdAt < now - SIGNED_URL_TTL_SECONDS`: the presigned URL has expired, meaning no `createItemAction` can ever consume this token successfully (the client's upload window has closed)
+   - Delete `key` from S3
+   - Delete `thumbKey` from S3 (if present)
+   - `HDEL pending_uploads {uploadToken}`
+3. Log count of entries swept
+
+**Why there is no race with a concurrent create:**
+
+The two operations cannot conflict:
+- Token consumed by `createItemAction` → `HDEL` removes it from the hash before the sweep can find it
+- Upload still in progress (< 900s old) → sweep's age filter skips it
+- Item creation + upload completing in seconds, well inside the 900s window → the sweep never touches active entries
+
+If two concurrent sweeps run, `HDEL` is atomic (second call returns 0) and `deleteFromS3` is idempotent — both are safe.
+
+**Files:**
+- `src/app/api/upload/url/route.ts` — add `after(sweepExpiredUploads)` before returning the response; extract `sweepExpiredUploads` to `src/lib/storage/upload-tokens.ts` alongside the token write/consume helpers
+
+---
+
+## Data Flow After All Fixes
+
+```
+Client                         Server (/api/upload/url)          Redis              S3
+  │                                     │                          │                 │
+  │─ POST { fileName, fileSize } ──────>│                          │                 │
+  │                                     │ derive itemType, thumb   │                 │
+  │                                     │ generate uploadToken     │                 │
+  │                                     │── HSET pending_uploads ─>│                 │
+  │                                     │   token → { key, thumb,  │                 │
+  │                                     │     userId, createdAt }  │                 │
+  │                                     │                          │                 │
+  │                                     │ after(): sweepExpired()  │                 │
+  │                                     │── HGETALL ──────────────>│                 │
+  │                                     │   filter createdAt>900s  │                 │
+  │                                     │── deleteFromS3(stale) ─────────────────────>
+  │                                     │── HDEL stale entries ───>│                 │
+  │                                     │                          │                 │
+  │<─ { original, thumb, token, ... } ──│                          │                 │
+  │                                     │                          │                 │
+  │─ POST FormData (original) ─────────────────────────────────────────────────────>│
+  │   (original.fields + file)          │               S3 enforces size + type      │
+  │─ POST FormData (thumb) ────────────────────────────────────────────────────────>│
+  │   (thumb.fields + blob)             │               S3 enforces 100KB + webp     │
+  │                                     │                          │                 │
+  │─ createItemAction({ uploadToken })─>│                          │                 │
+  │                                     │── HGET pending_uploads ─>│                 │
+  │                                     │<─ { key, userId, ... } ──│                 │
+  │                                     │ validate userId + key    │                 │
+  │                                     │── HDEL pending_uploads ─>│  (consumed)     │
+  │                                     │ write DB record          │                 │
+  │<─ ApiResponse.OK ───────────────────│                          │                 │
+```
+
+---
+
+## Implementation Order
+
+1. **Issue 1** — payload simplification (no new deps, pure route + client change)
+2. **Issue 2** — thumb POST policy (swap `getSignedUploadUrl` for `getPresignedPostCredential` on thumb; update client to FormData POST)
+3. **Issue 3** — upload token (Redis write on presign, validate + consume on create, strip irrelevant fields)
+4. **Issue 4** — lazy sweep (add `after(sweepExpiredUploads)` to upload URL route; reads the same Redis hash from Issue 3)

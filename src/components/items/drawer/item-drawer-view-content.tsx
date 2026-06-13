@@ -2,8 +2,8 @@
 
 import { useState, type MouseEvent } from 'react'
 import Image from 'next/image'
-import { toast } from 'sonner'
 import { ExternalLink, Tag, Download, FileIcon, XCircle, RotateCcw } from 'lucide-react'
+import { showFileNotFoundToast } from '@/hooks/use-restricted-download'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -13,8 +13,7 @@ import { DrawerLayout, DrawerSection, DrawerCollectionsSection, DrawerDetailsSec
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
-import { getDownloadUrl } from '@/lib/utils/url'
-import { useProDownloadSrc, clearSignedDownloadUrlCache, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/hooks/use-pro-download-src'
+import { useProDownloadSrc, clearSignedDownloadUrlCache, markPreviewFailed, isPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/hooks/use-pro-download-src'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useRestrictedDownload } from '@/hooks/use-restricted-download'
@@ -32,33 +31,22 @@ function FileSectionContent({ item }: FileSectionProps) {
   const [imageError, setImageError] = useState(false)
   const [isImageReloading, setIsImageReloading] = useState(false)
   const [freshImageSrc, setFreshImageSrc] = useState<string | null>(null)
-  const [imageTriedFallback, setImageTriedFallback] = useState(false)
-  const [imageUseFallback, setImageUseFallback] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
   const cachedImagePreviewSrc = useProDownloadSrc(item.id, true)
   const previewSrc = freshImageSrc || cachedImagePreviewSrc
+  const previewKnownFailed = !previewSrc && isPreviewFailed(item.id)
   const { handleDownload, showError } = useRestrictedDownload(
-    getDownloadUrl(item.id),
-    item.fileName ?? item.title,
+    item.id,
     isRestricted,
     false,
     closeDrawer
   )
 
-  async function handleImageError() {
-    if (!imageTriedFallback && !imageUseFallback) {
-      setImageTriedFallback(true)
-      setImageUseFallback(true)
-      clearSignedDownloadUrlCache(item.id, false)
-      const fullImageUrl = await fetchSignedDownloadUrl(item.id, false)
-      if (fullImageUrl) {
-        setFreshImageSrc(fullImageUrl)
-      }
-      return
-    }
+  function handleImageError() {
+    markPreviewFailed(item.id, previewSrc ?? undefined)
     setImageError(true)
     setIsImageReloading(false)
-    toast.error('Failed to load image', { id: 'image-load-error' })
+    showFileNotFoundToast()
   }
 
   function handleImageLoad() {
@@ -68,18 +56,19 @@ function FileSectionContent({ item }: FileSectionProps) {
 
   async function handleImageReload(e: MouseEvent) {
     e.stopPropagation()
+    setFreshImageSrc(null)
     setIsImageReloading(true)
     setImageLoaded(false)
-    setImageUseFallback(false)
-    setImageTriedFallback(false)
+    setImageError(false)
 
-    clearSignedDownloadUrlCache(item.id, true)
+    clearSignedDownloadUrlCache(item.id)
 
     const freshImageUrl = await fetchSignedDownloadUrl(item.id, true)
     if (freshImageUrl) {
       setFreshImageSrc(freshImageUrl)
     } else {
       setImageError(true)
+      showFileNotFoundToast()
     }
     setIsImageReloading(false)
   }
@@ -88,38 +77,10 @@ function FileSectionContent({ item }: FileSectionProps) {
     return (
       <div className="flex justify-center">
         <div className="group relative flex max-w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted/30">
-          {(previewSrc && !imageError && imageLoaded && !isImageReloading) ? (
-            <Image
-              src={previewSrc}
-              alt={item.fileName ?? item.title}
-              width={0}
-              height={0}
-              unoptimized
-              crossOrigin="anonymous"
-              priority
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-              className="h-auto w-auto max-h-[50vh] max-w-full object-contain"
-            />
-          ) : (
+          {(!imageLoaded || imageError) && (
             <Skeleton className="h-64 w-96 max-w-full rounded-none" />
           )}
-          {imageError && (
-            <button
-              onClick={handleImageReload}
-              disabled={isImageReloading}
-              className="absolute inset-0 z-20 flex items-center justify-center text-white hover:text-white/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Reload image"
-            >
-              <RotateCcw className={`h-6 w-6 ${isImageReloading ? 'animate-spin-left' : ''}`} />
-            </button>
-          )}
-          {isImageReloading && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center">
-              <RotateCcw className="h-6 w-6 text-white animate-spin-left" />
-            </div>
-          )}
-          {previewSrc && !imageLoaded && !isImageReloading && (
+          {previewSrc && !imageError && !isImageReloading && (
             <Image
               src={previewSrc}
               alt={item.fileName ?? item.title}
@@ -127,11 +88,22 @@ function FileSectionContent({ item }: FileSectionProps) {
               height={0}
               unoptimized
               crossOrigin="anonymous"
-              priority
               onLoad={handleImageLoad}
               onError={handleImageError}
-              className="h-0 w-0"
+              className={`h-auto w-auto max-h-[50vh] max-w-full object-contain ${imageLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
             />
+          )}
+          {(imageError || previewKnownFailed || isImageReloading) && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+              <button
+                onClick={handleImageReload}
+                disabled={isImageReloading}
+                className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Reload image"
+              >
+                <RotateCcw className={`h-5 w-5 ${isImageReloading ? 'animate-spin-left' : ''}`} />
+              </button>
+            </div>
           )}
           <button
             onClick={handleDownload}

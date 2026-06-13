@@ -3,13 +3,14 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/styles'
-import { apiFetch, apiUpload } from '@/lib/api/api-fetch'
+import { post, put, del } from '@/lib/api/api-fetch'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { FILE_UPLOAD_CONFIG, IMAGE_THUMBNAIL_MAX_WIDTH, IMAGE_THUMBNAIL_QUALITY } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { getFileExtension } from '@/lib/utils/files'
 import type { FileItemType } from '@/lib/utils/constants'
+import type { UploadUrlResult } from '@/types/item'
 
 export interface UploadedFile {
   fileUrl: string
@@ -17,14 +18,8 @@ export interface UploadedFile {
   fileSize: number
   imageWidth: number | null
   imageHeight: number | null
-}
-
-interface UploadUrlResult {
-  originalKey: string
-  originalUrl: string
-  thumbKey: string | null
-  thumbUrl: string | null
-  expiresAt: string
+  /** Local ObjectURL of the thumbnail blob — available only for non-SVG images, undefined otherwise. */
+  localPreviewUrl?: string
 }
 
 async function buildImageThumb(file: File): Promise<{ blob: Blob; width: number; height: number } | null> {
@@ -66,15 +61,6 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     setError(null)
     setProgress(0)
 
-    // Client-side guard: avoids the presigned URL round-trip for obvious violations.
-    // Server validates declared fileSize too, but can't enforce it once the presigned URL is issued.
-    if (file.size > config.maxBytes) {
-      const maxMb = config.maxBytes / 1024 / 1024
-      setProgress(null)
-      setError(`File exceeds the ${maxMb}MB limit.`)
-      return
-    }
-
     const isSvg = getFileExtension(file.name) === 'svg'
     const isImageType = itemType === 'image'
 
@@ -85,9 +71,11 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       thumb = await buildImageThumb(file)
     }
 
-    const urlResult = await apiFetch<UploadUrlResult>('/api/upload/url', {
-      method: 'POST',
-      body: { fileName: file.name, fileSize: file.size, itemType, hasThumb: thumb !== null },
+    const urlResult = await post<UploadUrlResult>('/api/upload/url', {
+      fileName: file.name,
+      fileSize: file.size,
+      itemType,
+      hasThumb: thumb !== null,
     })
 
     if (urlResult.status !== 'ok' || !urlResult.data) {
@@ -96,21 +84,28 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       return
     }
 
-    const { originalKey, originalUrl, thumbUrl } = urlResult.data
-    const contentType = file.type || 'application/octet-stream'
+    const { originalKey, original, thumbUrl } = urlResult.data
 
-    // Both PUTs go directly to Filebase — zero bytes through Vercel.
-    const uploads: Promise<boolean>[] = [apiUpload(originalUrl, file, contentType, setProgress)]
-    if (thumb && thumbUrl) {
-      uploads.push(apiUpload(thumbUrl, thumb.blob, 'image/webp'))
-    }
+    // POST multipart to S3 using the presigned policy credential.
+    // Per S3 POST spec, policy fields must come before the file.
+    // Content-Type is carried as a form field inside original.fields — do NOT set it as an HTTP header
+    // (axios auto-sets multipart/form-data + boundary for FormData bodies).
+    const formData = new FormData()
+    Object.entries(original.fields).forEach(([k, v]) => formData.append(k, v))
+    formData.append('file', file)
+
+    // Thumb uses a presigned PUT URL — Content-Type must match the value baked into the signed URL.
+    const uploads = [
+      post(original.url, formData, { onProgress: setProgress }),
+      ...(thumb && thumbUrl ? [put(thumbUrl, thumb.blob, { headers: { 'Content-Type': 'image/webp' } })] : []),
+    ]
 
     const results = await Promise.all(uploads)
-    if (results.some((ok) => !ok)) {
+    if (results.some((r) => r.status !== 'ok')) {
       setProgress(null)
       setError('Upload failed. Please try again.')
-      // Cleanup goes through our server (DELETE /api/upload → server calls Filebase), not direct S3.
-      void apiFetch(`/api/upload?key=${encodeURIComponent(originalKey)}`, { method: 'DELETE' })
+      // Cleanup goes through our server (DELETE /api/upload → server calls S3), not direct S3.
+      void del(`/api/upload?key=${encodeURIComponent(originalKey)}`)
       return
     }
 
@@ -118,9 +113,10 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     onUpload({
       fileUrl: originalKey,
       fileName: file.name,
-      fileSize: file.size,              // actual bytes of the original file
-      imageWidth: thumb?.width ?? null, // original image width (null for SVG / non-image)
+      fileSize: file.size,
+      imageWidth: thumb?.width ?? null,
       imageHeight: thumb?.height ?? null,
+      localPreviewUrl: thumb ? URL.createObjectURL(thumb.blob) : undefined,
     })
   }
 

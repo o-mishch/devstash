@@ -382,7 +382,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
         }))
       }
     },
-    select: LIGHT_ITEM_SELECT,
+    select: resolveLightItemSelect(data.itemTypeName),
   })
 
   log.info('DB: createItem', { userId, itemId: created.id, itemTypeName: data.itemTypeName, duration: Date.now() - start })

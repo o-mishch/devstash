@@ -3,11 +3,12 @@ import type { Method } from 'axios'
 import type { ApiBody } from '@/types/api'
 import { toErrorMessage } from '@/lib/infra/logger'
 
-type RequestOptions = {
-  method?: Method
+export interface RequestOptions {
   body?: unknown
   headers?: Record<string, string>
   signal?: AbortSignal
+  // For uploads to external storage (S3 presigned URLs) — not used for app API routes.
+  onProgress?: (percent: number) => void
 }
 
 function handleApiError<T>(err: unknown, fallbackMessage: string): ApiBody<T> {
@@ -19,47 +20,41 @@ function handleApiError<T>(err: unknown, fallbackMessage: string): ApiBody<T> {
   return { status: 'internal_error', data: null, message }
 }
 
-export async function apiFetch<T = null>(
-  url: string,
-  options: RequestOptions = {}
-): Promise<ApiBody<T>> {
-  const { method = 'GET', body, headers, signal } = options
+export function get<T = null>(url: string, options?: RequestOptions): Promise<ApiBody<T>> {
+  return apiRequest<T>('GET', url, options)
+}
 
+export function post<T = null>(url: string, body?: unknown, options?: Omit<RequestOptions, 'body'>): Promise<ApiBody<T>> {
+  return apiRequest<T>('POST', url, { ...options, body })
+}
+
+export function put<T = null>(url: string, body?: unknown, options?: Omit<RequestOptions, 'body'>): Promise<ApiBody<T>> {
+  return apiRequest<T>('PUT', url, { ...options, body })
+}
+
+// `delete` is a reserved word — export as `del`.
+export function del<T = null>(url: string, options?: RequestOptions): Promise<ApiBody<T>> {
+  return apiRequest<T>('DELETE', url, options)
+}
+
+async function apiRequest<T = null>(method: Method, url: string, options: RequestOptions = {}): Promise<ApiBody<T>> {
+  const { body, headers, signal, onProgress } = options
   try {
-    const { data } = await axios.request<ApiBody<T>>({
+    const res = await axios.request<ApiBody<T>>({
       url,
       method,
       data: body,
       headers,
       signal,
+      onUploadProgress: onProgress
+        ? (e) => { if (e.total) onProgress(Math.round((e.loaded / e.total) * 100)) }
+        : undefined,
     })
-    return data
+    // 204 No Content (e.g. S3 presigned POST/PUT success) — no body, treat as ok.
+    if (!res.data) return { status: 'ok', data: null, message: null }
+    return res.data
   } catch (err) {
-    if (axios.isCancel(err)) {
-      return { status: 'internal_error', data: null, message: null }
-    }
+    if (axios.isCancel(err)) return { status: 'internal_error', data: null, message: null }
     return handleApiError(err, 'Network error. Please try again.')
-  }
-}
-
-// PUT a Blob/File directly to a presigned S3 URL, bypassing app auth headers.
-export async function apiUpload(
-  url: string,
-  body: Blob | File,
-  contentType: string,
-  onProgress?: (percent: number) => void
-): Promise<boolean> {
-  try {
-    await axios.put(url, body, {
-      headers: { 'Content-Type': contentType },
-      onUploadProgress: (e) => {
-        if (onProgress && e.total) {
-          onProgress(Math.round((e.loaded / e.total) * 100))
-        }
-      },
-    })
-    return true
-  } catch {
-    return false
   }
 }

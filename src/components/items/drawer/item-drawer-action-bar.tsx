@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Star, Pin, Pencil, Trash2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { useQueryClient } from '@tanstack/react-query'
+import { usePatchItem, useRemoveItem } from '@/hooks/use-infinite-items'
 import { useRestrictedAction } from '@/hooks/use-restricted-action'
 import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,7 @@ import { deleteItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } fr
 import { useItemsStore } from '@/stores/items'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { usePinnedItemsStore } from '@/stores/pinned-items'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import { ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { getDownloadUrl } from '@/lib/utils/url'
@@ -27,8 +28,10 @@ interface ItemDrawerActionBarProps {
 }
 
 export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted }: ItemDrawerActionBarProps) {
-  const queryClient = useQueryClient()
+  const patchItem = usePatchItem()
+  const removeItem = useRemoveItem()
   const { updateItem } = useItemsStore()
+  const { setPinnedOverride } = usePinnedItemsStore()
   const { closeDrawer } = useItemDrawerStore()
   const { isPro } = useAppUserFlagsStore()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
@@ -40,13 +43,14 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     description: 'Editing files and images requires a Pro plan.',
     onUpgrade: closeDrawer,
   })
+
   const { value: isFavorite, toggle: handleFavoriteToggle } = useOptimisticToggle(
     item.isFavorite,
     (next) => toggleItemFavoriteAction(item.id, next),
     {
       onSuccess: (next) => {
         updateItem({ ...item, isFavorite: next })
-        void queryClient.invalidateQueries({ queryKey: ['items'] })
+        patchItem(item.id, { isFavorite: next })
       },
       errorLabel: 'Failed to toggle favorite',
     }
@@ -58,7 +62,8 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     {
       onSuccess: (next) => {
         updateItem({ ...item, isPinned: next })
-        void queryClient.invalidateQueries({ queryKey: ['items'] })
+        patchItem(item.id, { isPinned: next })
+        setPinnedOverride({ ...item, isPinned: next }, next)
       },
       errorLabel: 'Failed to toggle pin',
     }
@@ -82,8 +87,8 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     if (result.status === 'ok') {
       toast.success('Item deleted')
       setDeleteDialogOpen(false)
+      removeItem(item.id)
       onDeleted()
-      void queryClient.invalidateQueries({ queryKey: ['items'] })
     } else {
       toast.error(result.message ?? 'Failed to delete item')
     }
