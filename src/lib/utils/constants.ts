@@ -39,7 +39,7 @@ export const SYSTEM_TYPE_COLORS: Record<string, string> = {
 // Maps type name → Lucide icon name (key in ICON_MAP from item-type-icon.tsx)
 export const SYSTEM_TYPE_ICON_NAMES: Record<string, string> = {
   snippet: 'Code',
-  prompt:  'Sparkles',
+  prompt:  'MessageSquare',
   command: 'Terminal',
   note:    'StickyNote',
   file:    'File',

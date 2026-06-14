@@ -32,10 +32,11 @@ function tokenKey(fileKey: string): string {
   return `${KEY_PREFIX}${fileKey}`
 }
 
-function parseStoredUpload(raw: string): StoredUpload | null {
+function tryValidateStoredUpload(raw: unknown): StoredUpload | null {
   try {
-    return storedUploadSchema.parse(JSON.parse(raw))
-  } catch {
+    return storedUploadSchema.parse(raw)
+  } catch (err) {
+    log.warn('upload token parse failed', { err, raw })
     return null
   }
 }
@@ -67,7 +68,7 @@ export async function writePendingUpload(fileKey: string, params: WritePendingUp
     fileName: params.fileName,
     fileSize: params.fileSize,
   }
-  await redis.set(tokenKey(fileKey), JSON.stringify(entry), { ex: REDIS_TTL_SECONDS })
+  await redis.set(tokenKey(fileKey), entry, { ex: REDIS_TTL_SECONDS })
 }
 
 /** Validates ownership then consumes the upload token via GETDEL — single-use. */
@@ -76,15 +77,15 @@ export async function consumePendingUpload(fileKey: string, userId: string): Pro
     const redis = getRedis()
     if (!redis) return { ok: false, reason: 'unavailable' }
 
-    const raw = await redis.get<string>(tokenKey(fileKey))
+    const raw = await redis.get<StoredUpload>(tokenKey(fileKey))
     if (!raw) return { ok: false, reason: 'not_found' }
 
-    const entry = parseStoredUpload(raw)
+    const entry = tryValidateStoredUpload(raw)
     if (!entry) return { ok: false, reason: 'not_found' }
 
     if (entry.userId !== userId) return { ok: false, reason: 'unauthorized' }
 
-    const consumed = await redis.getdel<string>(tokenKey(fileKey))
+    const consumed = await redis.getdel<StoredUpload>(tokenKey(fileKey))
     if (!consumed) return { ok: false, reason: 'not_found' }
 
     return {
@@ -117,10 +118,10 @@ export async function sweepExpiredUploads(): Promise<void> {
 
       for (const key of keys) {
         try {
-          const raw = await redis.get<string>(key)
+          const raw = await redis.get<StoredUpload>(key)
           if (!raw) continue
 
-          const entry = parseStoredUpload(raw)
+          const entry = tryValidateStoredUpload(raw)
           if (!entry) {
             // Corrupt entry — remove without touching S3
             await redis.del(key)

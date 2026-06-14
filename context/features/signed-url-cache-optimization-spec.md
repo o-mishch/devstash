@@ -1,10 +1,19 @@
-# Signed URL Cache Optimization (localStorage Persistence)
+# Signed URL Cache Optimization (Client localStorage Persistence)
 
 ## Overview
 
-Optimize image thumbnail loading by persisting signed URL cache to browser `localStorage`. Currently, signed URLs are cached only in memory (`Map`), so page refresh clears the cache. On refresh, the backend generates new signed URLs with different signatures, causing the browser to treat them as different resources and re-download the same images. This optimization stores cached signed URLs in `localStorage` with expiry tracking, so the same URL is reused across page refreshes and browser HTTP cache can work correctly.
+Persist the client-side signed URL cache to `localStorage` so it survives page refreshes. Currently, signed URLs are cached only in an in-memory `Map`, which is cleared on every page load. This optimization stores cached URLs in `localStorage` with expiry tracking so the same URL is reused across refreshes — eliminating the API round-trip entirely and keeping the browser disk cache effective.
 
-**Impact:** ~90% reduction in image re-downloads on page refresh within signed URL expiry window (1 hour).
+**This spec is complementary to `signed-url-server-cache-spec.md`** (server-side Redis cache). The two layers work together:
+
+| Layer | What it fixes |
+|---|---|
+| **Server Redis cache** (`signed-url-server-cache-spec.md`) | Same URL returned for all callers (any browser, any session, any device) within the TTL window — fixes the root cause of signature churn |
+| **Client localStorage cache** (this spec) | Eliminates the API call to `/api/download/[id]/url` entirely on page refresh within the same browser |
+
+With the server-side Redis cache in place, the API call on a page refresh is already cheap (Redis hit, no R2 call). This spec makes it free by skipping the API call altogether for the same browser.
+
+**Impact:** Zero API calls for image URLs on page refresh within the signed URL TTL window.
 
 ---
 
@@ -12,26 +21,44 @@ Optimize image thumbnail loading by persisting signed URL cache to browser `loca
 
 ### Problem 1: Image Re-downloads on Page Refresh
 
-#### Current Flow (Broken)
+#### Current Flow (without either cache)
 ```
 Page Load 1:
   Hook fetches signed URL from API
   → Stores in memory cache: Map<'item-123:preview', {url, expiresAt}>
-  → Browser downloads image
-  → Disk cache: https://s3.../file?sig=abc123
+  → Browser downloads image bytes
+  → Disk cache keyed to: https://r2.../key?X-Amz-Signature=abc123
 
 Page Refresh:
   Memory cache cleared ❌
-  Hook fetches signed URL from API again
-  → Gets new signed URL: https://s3.../file?sig=xyz789 (different signature!)
+  Hook fetches signed URL from API
+  → Backend generates new URL: https://r2.../key?X-Amz-Signature=xyz789  ← different signature
   → Browser sees different URL
-  → Browser HTTP cache miss (different URL)
-  → Re-downloads same image ❌
+  → Browser disk cache miss (URL changed)
+  → Re-downloads same bytes ❌
 ```
 
-#### Root Cause
+#### With server-side Redis cache only (no localStorage)
+```
+Page Refresh:
+  Memory cache cleared
+  Hook fetches signed URL from API  ← API call still made
+  → Redis returns cached URL: https://r2.../key?X-Amz-Signature=abc123  ← same signature ✅
+  → Browser disk cache hit ✅
+  → No re-download ✅  (but API call still happens)
+```
 
-Backend generates new `X-Amz-Signature` parameter for each request. The signature is based on timestamp and request headers, so every request produces a unique URL even though the target resource is identical. The app caches by `itemId:preview` key, so reusing the same URL within the expiry window is correct, but the cache is lost on page refresh.
+#### With both Redis + localStorage
+```
+Page Refresh:
+  localStorage hit: https://r2.../key?X-Amz-Signature=abc123  ← no API call ✅
+  → Browser disk cache hit ✅
+  → No re-download ✅
+```
+
+#### Root Cause (this spec)
+
+The in-memory `Map` cache is lost on page refresh. The server-side Redis cache fixes the signature-churn problem. This spec fixes the residual API call on refresh by persisting the URL to `localStorage`.
 
 ---
 
@@ -68,28 +95,30 @@ Response: 404 Not Found
 
 ## Solution
 
-Store signed URL cache in `localStorage` with expiry tracking. On page refresh:
-1. Load cache from localStorage (if not expired)
-2. Return same signed URL
-3. Browser recognizes same URL → HTTP cache hit
-4. No re-download
+Persist the signed URL cache to `localStorage` with expiry tracking. On page refresh:
+1. Load cache from `localStorage` (filter out expired entries)
+2. Populate in-memory `Map` from the loaded entries
+3. Hook returns cached URL without an API call
+4. Browser sees the same URL → disk cache hit → no re-download
 
 ### Fixed Flow
 ```
 Page Load 1:
   Hook fetches signed URL from API
-  → Stores in memory cache AND localStorage: {item-123:preview: {url, expiresAt}}
-  → Browser downloads image
-  → Disk cache: https://s3.../file?sig=abc123
+  → API returns { url, expiresAt } (expiresAt is accurate — from server-side Redis cache)
+  → Stores in memory Map AND localStorage: { 'item-123:preview': { url, expiresAt } }
+  → Browser downloads image bytes
+  → Disk cache keyed to: https://r2.../key?X-Amz-Signature=abc123
 
 Page Refresh:
-  Memory cache cleared (OK now)
-  Hook loads from localStorage
-  → Gets same URL: https://s3.../file?sig=abc123
-  → Browser recognizes same URL
-  → Browser HTTP cache hit ✅
-  → No new download ✅
+  Memory Map cleared (expected)
+  Hook loads from localStorage → non-expired entries repopulate Map
+  → Returns: https://r2.../key?X-Amz-Signature=abc123  (no API call) ✅
+  → Browser disk cache hit ✅
+  → No re-download ✅
 ```
+
+**`expiresAt` accuracy:** With the server-side Redis cache (`signed-url-server-cache-spec.md`), the `expiresAt` returned by the API reflects when the cached URL actually expires — not `now + 900s`. This means the localStorage expiry check is accurate: the client won't serve a stale URL because `expiresAt` is the real deadline.
 
 ---
 
@@ -270,11 +299,13 @@ function persistCacheToStorage(): void {
 
 ## Notes
 
-- **Cache key is itemId:preview** — already correct, no changes needed. Same key = same URL reused.
-- **No backend changes** — entirely client-side optimization.
-- **No component changes** — transparent to components, hook handles it.
-- **Backward compatible** — if localStorage disabled, falls back to in-memory cache (no errors).
-- **Security unchanged** — signed URLs still expire server-side; 30s buffer prevents using stale URLs.
+- **Cache key is `itemId:preview`** — already correct, no changes needed. Same key = same URL reused.
+- **No backend changes** — entirely client-side optimization; works independently of the server-side Redis cache but is most effective when combined with it.
+- **No component changes** — transparent to components; the hook handles it.
+- **Backward compatible** — if `localStorage` is disabled or unavailable, falls back to in-memory cache only (no errors, just no cross-refresh persistence).
+- **Security unchanged** — signed URLs still expire server-side; the 30 s client-side buffer prevents serving a URL in its final seconds before invalidation.
+- **`expiresAt` source** — when the server-side Redis cache is in place, the API returns the true URL expiry (not `now + 900s`), so the localStorage expiry check is accurate without any client-side adjustments.
+- **Implement after** `signed-url-server-cache-spec.md` — the server cache fixes the root cause (signature churn); this spec eliminates the residual API call. Both together give the best result.
 
 ---
 

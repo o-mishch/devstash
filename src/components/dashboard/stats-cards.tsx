@@ -16,7 +16,7 @@ export function StatsCards({
 }: StatsCardsProps) {
   const stats = [
     { label: 'Total Items', value: totalItems, icon: Package, color: '#3b82f6' },
-    { label: 'Collections', value: totalCollections, icon: FolderOpen, color: '#8b5cf6' },
+    { label: 'Collections', value: totalCollections, icon: FolderOpen, color: '#6366f1' },
     { label: 'Favorite Items', value: favoriteItems, icon: Star, color: '#f97316' },
     { label: 'Favorite Collections', value: favoriteCollections, icon: BookMarked, color: '#10b981' },
   ]

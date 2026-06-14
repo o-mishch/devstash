@@ -1,10 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import {
   uploadToS3,
   deleteFromS3,
-  fileExistsInS3,
   getSignedDownloadUrl,
   getSignedUrlExpiresAt,
   getPresignedPostCredential,
@@ -29,7 +28,6 @@ vi.mock('@aws-sdk/client-s3', () => {
     PutObjectCommand: vi.fn(),
     DeleteObjectCommand: vi.fn(),
     GetObjectCommand: vi.fn(),
-    HeadObjectCommand: vi.fn(),
   }
 })
 
@@ -79,31 +77,6 @@ describe('s3 utility', () => {
       
       await expect(deleteFromS3('test/key.png')).resolves.not.toThrow()
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('delete failed | key="test/key.png" err="S3 error"'))
-      consoleSpy.mockRestore()
-    })
-  })
-
-describe('fileExistsInS3', () => {
-    it('sends HeadObjectCommand and returns true when the file exists', async () => {
-      mockSend.mockResolvedValueOnce({})
-
-      const result = await fileExistsInS3('test/key.png')
-
-      expect(HeadObjectCommand).toHaveBeenCalledWith({
-        Bucket: 'test-bucket',
-        Key: 'test/key.png',
-      })
-      expect(result).toBe(true)
-    })
-
-    it('returns false when the head request fails', async () => {
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      mockSend.mockRejectedValueOnce(new Error('missing'))
-
-      const result = await fileExistsInS3('test/key.png')
-
-      expect(result).toBe(false)
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('head failed | key="test/key.png" err="missing"'))
       consoleSpy.mockRestore()
     })
   })

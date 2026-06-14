@@ -1,10 +1,10 @@
-import { Code, Sparkles, Terminal, StickyNote, File, Image, Link } from 'lucide-react'
+import { Code, MessageSquare, Terminal, StickyNote, File, Image, Link } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants'
 
 export const ICON_MAP: Record<string, LucideIcon> = {
   Code,
-  Sparkles,
+  MessageSquare,
   Terminal,
   StickyNote,
   File,

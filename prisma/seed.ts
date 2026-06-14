@@ -13,7 +13,7 @@ const BULK_PREFIX = '[bulk]'
 
 const systemItemTypes = [
   { name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true },
-  { name: 'prompt', icon: 'Sparkles', color: '#8b5cf6', isSystem: true },
+  { name: 'prompt', icon: 'MessageSquare', color: '#8b5cf6', isSystem: true },
   { name: 'command', icon: 'Terminal', color: '#f97316', isSystem: true },
   { name: 'note', icon: 'StickyNote', color: '#fde047', isSystem: true },
   { name: 'file', icon: 'File', color: '#6b7280', isSystem: true },

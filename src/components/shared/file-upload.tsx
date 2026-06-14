@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type DragEvent } from 'react'
+import { useRef, useState, useEffect, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/styles'
 import { post, del } from '@/lib/api/api-fetch'
@@ -19,7 +19,7 @@ export interface UploadedFile {
   fileSize: number
   imageWidth: number | null
   imageHeight: number | null
-  /** Local ObjectURL of the thumbnail blob — available only for non-SVG images, undefined otherwise. */
+  /** Local ObjectURL for immediate preview — WebP thumbnail blob for raster images, raw File blob for SVGs. */
   localPreviewUrl?: string
 }
 
@@ -57,6 +57,11 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
   const [error, setError] = useState<string | null>(null)
 
   const config = FILE_UPLOAD_CONFIG[itemType]
+
+  useEffect(() => {
+    const url = value?.localPreviewUrl
+    return () => { if (url) URL.revokeObjectURL(url) }
+  }, [value?.localPreviewUrl])
 
   async function uploadFile(file: File) {
     setError(null)
@@ -116,13 +121,16 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     }
 
     setProgress(null)
+    let localPreviewUrl: string | undefined
+    if (isSvg && isImageType) localPreviewUrl = URL.createObjectURL(file)
+    else if (thumb) localPreviewUrl = URL.createObjectURL(thumb.blob)
     onUpload({
       key: originalKey,
       fileName: file.name,
       fileSize: file.size,
       imageWidth: thumb?.width ?? null,
       imageHeight: thumb?.height ?? null,
-      localPreviewUrl: thumb ? URL.createObjectURL(thumb.blob) : undefined,
+      localPreviewUrl,
     })
   }
 

@@ -1,11 +1,11 @@
 import { ApiResponse, authenticatedRoute } from '@/lib/api'
 import { getDownloadItem } from '@/lib/db/items'
-import { getSignedDownloadUrl, getSignedUrlExpiresAt, fileExistsInS3 } from '@/lib/storage/s3'
+import { getSignedDownloadUrl, getSignedUrlExpiresAt } from '@/lib/storage/s3'
 import { canGenerateImageThumbnail, getImageThumbnailKey } from '@/lib/storage/image-thumbnails'
 import type { RouteContext } from '@/lib/api'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
-import { createLogger } from '@/lib/infra/logger'
 import type { SignedDownloadUrlResponse } from '@/types/item'
+import { createLogger } from '@/lib/infra/logger'
 
 const log = createLogger('download-url')
 
@@ -26,7 +26,9 @@ export const GET = authenticatedRoute(async (request, context: RouteContext, { u
     return ApiResponse.BAD_REQUEST('Signed URLs are only available for file and image items.')
   }
 
+  // Legacy items stored as external URLs predate R2 and cannot be signed
   if (!item.fileUrl || item.fileUrl.startsWith('http')) {
+    log.warn('file not signable', { userId, itemId: item.id, fileUrl: item.fileUrl ?? null })
     return ApiResponse.NOT_FOUND('File not found.')
   }
 
@@ -43,15 +45,7 @@ export const GET = authenticatedRoute(async (request, context: RouteContext, { u
   }
 
   const storageKey = isImagePreview ? getImageThumbnailKey(item.fileUrl) : item.fileUrl
-
-  if (!isImagePreview) {
-    const exists = await fileExistsInS3(storageKey)
-    if (!exists) {
-      log.warn('file not found in storage', { userId, itemId: item.id, key: storageKey })
-      return ApiResponse.NOT_FOUND('The file no longer exists in storage.')
-    }
-  }
-
   const fileName = isImagePreview ? undefined : (item.fileName ?? undefined)
+  log.info('signedDownloadUrl', { userId, itemId: item.id, itemType: item.itemType.name })
   return signedDownloadUrlResponse(storageKey, fileName)
 })

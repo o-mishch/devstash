@@ -2,7 +2,7 @@
 
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { createLogger } from '@/lib/infra/logger'
 import type { PresignedPostCredential } from '@/types/item'
 
@@ -91,17 +91,4 @@ export async function getPresignedPostCredential(
 
 export function getSignedUrlExpiresAt(expiresIn = SIGNED_URL_TTL_SECONDS): Date {
   return new Date(Date.now() + expiresIn * 1000)
-}
-
-export async function fileExistsInS3(key: string): Promise<boolean> {
-  try {
-    await getClient().send(new HeadObjectCommand({
-      Bucket: getBucket(),
-      Key: key,
-    }))
-    return true
-  } catch (err) {
-    log.warn('head failed', { key, err })
-    return false
-  }
 }

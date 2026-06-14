@@ -1,8 +1,9 @@
 import { ApiResponse, apiRedirect, authenticatedRoute } from '@/lib/api'
 import { getDownloadItem } from '@/lib/db/items'
-import { getSignedDownloadUrl, fileExistsInS3 } from '@/lib/storage/s3'
+import { getSignedDownloadUrl } from '@/lib/storage/s3'
 import type { RouteContext } from '@/lib/api'
 import { createLogger } from '@/lib/infra/logger'
+import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 
 const log = createLogger('download')
 
@@ -13,19 +14,14 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, { 
   const item = await getDownloadItem(userId, id)
   if (!item) return ApiResponse.NOT_FOUND('File not found.')
 
-  if (!item.fileUrl || item.fileUrl.startsWith('http')) return ApiResponse.NOT_FOUND('File not found.')
-
-  if (!isPro && item.itemType.name === 'file') {
-    return ApiResponse.FORBIDDEN('Upgrade to Pro to access this file.')
-  }
-  if (!isPro && item.itemType.name === 'image') {
-    return ApiResponse.FORBIDDEN('Upgrade to Pro to access this image.')
+  // Legacy items stored as external URLs predate R2 and cannot be signed
+  if (!item.fileUrl || item.fileUrl.startsWith('http')) {
+    log.warn('file not downloadable', { userId, itemId: item.id, fileUrl: item.fileUrl ?? null })
+    return ApiResponse.NOT_FOUND('File not found.')
   }
 
-  const exists = await fileExistsInS3(item.fileUrl)
-  if (!exists) {
-    log.warn('file not found in storage', { userId, itemId: item.id, key: item.fileUrl })
-    return ApiResponse.NOT_FOUND('The file no longer exists in storage.')
+  if (!isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)) {
+    return ApiResponse.FORBIDDEN(`Upgrade to Pro to access this ${item.itemType.name}.`)
   }
 
   const signedUrl = await getSignedDownloadUrl(item.fileUrl, undefined, item.fileName ?? undefined)

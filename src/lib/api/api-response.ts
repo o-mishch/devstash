@@ -11,7 +11,9 @@ function makeBuilder(status: ApiStatus) {
     if (typeof dataOrMessage === 'string') {
       return { status, data: null, message: dataOrMessage }
     }
-    return { status, data: dataOrMessage ?? null, message: message ?? null }
+    const result: ApiBody<T | null> = { status, data: dataOrMessage ?? null }
+    if (message != null) result.message = message
+    return result
   }
   return builder
 }

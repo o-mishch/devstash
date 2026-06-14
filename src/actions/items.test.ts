@@ -478,7 +478,7 @@ describe('fetchMoreItemsAction', () => {
     const result = await fetchMoreItemsAction({ type: 'recent' }, 'cursor-1')
 
     expect(getRecentItemsPage).toHaveBeenCalledWith('user-1', 'cursor-1')
-    expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
+    expect(result).toEqual({ status: 'ok', data: mockPage })
   })
 
   it('calls getItemsByTypePage when type is type', async () => {
@@ -491,7 +491,7 @@ describe('fetchMoreItemsAction', () => {
     const result = await fetchMoreItemsAction({ type: 'type', typeName: 'snippet' }, 'cursor-1')
 
     expect(getItemsByTypePage).toHaveBeenCalledWith('user-1', 'snippet', 'cursor-1')
-    expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
+    expect(result).toEqual({ status: 'ok', data: mockPage })
   })
 
   it('calls getItemsByCollectionPage when type is collection', async () => {
@@ -504,7 +504,7 @@ describe('fetchMoreItemsAction', () => {
     const result = await fetchMoreItemsAction({ type: 'collection', collectionId: 'col-1' }, 'cursor-1')
 
     expect(getItemsByCollectionPage).toHaveBeenCalledWith('user-1', 'col-1', 'cursor-1')
-    expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
+    expect(result).toEqual({ status: 'ok', data: mockPage })
   })
 
   it('calls getFavoriteItemsPage when type is favorites', async () => {
@@ -517,7 +517,7 @@ describe('fetchMoreItemsAction', () => {
     const result = await fetchMoreItemsAction({ type: 'favorites' }, 'cursor-1')
 
     expect(getFavoriteItemsPage).toHaveBeenCalledWith('user-1', 'cursor-1')
-    expect(result).toEqual({ status: 'ok', data: mockPage, message: null })
+    expect(result).toEqual({ status: 'ok', data: mockPage })
   })
 })
 

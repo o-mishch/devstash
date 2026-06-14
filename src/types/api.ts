@@ -13,5 +13,5 @@ export type ApiStatus =
 export type ApiBody<T = null> = {
   status: ApiStatus
   data: T | null
-  message: string | null
+  message?: string | null
 }

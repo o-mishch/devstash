@@ -37,14 +37,14 @@ interface MakeEntryOptions {
   thumb?: typeof mockThumb | null
 }
 
-function makeEntry(options: MakeEntryOptions = {}): string {
+function makeEntry(options: MakeEntryOptions = {}) {
   const { expiresAt = FUTURE, userId = USER_ID, thumb = mockThumb } = options
-  return JSON.stringify({
+  return {
     result: { original: mockOriginal, thumb, expiresAt },
     userId,
     fileName: 'photo.png',
     fileSize: 204800,
-  })
+  }
 }
 
 function makeRedis(overrides: Record<string, unknown> = {}) {
@@ -64,7 +64,7 @@ beforeEach(() => {
 })
 
 describe('writePendingUpload', () => {
-  it('writes a per-key string entry with TTL > SIGNED_URL_TTL_SECONDS', async () => {
+  it('writes a per-key entry with TTL > SIGNED_URL_TTL_SECONDS', async () => {
     const redis = makeRedis()
     mockGetRedis.mockReturnValue(redis)
 
@@ -76,9 +76,9 @@ describe('writePendingUpload', () => {
     })
 
     expect(redis.set).toHaveBeenCalledOnce()
-    const [key, value, opts] = redis.set.mock.calls[0] as [string, string, { ex: number }]
+    const [key, value, opts] = redis.set.mock.calls[0] as [string, object, { ex: number }]
     expect(key).toBe(REDIS_KEY)
-    expect(JSON.parse(value)).toMatchObject({ userId: USER_ID, fileName: 'photo.png', fileSize: 204800 })
+    expect(value).toMatchObject({ userId: USER_ID, fileName: 'photo.png', fileSize: 204800 })
     expect(opts.ex).toBeGreaterThan(900)
   })
 
@@ -102,7 +102,7 @@ describe('consumePendingUpload', () => {
   })
 
   it('returns not_found when stored value is corrupt', async () => {
-    const redis = makeRedis({ get: vi.fn().mockResolvedValue('not-json{') })
+    const redis = makeRedis({ get: vi.fn().mockResolvedValue({ invalid: true }) })
     mockGetRedis.mockReturnValue(redis)
     expect(await consumePendingUpload(FILE_KEY, USER_ID)).toEqual({ ok: false, reason: 'not_found' })
     expect(redis.getdel).not.toHaveBeenCalled()
@@ -131,6 +131,13 @@ describe('consumePendingUpload', () => {
     mockGetRedis.mockReturnValue(redis)
     const result = await consumePendingUpload(FILE_KEY, USER_ID)
     expect(result).toEqual({ ok: true, data: { fileName: 'photo.png', fileSize: 204800, thumbKey: null } })
+  })
+
+  it('returns not_found when token is consumed concurrently between get and getdel', async () => {
+    const raw = makeEntry()
+    const redis = makeRedis({ get: vi.fn().mockResolvedValue(raw), getdel: vi.fn().mockResolvedValue(null) })
+    mockGetRedis.mockReturnValue(redis)
+    expect(await consumePendingUpload(FILE_KEY, USER_ID)).toEqual({ ok: false, reason: 'not_found' })
   })
 
   it('returns unavailable on unexpected Redis error', async () => {
@@ -190,7 +197,7 @@ describe('sweepExpiredUploads', () => {
   it('DELs corrupt entries without touching S3', async () => {
     const redis = makeRedis({
       scan: vi.fn().mockResolvedValue([0, [REDIS_KEY]]),
-      get: vi.fn().mockResolvedValue('not-valid-json{'),
+      get: vi.fn().mockResolvedValue({ invalid: true }),
     })
     mockGetRedis.mockReturnValue(redis)
     await sweepExpiredUploads()

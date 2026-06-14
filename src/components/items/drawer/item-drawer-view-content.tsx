@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, type MouseEvent } from 'react'
-import Image from 'next/image'
 import { ExternalLink, Tag, Download, FileIcon, XCircle, RotateCcw } from 'lucide-react'
 import { showFileNotFoundToast } from '@/hooks/use-restricted-download'
 import { Badge } from '@/components/ui/badge'
@@ -31,7 +30,6 @@ function FileSectionContent({ item }: FileSectionProps) {
   const [imageError, setImageError] = useState(false)
   const [isImageReloading, setIsImageReloading] = useState(false)
   const [freshImageSrc, setFreshImageSrc] = useState<string | null>(null)
-  const [imageLoaded, setImageLoaded] = useState(false)
   const cachedImagePreviewSrc = useProDownloadSrc(item.id, true)
   const previewSrc = freshImageSrc || cachedImagePreviewSrc
   const previewKnownFailed = !previewSrc && isPreviewFailed(item.id)
@@ -49,16 +47,10 @@ function FileSectionContent({ item }: FileSectionProps) {
     showFileNotFoundToast()
   }
 
-  function handleImageLoad() {
-    setImageLoaded(true)
-    setIsImageReloading(false)
-  }
-
   async function handleImageReload(e: MouseEvent) {
     e.stopPropagation()
     setFreshImageSrc(null)
     setIsImageReloading(true)
-    setImageLoaded(false)
     setImageError(false)
 
     clearSignedDownloadUrlCache(item.id)
@@ -76,21 +68,18 @@ function FileSectionContent({ item }: FileSectionProps) {
   if (item.itemType.name === 'image') {
     return (
       <div className="flex justify-center">
-        <div className="group relative flex max-w-full items-center justify-center overflow-hidden rounded-md border border-border bg-muted/30">
-          {(!imageLoaded || imageError) && (
-            <Skeleton className="h-64 w-96 max-w-full rounded-none" />
+        <div className="group relative w-full min-h-[160px] overflow-hidden rounded-md border border-border bg-muted/30">
+          {!previewSrc && !previewKnownFailed && !imageError && (
+            <Skeleton className="h-64 w-full rounded-none" />
           )}
           {previewSrc && !imageError && !isImageReloading && (
-            <Image
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
               src={previewSrc}
               alt={item.fileName ?? item.title}
-              width={0}
-              height={0}
-              unoptimized
               crossOrigin="anonymous"
-              onLoad={handleImageLoad}
               onError={handleImageError}
-              className={`h-auto w-auto max-h-[50vh] max-w-full object-contain ${imageLoaded ? 'opacity-100' : 'opacity-0 absolute'}`}
+              className="w-full max-h-[50vh] object-contain"
             />
           )}
           {(imageError || previewKnownFailed || isImageReloading) && (
