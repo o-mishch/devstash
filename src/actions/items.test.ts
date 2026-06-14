@@ -16,16 +16,27 @@ vi.mock('@/lib/db/usage', () => ({
   canCreateItem: vi.fn(),
   FREE_TIER_ITEM_LIMIT: 50,
 }))
+vi.mock('@/lib/storage/upload-tokens', () => ({
+  consumePendingUpload: vi.fn(),
+}))
+
+vi.mock('@/lib/storage/s3', () => ({
+  deleteFromS3: vi.fn(),
+}))
 
 import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 import { canCreateItem } from '@/lib/db/usage'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { invalidateCollectionsCache } from '@/lib/infra/cache'
+import { consumePendingUpload } from '@/lib/storage/upload-tokens'
+import { deleteFromS3 } from '@/lib/storage/s3'
 
 const mockDeleteStoredFile = deleteStoredFile as ReturnType<typeof vi.fn>
 const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
 const mockGetCachedVerifiedProAccess = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 const mockInvalidateCollectionsCache = invalidateCollectionsCache as ReturnType<typeof vi.fn>
+const mockConsumePendingUpload = consumePendingUpload as ReturnType<typeof vi.fn>
+const mockDeleteFromS3 = deleteFromS3 as ReturnType<typeof vi.fn>
 
 import { auth } from '@/auth'
 import { updateItem, deleteItem, getItemForAuth, createItem, toggleItemFavorite, toggleItemPinned } from '@/lib/db/items'
@@ -66,8 +77,20 @@ const validCreateInput = {
   ...validInput,
   itemTypeName: 'snippet',
   fileUrl: null,
-  fileName: null,
-  fileSize: null,
+  imageWidth: null,
+  imageHeight: null,
+}
+
+const validFileCreateInput = {
+  title: 'My file',
+  description: null,
+  content: null,
+  url: null,
+  language: null,
+  tags: [],
+  collectionIds: [],
+  itemTypeName: 'file',
+  fileUrl: 'user-1/uuid.pdf',
   imageWidth: null,
   imageHeight: null,
 }
@@ -77,6 +100,8 @@ beforeEach(() => {
   mockCanCreateItem.mockResolvedValue(true)
   mockGetCachedVerifiedProAccess.mockResolvedValue(false)
   mockGetItemById.mockResolvedValue(mockItem)
+  mockConsumePendingUpload.mockResolvedValue({ ok: true, data: { fileName: 'doc.pdf', fileSize: 1024, thumbKey: null } })
+  mockDeleteFromS3.mockResolvedValue(undefined)
 })
 
 describe('createItemAction', () => {
@@ -109,35 +134,43 @@ describe('createItemAction', () => {
   it('returns FORBIDDEN when free user tries to create a file item', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetCachedVerifiedProAccess.mockResolvedValue(false)
-    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'file', fileUrl: 'user-1/doc.pdf', fileName: 'doc.pdf', fileSize: 1024 })
+    const result = await createItemAction(validFileCreateInput)
     expect(result.status).toBe('forbidden')
+    expect(mockConsumePendingUpload).not.toHaveBeenCalled()
   })
 
   it('returns FORBIDDEN when free user tries to create an image item', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetCachedVerifiedProAccess.mockResolvedValue(false)
-    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'user-1/pic.png', fileName: 'pic.png', fileSize: 1024 })
+    const result = await createItemAction({ ...validFileCreateInput, itemTypeName: 'image', fileUrl: 'user-1/pic.png' })
     expect(result.status).toBe('forbidden')
   })
 
-  it('returns FORBIDDEN when fileUrl does not belong to the authenticated user', async () => {
+  it('returns FORBIDDEN when upload token is not found in Redis', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetCachedVerifiedProAccess.mockResolvedValue(true)
-    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'other-user/abc.png' })
+    mockConsumePendingUpload.mockResolvedValue({ ok: false, reason: 'not_found' })
+    const result = await createItemAction(validFileCreateInput)
     expect(result.status).toBe('forbidden')
+    expect(mockCreateItem).not.toHaveBeenCalled()
   })
 
-  it('returns FORBIDDEN when fileUrl uses path traversal within the user prefix', async () => {
+  it('returns FORBIDDEN when upload was issued to a different user', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetCachedVerifiedProAccess.mockResolvedValue(true)
-    const result = await createItemAction({
-      ...validCreateInput,
-      itemTypeName: 'image',
-      fileUrl: 'user-1/../other-user/abc.png',
-      fileName: 'abc.png',
-      fileSize: 1024,
-    })
+    mockConsumePendingUpload.mockResolvedValue({ ok: false, reason: 'unauthorized' })
+    const result = await createItemAction(validFileCreateInput)
     expect(result.status).toBe('forbidden')
+    expect(mockCreateItem).not.toHaveBeenCalled()
+  })
+
+  it('returns INTERNAL_ERROR when Redis is unavailable during token consumption', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(true)
+    mockConsumePendingUpload.mockResolvedValue({ ok: false, reason: 'unavailable' })
+    const result = await createItemAction(validFileCreateInput)
+    expect(result.status).toBe('internal_error')
+    expect(mockCreateItem).not.toHaveBeenCalled()
   })
 
   it('returns VALIDATION_ERROR when title is empty', async () => {
@@ -146,22 +179,49 @@ describe('createItemAction', () => {
     expect(result.status).toBe('validation_error')
   })
 
-  it('returns CREATED with created item on success', async () => {
+  it('returns CREATED with created item on success for non-file type', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockCreateItem.mockResolvedValue(mockItem)
     const result = await createItemAction(validCreateInput)
     expect(result.status).toBe('created')
     expect(result.data).toEqual(mockItem)
+    expect(mockConsumePendingUpload).not.toHaveBeenCalled()
     expect(mockInvalidateCollectionsCache).not.toHaveBeenCalled()
   })
 
-  it('returns CREATED when fileUrl belongs to the authenticated user (requires Pro)', async () => {
+  it('consumes the pending upload token and uses server-side fileName/fileSize for file items', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetCachedVerifiedProAccess.mockResolvedValue(true)
     mockCreateItem.mockResolvedValue(mockItem)
-    const result = await createItemAction({ ...validCreateInput, itemTypeName: 'image', fileUrl: 'user-1/abc.png', fileName: 'abc.png', fileSize: 1024 })
+    mockConsumePendingUpload.mockResolvedValue({ ok: true, data: { fileName: 'doc.pdf', fileSize: 2048 } })
+    const result = await createItemAction(validFileCreateInput)
     expect(result.status).toBe('created')
-    expect(mockCreateItem).toHaveBeenCalled()
+    expect(mockConsumePendingUpload).toHaveBeenCalledWith('user-1/uuid.pdf', 'user-1')
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ fileName: 'doc.pdf', fileSize: 2048, fileUrl: 'user-1/uuid.pdf' })
+    )
+  })
+
+  it('strips content/language/url for file type items', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(true)
+    mockCreateItem.mockResolvedValue(mockItem)
+    await createItemAction({ ...validFileCreateInput, content: 'ignored', language: 'ts', url: 'https://example.com' })
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ content: null, language: null, url: null })
+    )
+  })
+
+  it('strips fileUrl/imageWidth/imageHeight for non-file type items', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCreateItem.mockResolvedValue(mockItem)
+    await createItemAction({ ...validCreateInput, fileUrl: 'user-1/abc.pdf', imageWidth: 100, imageHeight: 200 })
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ fileUrl: null, imageWidth: null, imageHeight: null })
+    )
   })
 
   it('passes collectionIds to dbCreateItem', async () => {
@@ -176,17 +236,7 @@ describe('createItemAction', () => {
     expect(mockInvalidateCollectionsCache).toHaveBeenCalledWith('user-1')
   })
 
-  it('passes empty collectionIds when none provided', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
-    mockCreateItem.mockResolvedValue(mockItem)
-    await createItemAction({ ...validCreateInput, collectionIds: [] })
-    expect(mockCreateItem).toHaveBeenCalledWith(
-      'user-1',
-      expect.objectContaining({ collectionIds: [] })
-    )
-  })
-
-  it('returns INTERNAL_ERROR when createItem returns null (item type not found)', async () => {
+  it('returns INTERNAL_ERROR when createItem returns null', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockCreateItem.mockResolvedValue(null)
     const result = await createItemAction(validCreateInput)
@@ -198,6 +248,36 @@ describe('createItemAction', () => {
     mockCreateItem.mockRejectedValue(new Error('DB down'))
     const result = await createItemAction(validCreateInput)
     expect(result.status).toBe('internal_error')
+  })
+
+  it('deletes S3 original and thumb when createItem returns null for a file type', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(true)
+    mockConsumePendingUpload.mockResolvedValue({ ok: true, data: { fileName: 'doc.pdf', fileSize: 1024, thumbKey: 'user-1/uuid-thumb.webp' } })
+    mockCreateItem.mockResolvedValue(null)
+    const result = await createItemAction(validFileCreateInput)
+    expect(result.status).toBe('internal_error')
+    expect(mockDeleteFromS3).toHaveBeenCalledWith('user-1/uuid.pdf')
+    expect(mockDeleteFromS3).toHaveBeenCalledWith('user-1/uuid-thumb.webp')
+  })
+
+  it('deletes S3 original and thumb when createItem throws for a file type', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetCachedVerifiedProAccess.mockResolvedValue(true)
+    mockConsumePendingUpload.mockResolvedValue({ ok: true, data: { fileName: 'doc.pdf', fileSize: 1024, thumbKey: 'user-1/uuid-thumb.webp' } })
+    mockCreateItem.mockRejectedValue(new Error('DB down'))
+    const result = await createItemAction(validFileCreateInput)
+    expect(result.status).toBe('internal_error')
+    expect(mockDeleteFromS3).toHaveBeenCalledWith('user-1/uuid.pdf')
+    expect(mockDeleteFromS3).toHaveBeenCalledWith('user-1/uuid-thumb.webp')
+  })
+
+  it('skips S3 cleanup when createItem fails for a non-file type', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
+    mockCreateItem.mockResolvedValue(null)
+    const result = await createItemAction(validCreateInput)
+    expect(result.status).toBe('internal_error')
+    expect(mockDeleteFromS3).not.toHaveBeenCalled()
   })
 })
 
@@ -261,8 +341,8 @@ describe('updateItemAction', () => {
     const result = await updateItemAction('item-1', { ...validInput, url: '', description: '' })
     expect(result.status).toBe('ok')
     expect(mockUpdateItem).toHaveBeenCalledWith(
-      'user-1', 
-      'item-1', 
+      'user-1',
+      'item-1',
       expect.objectContaining({ url: null, description: null })
     )
   })

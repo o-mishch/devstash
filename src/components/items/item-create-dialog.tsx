@@ -40,7 +40,7 @@ import type { SidebarItemType } from '@/types/item'
 import type { CollectionPickerItem } from '@/types/collection'
 
 async function deleteOrphanedFile(file: UploadedFile): Promise<void> {
-  await del(`/api/upload?key=${encodeURIComponent(file.fileUrl)}`)
+  await del(`/api/upload?key=${encodeURIComponent(file.key)}`)
 }
 
 interface CreateItemDialogProps {
@@ -135,17 +135,17 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
           language: data.language || null,
           tags: tagArray,
           itemTypeName: itemType,
-          fileUrl: capturedFile?.fileUrl ?? null,
-          fileName: capturedFile?.fileName ?? null,
-          fileSize: capturedFile?.fileSize ?? null,
+          fileUrl: capturedFile?.key ?? null,
           imageWidth: capturedFile?.imageWidth ?? null,
           imageHeight: capturedFile?.imageHeight ?? null,
           collectionIds: data.collectionIds,
         },
         {
-        onRollback: capturedFile ? () => deleteOrphanedFile(capturedFile) : undefined,
-        localPreviewUrl: capturedFile?.localPreviewUrl,
-      }
+          onRollback: capturedFile ? () => deleteOrphanedFile(capturedFile) : undefined,
+          localPreviewUrl: capturedFile?.localPreviewUrl,
+          optimisticFileName: capturedFile?.fileName ?? null,
+          optimisticFileSize: capturedFile?.fileSize ?? null,
+        }
       )
     })(e)
   }

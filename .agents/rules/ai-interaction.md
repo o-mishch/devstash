@@ -29,7 +29,7 @@ description: AI collaboration guidelines for DevStash — workflow, commits, ver
 - After 2–3 failed attempts, stop and explain instead of guessing
 
 **When in doubt during implementation:**
-- Library APIs, framework syntax, SDK behavior → research in Context7 first
+- Library APIs, framework syntax, SDK behavior → invoke the `/context7-mcp` skill directly in the main conversation (never spawn a subagent for Context7 lookups)
 - Product decisions, scope questions, ambiguous requirements → ask the user
 
 **Tools:**

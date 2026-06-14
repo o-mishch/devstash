@@ -8,14 +8,14 @@ import type { PresignedPostCredential } from '@/types/item'
 
 const log = createLogger('s3')
 
-const SIGNED_URL_TTL_SECONDS = 900
+export const SIGNED_URL_TTL_SECONDS = 900
 
 let _client: S3Client | null = null
 
 function getClient(): S3Client {
   if (!_client) {
     _client = new S3Client({
-      region: process.env.AWS_S3_REGION!,
+      region: process.env.AWS_REGION!,
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
@@ -49,10 +49,9 @@ export async function deleteFromS3(key: string): Promise<void> {
       Key: key,
     }))
   } catch (err) {
-    log.error(`delete failed: ${key}`, err)
+    log.error('delete failed', { key, err })
   }
 }
-
 
 export async function getSignedDownloadUrl(
   key: string,
@@ -90,15 +89,6 @@ export async function getPresignedPostCredential(
   return { url, fields }
 }
 
-export async function getSignedUploadUrl(key: string, contentType: string, expiresIn = SIGNED_URL_TTL_SECONDS): Promise<string> {
-  const command = new PutObjectCommand({
-    Bucket: getBucket(),
-    Key: key,
-    ContentType: contentType,
-  })
-  return getSignedUrl(getClient(), command, { expiresIn })
-}
-
 export function getSignedUrlExpiresAt(expiresIn = SIGNED_URL_TTL_SECONDS): Date {
   return new Date(Date.now() + expiresIn * 1000)
 }
@@ -111,7 +101,7 @@ export async function fileExistsInS3(key: string): Promise<boolean> {
     }))
     return true
   } catch (err) {
-    log.warn(`head failed: ${key}`, err)
+    log.warn('head failed', { key, err })
     return false
   }
 }
