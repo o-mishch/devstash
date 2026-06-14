@@ -2,13 +2,14 @@
 
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { createItemAction } from '@/actions/items'
+import { post } from '@/lib/api/api-fetch'
 import { useItemsStore } from '@/stores/items'
 import { seedPreviewCache, clearSignedDownloadUrlCache } from '@/hooks/use-pro-download-src'
 import { usePrependItem, useReplaceItem, useRemoveItem } from '@/hooks/use-infinite-items'
+import type { CreateItemInput } from '@/lib/utils/validators'
 import type { LightItem } from '@/types/item'
 
-type CreateItemPayload = Parameters<typeof createItemAction>[0]
+type CreateItemPayload = CreateItemInput
 
 interface CreateItemOptions {
   onRollback?: () => void
@@ -48,7 +49,7 @@ export function useCreateItem() {
     if (options?.localPreviewUrl) seedPreviewCache(tempId, options.localPreviewUrl)
 
     // The caller resolves here — dialog closes while the API call continues in background.
-    void createItemAction(payload).then((result) => {
+    void post<LightItem>('/api/items', payload).then((result) => {
       if (result.status === 'created' || result.status === 'ok') {
         if (result.data) {
           if (options?.localPreviewUrl) {

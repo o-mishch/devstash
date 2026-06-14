@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { generateDescription } from '@/actions/ai/generate-descriptions'
+import { post } from '@/lib/api/api-fetch'
 import {
   AiDescriptionField,
   AI_DESCRIPTION_INPUT_CLASS,
@@ -52,7 +52,7 @@ export function AutoDescriptionInput({
   )
   const canGenerate = disabledReason === null
 
-  const onGenerate = useCallback(() => generateDescription(payload), [payload])
+  const onGenerate = useCallback(() => post<{ description: string } | null>('/api/ai/description', payload), [payload])
 
   const inputProps = form.register('description')
   const actionClassName =

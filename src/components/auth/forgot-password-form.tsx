@@ -1,13 +1,21 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { buttonVariants, SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import { forgotPasswordAction } from '@/actions/auth/reset'
-import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
+import { post } from '@/lib/api/api-fetch'
+import { useApiFormAction } from '@/hooks/use-api-form-action'
+import type { AuthRedirectData } from '@/types/auth'
 
 export function ForgotPasswordForm() {
-  const { formAction, isPending } = useActionStateWithToast(forgotPasswordAction)
+  const router = useRouter()
+  const { formAction, isPending } = useApiFormAction<AuthRedirectData>(
+    (body) => post<AuthRedirectData>('/api/auth/forgot-password', body),
+    {
+      onSuccess: (result) => { if (result.data?.redirectTo) router.push(result.data.redirectTo) },
+    },
+  )
 
   return (
     <form action={formAction} className="space-y-4">

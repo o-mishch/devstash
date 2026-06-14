@@ -13,7 +13,7 @@ import type { FileItemType } from '@/lib/utils/constants'
 import type { UploadUrlResult } from '@/types/item'
 
 export interface UploadedFile {
-  /** S3 object key — used as the pending-upload token in createItemAction and for orphan cleanup. */
+  /** S3 object key — used as the pending-upload token by POST /api/items and for orphan cleanup. */
   key: string
   fileName: string
   fileSize: number
@@ -58,9 +58,15 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
 
   const config = FILE_UPLOAD_CONFIG[itemType]
 
+  const prevLocalPreviewUrl = useRef<string | undefined>(undefined)
   useEffect(() => {
-    const url = value?.localPreviewUrl
-    return () => { if (url) URL.revokeObjectURL(url) }
+    const prev = prevLocalPreviewUrl.current
+    const current = value?.localPreviewUrl
+    // Only revoke the old blob URL when it's replaced by a different one (user re-uploaded).
+    // Do NOT revoke on unmount — the blob URL is seeded into the preview cache and must
+    // stay alive until the cache TTL expires (5 min), otherwise the card gets ERR_FILE_NOT_FOUND.
+    if (prev && current && prev !== current) URL.revokeObjectURL(prev)
+    prevLocalPreviewUrl.current = current
   }, [value?.localPreviewUrl])
 
   async function uploadFile(file: File) {

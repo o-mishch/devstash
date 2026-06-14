@@ -1,19 +1,32 @@
 ---
-name: cleanup
 description: Run housekeeping checks or a holistic quality audit over the current changeset.
 when_to_use: Use when asked to clean up, run housekeeping, find dead code, remove console.log/TODO leftovers, check env var drift, review code quality, simplify over-engineered code, or audit all uncommitted work before shipping. Modes: check, run, improve.
 argument-hint: check|run|improve
-allowed-tools: Bash, Glob, Grep, Read, Write, Edit
+disable-model-invocation: true
+allowed-tools: Glob, Grep, Read, Write, Edit, Skill, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(git *), Bash(rg *), Bash(find *), Bash(npm run *), Bash(npx prisma *), Bash(pgrep *), Bash(pkill *), Bash(rm -rf .next)
 ---
 
 DevStash cleanup. **Mode:** `$ARGUMENTS`
 
+> **Resolving the mode:** use `$ARGUMENTS` when substituted. If it is empty or arrives unsubstituted (literally `$ARGUMENTS` — e.g. invoked outside Claude Code), infer the mode (`check` / `run` / `improve`) from the user's request; if no mode is given at all, reply with [Usage](#usage) only.
+
+## When to use this skill
+
+Triggered when asked to clean up, run housekeeping, find dead code, remove `console.log`/`TODO` leftovers, check env-var drift, review code quality, simplify over-engineered code, or audit uncommitted work before shipping. Pick a mode by depth: `check` (fast read-only scan) · `run` (scan + fix approved) · `improve` (deep rule-compliance + quality audit). Full comparison in [Usage](#usage).
+
+## How to use it
+
+1. Resolve the mode (above), then read the files for that mode in [Read order](#read-order).
+2. Take the [Scope snapshot](#scope-snapshot) so you know which files are in play.
+3. Follow the matching section — [Check](#check) · [Run](#run) · [Improve](#improve) — and route via the [Route](#route) table.
+4. Honour [Shared rules & patterns](#shared-rules--patterns): no edits/commits without approval; verify before reporting done.
+
 ## Scope snapshot
 
-```bash
-git diff --name-only HEAD 2>/dev/null || echo "none"  # modified/added
-git ls-files --others --exclude-standard 2>/dev/null || echo "none"  # untracked
-```
+In Claude Code the two lines below inject their command output automatically. If instead you see the raw command text (another agent/IDE that does not expand inline shell injection), run both commands yourself to get the changeset.
+
+- Modified/added: !`git diff --name-only HEAD 2>/dev/null || echo "none"`
+- Untracked: !`git ls-files --others --exclude-standard 2>/dev/null || echo "none"`
 
 ## Route
 
@@ -34,17 +47,22 @@ git ls-files --others --exclude-standard 2>/dev/null || echo "none"  # untracked
 
 ## Read order
 
-Read before work. ✓ = always. _scope_ = when matching paths are uncommitted.
+Read before work. ✓ = always. _scope_ = when matching paths are uncommitted. Paths under `improve/` are **relative to this skill's own directory** (`.agents/skills/cleanup/`) — read them there, not from the project root; `.agents/rules/*` paths are relative to the project root.
 
 | File | check | run | improve |
 | --- |:---:|:---:|:---:|
-| `.agents/rules/ai-interaction.md` | ✓ | ✓ | ✓ |
-| `.agents/rules/coding-standards.md` | ✓ | ✓ | ✓ |
-| `.agents/rules/security.md` | scope | scope | ✓ |
-| `.agents/rules/api-contract.md` | scope | scope | ✓ |
-| `.agents/rules/testing.md` | scope | scope | ✓ |
+| `.agents/rules/*` (all rule files, read in full) | — | — | ✓ |
+| `.agents/rules/ai-interaction.md` | ✓ | ✓ | — |
+| `.agents/rules/coding-standards.md` | ✓ | ✓ | — |
+| `.agents/rules/nextjs-architecture.md` | scope | scope | — |
+| `.agents/rules/database.md` | scope | scope | — |
+| `.agents/rules/security.md` | scope | scope | — |
+| `.agents/rules/api-contract.md` | scope | scope | — |
+| `.agents/rules/testing.md` | scope | scope | — |
 | `improve/checklist.md` | — | — | ✓ |
 | `improve/report.md` | — | — | ✓ |
+
+Improve is a **strict rule-compliance gate**: it reads the whole `.agents/rules/*` glob (so `nextjs-architecture.md`, `database.md`, and any future rule file are auto-covered). Any violation of any rule is a finding whose default fix is refactoring to compliance — see [Improve](#improve). `check`/`run` read only the per-file subset above.
 
 ## Shared rules & patterns
 
@@ -106,7 +124,9 @@ Which checks should I fix? Format: "1, 3, 5" or "all" or "none"
 
 **Posture — be critical.** A clean changeset is the *floor*, not the result. Assume repeated patterns and simplifications exist until you have looked wide enough to rule them out. Analysis is **codebase-wide**; only *edits* stay scoped to the changeset. If you end up reporting few or zero findings, justify per category *why* it is genuinely clean — do not default to "looks good."
 
-**Flow:** inventory → scan → widen → pattern pass → research → categorize → report → approve → fix → verify (~5–10 min)
+**Strict rule compliance is the hard gate.** Read every file under `.agents/rules/*` in full, then check the reviewed code against each rule line by line. A rule is a **must**, not a preference: any deviation is a finding (Major if the rule is phrased as must/never or touches security/architecture/API contract, Minor only for soft style points), and its **default fix is refactoring the code to comply** — not documenting the gap. Compliance findings are reported regardless of user approval; do not pass code that violates a rule just because it "works." Map each finding to the specific rule file + section it breaks (the P1–P5 lenses below already trace to these rules).
+
+**Flow:** inventory → scan → widen → pattern pass → **rule-compliance pass** → research → categorize → report → approve → fix → verify (~5–10 min)
 
 | # | Phase | Action |
 | ---: | --- | --- |
@@ -114,28 +134,29 @@ Which checks should I fix? Format: "1, 3, 5" or "all" or "none"
 | 2 | SCAN | read every changed file in full; cross-reference imports/exports/callers for flows |
 | 3 | WIDEN | for each changed file also read its **neighbourhood** — sibling files in the same dir, its callers, and files that do a similar job — so cross-file repetition becomes visible. The diff alone hides duplication |
 | 4 | PATTERN PASS | for every non-trivial shape in the changeset (a guard, conditional, data transform, prop interface, fetch→map, error map) `rg` the codebase for the same shape. **2+ occurrences = repeated pattern** → propose one source of truth, or apply an existing util/hook/pattern already in `src/`. Also flag any hand-rolled logic a library already provides (React, Next.js, Prisma, Zod, TanStack Query/Virtual, Zustand, shadcn/ui) |
-| 5 | RESEARCH | when unsure whether a leaner library-idiomatic API exists, **query context7** (`context7-mcp` skill → `mcp__context7__*`) before concluding the code is optimal. Do not guess library APIs from memory |
-| 6 | CATEGORIZE | identify issues per checklist below; assign severity |
-| 7 | REPORT | numbered IDs with severity · file refs · remediation · LOC delta est. |
-| 8 | APPROVE | ask which IDs to fix; format: `P1-1, P2-3, all major, none` |
-| 9 | FIX | apply lowest-LOC path for each approved ID; prefer −LOC over neutral |
-| 10 | VERIFY | `npm run lint`, `npm run test:run`, `npm run build` (if touching build config) |
+| 5 | RULE-COMPLIANCE PASS | check every reviewed file against **each rule** in `.agents/rules/*` (read all of them in full first). Every deviation from a rule is a finding; default fix = refactor the code to comply. Cite the rule file + section. Treat must/never/security/architecture/API-contract rules as Major |
+| 6 | RESEARCH | when unsure whether a leaner library-idiomatic API exists, **query context7** (`context7-mcp` skill → `mcp__context7__*`) before concluding the code is optimal. Do not guess library APIs from memory |
+| 7 | CATEGORIZE | identify issues per checklist below; assign severity |
+| 8 | REPORT | numbered IDs with severity · file refs · remediation · LOC delta est. |
+| 9 | APPROVE | ask which IDs to fix; format: `P1-1, P2-3, all major, none` |
+| 10 | FIX | apply lowest-LOC path for each approved ID; prefer −LOC over neutral |
+| 11 | VERIFY | `npm run lint`, `npm run test:run`, `npm run build` (if touching build config) |
 
-**Lenses** — full definitions, signals, and severity live in `improve/checklist.md` (the single source). Improve scans all five; `check`/`run` skip them.
+**Lenses** — full definitions, signals, and severity live in `improve/checklist.md` (the single source). Improve scans all five; `check`/`run` skip them. Each lens traces to one or more `.agents/rules/*` files — the rule-compliance pass checks the code against that rule, and a deviation is a finding under that lens.
 
-| Lens | Covers | Highest yield |
-| --- | --- | --- |
-| **P1** Architecture & SOLID | layer placement · `prisma.*` outside `src/lib/db/` · FE/BE leak · redesign that removes structure | — |
-| **P2** KISS & duplication | repeated patterns across 2+ files · existing util / library idiom not applied · over-decompose · −LOC wins | ⭐ work hardest |
-| **P3** Security & access | IDOR (`userId` from input) · missing Zod / auth check · webhook signature · stale cache granting wrong access | — |
-| **P4** Bugs, regressions & logging | wrong branch / null edge · floating promise · missing/ noisy `createLogger` logs | — |
-| **P5** Convention, hygiene & tests | `coding-standards` + `api-contract` (`apiRoute`/`ApiResponse`/`apiFetch`) · `'use client'` overuse · missing `.test.ts` | — |
+| Lens | Covers | Rule source | Highest yield |
+| --- | --- | --- | --- |
+| **P1** Architecture & SOLID | layer placement · `prisma.*` outside `src/lib/db/` · FE/BE leak · redesign that removes structure | `nextjs-architecture.md`, `database.md` | — |
+| **P2** KISS & duplication | repeated patterns across 2+ files · existing util / library idiom not applied · over-decompose · −LOC wins | `coding-standards.md` (§ Code Quality) | ⭐ work hardest |
+| **P3** Security & access | IDOR (`userId` from input) · missing Zod / auth check · webhook signature · stale cache granting wrong access | `security.md` | — |
+| **P4** Bugs, regressions & logging | wrong branch / null edge · floating promise · missing/ noisy `createLogger` logs | `coding-standards.md` (§ Logging) | — |
+| **P5** Convention, hygiene & tests | `coding-standards` + `api-contract` (`apiRoute`/`ApiResponse`/api-fetch verb helpers) · `'use client'` overuse · missing `.test.ts` | `coding-standards.md`, `api-contract.md`, `testing.md`, `ai-interaction.md` | — |
 
 **Constraints & discipline:**
 - ✅ Prefer −LOC fixes (delete > merge > inline > refactor)
 - ✅ No edits until user approves specific IDs
 - ✅ All fixes together in single changeset
-- ✅ Security + Testing findings are **always** reported, regardless of user approval
+- ✅ Security, Testing, **and rule-compliance** findings are **always** reported, regardless of user approval; the default fix for a rule violation is refactoring the code to comply
 - ✅ **Analysis** is codebase-wide (find repeated patterns wherever they live); **edits** stay scoped to the changeset + the one shared file needed to dedupe
 - ✅ When in doubt about a library's idiomatic API, **research via context7** instead of guessing — a missed simplification is a finding, not a pass
 - ❌ No unrelated refactors unless they remove a repeated pattern the changeset participates in

@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Unlink } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { removeCredentialsAction } from '@/actions/profile'
+import { del } from '@/lib/api/api-fetch'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { BaseProfileDialog } from './base-profile-dialog'
 
@@ -21,7 +21,7 @@ export function RemovePasswordDialog() {
 
   function handleRemove() {
     startTransition(async () => {
-      const result = await removeCredentialsAction(password)
+      const result = await del('/api/profile/credentials', { body: { password } })
       if (result.status === 'ok') {
         toast.success('Password removed. Sign in via a linked account.')
         setOpen(false)

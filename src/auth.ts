@@ -29,6 +29,9 @@ import { createLogger } from '@/lib/infra/logger'
 const log = createLogger('auth')
 export const LINK_INTENT_COOKIE = 'devstash_link_token'
 
+const SESSION_MAX_AGE = 24 * 60 * 60  // 1 day
+const SESSION_UPDATE_AGE = 15 * 60    // 15 minutes
+
 const TRANSIENT_DB_ERROR_CODES = new Set(['P1001', 'P1002', 'P1008', 'P1017', 'P2024'])
 
 function isTransientDatabaseError(error: unknown): boolean {
@@ -119,7 +122,11 @@ async function handleOAuthConflict(user: User | AdapterUser, account: Account): 
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: 'jwt' },
+  session: { 
+    strategy: 'jwt', 
+    maxAge: SESSION_MAX_AGE, 
+    updateAge: SESSION_UPDATE_AGE 
+  },
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,

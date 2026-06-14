@@ -2,11 +2,13 @@
 
 import { toast } from 'sonner'
 import { useQueryClient, type InfiniteData } from '@tanstack/react-query'
-import { updateItemAction } from '@/actions/items'
+import { patch } from '@/lib/api/api-fetch'
+import { mapItemInPages } from '@/hooks/use-infinite-items'
 import { useItemsStore } from '@/stores/items'
-import type { ItemsPage, LightItem, FullItem } from '@/types/item'
+import type { UpdateItemInput } from '@/lib/utils/validators'
+import type { ItemsPage, LightItem, FullItem, ItemSavedDetails } from '@/types/item'
 
-type UpdateItemPayload = Parameters<typeof updateItemAction>[1]
+type UpdateItemPayload = UpdateItemInput
 
 interface UpdateItemOptions {
   onSave: (updated: FullItem) => void
@@ -30,20 +32,11 @@ export function useUpdateItem() {
 
     queryClient.setQueriesData<InfiniteData<ItemsPage>>(
       { queryKey: ['items'] },
-      (old) => {
-        if (!old) return old
-        return {
-          ...old,
-          pages: old.pages.map((page) => ({
-            ...page,
-            items: page.items.map((i) => (i.id === currentItem.id ? { ...i, ...optimisticPatch } : i)),
-          })),
-        }
-      }
+      (old) => mapItemInPages(old, currentItem.id, optimisticPatch)
     )
     updateItem({ ...currentItem, ...optimisticPatch })
 
-    const result = await updateItemAction(currentItem.id, payload)
+    const result = await patch<ItemSavedDetails>(`/api/items/${currentItem.id}`, payload)
 
     if (result.status === 'ok' && result.data) {
       const serverPatch: Partial<LightItem> = {
@@ -55,16 +48,7 @@ export function useUpdateItem() {
       }
       queryClient.setQueriesData<InfiniteData<ItemsPage>>(
         { queryKey: ['items'] },
-        (old) => {
-          if (!old) return old
-          return {
-            ...old,
-            pages: old.pages.map((page) => ({
-              ...page,
-              items: page.items.map((i) => (i.id === currentItem.id ? { ...i, ...optimisticPatch, ...serverPatch } : i)),
-            })),
-          }
-        }
+        (old) => mapItemInPages(old, currentItem.id, { ...optimisticPatch, ...serverPatch })
       )
       const fullUpdated: FullItem = {
         ...currentItem,

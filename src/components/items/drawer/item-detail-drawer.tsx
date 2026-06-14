@@ -11,7 +11,7 @@ import { DrawerSkeleton } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT } from '@/lib/utils/constants'
 import type { LightItem, FullItem, ItemDetails, ItemContent } from '@/types/item'
 import { isFullItem } from '@/types/item'
-import { getCollectionPickerItemsAction } from '@/actions/collections'
+import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDetailDrawerProps {
   item: LightItem | FullItem | null
@@ -71,7 +71,7 @@ function ItemDetailDrawerInner({
   const { data: collections = [] } = useQuery({
     queryKey: ['collections', 'picker'],
     queryFn: async () => {
-      const result = await getCollectionPickerItemsAction()
+      const result = await get<CollectionWithTypes[]>('/api/collections')
       return result.status === 'ok' ? result.data ?? [] : []
     },
     enabled: editingItemId !== null,

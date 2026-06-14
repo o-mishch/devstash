@@ -4,8 +4,8 @@ import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
-import { updateNameAction } from '@/actions/profile'
+import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { patch } from '@/lib/api/api-fetch'
 
 interface EditableNameProps {
   name: string | null
@@ -15,7 +15,7 @@ export function EditableName({ name }: EditableNameProps) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(name ?? '')
 
-  const { formAction, isPending } = useActionStateWithToast(updateNameAction, {
+  const { formAction, isPending } = useApiFormAction((body) => patch('/api/profile/name', body), {
     onSuccess: () => {
       toast.success('Name updated.')
       setEditing(false)

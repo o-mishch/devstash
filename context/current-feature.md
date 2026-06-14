@@ -5,8 +5,8 @@ Not Started
 
 ## Goals
 
-<!-- What does success look like? Add bullet points here when a feature is loaded. -->
+<!-- bullet points of what success looks like -->
 
 ## Notes
 
-<!-- Additional context, constraints, or implementation details. -->
+<!-- additional context, constraints, or details from spec -->

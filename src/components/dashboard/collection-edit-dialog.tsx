@@ -1,7 +1,7 @@
 'use client'
 
 import { type ReactNode } from 'react'
-import { updateCollectionAction } from '@/actions/collections'
+import { patch } from '@/lib/api/api-fetch'
 import { CollectionFormDialog } from './collection-form-dialog'
 import type { CollectionWithTypes } from '@/types/collection'
 
@@ -20,7 +20,7 @@ export function CollectionEditDialog({ collection, trigger, open, onOpenChange }
       submitText="Save Changes"
       successMessage="Collection updated"
       defaultValues={{ name: collection.name, description: collection.description || '' }}
-      onSubmitAction={async (data) => updateCollectionAction(collection.id, { name: data.name, description: data.description ?? null })}
+      onSubmitAction={async (data) => patch<CollectionWithTypes>(`/api/collections/${collection.id}`, { name: data.name, description: data.description ?? null })}
       trigger={trigger}
       open={open}
       onOpenChange={onOpenChange}

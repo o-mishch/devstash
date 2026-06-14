@@ -57,7 +57,7 @@ _The complete catalogue — every finding stated **once**, referenced by ID. Gro
 - **Why it matters:** …
 - **Fix:** one concrete action · **est. LOC:** −N / ≈0 / +N _(prefer −; if +, name what to delete/merge)_
 - **Leaner option:** … _(only if the primary fix adds lines)_
-- **Rule:** _coding-standards § Logging_ _(P4/P5 only; omit otherwise)_
+- **Rule:** _coding-standards § Logging_ _(cite the exact `.agents/rules/*` file + section for any rule-compliance finding, any lens; omit only for pure KISS/DRY suggestions that break no rule)_
 
 _If none across all priorities:_ `No issues found.` _(state what you checked — see checklist.md criticality note)_
 

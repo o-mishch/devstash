@@ -2,7 +2,6 @@ import { Mail, Unlink } from 'lucide-react'
 import { ProviderIcon } from '@/components/shared/provider-icon'
 import { PROVIDER_LABELS, SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils'
 import { linkWithProviderAction } from '@/actions/auth/login'
-import { unlinkProviderAction } from '@/actions/profile'
 import type { OAuthProvider } from '@/lib/utils/constants'
 import type { LinkedAccount } from '@/lib/db/profile'
 import { ProfileActionDialog } from './profile-action-dialog'
@@ -82,7 +81,7 @@ function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
           triggerText="Unlink"
           triggerIcon={<Unlink className="mr-1 size-3" />}
           confirmText={`Unlink ${label}`}
-          action={unlinkProviderAction.bind(null, account.id)}
+          endpoint={`/api/profile/accounts/${account.id}`}
           successMessage={`${label} account unlinked.`}
           errorMessage="Failed to unlink account."
         />

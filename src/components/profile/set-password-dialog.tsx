@@ -8,8 +8,8 @@ import { SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
-import { setInitialPasswordAction } from '@/actions/profile'
+import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { post } from '@/lib/api/api-fetch'
 import { ProfileFormDialog } from './profile-form-dialog'
 
 interface SetPasswordDialogProps {
@@ -26,7 +26,7 @@ export function SetPasswordDialog({ suggestedEmails }: SetPasswordDialogProps) {
     router.refresh()
   }, [router])
 
-  const { formAction, isPending } = useActionStateWithToast(setInitialPasswordAction, { onSuccess })
+  const { formAction, isPending } = useApiFormAction((body) => post('/api/profile/password', body), { onSuccess })
 
   return (
     <ProfileFormDialog

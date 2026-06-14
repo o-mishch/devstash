@@ -45,13 +45,15 @@ See `context/current-feature.md`.
 
 ## Rules
 
-Read the following files for detailed rules before making any changes:
+Read the following files for detailed rules before making any changes. Each carries YAML frontmatter (`trigger: always_on | glob` + `globs:`) that Antigravity uses for activation; Claude Code loads them in full via the `@`-imports in `CLAUDE.md`.
 
-- `.agents/rules/ai-interaction.md` — workflow, branching, commits, communication style
-- `.agents/rules/coding-standards.md` — TypeScript, React, Next.js, Tailwind v4, file organisation
-- `.agents/rules/security.md` — IDOR prevention, auth patterns, input validation, token handling
-- `.agents/rules/testing.md` — Vitest conventions, what to test, mocking patterns
-- `.agents/rules/api-contract.md` — ApiBody shape, apiRoute wrapper, apiFetch, status codes
+- `.agents/rules/ai-interaction.md` — workflow, branching, commits, verification, builds (always on)
+- `.agents/rules/coding-standards.md` — TypeScript, React, Tailwind v4, naming, errors, logging (always on)
+- `.agents/rules/nextjs-architecture.md` — where each mutation/fetch goes, server/client boundary, file organisation, Zod validation (glob: `src/**`)
+- `.agents/rules/database.md` — Prisma-only data access, `'use cache'` pattern, migrations (glob: `src/lib/db/**`, `prisma/**`)
+- `.agents/rules/security.md` — IDOR prevention, auth patterns, input validation, token handling (glob: API/actions/auth/db)
+- `.agents/rules/testing.md` — Vitest conventions, what to test, mocking patterns (glob: test files)
+- `.agents/rules/api-contract.md` — `ApiBody<T>` shape, `apiRoute`/`authenticatedRoute` wrappers, the api-fetch verb helpers (`get`/`post`/`patch`/`del`), status codes (glob: API/actions/`src/lib/api`)
 
 <!-- stripe-projects-cli managed:agents-md:start -->
 ## Stripe Projects CLI

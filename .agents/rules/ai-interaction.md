@@ -1,5 +1,6 @@
 ---
-description: AI collaboration guidelines for DevStash — workflow, commits, verification, builds, env vars, Prisma, Playwright. Loaded at every session start.
+trigger: always_on
+description: AI collaboration guidelines for DevStash — workflow, commits, verification, builds, env vars, Prisma, Playwright. Always applied.
 ---
 
 # AI Interaction Guidelines

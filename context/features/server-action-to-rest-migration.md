@@ -79,15 +79,140 @@ q: string (min 1 char)
 
 ---
 
-### 4. Toggle Actions → `PATCH /api/items/[id]/favorite` and `PATCH /api/items/[id]/pinned` (optional)
+### 4. `getCollectionPickerItemsAction` → `GET /api/collections`
+
+**Current:** `src/actions/collections.ts` — called inside `item-detail-drawer.tsx` as `await getCollectionPickerItemsAction()` on drawer open, to populate the collection picker.
+
+**Why migrate:** Pure data fetch, no side effects, no cache invalidation. Same pattern as `fetchMoreItemsAction`. Called from an event handler, not a form action — Server Action overhead is unjustified.
+
+**New route:** `GET /api/collections`
+
+**Request schema:** None — no query params needed.
+
+**Response:** `ApiBody<CollectionWithTypes[]>` — same shape as current action return.
+
+**Files to change:**
+- Create `src/app/api/collections/route.ts`
+- Update `src/components/items/drawer/item-detail-drawer.tsx` — replace `getCollectionPickerItemsAction()` with `get<CollectionWithTypes[]>('/api/collections')`
+- Delete `getCollectionPickerItemsAction` from `src/actions/collections.ts`
+
+---
+
+### 5. Toggle Actions → `PATCH /api/items/[id]/favorite`, `PATCH /api/items/[id]/pinned`, `PATCH /api/collections/[id]/favorite`
 
 **Current:** `toggleItemFavoriteAction`, `toggleItemPinnedAction`, `toggleCollectionFavoriteAction` — called with optimistic UI on every toggle click.
 
-**Why migrate:** Tiny payloads (`{ flag: true }`) wrapped in multipart encoding is wasteful. `PATCH` is the correct HTTP semantic.
+**Why migrate:** Tiny payloads wrapped in Server Action encoding. `PATCH` is the correct HTTP semantic. Consistent with the rest of the API surface.
 
-**Why to skip:** Optimistic UI path is already fast; perceived latency is dominated by round-trip, not payload size. Cache invalidation (`revalidateTag`) works fine inside route handlers. Low ROI unless toggle frequency becomes a measured bottleneck.
+**New routes:** `PATCH /api/items/[id]/favorite`, `PATCH /api/items/[id]/pinned`, `PATCH /api/collections/[id]/favorite`
 
-**Decision:** Defer until toggle latency is a measured issue. Keep as Server Actions for now.
+**Request body:** `{ value: boolean }`
+
+**Response:** `ApiBody<null>`
+
+**Files to change:**
+- Create `src/app/api/items/[id]/favorite/route.ts`, `src/app/api/items/[id]/pinned/route.ts`
+- Create `src/app/api/collections/[id]/favorite/route.ts`
+- Update `src/components/items/drawer/item-drawer-action-bar.tsx`
+- Update `src/components/dashboard/collection-card-actions.tsx`
+- Delete toggle exports from `src/actions/items.ts` and `src/actions/collections.ts`
+
+---
+
+### 6. Item CRUD → `POST /api/items`, `PATCH /api/items/[id]`, `DELETE /api/items/[id]`
+
+**Current:** `createItemAction`, `updateItemAction`, `deleteItemAction` in `src/actions/items.ts`.
+
+**Why migrate:** Uniform API surface; same auth/validation patterns as the read routes; enables future mobile/CLI clients.
+
+**New routes:** `POST /api/items` · `PATCH /api/items/[id]` · `DELETE /api/items/[id]`
+
+**Response:** `ApiBody<LightItem | null>` for create/update, `ApiBody<null>` for delete.
+
+**Files to change:**
+- Extend `src/app/api/items/route.ts` with `POST` handler
+- Create `src/app/api/items/[id]/route.ts` with `PATCH` + `DELETE` handlers
+- Delete `createItemAction`, `updateItemAction`, `deleteItemAction` from `src/actions/items.ts`
+- Update all item create/edit form callers to `apiFetch`
+
+---
+
+### 7. Collection CRUD → `POST /api/collections`, `PATCH /api/collections/[id]`, `DELETE /api/collections/[id]`
+
+**Current:** `createCollectionAction`, `updateCollectionAction`, `deleteCollectionAction` in `src/actions/collections.ts`.
+
+**Why migrate:** Same reasoning as item CRUD. `GET /api/collections` already exists.
+
+**New routes:** `POST /api/collections` · `PATCH /api/collections/[id]` · `DELETE /api/collections/[id]`
+
+**Response:** `ApiBody<CollectionWithTypes | null>` for create/update, `ApiBody<null>` for delete.
+
+**Files to change:**
+- Extend `src/app/api/collections/route.ts` with `POST` handler
+- Create `src/app/api/collections/[id]/route.ts` with `PATCH` + `DELETE` handlers
+- Delete `createCollectionAction`, `updateCollectionAction`, `deleteCollectionAction` from `src/actions/collections.ts`
+- Update all collection create/edit form callers to `apiFetch`
+
+---
+
+### 8. Profile Mutations → `PATCH|DELETE /api/profile/*`
+
+**Current:** `updateNameAction`, `changePasswordAction`, `setInitialPasswordAction`, `changeCredentialEmailAction`, `removeCredentialsAction`, `unlinkProviderAction`, `updateMainEmailAction`, `deleteAccountAction` in `src/actions/profile.ts`.
+
+**Why migrate:** Consistent API surface; profile components can share the same `apiFetch` pattern as all other client calls.
+
+**New routes:**
+- `PATCH /api/profile/name`
+- `PATCH /api/profile/password` · `POST /api/profile/password` (set initial)
+- `PATCH /api/profile/email`
+- `DELETE /api/profile/credentials`
+- `DELETE /api/profile/accounts/[id]`
+- `PATCH /api/profile/main-email`
+- `DELETE /api/profile`
+
+**Files to change:**
+- Create all routes under `src/app/api/profile/`
+- Delete `src/actions/profile.ts` entirely
+- Profile page components — drop `useActionState`, switch to `apiFetch`
+
+---
+
+### 9. Billing → `POST /api/billing/*`
+
+**Current:** `createCheckoutSessionAction`, `createPortalSessionAction`, `cancelSubscriptionAction`, `reactivateSubscriptionAction` in `src/actions/billing.ts`.
+
+**Why migrate:** Consistent API surface. Checkout and portal actions return a redirect URL in `{ url: string }` — client follows the redirect, replacing the server-side `redirect()` call.
+
+**New routes:**
+- `POST /api/billing/checkout` — returns `ApiBody<{ url: string }>`
+- `POST /api/billing/portal` — returns `ApiBody<{ url: string }>`
+- `POST /api/billing/cancel` — returns `ApiBody<null>`
+- `POST /api/billing/reactivate` — returns `ApiBody<null>`
+
+**Files to change:**
+- Create all routes under `src/app/api/billing/`
+- Delete `src/actions/billing.ts` entirely
+- Billing UI components — drop action imports, switch to `apiFetch`; client handles redirect from `data.url`
+
+---
+
+### 10. Auth Form Actions → `POST /api/auth/*`
+
+**Current:** `signInWithCredentials`, register, forgot-password, reset-password, verify-email actions in `src/actions/auth/`.
+
+**Why migrate:** Consistent API surface. Auth form components drop `useActionState` and switch to `apiFetch`; validation errors return in `ApiBody.message` / `ApiBody.data`.
+
+**New routes:**
+- `POST /api/auth/login`
+- `POST /api/auth/register`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+- `POST /api/auth/verify-email`
+
+**Files to change:**
+- Create all routes under `src/app/api/auth/`
+- Delete corresponding action exports from `src/actions/auth/` (keep `signInWithGitHub`, `signInWithGoogle`, `linkWithProviderAction`)
+- Auth form pages — drop `useActionState`, switch to `apiFetch`
 
 ---
 
@@ -95,12 +220,9 @@ q: string (min 1 char)
 
 | Actions | Reason |
 |---|---|
-| All `useActionState` form actions (auth, billing, profile) | CSRF, form state/error feedback, low frequency |
-| Billing redirect actions (`createCheckoutSessionAction`, `createPortalSessionAction`) | Use `redirect()` from `next/navigation` |
-| OAuth actions (`signInWithGitHub`, `signInWithGoogle`) | Redirect-only |
-| `createItemAction`, `updateItemAction`, `deleteItemAction` | One-shot on submit, cache invalidation is primary work |
-| `createCollectionAction`, `updateCollectionAction`, `deleteCollectionAction` | Low frequency mutations |
-| All profile mutations | Security-sensitive, low frequency |
+| `signInWithGitHub`, `signInWithGoogle`, `linkWithProviderAction` | Call NextAuth `signIn()` which handles redirect internally — cannot be REST |
+| `updateEditorPreferencesAction` | Low-signal settings mutation; not part of this migration |
+| Streaming AI responses | Separate future feature |
 
 ---
 
@@ -115,4 +237,4 @@ q: string (min 1 char)
 
 ## Status
 
-Planned
+In Progress — sections 1–3 complete; section 4 (`GET /api/collections`) pending; sections 5–10 not started

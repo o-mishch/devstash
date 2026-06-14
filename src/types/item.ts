@@ -62,7 +62,7 @@ export interface ItemDetails {
   collections: { id: string; name: string }[]
 }
 
-/** Returned by updateItemAction — superset of ItemDetails with all mutable fields */
+/** Returned by PATCH /api/items/[id] — superset of ItemDetails with all mutable fields */
 export interface ItemSavedDetails extends ItemDetails {
   url: string | null
   tags: string[]

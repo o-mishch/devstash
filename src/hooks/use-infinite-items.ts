@@ -1,10 +1,26 @@
 import { useMemo } from 'react'
 import { useInfiniteQuery, useQueryClient, type InfiniteData, type Query } from '@tanstack/react-query'
-import { fetchMoreItemsAction } from '@/actions/items'
+import { get } from '@/lib/api/api-fetch'
 import type { FetchItemsQuery, ItemsPage, LightItem } from '@/types/item'
 
 function itemsQueryKey(fetchParams: FetchItemsQuery) {
   return ['items', JSON.stringify(fetchParams)]
+}
+
+/** Merges `patch` into the item matching `id` across every page, leaving the rest untouched. */
+export function mapItemInPages(
+  old: InfiniteData<ItemsPage> | undefined,
+  id: string,
+  patch: Partial<LightItem>,
+): InfiniteData<ItemsPage> | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    pages: old.pages.map((page) => ({
+      ...page,
+      items: page.items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+    })),
+  }
 }
 
 function prependToPage(old: InfiniteData<ItemsPage> | undefined, item: LightItem): InfiniteData<ItemsPage> | undefined {
@@ -46,16 +62,7 @@ export function usePatchItem() {
   return (id: string, patch: Partial<LightItem>) => {
     queryClient.setQueriesData<InfiniteData<ItemsPage>>(
       { queryKey: ['items'] },
-      (old) => {
-        if (!old) return old
-        return {
-          ...old,
-          pages: old.pages.map((page) => ({
-            ...page,
-            items: page.items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
-          })),
-        }
-      }
+      (old) => mapItemInPages(old, id, patch)
     )
     // refetchType: 'none' avoids an immediate refetch that would race against the
     // server-side revalidateTag (which runs via after() — deferred post-response).
@@ -115,7 +122,9 @@ export function useInfiniteItems(
   const query = useInfiniteQuery({
     queryKey: itemsQueryKey(fetchParams),
     queryFn: async ({ pageParam }) => {
-      const result = await fetchMoreItemsAction(fetchParams, pageParam as string | undefined)
+      const params = new URLSearchParams(fetchParams as Record<string, string>)
+      if (pageParam) params.set('cursor', pageParam as string)
+      const result = await get<ItemsPage>(`/api/items?${params.toString()}`)
       if (result.status !== 'ok' || !result.data) {
         throw new Error(result.message || 'Failed to fetch items')
       }

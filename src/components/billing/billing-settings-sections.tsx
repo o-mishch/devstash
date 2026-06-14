@@ -3,7 +3,7 @@ import {
   CheckCircle2,
   Clock,
 } from 'lucide-react'
-import type { BillingSubscriptionStatus } from '@/types/billing'
+import type Stripe from 'stripe'
 import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -39,15 +39,15 @@ function BillingDetailRow({ label, value, valueClassName }: BillingDetailRowProp
   )
 }
 
-interface BillingSubscriptionStatusBadgeProps {
+interface SubscriptionStatusBadgeProps {
   stripeCancelAtPeriodEnd: boolean
-  stripeSubscriptionStatus: BillingSubscriptionStatus | null
+  stripeSubscriptionStatus: Stripe.Subscription.Status | null
 }
 
-function BillingSubscriptionStatusBadge({
+function SubscriptionStatusBadge({
   stripeCancelAtPeriodEnd,
   stripeSubscriptionStatus,
-}: BillingSubscriptionStatusBadgeProps) {
+}: SubscriptionStatusBadgeProps) {
   const { label, icon, className } = getSubscriptionBadgeConfig(
     stripeCancelAtPeriodEnd,
     stripeSubscriptionStatus,
@@ -64,7 +64,7 @@ function BillingSubscriptionStatusBadge({
 
 interface BillingProPlanCardProps {
   stripeCancelAtPeriodEnd: boolean
-  stripeSubscriptionStatus: BillingSubscriptionStatus | null
+  stripeSubscriptionStatus: Stripe.Subscription.Status | null
   stripeSubscriptionStart: Date | null
   stripeCurrentPeriodEnd: Date | null
   planLabel: string
@@ -92,7 +92,7 @@ function BillingProPlanCard({
           <HeaderIcon className={`size-4 ${accent.iconClassName}`} />
           <span className="text-sm font-semibold">DevStash Pro</span>
         </div>
-        <BillingSubscriptionStatusBadge
+        <SubscriptionStatusBadge
           stripeCancelAtPeriodEnd={stripeCancelAtPeriodEnd}
           stripeSubscriptionStatus={stripeSubscriptionStatus}
         />
@@ -128,7 +128,7 @@ function BillingProPlanCard({
 
 interface BillingProPlanSectionProps {
   stripeCancelAtPeriodEnd: boolean
-  stripeSubscriptionStatus: BillingSubscriptionStatus | null
+  stripeSubscriptionStatus: Stripe.Subscription.Status | null
   stripeSubscriptionStart: Date | null
   stripeCurrentPeriodEnd: Date | null
   planLabel: string

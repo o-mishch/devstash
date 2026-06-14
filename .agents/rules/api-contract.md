@@ -1,10 +1,16 @@
 ---
-description: API contract rules for DevStash — ApiBody shape, apiRoute wrapper, apiFetch, and status codes. Loaded when working with API routes or server actions.
+trigger: glob
+globs:
+  - src/app/api/**/*
+  - src/actions/**/*
+  - src/types/api.ts
+  - src/lib/api/**/*
 paths:
-  - "src/app/api/**"
-  - "src/actions/**"
+  - "src/app/api/**/*"
+  - "src/actions/**/*"
   - "src/types/api.ts"
-  - "src/lib/api/**"
+  - "src/lib/api/**/*"
+description: API contract rules for DevStash — the ApiBody<T> shape, apiRoute/authenticatedRoute wrappers, the api-fetch verb helpers (get/post/patch/del), and status codes. Loads when editing API routes, server actions, or src/lib/api.
 ---
 
 # API Contract
@@ -22,7 +28,7 @@ type ApiBody<T = null> = {
 
 ## API Routes
 
-Wrap the handler with `apiRoute()` from `src/lib/api.ts`. Centralises error handling — no per-route try/catch needed.
+Wrap the handler with `apiRoute()` (or `authenticatedRoute()` for anything touching user data) from `@/lib/api` (`src/lib/api/index.ts`). Centralises error handling — no per-route try/catch needed.
 
 ```ts
 import { ApiResponse, apiRoute } from '@/lib/api'
@@ -33,6 +39,8 @@ export const POST = apiRoute(async (request) => {
   return ApiResponse.OK({ result })
 })
 ```
+
+> For user-scoped routes use `authenticatedRoute(async (request, context, { userId, isPro }) => …)` — it runs the session + Pro check and injects an **IDOR-safe `userId`** (from the session, never the request). See `nextjs-architecture.md`.
 
 ## Server Actions
 
@@ -53,15 +61,12 @@ export async function myAction(
 
 ## Frontend
 
-Use `apiFetch` from `@/lib/api/api-fetch` — never raw `fetch()`.
+Use the verb helpers from `@/lib/api/api-fetch` — `get` / `post` / `put` / `patch` / `del` — never raw `fetch()`. There is **no** `apiFetch` symbol. The body is the **second positional arg** (not `{ method, body }`); each helper returns `Promise<ApiBody<T>>`.
 
 ```ts
-import { apiFetch } from '@/lib/api/api-fetch'
+import { post } from '@/lib/api/api-fetch'
 
-const data = await apiFetch<MyData>('/api/...', {
-  method: 'POST',
-  body: { key: value },
-})
+const data = await post<MyData>('/api/...', { key: value })
 if (data.status !== 'ok') {
   toast.error(data.message ?? 'Something went wrong.')
   return
@@ -104,7 +109,7 @@ Raw `NextResponse.redirect` needs **strict justification** in code (comment) —
 - **Never** return raw `NextResponse.json()` from API routes — use `ApiResponse` + `apiRoute`
 - **Never** return raw `NextResponse.redirect()` from API routes — use `apiRedirect` + `apiRoute`
 - **Never** return plain booleans/strings from Server Actions that communicate status to the FE
-- **Never** call `fetch()` directly from client components — always use `apiFetch`
+- **Never** call `fetch()` directly from client components — always use the verb helpers (`get`/`post`/`patch`/`del`)
 - **Always** use named interfaces for response data types — no inline generics
 - Server Actions that only redirect (OAuth, sign-out) are exempt
 - API routes: errors caught by `apiRoute()` — no per-route try/catch needed

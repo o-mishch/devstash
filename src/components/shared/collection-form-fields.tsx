@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { generateCollectionDescription } from '@/actions/ai/generate-descriptions'
+import { post } from '@/lib/api/api-fetch'
 import {
   AiDescriptionField,
   AI_DESCRIPTION_INPUT_CLASS,
@@ -33,7 +33,7 @@ export function CollectionFormFields({ form, idPrefix }: CollectionFormFieldsPro
   const disabledReason = canGenerate ? null : 'Enter a collection name first'
 
   const onGenerate = useCallback(
-    () => generateCollectionDescription({ name: name.trim() }),
+    () => post<{ description: string } | null>('/api/ai/collection-description', { name: name.trim() }),
     [name]
   )
 

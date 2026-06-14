@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
 import { getVerificationToken, deleteVerificationToken, verifyUserEmailAndToken } from '@/lib/db/users'
 import { AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
+import { ResendVerificationButton } from '@/components/auth/resend-verification-button'
 
-import { resendVerificationAction } from '@/actions/auth/verify'
 interface VerifyEmailPageProps {
   searchParams: Promise<{ token?: string }>
 }
@@ -30,7 +30,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     return (
       <ExpiredTokenPage
         noun="verification link"
-        footer={<ResendButton email={record.identifier} />}
+        footer={<ResendVerificationButton email={record.identifier} />}
       />
     )
   }
@@ -64,17 +64,3 @@ function ErrorCard({ title, description, footer }: ErrorCardProps) {
   )
 }
 
-interface ResendButtonProps {
-  email: string
-}
-
-function ResendButton({ email }: ResendButtonProps) {
-  const action = resendVerificationAction.bind(null, email)
-  return (
-    <form action={action}>
-      <button type="submit" className="text-sm text-primary underline-offset-4 hover:underline">
-        Resend verification email
-      </button>
-    </form>
-  )
-}

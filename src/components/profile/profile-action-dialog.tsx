@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import type { ReactNode } from 'react'
+import { del } from '@/lib/api/api-fetch'
 import { BaseProfileDialog } from './base-profile-dialog'
 
 interface ProfileActionDialogProps {
@@ -12,7 +13,8 @@ interface ProfileActionDialogProps {
   triggerText: string
   triggerIcon?: ReactNode
   confirmText: string
-  action: () => Promise<{ status: string; message?: string | null }>
+  /** DELETE endpoint invoked on confirm. */
+  endpoint: string
   successMessage: string
   errorMessage?: string
 }
@@ -23,7 +25,7 @@ export function ProfileActionDialog({
   triggerText,
   triggerIcon,
   confirmText,
-  action,
+  endpoint,
   successMessage,
   errorMessage,
 }: ProfileActionDialogProps) {
@@ -32,7 +34,7 @@ export function ProfileActionDialog({
 
   function handleAction() {
     startTransition(async () => {
-      const result = await action()
+      const result = await del(endpoint)
       if (result.status === 'ok') {
         toast.success(successMessage)
         setOpen(false)

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
-import { globalSearchAction, type SearchResult } from '@/actions/search'
+import { get } from '@/lib/api/api-fetch'
+import type { SearchResult } from '@/types/search'
 import type { LightItem, SearchResultItem, ItemsPage } from '@/types/item'
 import type { SidebarCollection } from '@/types/collection'
 
@@ -85,7 +86,7 @@ export function useGlobalSearch(
   const { data: remoteData, isFetching: remoteLoading } = useQuery({
     queryKey: ['search', debouncedQuery],
     queryFn: async () => {
-      const res = await globalSearchAction({ query: debouncedQuery })
+      const res = await get<SearchResult>(`/api/search?q=${encodeURIComponent(debouncedQuery)}`)
       if (res.status === 'ok' && res.data) return res.data
       return EMPTY_RESULT
     },

@@ -1,6 +1,7 @@
 import { z, ZodType } from 'zod'
 import type { ApiBody } from '@/types/api'
 import { EDITOR_THEMES, APP_THEMES } from '@/types/editor-preferences'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 
 export type ParseResult<T> =
   | { success: true; data: T }
@@ -30,6 +31,14 @@ export const validatePassword = (password: string, confirmPassword?: string): st
   return null
 }
 
+/** `superRefine` callback that validates `passwordField` against `confirmPassword`, attaching any error to `passwordField`. */
+export const passwordMatchRefine =
+  <K extends string>(passwordField: K) =>
+  (data: Record<K, string> & { confirmPassword: string }, ctx: z.RefinementCtx) => {
+    const error = validatePassword(data[passwordField], data.confirmPassword)
+    if (error) ctx.addIssue({ code: 'custom', message: error, path: [passwordField] })
+  }
+
 export const EmailSchema = z.email('Please enter a valid email address.').trim().toLowerCase()
 
 export const collectionFormSchema = z.object({
@@ -48,6 +57,60 @@ export const itemFormBaseSchema = z.object({
 })
 
 export type ItemFormBaseValues = z.infer<typeof itemFormBaseSchema>
+
+export const itemMutationSchema = z.object({
+  title: z.string().trim().min(1, 'Title is required'),
+  description: z.string().trim().optional().nullable().transform((v) => v || null),
+  content: z.string().optional().nullable().transform((v) => v || null),
+  url: z.union([z.string().trim().pipe(z.url('Must be a valid URL')), z.literal('')]).optional().nullable().transform((v) => v || null),
+  language: z.string().trim().optional().nullable().transform((v) => v || null),
+  tags: z.array(z.string().trim().min(1)).default([]),
+  collectionIds: z.array(z.string()).default([]),
+})
+
+export type UpdateItemInput = z.infer<typeof itemMutationSchema>
+
+export const createItemSchema = itemMutationSchema.extend({
+  itemTypeName: z.string().trim().min(1, 'Type is required'),
+  fileUrl: z.string().trim().optional().nullable().transform((v) => v || null),
+  imageWidth: z.number().int().positive().optional().nullable().transform((v) => v ?? null),
+  imageHeight: z.number().int().positive().optional().nullable().transform((v) => v ?? null),
+}).refine((data) => {
+  if (ITEM_TYPES_WITH_URL.has(data.itemTypeName) && !data.url) return false
+  return true
+}, {
+  message: 'URL is required for links',
+  path: ['url'],
+}).refine((data) => {
+  if (ITEM_TYPES_WITH_FILE.has(data.itemTypeName) && !data.fileUrl) return false
+  return true
+}, {
+  message: 'A file must be uploaded for this type',
+  path: ['fileUrl'],
+})
+
+export type CreateItemInput = z.input<typeof createItemSchema>
+
+export const NameSchema = z.string().trim().min(1, 'Name is required.').max(64, 'Name is too long.')
+
+export const passwordFieldSchema = z.string().trim().min(1, 'All fields are required.').max(MAX_PASSWORD_LENGTH, 'Password is too long.')
+
+export const changePasswordSchema = z.object({
+  currentPassword: passwordFieldSchema,
+  newPassword: passwordFieldSchema,
+  confirmPassword: passwordFieldSchema,
+}).superRefine(passwordMatchRefine('newPassword'))
+
+export const setInitialPasswordSchema = z.object({
+  email: EmailSchema,
+  newPassword: passwordFieldSchema,
+  confirmPassword: passwordFieldSchema,
+}).superRefine(passwordMatchRefine('newPassword'))
+
+export const changeCredentialEmailSchema = z.object({
+  email: EmailSchema,
+  password: passwordFieldSchema,
+})
 
 export const editorPreferencesSchema = z.object({
   fontSize: z.number().min(8).max(100),

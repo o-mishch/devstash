@@ -3,15 +3,12 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
-import {
-  cancelSubscriptionAction,
-  createPortalSessionAction,
-  reactivateSubscriptionAction,
-} from '@/actions/billing'
+import { post } from '@/lib/api/api-fetch'
 import { buttonVariants } from '@/components/ui/button'
 import { PendingFormButton } from '@/components/shared/pending-form-button'
-import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
+import { useApiFormAction } from '@/hooks/use-api-form-action'
 import { cn } from '@/lib/utils'
+import type { BillingRedirectData } from '@/types/billing'
 import {
   BILLING_CANCEL_FALLBACK_ERROR,
   BILLING_PORTAL_FALLBACK_ERROR,
@@ -23,9 +20,14 @@ interface BillingPortalFormProps {
 }
 
 function BillingPortalForm({ className }: BillingPortalFormProps) {
-  const { formAction: portalFormAction } = useActionStateWithToast(createPortalSessionAction, {
-    fallbackError: BILLING_PORTAL_FALLBACK_ERROR,
-  })
+  const { formAction: portalFormAction } = useApiFormAction<BillingRedirectData>(
+    () => post<BillingRedirectData>('/api/billing/portal'),
+    {
+      fallbackError: BILLING_PORTAL_FALLBACK_ERROR,
+      // Hard redirect to the Stripe-hosted billing portal (external URL, outside React routing).
+      onSuccess: (result) => { if (result.data?.url) window.location.href = result.data.url },
+    },
+  )
 
   return (
     <form action={portalFormAction}>
@@ -77,11 +79,11 @@ export function BillingActions({
   const router = useRouter()
   const refreshBilling = () => router.refresh()
 
-  const { formAction: cancelFormAction } = useActionStateWithToast(cancelSubscriptionAction, {
+  const { formAction: cancelFormAction } = useApiFormAction(() => post('/api/billing/cancel'), {
     fallbackError: BILLING_CANCEL_FALLBACK_ERROR,
     onSuccess: refreshBilling,
   })
-  const { formAction: reactivateFormAction } = useActionStateWithToast(reactivateSubscriptionAction, {
+  const { formAction: reactivateFormAction } = useApiFormAction(() => post('/api/billing/reactivate'), {
     fallbackError: BILLING_REACTIVATE_FALLBACK_ERROR,
     onSuccess: refreshBilling,
   })

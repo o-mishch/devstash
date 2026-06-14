@@ -1,4 +1,5 @@
-import type { BillingSubscriptionStatus, SubscriptionDisplayState } from '@/types/billing'
+import type Stripe from 'stripe'
+import type { SubscriptionDisplayState } from '@/types/billing'
 
 export type SubscriptionBadgeIcon = 'clock' | 'alert-triangle' | 'check-circle'
 
@@ -16,7 +17,7 @@ export interface SubscriptionCardAccentConfig {
 
 function resolveSubscriptionDisplayState(
   cancelAtPeriodEnd: boolean,
-  stripeStatus: BillingSubscriptionStatus | null,
+  stripeStatus: Stripe.Subscription.Status | null,
 ): SubscriptionDisplayState {
   if (cancelAtPeriodEnd) return 'canceling'
   if (stripeStatus === 'past_due' || stripeStatus === 'unpaid') return 'payment_issue'
@@ -93,7 +94,7 @@ const ACCENT_BY_STATE: Record<SubscriptionDisplayState, SubscriptionCardAccentCo
 
 export function getSubscriptionBadgeConfig(
   cancelAtPeriodEnd: boolean,
-  stripeStatus: BillingSubscriptionStatus | null,
+  stripeStatus: Stripe.Subscription.Status | null,
 ): SubscriptionBadgeConfig {
   const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus)
   return BADGE_BY_STATE[state]
@@ -101,7 +102,7 @@ export function getSubscriptionBadgeConfig(
 
 export function getSubscriptionCardAccent(
   cancelAtPeriodEnd: boolean,
-  stripeStatus: BillingSubscriptionStatus | null,
+  stripeStatus: Stripe.Subscription.Status | null,
 ): SubscriptionCardAccentConfig {
   const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus)
   return ACCENT_BY_STATE[state]
@@ -109,7 +110,7 @@ export function getSubscriptionCardAccent(
 
 export function shouldShowAccessEnds(
   cancelAtPeriodEnd: boolean,
-  stripeStatus: BillingSubscriptionStatus | null,
+  stripeStatus: Stripe.Subscription.Status | null,
 ): boolean {
   const state = resolveSubscriptionDisplayState(cancelAtPeriodEnd, stripeStatus)
   return state === 'canceling' || state === 'payment_issue' || state === 'paused'

@@ -32,6 +32,10 @@ export function put<T = null>(url: string, body?: unknown, options?: Omit<Reques
   return apiRequest<T>('PUT', url, { ...options, body })
 }
 
+export function patch<T = null>(url: string, body?: unknown, options?: Omit<RequestOptions, 'body'>): Promise<ApiBody<T>> {
+  return apiRequest<T>('PATCH', url, { ...options, body })
+}
+
 // `delete` is a reserved word — export as `del`.
 export function del<T = null>(url: string, options?: RequestOptions): Promise<ApiBody<T>> {
   return apiRequest<T>('DELETE', url, options)

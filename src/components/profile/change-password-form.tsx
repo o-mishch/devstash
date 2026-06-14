@@ -13,12 +13,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { changePasswordAction } from '@/actions/profile'
-import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
+import { patch } from '@/lib/api/api-fetch'
+import { useApiFormAction } from '@/hooks/use-api-form-action'
 
 export function ChangePasswordForm() {
   const [open, setOpen] = useState(false)
-  const { formAction, isPending } = useActionStateWithToast<null>(changePasswordAction, {
+  const { formAction, isPending } = useApiFormAction((body) => patch('/api/profile/password', body), {
     onSuccess: () => {
       toast.success('Password updated successfully.')
       setOpen(false)

@@ -16,7 +16,7 @@ import {
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { deleteAccountAction } from '@/actions/profile'
+import { del } from '@/lib/api/api-fetch'
 import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
@@ -34,7 +34,7 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
   function handleDelete() {
     startTransition(async () => {
       setTheme(DEFAULT_EDITOR_PREFERENCES.appTheme)
-      const result = await deleteAccountAction(hasPassword ? password : undefined)
+      const result = await del('/api/profile', { body: { password: hasPassword ? password : undefined } })
       if (result.status !== 'ok') {
         toast.error(result.message ?? 'Failed to delete account. Please try again.')
         return

@@ -61,6 +61,16 @@ see src/lib/utils/constants.ts PRICING
 
 
 
-review @.agents/rules/ai-interaction.md from point of view al-agent (you), 
-in case something (or evem majorly) you would chnage to make it more convinient for you to use that rule, please improve.
+Review @.agents/rules/ai-interaction.md from the point of view of an agent (you), 
+in case something (or even majorly) you would change to make it more convenient for you to use that rule, please improve.
 you can research in context7, or ask any question
+
+
+Review all rulles in .agents/rules/* from the point of view of an agent (you), 
+in case something (or even majorly) you would change to make it more convenient for you to use that rule, please improve.
+
+then properly link rulles in @CLAUDE.md  and @AGENTS.md 
+evaluate is it possible to use pattern like  .agents/rules/* ?
+
+reaseach (context7) how rulles handles by claude code and by antigravity ide, to properly write and congigure the rulles.
+you can ask any question

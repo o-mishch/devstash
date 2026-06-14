@@ -22,6 +22,7 @@ export const ITEM_TYPES_WITH_FILE = new Set(['image', 'file'])
 export const ITEM_TYPES_WITH_IMAGE_GRID = new Set(['image'])
 export const ITEM_TYPES_WITH_FILE_LIST = new Set(['file'])
 export const PRO_ITEM_TYPE_NAMES = new Set(['file', 'image'])
+export const PRO_ITEM_TYPE_NAMES_LABEL = [...PRO_ITEM_TYPE_NAMES].join(' and ')
 
 export const SYSTEM_TYPE_ORDER: string[] = ['snippet', 'prompt', 'command', 'note', 'file', 'image', 'link']
 

@@ -3,8 +3,9 @@
 import { type ReactNode } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { createCollectionAction } from '@/actions/collections'
+import { post } from '@/lib/api/api-fetch'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import type { CollectionWithTypes } from '@/types/collection'
 import { CollectionFormDialog } from './collection-form-dialog'
 
 interface CollectionCreateDialogProps {
@@ -29,7 +30,7 @@ export function CollectionCreateDialog({ trigger, open, onOpenChange }: Collecti
       submitText="Create Collection"
       successMessage="Collection created"
       defaultValues={{ name: '', description: '' }}
-      onSubmitAction={async (data) => createCollectionAction({ name: data.name, description: data.description ?? null })}
+      onSubmitAction={async (data) => post<CollectionWithTypes>('/api/collections', { name: data.name, description: data.description ?? null })}
       trigger={triggerEl}
       open={open}
       onOpenChange={onOpenChange}

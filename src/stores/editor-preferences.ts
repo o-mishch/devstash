@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { EditorPreferences } from '@/types/editor-preferences'
 import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
+import { patch } from '@/lib/api/api-fetch'
 
 interface EditorPreferencesStore extends EditorPreferences {
   isInitialized: boolean
@@ -19,10 +20,8 @@ export const useEditorPreferencesStore = create<EditorPreferencesStore>((set, ge
     set({ [key]: value } as Partial<EditorPreferencesStore>)
 
     try {
-      // Dynamic import to avoid circular dependency with settings action
-      const { updateEditorPreferencesAction } = await import('@/actions/settings')
       const { fontSize, tabSize, wordWrap, minimap, theme, appTheme } = get()
-      const res = await updateEditorPreferencesAction({
+      const res = await patch('/api/profile/editor-preferences', {
         fontSize,
         tabSize,
         wordWrap,

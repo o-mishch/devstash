@@ -1,16 +1,23 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { PasswordFields } from '@/components/auth/password-fields'
-import { registerAction } from '@/actions/auth/register'
-import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
+import { post } from '@/lib/api/api-fetch'
+import { useApiFormAction } from '@/hooks/use-api-form-action'
+import type { AuthRedirectData } from '@/types/auth'
 
 export function RegisterForm() {
-  const { formAction, isPending } = useActionStateWithToast(registerAction, {
-    fallbackError: 'Registration failed.'
-  })
+  const router = useRouter()
+  const { formAction, isPending } = useApiFormAction<AuthRedirectData>(
+    (body) => post<AuthRedirectData>('/api/auth/register', body),
+    {
+      fallbackError: 'Registration failed.',
+      onSuccess: (result) => { if (result.data?.redirectTo) router.push(result.data.redirectTo) },
+    },
+  )
 
   return (
     <>

@@ -1,5 +1,4 @@
-'server-only'
-
+import 'server-only'
 import { ALLOWED_IMAGE_EXTS } from '@/lib/utils/constants'
 import { getFileExtension } from '@/lib/utils/files'
 import { deleteFromS3 } from '@/lib/storage/s3'

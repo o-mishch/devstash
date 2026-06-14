@@ -44,11 +44,16 @@ npm run test:run  # Vitest single run
 
 ## Rules
 
-@.agents/rules/ai-interaction.md
-@.agents/rules/coding-standards.md
-@.agents/rules/security.md
-@.agents/rules/testing.md
-@.agents/rules/api-contract.md
+Project rules live in `.agents/rules/` and are auto-discovered by Claude Code through the `.claude/rules → ../.agents/rules` symlink (mirrors `.claude/skills`):
+
+- **Always loaded:** `ai-interaction.md`, `coding-standards.md` (no `paths:` frontmatter).
+- **Path-scoped** (load only when you touch matching files, via `paths:` frontmatter): `nextjs-architecture.md`, `database.md`, `security.md`, `testing.md`, `api-contract.md`.
+
+Antigravity reads the same files natively via each file's `trigger`/`globs` frontmatter.
+
+**Windows:** symlinks need Developer Mode or Administrator privileges. Without them git materializes `.claude/rules` as a plain file, the rules don't resolve, and Claude Code loads none of them — enable Developer Mode, or replace the symlink with real file copies in `.claude/rules/`. Mac/Linux need nothing extra.
+
+<!-- Do NOT "fix" the Windows note by adding `@.agents/rules/*.md` imports here. Claude Code `@`-imports don't support globs and load each file IN FULL at launch — on Mac/Linux that double-loads the rules already picked up via the .claude/rules symlink AND forces the path-scoped ones to load every session, defeating the whole design. The only Windows-proof alternative that preserves path-scoping is committing real file copies under .claude/rules/ instead of the symlink. Dual frontmatter is intentional: Antigravity uses `trigger`/`globs`, Claude Code uses the mirrored `paths:` field. -->
 
 <!-- stripe-projects-cli managed:claude-md:start -->
 look at AGENTS.md for your rules

@@ -14,7 +14,6 @@ import {
   getExistingSubscriptionMessage,
 } from '@/lib/billing/messages/billing-messages'
 import { CHECKOUT_NOT_CONFIGURED_MESSAGE } from '@/lib/billing/messages/billing-messages.client'
-import type { BillingSubscriptionStatus } from '@/types/billing'
 import { CacheTags } from '@/lib/infra/cache'
 import { createLogger } from '@/lib/infra/logger'
 
@@ -85,7 +84,7 @@ export interface UserBillingState {
   stripeSubscriptionId: string | null
   isPro: boolean
   /** Last known Stripe subscription status — stored by webhooks, used for billing display only. */
-  stripeSubscriptionStatus: BillingSubscriptionStatus | null
+  stripeSubscriptionStatus: Stripe.Subscription.Status | null
   stripeSubscriptionStart: Date | null
   stripeCurrentPeriodEnd: Date | null
   stripeSubscriptionInterval: SubscriptionInterval | null
@@ -106,7 +105,7 @@ export async function getUserBillingState(
     stripeCustomerId: stripeInfo.stripeCustomerId,
     stripeSubscriptionId: stripeInfo.stripeSubscriptionId,
     isPro: stripeInfo.isPro,
-    stripeSubscriptionStatus: stripeInfo.stripeSubscriptionStatus as BillingSubscriptionStatus | null,
+    stripeSubscriptionStatus: stripeInfo.stripeSubscriptionStatus as Stripe.Subscription.Status | null,
     stripeSubscriptionStart: stripeInfo.stripeSubscriptionStart,
     stripeCurrentPeriodEnd: stripeInfo.stripeCurrentPeriodEnd,
     stripeSubscriptionInterval: stripeInfo.stripeSubscriptionInterval,

@@ -1,6 +1,5 @@
 import { AuthFormLayout, AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 import { peekPasswordResetToken } from '@/lib/auth/tokens'
-import { resetPasswordAction } from '@/actions/auth/reset'
 import { ResetPasswordForm } from '@/components/auth/reset-password-form'
 
 interface ResetPasswordPageProps {
@@ -35,11 +34,9 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
     )
   }
 
-  const boundAction = resetPasswordAction.bind(null, token)
-
   return (
     <AuthFormLayout title="Reset password" description="Enter your new password below.">
-      <ResetPasswordForm action={boundAction} />
+      <ResetPasswordForm token={token} />
     </AuthFormLayout>
   )
 }

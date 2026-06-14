@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
-import { deleteCollectionAction } from '@/actions/collections'
+import { del } from '@/lib/api/api-fetch'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import type { CollectionWithTypes } from '@/types/collection'
 
@@ -35,7 +35,7 @@ export function CollectionDeleteDialog({ collection, trigger, open: controlledOp
 
   async function handleDelete() {
     setIsDeleting(true)
-    const result = await deleteCollectionAction(collection.id)
+    const result = await del(`/api/collections/${collection.id}`)
     setIsDeleting(false)
 
     if (result.status === 'ok') {

@@ -8,7 +8,7 @@ import { Edit2, Trash2, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CollectionEditDialog } from '@/components/dashboard/collection-edit-dialog'
 import { CollectionDeleteDialog } from '@/components/dashboard/collection-delete-dialog'
-import { updateCollectionAction } from '@/actions/collections'
+import { patch } from '@/lib/api/api-fetch'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionHeaderActionsProps {
@@ -21,7 +21,7 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   async function handleFavoriteToggle() {
-    const result = await updateCollectionAction(collection.id, { isFavorite: !collection.isFavorite })
+    const result = await patch(`/api/collections/${collection.id}`, { isFavorite: !collection.isFavorite })
     if (result.status === 'ok') {
       router.refresh()
     } else {

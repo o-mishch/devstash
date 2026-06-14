@@ -1,5 +1,4 @@
-'server-only'
-
+import 'server-only'
 import { z } from 'zod'
 import { getRedis } from '@/lib/infra/redis'
 import { deleteFromS3, SIGNED_URL_TTL_SECONDS } from '@/lib/storage/s3'

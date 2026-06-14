@@ -1,13 +1,7 @@
-/** App-owned subscription status labels for billing UI — decoupled from Stripe SDK types. */
-export type BillingSubscriptionStatus =
-  | 'active'
-  | 'canceled'
-  | 'incomplete'
-  | 'incomplete_expired'
-  | 'past_due'
-  | 'paused'
-  | 'trialing'
-  | 'unpaid'
+/** Returned by checkout/portal billing routes — the URL the client redirects to. */
+export interface BillingRedirectData {
+  url: string
+}
 
 export type SubscriptionDisplayState =
   | 'canceling'

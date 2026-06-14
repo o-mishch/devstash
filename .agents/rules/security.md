@@ -1,14 +1,24 @@
 ---
-description: Security rules for DevStash — IDOR prevention, auth patterns, input validation, token handling. Loaded when working with auth, API, actions, or database files.
+trigger: glob
+globs:
+  - src/app/api/**/*
+  - src/actions/**/*
+  - src/auth.ts
+  - src/auth.config.ts
+  - src/lib/auth/**/*
+  - src/lib/infra/rate-limit.ts
+  - src/lib/db/**/*
+  - prisma/**/*
 paths:
-  - "src/app/api/**"
-  - "src/actions/**"
+  - "src/app/api/**/*"
+  - "src/actions/**/*"
   - "src/auth.ts"
   - "src/auth.config.ts"
-  - "src/lib/auth/**"
+  - "src/lib/auth/**/*"
   - "src/lib/infra/rate-limit.ts"
-  - "src/lib/db/**"
-  - "prisma/**"
+  - "src/lib/db/**/*"
+  - "prisma/**/*"
+description: Security rules for DevStash — IDOR prevention, auth patterns, input validation, token handling. Loads when editing API routes, server actions, auth, or database files.
 ---
 
 # Security Rules
@@ -63,5 +73,5 @@ CSRF, session token generation/validation, secure cookie flags, OAuth state vali
 - `prisma.*.findMany({})` with no `userId` filter → IDOR
 - `request.json()` without Zod parse → unvalidated input
 - `Math.random()` for token/secret generation → weak entropy
-- `fetch()` from client components → bypasses `apiFetch` contract
+- `fetch()` from client components → bypasses the api-fetch verb helpers (`get`/`post`/`patch`/`del`) contract
 - Returning stack traces or internal error details to the client

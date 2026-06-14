@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -11,10 +11,12 @@ import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import { signInWithCredentials, signInWithGitHub, signInWithGoogle } from '@/actions/auth/login'
+import { signInWithGitHub, signInWithGoogle } from '@/actions/auth/login'
 import { post } from '@/lib/api/api-fetch'
 import { ProviderIcon } from '@/components/shared/provider-icon'
 import { WarningBanner } from '@/components/shared/warning-banner'
+import type { ApiBody } from '@/types/api'
+import type { SignInData } from '@/types/auth'
 
 interface SignInFormProps {
   successMessage?: string
@@ -41,7 +43,18 @@ function OAuthSubmitButton({ provider, label }: OAuthSubmitButtonProps) {
 
 export function SignInForm({ successMessage }: SignInFormProps) {
   const router = useRouter()
-  const [state, formAction, isPending] = useActionState(signInWithCredentials, null)
+  const [state, setState] = useState<ApiBody<SignInData | null> | null>(null)
+  const [isPending, setIsPending] = useState(false)
+
+  async function formAction(formData: FormData) {
+    setIsPending(true)
+    const result = await post<SignInData>('/api/auth/login', {
+      email: formData.get('email'),
+      password: formData.get('password'),
+    })
+    setIsPending(false)
+    setState(result)
+  }
 
   useEffect(() => {
     if (successMessage) toast.success(successMessage)

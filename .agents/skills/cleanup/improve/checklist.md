@@ -2,6 +2,20 @@
 
 Five priority lenses, applied across the whole changeset (holistic, not per-file). **KISS = simplicity** (fewer concepts, less indirection, easier to read) — not always fewer lines. **DRY = one source of truth** — always scan P2 for duplication.
 
+## Strict rule compliance (hard gate)
+
+Read **every** file under `.agents/rules/*` in full before scanning, then check the reviewed code against each rule. Rules are **musts, not preferences** — any deviation is a finding, and the **default fix is refactoring the code to comply** (never "document the gap"). Rule-compliance findings are reported regardless of user approval. Each lens below traces to the rule files that govern it; cite the exact rule file + section in every finding.
+
+| Lens | Governing rule file(s) |
+| --- | --- |
+| **P1** Architecture & SOLID | `nextjs-architecture.md`, `database.md` |
+| **P2** KISS & DRY | `coding-standards.md` (§ Code Quality, § React, § TypeScript) |
+| **P3** Security & access | `security.md` |
+| **P4** Bugs & logging | `coding-standards.md` (§ Logging, § Errors) |
+| **P5** Convention, hygiene & tests | `coding-standards.md`, `api-contract.md`, `testing.md`, `ai-interaction.md` |
+
+**Severity of a rule violation:** Major when the rule is phrased as **must/never**, or touches security, architecture/boundary, or the API contract; Minor only for soft style points. Note the feature-doc precedence in `coding-standards.md`/`nextjs-architecture.md`: an in-flight migration in `context/current-feature.md` supersedes a standing rule **for files in that feature's scope only** — honour it instead of flagging a false violation.
+
 | Lens | Name | Asks |
 | --- | --- | --- |
 | **P1** | Architecture & SOLID | Is logic in the right layer? Would a redesign remove structure? |

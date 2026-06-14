@@ -9,7 +9,7 @@ import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
-import { deleteItemAction, toggleItemFavoriteAction, toggleItemPinnedAction } from '@/actions/items'
+import { patch, del } from '@/lib/api/api-fetch'
 import { useItemsStore } from '@/stores/items'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
@@ -46,7 +46,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   const { value: isFavorite, toggle: handleFavoriteToggle } = useOptimisticToggle(
     item.isFavorite,
-    (next) => toggleItemFavoriteAction(item.id, next),
+    (next) => patch(`/api/items/${item.id}/favorite`, { isFavorite: next }),
     {
       onSuccess: (next) => {
         updateItem({ ...item, isFavorite: next })
@@ -58,7 +58,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   const { value: isPinned, toggle: handlePinToggle } = useOptimisticToggle(
     item.isPinned,
-    (next) => toggleItemPinnedAction(item.id, next),
+    (next) => patch(`/api/items/${item.id}/pinned`, { isPinned: next }),
     {
       onSuccess: (next) => {
         updateItem({ ...item, isPinned: next })
@@ -81,7 +81,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   async function handleDelete() {
     setIsDeleting(true)
-    const result = await deleteItemAction(item.id)
+    const result = await del(`/api/items/${item.id}`)
     setIsDeleting(false)
 
     if (result.status === 'ok') {

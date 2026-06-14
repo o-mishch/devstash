@@ -1,5 +1,3 @@
-'server-only'
-
 const isDev = process.env.NODE_ENV === 'development'
 
 // ANSI color codes — only applied in dev (terminals support them; log aggregators don't)

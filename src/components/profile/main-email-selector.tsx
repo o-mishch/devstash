@@ -21,7 +21,7 @@ import {
 import { Button, SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { updateMainEmailAction } from '@/actions/profile'
+import { patch } from '@/lib/api/api-fetch'
 import { WarningBanner } from '@/components/shared/warning-banner'
 
 interface MainEmailSelectorProps {
@@ -49,7 +49,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword }
 
   function applyChange(target: string, currentPassword?: string) {
     startTransition(async () => {
-      const result = await updateMainEmailAction(target, currentPassword)
+      const result = await patch('/api/profile/main-email', { email: target, password: currentPassword })
       if (result.status === 'ok') {
         setEmail(target)
         toast.success(hasPassword ? 'Sign-in email updated.' : 'Display email updated.')

@@ -1,9 +1,14 @@
 ---
-description: Vitest testing conventions for DevStash — what to test, mocking patterns, and test file structure. Loaded when working with test files.
+trigger: glob
+globs:
+  - src/**/*.test.ts
+  - src/test/**/*
+  - vitest.config*
 paths:
   - "src/**/*.test.ts"
-  - "src/test/**"
+  - "src/test/**/*"
   - "vitest.config*"
+description: Vitest testing conventions for DevStash — what to test, mocking patterns, and test file structure. Loads when editing test files.
 ---
 
 # Testing
