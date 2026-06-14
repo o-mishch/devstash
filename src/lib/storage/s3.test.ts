@@ -44,7 +44,7 @@ describe('s3 utility', () => {
     process.env.AWS_ACCESS_KEY_ID = 'test-key'
     process.env.AWS_SECRET_ACCESS_KEY = 'test-secret'
     process.env.AWS_S3_BUCKET = 'test-bucket'
-    process.env.AWS_S3_REGION = 'eu-central-1'
+    process.env.AWS_REGION = 'eu-central-1'
   })
 
   describe('uploadToS3', () => {
@@ -78,7 +78,7 @@ describe('s3 utility', () => {
       mockSend.mockRejectedValueOnce(new Error('S3 error'))
       
       await expect(deleteFromS3('test/key.png')).resolves.not.toThrow()
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('delete failed: test/key.png | error="S3 error"'))
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('delete failed | key="test/key.png" err="S3 error"'))
       consoleSpy.mockRestore()
     })
   })
@@ -103,7 +103,7 @@ describe('fileExistsInS3', () => {
       const result = await fileExistsInS3('test/key.png')
 
       expect(result).toBe(false)
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('head failed: test/key.png | error="missing"'))
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('head failed | key="test/key.png" err="missing"'))
       consoleSpy.mockRestore()
     })
   })

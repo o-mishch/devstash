@@ -107,11 +107,8 @@ export interface PresignedPostCredential {
 }
 
 export interface UploadUrlResult {
-  originalKey: string
   original: PresignedPostCredential
-  maxBytes: number
-  thumbKey: string | null
-  thumbUrl: string | null
+  thumb: PresignedPostCredential | null
   expiresAt: string
 }
 

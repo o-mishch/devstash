@@ -3,7 +3,7 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/styles'
-import { post, put, del } from '@/lib/api/api-fetch'
+import { post, del } from '@/lib/api/api-fetch'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { FILE_UPLOAD_CONFIG, IMAGE_THUMBNAIL_MAX_WIDTH, IMAGE_THUMBNAIL_QUALITY } from '@/lib/utils/constants'
@@ -13,7 +13,8 @@ import type { FileItemType } from '@/lib/utils/constants'
 import type { UploadUrlResult } from '@/types/item'
 
 export interface UploadedFile {
-  fileUrl: string
+  /** S3 object key — used as the pending-upload token in createItemAction and for orphan cleanup. */
+  key: string
   fileName: string
   fileSize: number
   imageWidth: number | null
@@ -74,8 +75,6 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     const urlResult = await post<UploadUrlResult>('/api/upload/url', {
       fileName: file.name,
       fileSize: file.size,
-      itemType,
-      hasThumb: thumb !== null,
     })
 
     if (urlResult.status !== 'ok' || !urlResult.data) {
@@ -84,7 +83,8 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       return
     }
 
-    const { originalKey, original, thumbUrl } = urlResult.data
+    const { original, thumb: thumbCredential } = urlResult.data
+    const originalKey = original.fields['key']
 
     // POST multipart to S3 using the presigned policy credential.
     // Per S3 POST spec, policy fields must come before the file.
@@ -94,11 +94,17 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     Object.entries(original.fields).forEach(([k, v]) => formData.append(k, v))
     formData.append('file', file)
 
-    // Thumb uses a presigned PUT URL — Content-Type must match the value baked into the signed URL.
-    const uploads = [
+    // Thumb uses a presigned POST policy — same pattern as the original upload.
+    // S3 enforces both Content-Type and content-length-range via the signed policy.
+    const uploads: Promise<{ status: string }>[] = [
       post(original.url, formData, { onProgress: setProgress }),
-      ...(thumb && thumbUrl ? [put(thumbUrl, thumb.blob, { headers: { 'Content-Type': 'image/webp' } })] : []),
     ]
+    if (thumb && thumbCredential) {
+      const thumbForm = new FormData()
+      Object.entries(thumbCredential.fields).forEach(([k, v]) => thumbForm.append(k, v))
+      thumbForm.append('file', thumb.blob)
+      uploads.push(post(thumbCredential.url, thumbForm))
+    }
 
     const results = await Promise.all(uploads)
     if (results.some((r) => r.status !== 'ok')) {
@@ -111,7 +117,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
 
     setProgress(null)
     onUpload({
-      fileUrl: originalKey,
+      key: originalKey,
       fileName: file.name,
       fileSize: file.size,
       imageWidth: thumb?.width ?? null,

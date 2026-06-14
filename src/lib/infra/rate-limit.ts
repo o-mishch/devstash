@@ -1,3 +1,4 @@
+import 'server-only'
 import { Ratelimit, type Duration } from '@upstash/ratelimit'
 import { headers } from 'next/headers'
 import { getRedis, RATE_LIMIT_NS } from '@/lib/infra/redis'
@@ -23,6 +24,7 @@ export type RateLimitKey =
   | 'stripeSync'
   | 'deleteAccount'
   | 'itemMutation'
+  | 'uploadUrl'
 
 interface LimitConfig {
   attempts: number
@@ -49,6 +51,7 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   stripeSync:           { attempts: 10, window: '1 h'  }, // keyed by userId — post-checkout finalize / manual sync
   deleteAccount:        { attempts: 3,  window: '1 h'  }, // keyed by userId — account deletion
   itemMutation:         { attempts: 120, window: '1 h'  }, // keyed by userId — create/update/delete/toggle items
+  uploadUrl:            { attempts: 30,  window: '1 h'  }, // keyed by userId — presign requests (Pro only)
 }
 
 interface RouteRateLimitDenied {

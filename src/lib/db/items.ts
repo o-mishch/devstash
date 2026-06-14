@@ -631,7 +631,7 @@ async function getSystemItemTypes() {
 async function fetchSidebarItemTypesForUser(userId: string): Promise<SidebarItemType[]> {
   'use cache'
   const cacheKey = CacheTags.sidebarTypes(userId)
-  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheTag(cacheKey, CacheTags.itemGroup(userId), CacheTags.systemItemTypes())
   cacheLife('max')
   const types = await getSystemItemTypes()
   const start = Date.now()

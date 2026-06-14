@@ -20,7 +20,7 @@ declare namespace NodeJS {
     AWS_ACCESS_KEY_ID: string;
     AWS_SECRET_ACCESS_KEY: string;
     AWS_S3_BUCKET: string;
-    AWS_S3_REGION: string;
+    AWS_REGION: string;
 
     STRIPE_WEBHOOK_SECRET: string;
     STRIPE_SECRET_KEY: string;

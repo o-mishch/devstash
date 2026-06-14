@@ -14,6 +14,9 @@ interface CreateItemOptions {
   onRollback?: () => void
   /** Local ObjectURL of the uploaded image thumbnail — serves the temp card preview from memory, no S3 request. */
   localPreviewUrl?: string
+  /** Optimistic display values for file/image cards — not sent to the server (server reads from Redis). */
+  optimisticFileName?: string | null
+  optimisticFileSize?: number | null
 }
 
 export function useCreateItem() {
@@ -34,8 +37,8 @@ export function useCreateItem() {
       contentPreview: payload.content ?? null,
       url: payload.url ?? null,
       tags: payload.tags ?? [],
-      fileName: payload.fileName ?? null,
-      fileSize: payload.fileSize ?? null,
+      fileName: options?.optimisticFileName ?? null,
+      fileSize: options?.optimisticFileSize ?? null,
       isFavorite: false,
       isPinned: false,
     }

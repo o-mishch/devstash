@@ -61,30 +61,33 @@ export const THUMB_MAX_BYTES = 100 * 1024  // 100 KB
 
 **Fix — upload token:**
 
-1. In `/api/upload/url`, generate `uploadToken = crypto.randomUUID()`
-2. Store in Redis hash:
+The S3 object key itself serves as the upload token — it already embeds a `crypto.randomUUID()` (`${userId}/${uuid}.${ext}`) and is cryptographically unguessable by other users.
+
+1. In `/api/upload/url`, build `originalKey = \`${userId}/${crypto.randomUUID()}.${ext}\``
+2. Store in Redis hash keyed by `originalKey`:
    ```
-   HSET pending_uploads {uploadToken} JSON({ key, thumbKey, userId, createdAt })
+   HSET pending_uploads {key} JSON({ result: UploadUrlResult, userId, fileName, fileSize })
    ```
-3. Return `uploadToken` alongside the presigned credential
-4. In `createItemAction`, require `uploadToken` in the schema
-5. Look up the token: must exist, `userId` must match session, `key` must equal `fileUrl`
-6. On success: `HDEL pending_uploads {uploadToken}` — single-use, consumed immediately
-7. On lookup failure (missing, wrong user, key mismatch): return `ApiResponse.FORBIDDEN`
+   `fileName` and `fileSize` are stored here so `createItemAction` can retrieve them from the server rather than trusting the client.
+3. The client receives the key via `original.fields['key']` (already present in the presigned POST credential) — no separate token field is needed in the response
+4. In `createItemAction`, `fileUrl` (= the S3 key) is used as the lookup key
+5. Look up the entry: must exist, `userId` must match session
+6. On success: `HDEL pending_uploads {key}` — single-use, consumed immediately; return `{ fileName, fileSize }` to the action
+7. On lookup failure (missing, wrong user): return `ApiResponse.FORBIDDEN`
+8. On Redis unavailability during write (in the route): return `INTERNAL_ERROR` — upload is blocked; on Redis unavailability during consume (in the action): return `INTERNAL_ERROR`
 
 **Fix — strip irrelevant fields:**
 
-Add cross-field cleanup to `createItemSchema` to zero out fields that don't apply to the item type:
+Add cross-field cleanup in `createItemAction` to zero out fields that don't apply to the item type:
 - `image`/`file` types: null out `content`, `language`, `url`
-- Other types: null out `fileUrl`, `fileName`, `fileSize`, `imageWidth`, `imageHeight`, `uploadToken`
+- Other types: null out `fileUrl`, `imageWidth`, `imageHeight`
 
 **Files:**
-- `src/app/api/upload/url/route.ts` — generate token, write to Redis hash, return in response
-- `src/types/item.ts` — add `uploadToken: string` to `UploadUrlResult`
-- `src/actions/items.ts` — add `uploadToken` to `createItemSchema`; add token lookup + consumption; add cross-type field cleanup
-- `src/components/shared/file-upload.tsx` — pass `uploadToken` from upload result to `onUpload` callback
-- `src/components/items/item-create-dialog.tsx` — include `uploadToken` in `createItemAction` payload
-- `src/lib/utils/validators.ts` — update or remove `isOwnedFileReference` (superseded by token validation)
+- `src/app/api/upload/url/route.ts` — write to Redis hash, `after()` sweep
+- `src/actions/items.ts` — token lookup + consumption via `fileUrl`; cross-type field cleanup; `fileName`/`fileSize` from Redis
+- `src/components/shared/file-upload.tsx` — `UploadedFile.key` (existing field) carries the token; no new fields needed
+- `src/components/items/item-create-dialog.tsx` — passes `uploadedFile.key` as `fileUrl` to `createItemAction`
+- `src/lib/utils/validators.ts` — remove `isOwnedFileReference` (superseded by token validation)
 
 ---
 
@@ -98,10 +101,10 @@ No external scheduler is needed. Every `POST /api/upload/url` response triggers 
 
 **Sweep logic:**
 1. `HGETALL pending_uploads` — fetch all pending entries
-2. For each entry where `createdAt < now - SIGNED_URL_TTL_SECONDS`: the presigned URL has expired, meaning no `createItemAction` can ever consume this token successfully (the client's upload window has closed)
-   - Delete `key` from S3
-   - Delete `thumbKey` from S3 (if present)
-   - `HDEL pending_uploads {uploadToken}`
+2. For each entry where `result.expiresAt < now`: the presigned URL has expired, meaning no `createItemAction` can ever consume this entry successfully (the client's upload window has closed)
+   - Delete `key` (the hash field name) from S3
+   - Delete `thumbKey` from S3 if present (`result.thumb?.fields['key']`)
+   - `HDEL pending_uploads {key}`
 3. Log count of entries swept
 
 **Why there is no race with a concurrent create:**
@@ -111,7 +114,7 @@ The two operations cannot conflict:
 - Upload still in progress (< 900s old) → sweep's age filter skips it
 - Item creation + upload completing in seconds, well inside the 900s window → the sweep never touches active entries
 
-If two concurrent sweeps run, `HDEL` is atomic (second call returns 0) and `deleteFromS3` is idempotent — both are safe.
+If two concurrent sweeps run, `HDEL` is atomic (second call returns 0) and `deleteFromS3` is idempotent on the R2 side — both are safe.
 
 **Files:**
 - `src/app/api/upload/url/route.ts` — add `after(sweepExpiredUploads)` before returning the response; extract `sweepExpiredUploads` to `src/lib/storage/upload-tokens.ts` alongside the token write/consume helpers
@@ -125,31 +128,35 @@ Client                         Server (/api/upload/url)          Redis          
   │                                     │                          │                 │
   │─ POST { fileName, fileSize } ──────>│                          │                 │
   │                                     │ derive itemType, thumb   │                 │
-  │                                     │ generate uploadToken     │                 │
+  │                                     │ key = userId/uuid.ext    │                 │
   │                                     │── HSET pending_uploads ─>│                 │
-  │                                     │   token → { key, thumb,  │                 │
-  │                                     │     userId, createdAt }  │                 │
+  │                                     │   key → { result,        │                 │
+  │                                     │     userId, fileName,    │                 │
+  │                                     │     fileSize }           │                 │
   │                                     │                          │                 │
   │                                     │ after(): sweepExpired()  │                 │
   │                                     │── HGETALL ──────────────>│                 │
-  │                                     │   filter createdAt>900s  │                 │
+  │                                     │   filter result.expiresAt│                 │
   │                                     │── deleteFromS3(stale) ─────────────────────>
   │                                     │── HDEL stale entries ───>│                 │
   │                                     │                          │                 │
-  │<─ { original, thumb, token, ... } ──│                          │                 │
+  │<─ { original, thumb, expiresAt } ───│                          │                 │
+  │   key in original.fields['key']     │                          │                 │
   │                                     │                          │                 │
   │─ POST FormData (original) ─────────────────────────────────────────────────────>│
   │   (original.fields + file)          │               S3 enforces size + type      │
   │─ POST FormData (thumb) ────────────────────────────────────────────────────────>│
   │   (thumb.fields + blob)             │               S3 enforces 100KB + webp     │
   │                                     │                          │                 │
-  │─ createItemAction({ uploadToken })─>│                          │                 │
+  │─ createItemAction({ fileUrl: key })>│                          │                 │
   │                                     │── HGET pending_uploads ─>│                 │
-  │                                     │<─ { key, userId, ... } ──│                 │
-  │                                     │ validate userId + key    │                 │
+  │                                     │<─ { userId, fileName,    │                 │
+  │                                     │    fileSize, ... } ──────│                 │
+  │                                     │ validate userId          │                 │
   │                                     │── HDEL pending_uploads ─>│  (consumed)     │
-  │                                     │ write DB record          │                 │
-  │<─ ApiResponse.OK ───────────────────│                          │                 │
+  │                                     │ write DB (fileName,      │                 │
+  │                                     │   fileSize from Redis)   │                 │
+  │<─ ApiResponse.CREATED ──────────────│                          │                 │
 ```
 
 ---

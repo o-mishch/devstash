@@ -1,7 +1,6 @@
 import 'server-only'
 
-import { revalidateTag } from 'next/cache'
-import { after } from 'next/server'
+import { revalidateTag, updateTag } from 'next/cache'
 import { createLogger } from '@/lib/infra/logger'
 
 const log = createLogger('cache')
@@ -56,17 +55,25 @@ export const CacheTags = {
 
 
 // ─── Invalidation ─────────────────────────────────────────────────────────────
-// Called after mutations in server actions. `revalidateTag` with `'max'` marks
-// entries stale-while-revalidate across all Vercel containers in the region.
+// `updateTag` causes immediate cache expiration and is only available in Server
+// Actions. Route handlers (e.g. Stripe webhooks) must fall back to
+// `revalidateTag(tag, 'max')` inside `after()`, which uses stale-while-revalidate
+// — acceptable for billing data but wrong for mutations the user just performed.
 
 function scheduleTagInvalidation(tag: string): void {
+  // updateTag causes immediate expiry but only works in Server Actions.
+  // Route Handlers fall through to revalidateTag (stale-while-revalidate).
+  // revalidateTag is synchronous (in-memory pendingRevalidatedTags), so no after() needed.
   try {
-    after(() => {
-      revalidateTag(tag, 'max')
-      log.info('cache tag revalidated', { tag })
-    })
+    updateTag(tag)
+    log.info('cache tag updated', { tag })
+    return
+  } catch { /* not a Server Action — fall through to revalidateTag */ }
+
+  try {
+    revalidateTag(tag, 'max')
+    log.info('cache tag revalidated', { tag })
   } catch (err) {
-    // Expected in tests/prerendering — log unexpected failures
     log.warn('Cache invalidation skipped', {}, err instanceof Error ? err.message : String(err))
   }
 }
