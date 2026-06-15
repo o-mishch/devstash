@@ -289,7 +289,7 @@ model Item {
   title       String
   contentType ContentType
   content     String?     @db.Text // For TEXT types
-  fileUrl     String?     // R2 URL for FILE types
+  fileUrl     String?     // S3 key for FILE types
   fileName    String?     // Original filename
   fileSize    Int?        // Size in bytes
   url         String?     // For URL/link types
@@ -454,7 +454,7 @@ flowchart TB
     subgraph Services["External Services"]
         Auth["NextAuth v5"]
         AI["OpenAI GPT-4o Mini"]
-        Storage["Cloudflare R2"]
+        Storage["AWS S3"]
         Payments["Stripe"]
     end
 
@@ -483,7 +483,7 @@ flowchart TB
 | **Language**       | TypeScript                  | Type safety throughout                 |
 | **Database**       | Neon PostgreSQL             | Serverless Postgres                    |
 | **ORM**            | Prisma 7                    | Latest version with full type safety   |
-| **File Storage**   | Cloudflare R2               | S3-compatible object storage           |
+| **File Storage**   | AWS S3                      | Object storage                         |
 | **Authentication** | NextAuth v5                 | Email/password + GitHub OAuth          |
 | **AI**             | OpenAI GPT-4o Mini          | Cost-effective for AI features         |
 | **Styling**        | Tailwind CSS v4 + shadcn/ui | Modern, accessible components          |
@@ -513,7 +513,7 @@ flowchart TB
 - [Tailwind CSS v4](https://tailwindcss.com/docs)
 - [shadcn/ui Components](https://ui.shadcn.com)
 - [Neon PostgreSQL](https://neon.tech/docs)
-- [Cloudflare R2](https://developers.cloudflare.com/r2)
+- [AWS S3](https://docs.aws.amazon.com/s3)
 - [Stripe Subscriptions](https://stripe.com/docs/billing/subscriptions)
 
 ---
@@ -757,7 +757,7 @@ devstash/
 7. [ ] Implement items CRUD
 8. [ ] Implement collections CRUD
 9. [ ] Add search functionality
-10. [ ] Set up Cloudflare R2 for file uploads
+10. [ ] Set up AWS S3 for file uploads
 11. [ ] Integrate Stripe for subscriptions
 12. [ ] Add AI features (OpenAI integration)
 13. [ ] Implement usage limits for free tier

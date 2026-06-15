@@ -8,11 +8,11 @@ function SectionSkeleton({ rows }: { rows: number }) {
       </div>
       <div className="flex flex-col">
         {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="app-row gap-3 px-3 py-1.5">
-            <Skeleton className="size-3.5 shrink-0 rounded-full" />
-            <Skeleton className="h-4 flex-1" />
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-4 w-12" />
+          <div key={i} className="app-row gap-3 px-3 py-1.5 touch:py-3">
+            <Skeleton className="size-3.5 touch:size-5 shrink-0 rounded-full" />
+            <Skeleton className="h-4 touch:h-6 flex-1" />
+            <Skeleton className="hidden sm:block h-4 w-16" />
+            <Skeleton className="hidden md:block h-4 w-12" />
           </div>
         ))}
       </div>

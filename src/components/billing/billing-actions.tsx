@@ -59,6 +59,7 @@ function FreeTierCheckoutActions({
       {showUpgradeCta && (
         <Link
           href="/upgrade"
+          prefetch={false}
           className={cn(buttonVariants({ variant: 'default' }), 'w-full sm:w-auto gap-1.5')}
         >
           Upgrade to Pro

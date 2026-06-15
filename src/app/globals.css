@@ -11,6 +11,16 @@
  * ============================================================ */
 @custom-variant dark (&:is(.dark *));
 
+/* `touch:` upsizes controls/text for finger use on EITHER a coarse pointer (real
+ * phones/tablets) OR any viewport narrower than lg (1024px) — including a resized
+ * desktop window. Desktop (fine pointer AND >=1024px) matches neither, so it stays
+ * pixel-identical. 64rem mirrors Tailwind's lg breakpoint. */
+@custom-variant touch {
+  @media (pointer: coarse), (width < 64rem) {
+    @slot;
+  }
+}
+
 /* ============================================================
  *  THEME TOKENS
  *  Maps Shadcn UI semantic tokens → Tailwind design system.
@@ -336,6 +346,15 @@
     }
     button, [role="button"] {
         cursor: pointer;
+    }
+    /* App-wide mobile text bump: enlarge the rem scale on touch/narrow screens so
+     * every rem-based text size grows together. Reuses the `touch` custom variant
+     * (defined above) so the breakpoint lives in one place. Real desktop (fine
+     * pointer AND >=1024px) keeps the 16px base. */
+    @variant touch {
+        :root {
+            font-size: 110%;
+        }
     }
 }
 

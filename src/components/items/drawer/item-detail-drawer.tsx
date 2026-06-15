@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
+import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
 import { get } from '@/lib/api/api-fetch'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
@@ -158,16 +159,23 @@ export function ItemDetailDrawer({
     maxBoundaryGapVw: 0.1,
   })
 
+  const swipe = useSwipeToDismiss({ onDismiss: () => onOpenChange(false) })
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex flex-col gap-0 p-0"
-        style={{ width, maxWidth: 'none' }}
+        // Mobile: full-width so the content area is maximised and nothing is cut off.
+        // Desktop (sm+): the resizable px width from useResizable.
+        className="flex flex-col gap-0 p-0 max-sm:!w-full"
+        // dragStyle drives the touch swipe-to-dismiss drag (a gesture can't be expressed with
+        // classes); width/maxWidth are the pre-existing resize sizing.
+        style={{ width, maxWidth: 'none', ...swipe.dragStyle }}
         showCloseButton={false}
+        {...swipe.handlers}
       >
         <div
-          className={`absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize transition-colors ${dragging ? 'bg-primary/40' : 'hover:bg-primary/30'}`}
+          className={`absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize transition-colors max-sm:hidden ${dragging ? 'bg-primary/40' : 'hover:bg-primary/30'}`}
           onMouseDown={startResize}
         />
 

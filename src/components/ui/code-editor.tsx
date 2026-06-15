@@ -4,10 +4,11 @@ import { useMemo } from 'react'
 import Editor, { type BeforeMount } from '@monaco-editor/react'
 
 
-import { EditorWindowDots } from '@/components/ui/editor-window-dots'
+import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 import type { editor } from 'monaco-editor'
+import { useIsTouch } from '@/hooks/use-is-touch'
 import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import { monokaiTheme, githubDarkTheme } from '@/lib/editor/monaco-themes'
 
@@ -21,6 +22,7 @@ interface CodeEditorProps {
 
 export function CodeEditor({ value, onChange, language, readOnly = false, className }: CodeEditorProps) {
   const monacoLanguage = language || 'plaintext'
+  const isTouch = useIsTouch()
   const { fontSize, minimap, wordWrap, tabSize, theme } = useEditorPreferencesStore()
 
   const editorOptions = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
@@ -29,6 +31,13 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
     scrollBeyondLastLine: false,
     wordWrap,
     lineNumbers: "on",
+    // Mobile: reclaim the wide line-number gutter (Monaco defaults are tuned for desktop) —
+    // tighter number column, no decoration/folding margins. Desktop keeps the defaults so it
+    // stays pixel-identical (lineNumbersMinChars 5, lineDecorationsWidth 10, folding on).
+    lineNumbersMinChars: isTouch ? 2 : 5,
+    lineDecorationsWidth: isTouch ? 8 : 10,
+    folding: !isTouch,
+    glyphMargin: false,
     padding: { top: 16, bottom: 16 },
     automaticLayout: true,
     scrollbar: {
@@ -43,7 +52,7 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
     renderLineHighlight: "none",
     hideCursorInOverviewRuler: true,
     overviewRulerBorder: false,
-  }), [readOnly, fontSize, minimap, wordWrap, tabSize])
+  }), [readOnly, fontSize, minimap, wordWrap, tabSize, isTouch])
 
   const handleEditorWillMount: BeforeMount = (monaco) => {
     monaco.editor.defineTheme('monokai', monokaiTheme as editor.IStandaloneThemeData)
@@ -51,24 +60,23 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
   }
 
   return (
-    <div className={cn("flex flex-col flex-1 min-h-0 rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}>
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D] shrink-0">
-        <EditorWindowDots />
-        
+    <EditorChromeShell
+      className={cn('bg-[#1E1E1E]', className)}
+      header={
         <div className="flex items-center gap-2">
           {language && (
-            <span className="text-xs text-muted-foreground uppercase font-mono px-2 py-0.5 rounded bg-black/20 text-white/70">
+            <span className="text-xs text-muted-foreground uppercase font-mono px-2 py-0 rounded bg-black/20 text-white/70">
               {language}
             </span>
           )}
           <CopyButton
             value={value}
-            className="text-muted-foreground hover:text-white hover:bg-white/10"
+            className={EDITOR_CHROME_COPY_BUTTON_CLASS}
             title="Copy content"
           />
         </div>
-      </div>
-
+      }
+    >
       <div className="relative w-full flex-1 min-h-0">
         <div className="absolute inset-0">
           <Editor
@@ -82,6 +90,6 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
           />
         </div>
       </div>
-    </div>
+    </EditorChromeShell>
   )
 }

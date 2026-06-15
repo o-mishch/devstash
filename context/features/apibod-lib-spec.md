@@ -43,7 +43,7 @@ The **core `apibod` package** MUST work in all of the following without polyfill
 | Node.js | **Primary** — ≥ 18 LTS (uses standard `JSON`, no Node-only APIs in core) |
 | Browser | Yes — types + guards only; suitable for SPAs, React, Vue, etc. |
 | Bun / Deno | Yes — standard ESM/CJS build |
-| Edge (Cloudflare Workers, Vercel Edge) | Yes — no Node built-ins in core |
+| Edge (Vercel Edge) | Yes — no Node built-ins in core |
 | Next.js (Node / Edge runtimes) | Yes — as a consumer; **not** a peer dependency |
 
 The protocol is **plain JSON over HTTP** (or any transport that carries JSON). It does not depend on Server Actions, the App Router, or React Server Components.

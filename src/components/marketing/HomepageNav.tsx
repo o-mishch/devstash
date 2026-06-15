@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Hexagon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
@@ -35,7 +36,7 @@ export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boo
         <div className="container max-w-6xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2 font-semibold text-lg">
-              <span className="text-blue-400">⬡</span>
+              <Hexagon className="size-5 text-blue-400 fill-blue-400/15" />
               <span>DevStash</span>
             </Link>
 
@@ -56,19 +57,19 @@ export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boo
               {isAuthenticated ? (
                 <Link
                   href="/dashboard"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-3 sm:px-4 h-7 sm:h-8 text-xs sm:text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 h-9 sm:h-8 text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
                 >
                   <span className="hidden sm:inline">Go to Dashboard</span>
                   <span className="sm:hidden">Dashboard</span>
                 </Link>
               ) : (
                 <>
-                  <Link href="/sign-in" className="text-xs sm:text-sm font-medium text-muted-foreground hover:text-foreground px-1 sm:px-2">
+                  <Link href="/sign-in" className="text-sm font-medium text-muted-foreground hover:text-foreground px-2 py-2">
                     Sign In
                   </Link>
                   <Link
                     href="/register"
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-3 sm:px-4 h-7 sm:h-8 text-xs sm:text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 h-9 sm:h-8 text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
                   >
                     Sign Up
                   </Link>
@@ -76,7 +77,9 @@ export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boo
               )}
 
               <Button
-                className="md:hidden p-1.5 -mr-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                variant="ghost"
+                size="icon"
+                className="md:hidden -mr-1 text-muted-foreground hover:text-foreground"
                 onClick={() => setMenuOpen(!menuOpen)}
                 aria-label="Toggle menu"
               >
@@ -86,31 +89,41 @@ export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boo
           </div>
         </div>
 
-        {menuOpen && (
-          <>
-            <div
-              className="md:hidden fixed inset-0 top-16 z-40 bg-black/20 backdrop-blur-sm"
-              onClick={() => setMenuOpen(false)}
-              aria-hidden="true"
-            />
-            <div className="md:hidden relative z-50 bg-background border-b border-border px-4 py-4 flex flex-col gap-4 shadow-lg">
+        {/* Backdrop — fades with the menu */}
+        <div
+          className={cn(
+            'md:hidden fixed inset-0 top-16 z-40 bg-black/30 backdrop-blur-sm transition-opacity duration-300',
+            menuOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+          )}
+          onClick={() => setMenuOpen(false)}
+          aria-hidden="true"
+        />
+        {/* Panel — smooth slide-down via animating grid-template-rows (0fr -> 1fr) */}
+        <div
+          className={cn(
+            'md:hidden relative z-50 grid overflow-hidden border-border bg-background/95 backdrop-blur-md transition-all duration-300 ease-out',
+            menuOpen ? 'grid-rows-[1fr] border-b opacity-100 shadow-lg' : 'grid-rows-[0fr] opacity-0',
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="flex flex-col gap-1 px-4 py-3">
               <a
                 href="#features"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
                 onClick={() => setMenuOpen(false)}
               >
                 Features
               </a>
               <a
                 href="#pricing"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
                 onClick={() => setMenuOpen(false)}
               >
                 Pricing
               </a>
             </div>
-          </>
-        )}
+          </div>
+        </div>
       </nav>
     </>
   );

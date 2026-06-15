@@ -9,7 +9,7 @@ interface MarkdownViewerProps {
 
 export function MarkdownViewer({ value, className }: MarkdownViewerProps) {
   return (
-    <div className={cn("overflow-auto max-h-[400px] p-4", className)}>
+    <div className={cn("h-full overflow-auto p-4", className)}>
       {value ? (
         <div className="prose prose-invert prose-sm max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>

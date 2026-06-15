@@ -382,7 +382,7 @@ describe('DELETE /api/items/[id]', () => {
   it('returns INTERNAL_ERROR when S3 delete fails and keeps the DB row', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1' } })
     mockGetItemById.mockResolvedValue({ ...mockItem, fileUrl: 'user-1/abc.pdf' })
-    mockDeleteStoredFile.mockRejectedValue(new Error('R2 unavailable'))
+    mockDeleteStoredFile.mockRejectedValue(new Error('S3 unavailable'))
     const result = await call(DELETE, 'DELETE', { params: { id: 'item-1' } })
     expect(result.status).toBe('internal_error')
     expect(mockDeleteItem).not.toHaveBeenCalled()

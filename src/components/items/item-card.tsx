@@ -57,7 +57,7 @@ export function ItemCard({ item }: ItemCardProps) {
       </CardContent>
       <CopyButton
         value={copyValue}
-        className="absolute bottom-1 right-1 size-6 opacity-0 transition-opacity group-hover/card:opacity-100"
+        className="absolute bottom-1 right-1 size-6 opacity-0 transition-opacity group-hover/card:opacity-100 touch:opacity-100"
         iconClassName="size-3"
         stopPropagation
         isRestricted={isRestricted}

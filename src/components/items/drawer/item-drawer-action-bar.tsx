@@ -104,7 +104,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         onClick={handleFavoriteToggle}
       >
         <Star className={`size-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
-        {isFavorite ? 'Starred' : 'Favorite'}
+        <span className="hidden sm:inline">{isFavorite ? 'Starred' : 'Favorite'}</span>
       </Button>
       <Button
         variant="ghost"
@@ -114,7 +114,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         onClick={handlePinToggle}
       >
         <Pin className={`size-4 ${isPinned ? 'fill-primary' : ''}`} />
-        Pin
+        <span className="hidden sm:inline">Pin</span>
       </Button>
       <CopyButton value={copyValue} text="Copy" isRestricted={isRestricted} onUpgrade={closeDrawer} />
       <Button variant="ghost" size="sm" onClick={(e) => {
@@ -126,7 +126,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         onEdit()
       }} disabled={isLight}>
         {showEditError ? <XCircle className="size-4 text-destructive" /> : <Pencil className="size-4" />}
-        Edit
+        <span className="hidden sm:inline">Edit</span>
       </Button>
       <Button
         variant="ghost"

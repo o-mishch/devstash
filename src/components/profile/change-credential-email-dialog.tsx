@@ -63,8 +63,8 @@ export function ChangeCredentialEmailDialog({ currentEmail }: ChangeCredentialEm
       title="Change sign-in email"
       description={description}
       triggerText="Change email"
-      triggerIcon={<Pencil className="mr-1 size-3" />}
-      triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+      triggerIcon={<Pencil className="mr-1 size-3 max-sm:size-4" />}
+      triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-foreground max-sm:h-10 max-sm:w-full max-sm:justify-start max-sm:px-3 max-sm:text-sm"
       onOpenChange={handleOpenChange}
     >
       {({ closeDialog }) => (

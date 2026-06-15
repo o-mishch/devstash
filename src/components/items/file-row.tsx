@@ -80,7 +80,7 @@ export function FileRow({ item }: FileRowProps) {
       </p>
       <CopyButton
         value={getDownloadUrl(item.id, true)}
-        className="size-8 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100"
+        className="size-8 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 touch:opacity-100"
         stopPropagation
         isRestricted={isRestricted}
       />

@@ -1,7 +1,7 @@
 'use client'
 
 import { type ReactNode, Suspense } from 'react'
-import { EditorWindowDots } from '@/components/ui/editor-window-dots'
+import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
@@ -16,13 +16,9 @@ interface EditorChromeContainerProps {
 
 function EditorChromeContainer({ minHeight = 'min-h-[120px]', headerRight, children }: EditorChromeContainerProps) {
   return (
-    <div className={`flex flex-col flex-1 min-h-0 rounded-lg border bg-[#1E1E1E] text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset ${minHeight}`}>
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D] shrink-0">
-        <EditorWindowDots />
-        {headerRight}
-      </div>
+    <EditorChromeShell className={`bg-[#1E1E1E] ${minHeight}`} header={headerRight}>
       {children}
-    </div>
+    </EditorChromeShell>
   )
 }
 
@@ -36,7 +32,7 @@ function PlainTextView({ content }: PlainTextViewProps) {
       headerRight={
         <CopyButton
           value={content}
-          className="text-muted-foreground hover:text-white hover:bg-white/10"
+          className={EDITOR_CHROME_COPY_BUTTON_CLASS}
           title="Copy content"
         />
       }
@@ -62,12 +58,12 @@ function MarkdownContentView({ content }: MarkdownContentViewProps) {
       minHeight="min-h-[120px]"
       headerRight={
         <div className="flex items-center gap-1">
-          <span className="text-xs text-white/50 px-2 py-0.5 rounded bg-black/20 uppercase font-mono">
+          <span className="text-xs text-white/50 px-2 py-0 rounded bg-black/20 uppercase font-mono">
             Markdown
           </span>
           <CopyButton
             value={content}
-            className="text-muted-foreground hover:text-white hover:bg-white/10"
+            className={EDITOR_CHROME_COPY_BUTTON_CLASS}
             title="Copy content"
           />
         </div>

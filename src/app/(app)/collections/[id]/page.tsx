@@ -26,7 +26,7 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
     <div className="app-page gap-6 p-6">
       <div className="flex items-center justify-between">
         <nav className="flex items-center gap-1 text-sm">
-          <Link href="/collections" className="text-muted-foreground hover:text-foreground transition-colors">Collections</Link>
+          <Link href="/collections" prefetch={false} className="text-muted-foreground hover:text-foreground transition-colors">Collections</Link>
           <ChevronRight className="size-3.5 text-muted-foreground" />
           <span className="font-medium">{collection.name}</span>
         </nav>

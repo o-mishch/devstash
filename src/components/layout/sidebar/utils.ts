@@ -7,7 +7,9 @@ export function getTypeHref(name: string) {
 
 export function sidebarLinkClass(active: boolean) {
   return cn(
-    'flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition-colors',
+    // touch: py-3 -> ~44px tall tap target, my-1 -> >=8px between adjacent
+    // links (margins on the link itself, independent of the container's space-y).
+    'flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm transition-colors touch:py-3 touch:my-1',
     active ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
   )
 }

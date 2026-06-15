@@ -118,7 +118,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
             </div>
             <CopyButton
               value={getDownloadUrl(item.id, true)}
-              className="size-7 shrink-0 text-white/70 opacity-0 transition-opacity hover:bg-white/20 hover:text-white group-hover/card:opacity-100 z-30"
+              className="size-7 shrink-0 text-white/70 opacity-0 transition-opacity hover:bg-white/20 hover:text-white group-hover/card:opacity-100 touch:opacity-100 z-30"
               iconClassName="size-3.5"
               stopPropagation
               title={isRestricted ? "Pro required" : "Copy download link"}

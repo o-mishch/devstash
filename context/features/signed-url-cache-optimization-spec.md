@@ -11,7 +11,7 @@ Persist the client-side signed URL cache to `localStorage` so it survives page r
 | **Server Redis cache** (`signed-url-server-cache-spec.md`) | Same URL returned for all callers (any browser, any session, any device) within the TTL window — fixes the root cause of signature churn |
 | **Client localStorage cache** (this spec) | Eliminates the API call to `/api/download/[id]/url` entirely on page refresh within the same browser |
 
-With the server-side Redis cache in place, the API call on a page refresh is already cheap (Redis hit, no R2 call). This spec makes it free by skipping the API call altogether for the same browser.
+With the server-side Redis cache in place, the API call on a page refresh is already cheap (Redis hit, no S3 call). This spec makes it free by skipping the API call altogether for the same browser.
 
 **Impact:** Zero API calls for image URLs on page refresh within the signed URL TTL window.
 

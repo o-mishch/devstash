@@ -51,7 +51,7 @@ Maximize efficiency of Neon compute and Vercel resource consumption. The app is 
 | `getProfileData` — wrapped in `withDataCache`, cached per-user | ✓ Optimal |
 | `withDataCache` request cache — React.cache layer correctly deduplicates within a render | ✓ Optimal |
 | `staleTimes: { dynamic: 30, static: 180 }` — configured in `next.config.ts` | ✓ Optimal |
-| `serverExternalPackages` — Prisma/Neon/R2/S3 excluded from bundle | ✓ Optimal |
+| `serverExternalPackages` — Prisma/Neon/S3 excluded from bundle | ✓ Optimal |
 | `unstable_cache(revalidate: false)` — on-demand only, no time-based ISR writes | ✓ Optimal |
 | Redis/Upstash — lazy init, fails open on unavailability | ✓ Optimal |
 | `canCreateCollection` in layout — derived from sidebar data count, no extra DB call | ✓ Optimal |
@@ -380,7 +380,7 @@ Matcher correctly excludes `api`, `_next/static`, `_next/image`, `favicon.ico` t
 - Sliding window rate limiting with appropriate per-action thresholds
 - Used only for rate limiting, not application caching — correct separation
 
-**Cloudflare R2 / Filebase** (`src/lib/filebase.ts`): File uploads are Pro-only, handled server-side. `@aws-sdk/client-s3` is in `serverExternalPackages` — correct.
+**AWS S3** (`src/lib/storage/s3.ts`): File uploads are Pro-only, handled server-side. `@aws-sdk/client-s3` is in `serverExternalPackages` — correct.
 
 **Note for AI feature** (planned in `docs/ai-integration-plan.md`): The `aiRequest` rate limit key documented in the AI plan is not yet added to `src/lib/rate-limit.ts`. Required before shipping AI features.
 

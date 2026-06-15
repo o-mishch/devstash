@@ -96,7 +96,7 @@ function FileSectionContent({ item }: FileSectionProps) {
           )}
           <button
             onClick={handleDownload}
-            className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100"
+            className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100 touch:opacity-100"
             title={isRestricted ? "Pro required" : "Download image"}
           >
             {showError ? <XCircle className="size-4 text-destructive" /> : <Download className="size-4 text-foreground" />}
@@ -142,8 +142,8 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
       onClose={onClose}
       titleArea={
         <>
-          <h2 className="text-base font-semibold leading-snug">{item.title}</h2>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <h2 className="text-base font-semibold leading-snug max-sm:text-sm">{item.title}</h2>
+          <div className="mt-1.5 flex flex-wrap gap-1.5 max-sm:mt-1">
             <Badge variant="secondary" className="capitalize">{itemType.name}</Badge>
             {fullItem?.language && <Badge variant="outline">{fullItem.language}</Badge>}
           </div>
@@ -160,11 +160,15 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
       }
     >
       {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
-        <DrawerSection label="Content" className="flex flex-col flex-1 min-h-0">
+        <DrawerSection label="Content" labelClassName="max-sm:hidden" className="flex flex-col">
           {isLight || contentLoading ? (
-            <Skeleton className="w-full rounded-md flex-1 h-0 min-h-[120px]" />
+            <Skeleton className="w-full rounded-md h-[70vh] min-h-[120px]" />
           ) : (
-            <div className="overflow-hidden rounded-lg flex flex-col flex-1 h-0 min-h-[120px]">
+            // A definite 70vh window with contained overscroll and internal scrolling
+            // (same for code + markdown, all viewports), so the content block is the
+            // dominant area, its bottom stays on-screen, and the drawer scrolls
+            // vertically to reveal the Description section just below it.
+            <div className="overflow-hidden rounded-lg flex flex-col h-[70vh] min-h-[120px] [overscroll-behavior:contain]">
               <ItemContentView
                 itemType={itemType.name}
                 content={fullItem!.content}

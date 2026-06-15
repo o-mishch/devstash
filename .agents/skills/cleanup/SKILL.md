@@ -25,8 +25,8 @@ Triggered when asked to clean up, run housekeeping, find dead code, remove `cons
 
 In Claude Code the two lines below inject their command output automatically. If instead you see the raw command text (another agent/IDE that does not expand inline shell injection), run both commands yourself to get the changeset.
 
-- Modified/added: !`git diff --name-only HEAD 2>/dev/null || echo "none"`
-- Untracked: !`git ls-files --others --exclude-standard 2>/dev/null || echo "none"`
+- Modified/added: !`git diff --name-only HEAD`
+- Untracked: !`git ls-files --others --exclude-standard`
 
 ## Route
 
