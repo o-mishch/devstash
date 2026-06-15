@@ -114,7 +114,7 @@ The two operations cannot conflict:
 - Upload still in progress (< 900s old) → sweep's age filter skips it
 - Item creation + upload completing in seconds, well inside the 900s window → the sweep never touches active entries
 
-If two concurrent sweeps run, `HDEL` is atomic (second call returns 0) and `deleteFromS3` is idempotent on the R2 side — both are safe.
+If two concurrent sweeps run, `HDEL` is atomic (second call returns 0) and `deleteFromS3` is idempotent on the S3 side — both are safe.
 
 **Files:**
 - `src/app/api/upload/url/route.ts` — add `after(sweepExpiredUploads)` before returning the response; extract `sweepExpiredUploads` to `src/lib/storage/upload-tokens.ts` alongside the token write/consume helpers

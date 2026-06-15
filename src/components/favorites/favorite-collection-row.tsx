@@ -20,13 +20,13 @@ export function FavoriteCollectionRow({ collection }: FavoriteCollectionRowProps
       href={href}
       prefetch={false}
       onMouseEnter={() => router.prefetch(href)}
-      className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left"
+      className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left touch:py-3"
     >
       <FolderOpen
-        className="size-3.5 shrink-0"
+        className="size-3.5 shrink-0 touch:size-5"
         style={{ color: dotColor }}
       />
-      <span className="min-w-0 flex-1 truncate text-sm">
+      <span className="min-w-0 flex-1 truncate text-sm touch:text-base">
         {collection.name}
       </span>
       <span

@@ -14,7 +14,7 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, { 
   const item = await getDownloadItem(userId, id)
   if (!item) return ApiResponse.NOT_FOUND('File not found.')
 
-  // Legacy items stored as external URLs predate R2 and cannot be signed
+  // Legacy items stored as external URLs predate S3 migration and cannot be signed
   if (!item.fileUrl || item.fileUrl.startsWith('http')) {
     log.warn('file not downloadable', { userId, itemId: item.id, fileUrl: item.fileUrl ?? null })
     return ApiResponse.NOT_FOUND('File not found.')

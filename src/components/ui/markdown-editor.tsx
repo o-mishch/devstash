@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from 'react'
 import dynamic from 'next/dynamic'
-import { EditorWindowDots } from '@/components/ui/editor-window-dots'
+import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 import { useEditorPreferencesStore } from '@/stores/editor-preferences'
@@ -28,13 +28,10 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
   const bgStyle = { backgroundColor: themeBg }
 
   return (
-    <div 
-      className={cn("flex flex-col flex-1 min-h-0 rounded-lg border text-card-foreground shadow-sm overflow-hidden ring-1 ring-white/10 ring-inset", className)}
+    <EditorChromeShell
+      className={className}
       style={bgStyle}
-    >
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#2D2D2D] shrink-0">
-        <EditorWindowDots />
-
+      header={
         <div className="flex items-center gap-1">
           {!readOnly && (
             <>
@@ -42,7 +39,7 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
                 type="button"
                 onClick={() => setActiveTab('write')}
                 className={cn(
-                  "px-3 py-1 text-xs rounded transition-colors",
+                  "px-3 py-0.5 text-xs rounded transition-colors",
                   activeTab === 'write'
                     ? "bg-white/15 text-white"
                     : "text-white/50 hover:text-white/80"
@@ -54,7 +51,7 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
                 type="button"
                 onClick={() => setActiveTab('preview')}
                 className={cn(
-                  "px-3 py-1 text-xs rounded transition-colors",
+                  "px-3 py-0.5 text-xs rounded transition-colors",
                   activeTab === 'preview'
                     ? "bg-white/15 text-white"
                     : "text-white/50 hover:text-white/80"
@@ -65,18 +62,18 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
             </>
           )}
           {readOnly && (
-            <span className="text-xs text-white/50 px-2 py-0.5 rounded bg-black/20 uppercase font-mono">
+            <span className="text-xs text-white/50 px-2 py-0 rounded bg-black/20 uppercase font-mono">
               Markdown
             </span>
           )}
           <CopyButton
             value={value}
-            className="text-muted-foreground hover:text-white hover:bg-white/10"
+            className={EDITOR_CHROME_COPY_BUTTON_CLASS}
             title="Copy content"
           />
         </div>
-      </div>
-
+      }
+    >
       <div className="relative flex-1 min-h-0">
         {activeTab === 'write' ? (
           <textarea
@@ -104,6 +101,6 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
           </div>
         )}
       </div>
-    </div>
+    </EditorChromeShell>
   )
 }

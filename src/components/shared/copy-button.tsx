@@ -50,7 +50,7 @@ export function CopyButton({
   return (
     <Button size={text ? 'sm' : 'icon'} variant="ghost" className={cn(!text && 'size-7', className)} onClick={handleClick} title={title}>
       {showError ? <XCircle className={cn(iconClassName, 'text-destructive')} /> : isCopied ? <Check className={cn(iconClassName, 'text-green-400')} /> : <Copy className={iconClassName} />}
-      {text}
+      {text ? <span className="hidden sm:inline">{text}</span> : null}
     </Button>
   )
 }

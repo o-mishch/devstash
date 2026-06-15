@@ -23,6 +23,7 @@ interface FieldProps {
   error?: string
   children: ReactNode
   className?: string
+  labelClassName?: string
 }
 
 function DialogField({ name, label, error, children, className }: FieldProps) {
@@ -35,9 +36,9 @@ function DialogField({ name, label, error, children, className }: FieldProps) {
   )
 }
 
-function DrawerField({ label, icon, error, children, className }: FieldProps) {
+function DrawerField({ label, icon, error, children, className, labelClassName }: FieldProps) {
   return (
-    <DrawerSection label={label} icon={icon} className={className}>
+    <DrawerSection label={label} icon={icon} className={className} labelClassName={labelClassName}>
       {children}
       {error && <p className="text-red-500 text-[10px]">{error}</p>}
     </DrawerSection>
@@ -93,7 +94,11 @@ export function ItemFormFields({
           name="content"
           label="Content"
           error={form.formState.errors.content?.message}
-          className={variant === 'drawer' ? 'flex flex-col flex-1 min-h-0 space-y-1.5' : undefined}
+          // Drawer: mirror the read drawer — hide the Content label on mobile and make
+          // the editor a content-dominant 70vh block (all viewports) right under the
+          // action bar, so it's the main area and the drawer scrolls to the rest.
+          labelClassName={variant === 'drawer' ? 'max-sm:hidden' : undefined}
+          className={variant === 'drawer' ? 'flex flex-col space-y-1.5 h-[70vh]' : undefined}
         >
           <Controller
             control={form.control}

@@ -24,32 +24,20 @@ interface EmailRowProps {
 }
 
 function EmailRow({ email, canUnlink }: EmailRowProps) {
-  const removePasswordDialog = canUnlink ? <RemovePasswordDialog /> : null
-
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
-      <div className="flex items-center justify-between w-full sm:w-auto gap-3 min-w-0">
-        <div className="flex items-center gap-2.5 text-sm min-w-0">
-          <Mail className="size-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <span>Email &amp; Password</span>
-            <p className="text-xs text-muted-foreground truncate">{email}</p>
-          </div>
+    <div className="flex flex-col gap-3 rounded-lg border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-2.5 text-sm min-w-0">
+        <Mail className="size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <span>Email &amp; Password</span>
+          <p className="text-xs text-muted-foreground truncate">{email}</p>
         </div>
-        {canUnlink && (
-          <div className="sm:hidden shrink-0">
-            {removePasswordDialog}
-          </div>
-        )}
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-1 shrink-0">
+      {/* Mobile: full-width stacked buttons under a divider; desktop: compact row on the right. */}
+      <div className="flex flex-col gap-1 border-t border-border/60 pt-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-1 sm:border-t-0 sm:pt-0 sm:shrink-0">
         <ChangeCredentialEmailDialog currentEmail={email} />
         <ChangePasswordForm />
-        {canUnlink && (
-          <div className="hidden sm:block">
-            {removePasswordDialog}
-          </div>
-        )}
+        {canUnlink && <RemovePasswordDialog />}
       </div>
     </div>
   )
@@ -79,7 +67,8 @@ function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
           title={`Unlink ${label}`}
           description={`Your ${label} account will be disconnected. You can still sign in with your other linked methods.`}
           triggerText="Unlink"
-          triggerIcon={<Unlink className="mr-1 size-3" />}
+          triggerIcon={<Unlink className="mr-1 size-3 max-sm:size-4" />}
+          triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-destructive max-sm:h-9 max-sm:px-2.5 max-sm:text-sm"
           confirmText={`Unlink ${label}`}
           endpoint={`/api/profile/accounts/${account.id}`}
           successMessage={`${label} account unlinked.`}

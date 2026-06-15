@@ -8,7 +8,7 @@ Developer knowledge hub — one fast, searchable place for snippets, prompts, co
 - **Database**: Neon PostgreSQL + Prisma 7 ORM
 - **Auth**: NextAuth v5 — email/password + GitHub + Google OAuth
 - **Styling**: Tailwind CSS v4 (CSS-based config, no `tailwind.config.ts`) + shadcn/ui
-- **Storage**: Cloudflare R2 (file uploads), Upstash Redis (rate limiting + auth tokens)
+- **Storage**: AWS S3 (file uploads), Upstash Redis (rate limiting + auth tokens)
 - **Email**: Resend SDK
 - **Tests**: Vitest — server actions + utilities only, no component tests
 

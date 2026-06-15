@@ -8,6 +8,7 @@ import { FileRow } from '@/components/items/file-row'
 import { EmptyCard } from '@/components/shared/empty-card'
 import { ItemsTypeSkeleton } from '@/components/shared/skeletons'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
+import { getListGridColumns, getImageGridColumns } from '@/lib/utils/grid-columns'
 import { triggerCreateItemButton } from '@/lib/utils/dom'
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
@@ -16,6 +17,9 @@ interface ItemsGridProps {
   typeName: string
   typeLabel: string
 }
+
+// Stable reference so the grid's ResizeObserver effect doesn't re-subscribe each render.
+const singleColumn = () => 1
 
 export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
   const { items, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteItems({ type: 'type', typeName })
@@ -64,7 +68,7 @@ export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
           hasMore={hasMore}
           isLoading={isFetchingNextPage}
           onLoadMore={onLoadMore}
-          columns={3}
+          getColumns={getImageGridColumns}
           itemHeight={240}
           columnGap={12}
           rowGap={12}
@@ -82,8 +86,9 @@ export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
           hasMore={hasMore}
           isLoading={isFetchingNextPage}
           onLoadMore={onLoadMore}
-          columns={1}
+          getColumns={singleColumn}
           itemHeight={40}
+          touchItemHeight={64}
           columnGap={0}
           rowGap={10}
           renderItem={(item) => <FileRow item={item} />}
@@ -99,8 +104,9 @@ export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
         hasMore={hasMore}
         isLoading={isFetchingNextPage}
         onLoadMore={onLoadMore}
-        columns={3}
+        getColumns={getListGridColumns}
         itemHeight={80}
+        touchItemHeight={96}
         columnGap={16}
         rowGap={14}
         renderItem={(item) => <ItemCard item={item} />}

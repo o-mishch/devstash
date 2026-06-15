@@ -51,7 +51,7 @@ Next.js runs code in two runtimes: the Node.js server and the browser. Server Co
 | `src/lib/infra/` | Redis, Prisma client, rate-limit, resend, cache — Node.js / server env |
 | `src/lib/auth/` | bcrypt, crypto, DB user helpers — requires Node.js and secret env vars |
 | `src/lib/billing/` | Stripe SDK, webhooks, subscription logic — secret keys, Node.js only |
-| `src/lib/storage/` | Cloudflare R2 uploads — secret keys, Node.js only |
+| `src/lib/storage/` | S3 file uploads — secret keys, Node.js only |
 | `src/lib/stripe/` | Stripe SDK client — secret key |
 | `src/lib/app/` | App shell data fetchers (sidebar, action utils) — DB / session access |
 | `src/lib/session.ts` | Session helpers — reads cookies / auth, Node.js only |
@@ -131,7 +131,7 @@ import { getItems } from '@/lib/db/items'
   - `src/lib/infra/` **[S]** — logger, prisma client, redis, rate-limit, cache, resend
   - `src/lib/auth/` **[S]** — auth service, tokens, pending OAuth link
   - `src/lib/billing/` **[S]** — Stripe billing, subscriptions, webhooks, checkout
-  - `src/lib/storage/` **[S]** — file uploads (Cloudflare R2)
+  - `src/lib/storage/` **[S]** — file uploads (AWS S3)
   - `src/lib/stripe/` **[S]** — Stripe SDK client wrappers
   - `src/lib/app/` **[S]** — app shell helpers (sidebar data, action utils)
   - `src/lib/session.ts` **[S]** — session + action auth helpers (root exception)

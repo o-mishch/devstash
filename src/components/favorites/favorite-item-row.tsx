@@ -14,11 +14,11 @@ export function FavoriteItemRow({ item, onOpen }: FavoriteItemRowProps) {
   return (
     <button
       type="button"
-      className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left"
+      className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left touch:py-3"
       onClick={() => onOpen(item)}
     >
-      <ItemTypeIcon typeName={itemType.name} className="size-3.5 shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-sm">
+      <ItemTypeIcon typeName={itemType.name} className="size-3.5 shrink-0 touch:size-5" />
+      <span className="min-w-0 flex-1 truncate text-sm touch:text-base">
         {item.title}
       </span>
       <span

@@ -20,6 +20,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       <div className="flex items-start gap-3">
         <Link
           href="/dashboard"
+          prefetch={false}
           className="mt-0.5 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="size-5" />

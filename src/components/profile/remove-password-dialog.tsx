@@ -37,10 +37,10 @@ export function RemovePasswordDialog() {
       title="Remove password"
       description="Your email & password sign-in will be removed. You can still sign in via your linked accounts."
       triggerText="Unlink"
-      triggerIcon={<Unlink className="mr-1 size-3" />}
+      triggerIcon={<Unlink className="mr-1 size-3 max-sm:size-4" />}
       open={open}
       onOpenChange={handleOpenChange}
-      triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+      triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-destructive max-sm:h-10 max-sm:w-full max-sm:justify-start max-sm:px-3 max-sm:text-sm"
     >
       <div className="space-y-2">
         <Label htmlFor="remove-password">Current password</Label>

@@ -91,13 +91,15 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
               {...form.register('title')}
               placeholder="Item title"
               rows={1}
-              className="-my-1 min-h-0 w-full resize-none border-transparent bg-transparent px-2 py-1 -ml-2 text-base font-semibold leading-snug shadow-none transition-colors hover:bg-accent/50 focus-visible:border-ring focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-ring/50"
+              // touch:min-h-0 cancels the Textarea primitive's touch upsize so this inline
+              // title stays as compact as the read drawer's h2 (no downward shift in edit mode).
+              className="-my-1 min-h-0 touch:min-h-0 w-full resize-none border-transparent bg-transparent px-2 py-1 -ml-2 text-base font-semibold leading-snug shadow-none transition-colors hover:bg-accent/50 focus-visible:border-ring focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-ring/50 max-sm:text-sm"
             />
             {form.formState.errors.title && (
               <p className="absolute -bottom-5 left-0 text-red-500 text-[10px]">{form.formState.errors.title.message}</p>
             )}
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 max-sm:mt-1">
             <Badge variant="secondary" className="capitalize">{typeName}</Badge>
             {showLanguage && (
               <div className="relative">
@@ -110,7 +112,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
                       value={field.value || ''}
                       onChange={field.onChange}
                       placeholder="Language"
-                      className="h-5 w-32 rounded-full border-border px-2.5 py-0.5 text-xs shadow-none transition-colors hover:bg-accent/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="h-5 touch:h-5 w-32 rounded-full border-border px-2.5 py-0.5 text-xs shadow-none transition-colors hover:bg-accent/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     />
                   )}
                 />
@@ -124,11 +126,13 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
       }
       actionArea={
         <>
-          <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
+          {/* touch:h-11 matches the view action bar's height (its Delete button is a 44px
+              touch target), so the content editor sits at the same vertical position in both modes. */}
+          <Button variant="outline" size="sm" onClick={onCancel} disabled={saving} className="touch:h-11">
             <X className="size-4" />
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSubmit} disabled={saving}>
+          <Button size="sm" onClick={handleSubmit} disabled={saving} className="touch:h-11">
             <Check className="size-4" />
             {saving ? 'Saving…' : 'Save'}
           </Button>

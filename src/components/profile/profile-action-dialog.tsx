@@ -17,6 +17,7 @@ interface ProfileActionDialogProps {
   endpoint: string
   successMessage: string
   errorMessage?: string
+  triggerClassName?: string
 }
 
 export function ProfileActionDialog({
@@ -28,6 +29,7 @@ export function ProfileActionDialog({
   endpoint,
   successMessage,
   errorMessage,
+  triggerClassName = "h-7 px-2 text-xs text-muted-foreground hover:text-destructive",
 }: ProfileActionDialogProps) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -52,7 +54,7 @@ export function ProfileActionDialog({
       triggerIcon={triggerIcon}
       open={open}
       onOpenChange={setOpen}
-      triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+      triggerClassName={triggerClassName}
     >
       <DestructiveDialogFooter
         onCancel={() => setOpen(false)}

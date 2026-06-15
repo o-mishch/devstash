@@ -2,15 +2,15 @@
 
 ## Overview
 
-Cache signed R2 download URLs in Redis so that repeated calls to `GET /api/download/[id]/url` within the TTL window return the **same URL** (same HMAC signature). This makes the browser's `Cache-Control: max-age=840, private` header effective — the browser can only use its disk cache when the URL is stable across requests.
+Cache signed S3 download URLs in Redis so that repeated calls to `GET /api/download/[id]/url` within the TTL window return the **same URL** (same HMAC signature). This makes the browser's `Cache-Control: max-age=840, private` header effective — the browser can only use its disk cache when the URL is stable across requests.
 
 **Root cause of the current problem:**
 
 `getSignedDownloadUrl` generates a fresh HMAC signature on every call. The signature includes the timestamp, so every call to `/api/download/[id]/url` returns a different URL for the same object. The browser sees a different URL on every page load and treats every fetch as a cache miss, re-downloading the same bytes even though the object hasn't changed.
 
 ```
-Request 1 → /api/download/[id]/url → https://r2.../key?X-Amz-Signature=abc123&Expires=T+900
-Request 2 → /api/download/[id]/url → https://r2.../key?X-Amz-Signature=xyz789&Expires=T+900
+Request 1 → /api/download/[id]/url → https://s3.../key?X-Amz-Signature=abc123&Expires=T+900
+Request 2 → /api/download/[id]/url → https://s3.../key?X-Amz-Signature=xyz789&Expires=T+900
                                                               ↑ different every time
 ```
 
@@ -61,7 +61,7 @@ signed-url:{userId}:{storageKey}
 ```
 
 - `userId` — scopes to the authenticated user; prevents cross-user URL exposure even if storage keys are guessable
-- `storageKey` — the R2 object key (e.g. `userId/uuid.png`)
+- `storageKey` — the S3 object key (e.g. `userId/uuid.png`)
 - Thumbnail and full-size keys differ naturally since `storageKey` differs between them
 
 ---
@@ -159,7 +159,7 @@ npm run lint
 npm run test:run
 ```
 
-Manual check: open DevTools → Network. Load a page with image items, note the `X-Amz-Signature` value in the signed URL from `/api/download/[id]/url`. Refresh the page — the same signature should appear in the response (Redis cache hit). R2 image responses should show `(from disk cache)` in the browser.
+Manual check: open DevTools → Network. Load a page with image items, note the `X-Amz-Signature` value in the signed URL from `/api/download/[id]/url`. Refresh the page — the same signature should appear in the response (Redis cache hit). S3 image responses should show `(from disk cache)` in the browser.
 
 ---
 

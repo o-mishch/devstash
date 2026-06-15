@@ -26,7 +26,7 @@ export const GET = authenticatedRoute(async (request, context: RouteContext, { u
     return ApiResponse.BAD_REQUEST('Signed URLs are only available for file and image items.')
   }
 
-  // Legacy items stored as external URLs predate R2 and cannot be signed
+  // Legacy items stored as external URLs predate S3 migration and cannot be signed
   if (!item.fileUrl || item.fileUrl.startsWith('http')) {
     log.warn('file not signable', { userId, itemId: item.id, fileUrl: item.fileUrl ?? null })
     return ApiResponse.NOT_FOUND('File not found.')

@@ -117,7 +117,7 @@ async function DashboardLayoutInner({ children }: WithChildren) {
               <Link
                 href="/dashboard"
                 prefetch={false}
-                className="flex shrink-0 items-center justify-center size-9 rounded-lg hover:bg-foreground/5 transition-colors lg:hidden"
+                className="flex shrink-0 items-center justify-center size-9 touch:size-11 rounded-lg hover:bg-foreground/5 transition-colors lg:hidden"
                 aria-label="Home"
               >
                 <Home className="size-5 text-primary" />

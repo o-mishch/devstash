@@ -1,13 +1,19 @@
-// Caches Filebase image bytes keyed by object path (strips S3 signature query params).
-// Signed URLs rotate every 15 min — path stays the same, so rotated URLs still hit the cache.
+// Caches S3 thumbnail bytes keyed by object path (strips presigned query params).
+// Thumbnails (-thumb.webp) are the high-frequency requests — loaded on every grid
+// view. Full-size images are single-use per drawer open and not cached here.
+// Presigned URLs rotate every 15 min — the path stays the same, so a rotated URL
+// still hits the cache. Only intercepts image-destination requests so that file
+// downloads (which embed Content-Disposition in their signed URL) are never affected.
 // Entries older than TTL_MS are evicted lazily on each cache hit check.
 
-const CACHE_NAME = 'filebase-images-v1'
-const FILEBASE_ORIGIN = 'https://s3.filebase.io'
+const CACHE_NAME = 's3-thumbs-v1'
 const TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-function pathKey(url) {
-  const u = new URL(url)
+function parseUrl(url) {
+  try { return new URL(url) } catch { return null }
+}
+
+function pathKey(u) {
   return u.origin + u.pathname
 }
 
@@ -28,11 +34,17 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
-  if (!event.request.url.startsWith(FILEBASE_ORIGIN)) return
+  // Only cache <img>-initiated presigned S3 thumbnail requests.
+  // File downloads embed Content-Disposition in the signed URL — caching by path
+  // only would lose that header if a download is served from cache.
+  if (event.request.destination !== 'image') return
+  const u = parseUrl(event.request.url)
+  if (!u || !u.searchParams.has('X-Amz-Signature')) return
+  if (!u.pathname.endsWith('-thumb.webp')) return
 
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
-      const key = pathKey(event.request.url)
+      const key = pathKey(u)
       const cached = await cache.match(key)
       if (cached && isFresh(cached)) return cached
 

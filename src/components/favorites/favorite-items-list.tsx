@@ -66,14 +66,14 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
               type="button"
               aria-expanded={!isCollapsed}
               onClick={() => toggleGroup(itemType.name)}
-              className="flex w-full items-center gap-2 rounded px-3 py-1 text-left transition-colors hover:bg-foreground/[0.04]"
+              className="flex w-full items-center gap-2 rounded px-3 py-1 text-left transition-colors hover:bg-foreground/[0.04] touch:py-2"
             >
               <ChevronRight
-                className="size-3 shrink-0 text-muted-foreground transition-transform duration-150"
+                className="size-3 shrink-0 text-muted-foreground transition-transform duration-150 touch:size-4"
                 style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }}
               />
-              <ItemTypeIcon typeName={itemType.name} className="size-3 shrink-0" />
-              <span className="font-mono text-xs font-medium capitalize" style={{ color }}>
+              <ItemTypeIcon typeName={itemType.name} className="size-3 shrink-0 touch:size-4" />
+              <span className="font-mono text-xs font-medium capitalize touch:text-sm" style={{ color }}>
                 {itemType.name}
               </span>
               <span
@@ -102,11 +102,11 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
       {isFetchingNextPage && (
         <div className="flex flex-col pl-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-3 py-1.5">
-              <Skeleton className="size-3.5 shrink-0 rounded-full" />
-              <Skeleton className="h-4 flex-1" />
-              <Skeleton className="h-4 w-14" />
-              <Skeleton className="h-4 w-12" />
+            <div key={i} className="flex items-center gap-3 px-3 py-1.5 touch:py-3">
+              <Skeleton className="size-3.5 touch:size-5 shrink-0 rounded-full" />
+              <Skeleton className="h-4 touch:h-6 flex-1" />
+              <Skeleton className="hidden sm:block h-4 w-14" />
+              <Skeleton className="hidden md:block h-4 w-12" />
             </div>
           ))}
         </div>

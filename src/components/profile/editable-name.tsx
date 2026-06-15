@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
+import { useRouter } from 'next/navigation'
 import { Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useApiFormAction } from '@/hooks/use-api-form-action'
@@ -12,19 +13,26 @@ interface EditableNameProps {
 }
 
 export function EditableName({ name }: EditableNameProps) {
+  const router = useRouter()
   const [editing, setEditing] = useState(false)
+  // Committed name shown in view mode. We own this client-side so the new name
+  // appears instantly on save — the server component re-render lags behind the
+  // route handler's stale-while-revalidate cache invalidation.
+  const [displayName, setDisplayName] = useState(name ?? '')
   const [value, setValue] = useState(name ?? '')
 
   const { formAction, isPending } = useApiFormAction((body) => patch('/api/profile/name', body), {
     onSuccess: () => {
+      setDisplayName(value.trim())
       toast.success('Name updated.')
       setEditing(false)
+      router.refresh()
     },
   })
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
-      setValue(name ?? '')
+      setValue(displayName)
       setEditing(false)
     }
   }
@@ -54,7 +62,7 @@ export function EditableName({ name }: EditableNameProps) {
           <button
             type="button"
             disabled={isPending}
-            onClick={() => { setValue(name ?? ''); setEditing(false) }}
+            onClick={() => { setValue(displayName); setEditing(false) }}
             className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
             aria-label="Cancel"
           >
@@ -67,7 +75,7 @@ export function EditableName({ name }: EditableNameProps) {
           onClick={() => setEditing(true)}
           className="group flex min-w-0 items-center gap-1.5 truncate hover:text-foreground/80"
         >
-          <span className="truncate">{name ?? 'No name set'}</span>
+          <span className="truncate">{displayName || 'No name set'}</span>
           <Pencil className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-50" />
         </button>
       )}

@@ -35,7 +35,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
     <div className="app-page gap-5 p-6">
       {/* Header */}
       <div className="flex items-start gap-3">
-        <Link href="/dashboard" className="mt-0.5 text-muted-foreground hover:text-foreground transition-colors">
+        <Link href="/dashboard" prefetch={false} className="mt-0.5 text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="size-5" />
         </Link>
         <div>

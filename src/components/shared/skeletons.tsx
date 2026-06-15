@@ -20,26 +20,15 @@ export function PageHeaderSkeleton({ actionWidthClass = 'w-36' }: PageHeaderSkel
 
 interface CardGridSkeletonProps {
   count?: number
-  columns?: number
-  columnGap?: number
-  rowGap?: number
 }
 
-export function CardGridSkeleton({ count = 6, columns = 3, columnGap = 16, rowGap = 14 }: CardGridSkeletonProps) {
-  const itemHeight = 80
+export function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-        gap: `${rowGap}px ${columnGap}px`,
-        width: '100%',
-        minWidth: 0,
-        paddingTop: '8px',
-      }}
-    >
+    // Columns mirror the loaded list grid (getListGridColumns): 1/2/3 at <640/<1024/>=1024px.
+    // Cell height matches TanStackVirtualGrid: 80px (h-20), 96px (h-24) on touch/narrow.
+    <div className="grid w-full min-w-0 grid-cols-1 gap-x-4 gap-y-3.5 pt-2 sm:grid-cols-2 lg:grid-cols-3">
       {[...Array(count)].map((_, i) => (
-        <div key={i} style={{ height: `${itemHeight}px`, width: '100%' }}>
+        <div key={i} className="h-20 w-full touch:h-24">
           <Card className="relative h-full min-h-20 w-full min-w-0 gap-0 overflow-visible py-0 border-l-2 border-l-border">
             <CardContent className="flex h-full items-center p-4 gap-3">
               <Skeleton className="size-8 shrink-0 rounded-md" />
@@ -88,24 +77,13 @@ export function ImageCardSkeleton() {
 
 interface ImageGridSkeletonProps {
   count?: number
-  columns?: number
-  columnGap?: number
-  rowGap?: number
   itemHeight?: number
 }
 
-export function ImageGridSkeleton({ count = 6, columns = 3, columnGap = 12, rowGap = 12, itemHeight = 240 }: ImageGridSkeletonProps) {
+export function ImageGridSkeleton({ count = 6, itemHeight = 240 }: ImageGridSkeletonProps) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-        gap: `${rowGap}px ${columnGap}px`,
-        width: '100%',
-        minWidth: 0,
-        paddingTop: '8px',
-      }}
-    >
+    // Columns mirror the loaded image grid (getImageGridColumns): 2/3 at <1024/>=1024px.
+    <div className="grid w-full min-w-0 grid-cols-2 gap-3 pt-2 lg:grid-cols-3">
       {[...Array(count)].map((_, i) => (
         <div key={i} style={{ height: `${itemHeight}px`, width: '100%', minWidth: 0 }}>
           <ImageCardSkeleton />
@@ -117,7 +95,7 @@ export function ImageGridSkeleton({ count = 6, columns = 3, columnGap = 12, rowG
 
 export function FileRowSkeleton() {
   return (
-    <div className="w-full flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 h-10">
+    <div className="w-full flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 h-10 touch:h-16">
       <Skeleton className="size-5 shrink-0 rounded" />
       <div className="min-w-0 flex-1">
         <Skeleton className="h-4 w-2/3" />
@@ -141,7 +119,7 @@ export function FileListSkeleton({ count = 6, rowGap = 10 }: FileListSkeletonPro
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: `${rowGap}px`, width: '100%', minWidth: 0, paddingTop: '8px' }}>
       {[...Array(count)].map((_, i) => (
-        <div key={i} style={{ height: '40px', width: '100%' }}>
+        <div key={i} className="h-10 w-full touch:h-16">
           <FileRowSkeleton />
         </div>
       ))}

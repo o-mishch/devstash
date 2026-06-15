@@ -65,7 +65,7 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
   const showList = open && (hasQuery || hasResults)
 
   return (
-    <div ref={containerRef} className="relative mx-auto min-w-0 flex-1 max-w-sm">
+    <div ref={containerRef} className="relative mx-auto min-w-0 flex-1 max-w-none lg:max-w-sm">
     <Command shouldFilter={false} className="overflow-visible bg-transparent">
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -75,13 +75,13 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
           onValueChange={setQuery}
           onFocus={() => setOpen(true)}
           placeholder="Search items..."
-          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 pl-8"
+          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 pl-8 touch:h-11"
           suppressHydrationWarning
         />
         {query.length > 0 ? (
           <button
             type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center size-6 text-muted-foreground hover:text-foreground rounded-sm hover:bg-muted"
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center size-6 touch:size-9 text-muted-foreground hover:text-foreground rounded-sm hover:bg-muted"
             onClick={(e) => {
               e.stopPropagation()
               setQuery('')
@@ -100,7 +100,7 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
       </div>
 
       {showList && (
-        <div className="absolute top-full left-0 z-50 mt-1.5 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 slide-in-from-top-2">
+        <div className="z-50 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 lg:absolute lg:top-full lg:left-0 lg:mt-1.5 lg:w-full max-lg:fixed max-lg:inset-x-2 max-lg:top-16">
           <CommandList className="max-h-[60vh] overflow-y-auto p-1">
             {loading && (
               <CommandPrimitive.Loading>

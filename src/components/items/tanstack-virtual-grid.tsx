@@ -2,7 +2,8 @@
 'use no memo'
 
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useRef, useMemo, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
+import { useVirtualContainer } from '@/hooks/use-virtual-container'
 
 interface TanStackVirtualGridProps<T> {
   items: T[]
@@ -10,11 +11,15 @@ interface TanStackVirtualGridProps<T> {
   isLoading: boolean
   onLoadMore: () => void
   renderItem: (item: T, index: number) => ReactNode
-  columns?: number
+  // Responsive column count derived from the measured container width.
+  getColumns: (width: number) => number
   gap?: number
   columnGap?: number
   rowGap?: number
   itemHeight?: number
+  // Taller row height used when `touch:` upsizing is active, so the larger cards
+  // (bigger text + padding) still fit their virtualized slot. Defaults to itemHeight.
+  touchItemHeight?: number
 }
 
 // 'use no memo': useVirtualizer returns unstable refs that React Compiler must not memoize
@@ -24,32 +29,39 @@ export function TanStackVirtualGrid<T>({
   isLoading,
   onLoadMore,
   renderItem,
-  columns = 4,
+  getColumns,
   gap = 12,
   columnGap = gap,
   rowGap = gap,
   itemHeight = 300,
+  touchItemHeight,
 }: TanStackVirtualGridProps<T>) {
-  const parentRef = useRef<HTMLDivElement>(null)
+  // Measures the scroll container width and resolves it to a responsive column
+  // count (1 full-width row per item on mobile, more columns as width grows).
+  const { containerRef, cols, isTouch } = useVirtualContainer(getColumns)
 
-  // Group items into rows
+  // On touch/narrow screens the upsized cards are taller — keep the virtualizer's
+  // row height in sync so rows don't overlap.
+  const effectiveItemHeight = isTouch && touchItemHeight ? touchItemHeight : itemHeight
+
+  // Group items into rows of `cols`
   const rows = useMemo(() => {
-    const result: (T | 'load-more')[][] = []
-    for (let i = 0; i < items.length; i += columns) {
-      result.push(items.slice(i, i + columns))
-    }
+    const result: (T | 'load-more')[][] = Array.from(
+      { length: Math.ceil(items.length / cols) },
+      (_, row) => items.slice(row * cols, row * cols + cols),
+    )
     if (hasMore) {
       result.push(['load-more'] as unknown as (T | 'load-more')[])
     }
     return result
-  }, [items, columns, hasMore])
+  }, [items, cols, hasMore])
 
   // Virtualize rows, not individual items
-  const rowHeight = itemHeight + rowGap
+  const rowHeight = effectiveItemHeight + rowGap
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => containerRef.current,
     estimateSize: () => rowHeight,
     overscan: 2,
   })
@@ -58,7 +70,7 @@ export function TanStackVirtualGrid<T>({
   const totalSize = virtualizer.getTotalSize()
 
   return (
-    <div ref={parentRef} className="h-full w-full overflow-y-auto overflow-x-hidden" style={{ paddingTop: '8px' }}>
+    <div ref={containerRef} className="h-full w-full overflow-y-auto overflow-x-hidden" style={{ paddingTop: '8px' }}>
       <div
         style={{
           height: `${totalSize}px`,
@@ -73,7 +85,7 @@ export function TanStackVirtualGrid<T>({
               key={virtualRow.key}
               style={{
                 display: 'grid',
-                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                 columnGap: `${columnGap}px`,
                 rowGap: `${rowGap}px`,
                 position: 'absolute',
@@ -85,7 +97,7 @@ export function TanStackVirtualGrid<T>({
               }}
             >
               {row.map((item, colIndex) => {
-                const itemIndex = virtualRow.index * columns + colIndex
+                const itemIndex = virtualRow.index * cols + colIndex
                 if (item === 'load-more') {
                   return (
                     <button
@@ -99,7 +111,7 @@ export function TanStackVirtualGrid<T>({
                   )
                 }
                 return (
-                  <div key={itemIndex} style={{ height: `${itemHeight}px` }}>
+                  <div key={itemIndex} style={{ height: `${effectiveItemHeight}px` }}>
                     {renderItem(item, itemIndex)}
                   </div>
                 )

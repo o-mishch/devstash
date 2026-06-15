@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate, cn } from '@/lib/utils'
 import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
@@ -19,15 +20,16 @@ interface DrawerContainerProps {
 function DrawerContainer({ header, actions, children, style }: DrawerContainerProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden" style={style}>
-      <div className="flex shrink-0 items-start gap-3 px-5 pt-5 pb-4">{header}</div>
+      <div className="flex shrink-0 items-start gap-3 px-5 pt-5 pb-4 max-sm:px-4 max-sm:pt-2.5 max-sm:pb-1.5">{header}</div>
       <Separator className="shrink-0" />
-      <div className="flex shrink-0 items-center gap-0.5 px-2 py-1.5">{actions}</div>
+      <div className="flex shrink-0 items-center gap-0.5 px-2 py-1.5 max-sm:py-0.5">{actions}</div>
       <Separator className="shrink-0" />
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* ScrollArea (not native overflow) so the drawer scrollbar matches the sidebar's. */}
+      <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
         <div className="flex flex-col gap-5 px-5 py-4 min-h-full">
           {children}
         </div>
-      </div>
+      </ScrollArea>
     </div>
   )
 }
@@ -46,7 +48,7 @@ export function DrawerLayout({ itemType, onClose, titleArea, actionArea, childre
       style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
       header={
         <>
-          <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0" iconClassName="size-4.5" />
+          <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0 max-sm:size-8" iconClassName="size-4.5" />
           <div className="min-w-0 flex-1">{titleArea}</div>
           <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted" onClick={onClose} title="Close">
             <X className="size-4" />
@@ -63,11 +65,12 @@ export function DrawerLayout({ itemType, onClose, titleArea, actionArea, childre
 interface SectionLabelProps {
   children: ReactNode
   icon?: ReactNode
+  className?: string
 }
 
-function SectionLabel({ children, icon }: SectionLabelProps) {
+function SectionLabel({ children, icon, className }: SectionLabelProps) {
   return (
-    <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+    <p className={cn("mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide", className)}>
       {icon}
       {children}
     </p>
@@ -78,13 +81,14 @@ interface DrawerSectionProps {
   label: ReactNode
   icon?: ReactNode
   className?: string
+  labelClassName?: string
   children: ReactNode
 }
 
-export function DrawerSection({ label, icon, className, children }: DrawerSectionProps) {
+export function DrawerSection({ label, icon, className, labelClassName, children }: DrawerSectionProps) {
   return (
     <section className={cn("shrink-0", className)}>
-      <SectionLabel icon={icon}>{label}</SectionLabel>
+      <SectionLabel icon={icon} className={labelClassName}>{label}</SectionLabel>
       {children}
     </section>
   )
@@ -185,9 +189,9 @@ export function DrawerSkeleton() {
         </div>
       }
     >
-      <section className="flex flex-col flex-1 min-h-0">
+      <section className="flex flex-col">
         <Skeleton className="mb-2 h-3 w-16 shrink-0" />
-        <Skeleton className="flex-1 min-h-[120px] w-full rounded-md" />
+        <Skeleton className="h-[70vh] min-h-[120px] w-full rounded-md" />
       </section>
       <section className="shrink-0">
         <Skeleton className="mb-2 h-3 w-24" />

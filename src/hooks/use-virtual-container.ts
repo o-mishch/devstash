@@ -1,11 +1,15 @@
 'use client'
 
 import { type RefObject, useRef, useEffect, useState, useCallback } from 'react'
+import { useIsTouch } from './use-is-touch'
 
 interface VirtualContainerResult {
   containerRef: RefObject<HTMLDivElement | null>
   cols: number
   containerWidth: number
+  // True when the `touch:` variant is active (coarse pointer OR viewport < lg), so
+  // callers can feed the virtualizer a taller row height that matches the upsized cards.
+  isTouch: boolean
   getScrollElement: () => HTMLElement | null
 }
 
@@ -13,6 +17,7 @@ export function useVirtualContainer(getColumns?: (width: number) => number): Vir
   const containerRef = useRef<HTMLDivElement>(null)
   const [cols, setCols] = useState(() => getColumns?.(Infinity) ?? 1)
   const [containerWidth, setContainerWidth] = useState(0)
+  const isTouch = useIsTouch()
 
   const measure = useCallback(() => {
     const el = containerRef.current
@@ -21,9 +26,14 @@ export function useVirtualContainer(getColumns?: (width: number) => number): Vir
     if (!scrollEl) return
 
     if (getColumns) {
-      const width = el.getBoundingClientRect().width
-      setCols(getColumns(width))
-      setContainerWidth(width)
+      // Columns are driven by the *viewport* width (not the container width) so the
+      // breakpoints match Tailwind's sm/lg semantics and the desktop layout stays
+      // pixel-identical: the sidebar narrows the container below the lg threshold,
+      // but the viewport is still >=1024px so the grid keeps its desktop column count.
+      // documentElement.clientWidth mirrors how CSS media queries measure (excludes scrollbar).
+      const viewportWidth = el.ownerDocument.documentElement.clientWidth
+      setCols(getColumns(viewportWidth))
+      setContainerWidth(el.getBoundingClientRect().width)
     }
   }, [getColumns])
 
@@ -59,5 +69,5 @@ export function useVirtualContainer(getColumns?: (width: number) => number): Vir
     []
   )
 
-  return { containerRef, cols, containerWidth, getScrollElement }
+  return { containerRef, cols, containerWidth, isTouch, getScrollElement }
 }

@@ -57,7 +57,7 @@ export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuPro
 
       <DropdownMenu>
         <DropdownMenuTrigger render={
-          <Button size="icon" className="size-9 lg:hidden" aria-label="Create new">
+          <Button size="icon" className="size-9 touch:size-11 lg:hidden" aria-label="Create new">
             <Plus className="size-4" />
           </Button>
         } />
