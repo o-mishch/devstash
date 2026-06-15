@@ -23,6 +23,7 @@ vi.mock('@/lib/infra/cache', () => ({
 vi.mock('@/lib/emails/verification', () => ({
   emailVerificationEnabled: vi.fn(),
   sendRegistrationVerification: vi.fn(),
+  resendVerification: vi.fn(),
 }))
 
 vi.mock('@/lib/emails/password-reset', () => ({
@@ -44,7 +45,7 @@ import {
 
 import { getUserAuthInfoByEmail, getUserAuthMethods, createUser, updateUserPassword } from '@/lib/db/users'
 import { invalidateProfileCache } from '@/lib/infra/cache'
-import { emailVerificationEnabled, sendRegistrationVerification } from '@/lib/emails/verification'
+import { emailVerificationEnabled, sendRegistrationVerification, resendVerification } from '@/lib/emails/verification'
 import { sendPasswordResetRequest } from '@/lib/emails/password-reset'
 import { consumePasswordResetToken } from '@/lib/auth/tokens'
 
@@ -60,6 +61,7 @@ const mockInvalidateProfileCache = invalidateProfileCache as ReturnType<typeof v
 
 const mockEmailVerificationEnabled = emailVerificationEnabled as ReturnType<typeof vi.fn>
 const mockSendRegistrationVerification = sendRegistrationVerification as ReturnType<typeof vi.fn>
+const mockResendVerification = resendVerification as ReturnType<typeof vi.fn>
 const mockSendPasswordResetRequest = sendPasswordResetRequest as ReturnType<typeof vi.fn>
 const mockConsumePasswordResetToken = consumePasswordResetToken as ReturnType<typeof vi.fn>
 
@@ -114,13 +116,24 @@ describe('auth-service', () => {
   })
 
   describe('registerUser', () => {
-    it('skips if user already exists', async () => {
+    it('mirrors success without sending when the existing email is already verified', async () => {
       mockEmailVerificationEnabled.mockReturnValue(true)
-      mockGetUserAuthInfoByEmail.mockResolvedValue({ id: '1' })
-      
+      mockGetUserAuthInfoByEmail.mockResolvedValue({ id: '1', emailVerified: new Date() })
+
       const result = await registerUser('Test', 'test@example.com', 'pass')
-      expect(result).toBe('sent') // Silently mirrors success
+      expect(result).toBe('sent') // Silently mirrors success — no enumeration leak
       expect(mockCreateUser).not.toHaveBeenCalled()
+      expect(mockResendVerification).not.toHaveBeenCalled()
+    })
+
+    it('resends the verification link when the existing email is still unverified', async () => {
+      mockEmailVerificationEnabled.mockReturnValue(true)
+      mockGetUserAuthInfoByEmail.mockResolvedValue({ id: '1', emailVerified: null })
+
+      const result = await registerUser('Test', 'test@example.com', 'pass')
+      expect(result).toBe('sent') // Same response either way — no enumeration leak
+      expect(mockCreateUser).not.toHaveBeenCalled()
+      expect(mockResendVerification).toHaveBeenCalledWith('test@example.com')
     })
 
     it('creates user and sends verification if enabled', async () => {

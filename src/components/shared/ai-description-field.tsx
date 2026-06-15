@@ -12,9 +12,6 @@ import {
 } from '@/components/shared/ai-field-chrome'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
-import type { ApiBody } from '@/types/api'
-
-type DescriptionResponse = ApiBody<{ description: string } | null>
 
 interface AiDescriptionResult {
   description: string
@@ -23,7 +20,7 @@ interface AiDescriptionResult {
 interface AiDescriptionFieldProps {
   canGenerate: boolean
   disabledReason: string | null
-  onGenerate: () => Promise<DescriptionResponse>
+  onGenerate: () => Promise<AiDescriptionResult>
   onApply: (description: string) => void
   actionClassName: string
   children: ReactNode

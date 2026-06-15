@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCachedSession, type SessionContext } from '@/lib/session'
 import { logger } from '@/lib/infra/pino'
 import { ApiResponse } from '@/lib/api/api-response'
+import { ErrorMessage } from '@/lib/api/error-messages'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import type { ApiStatus, ApiBody } from '@/types/api'
 
@@ -59,7 +60,7 @@ export function apiRedirect(url: string | URL, status?: number): Response {
 export function authenticatedRoute(handler: AuthenticatedHandler) {
   return apiRoute(async (request, context) => {
     const session = await getCachedSession()
-    if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+    if (!session?.user?.id) return ApiResponse.UNAUTHORIZED(ErrorMessage.NOT_AUTHENTICATED)
     const isPro = await getCachedVerifiedProAccess(session.user.id)
     return handler(request, context, { userId: session.user.id, isPro })
   })

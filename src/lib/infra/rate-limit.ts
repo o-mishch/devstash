@@ -54,11 +54,6 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   uploadUrl:            { attempts: 30,  window: '1 h'  }, // keyed by userId — presign requests (Pro only)
 }
 
-interface RouteRateLimitDenied {
-  body: ApiBody<null>
-  headers: Record<string, string>
-}
-
 // Lazily initialized so missing env vars fail open rather than crashing at import
 let limiters: Record<RateLimitKey, Ratelimit> | null = null
 
@@ -100,33 +95,27 @@ async function check(key: RateLimitKey, identifier: string) {
   }
 }
 
-function deniedMessage(retryAfter: number): string {
+export function deniedMessage(retryAfter: number): string {
   const minutes = Math.ceil(retryAfter / 60)
   return minutes > 1
     ? `Too many attempts. Please try again in ${minutes} minutes.`
     : 'Too many attempts. Please try again in a moment.'
 }
 
-export function getRequestIP(request: Request): string {
-  return request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? '127.0.0.1'
+export interface RateLimitResult {
+  success: boolean
+  retryAfter: number
+}
+
+/** Envelope-free rate-limit check for the oRPC layer (see `src/lib/api/middleware.ts`). */
+export async function checkRateLimit(key: RateLimitKey, identifier: string): Promise<RateLimitResult> {
+  const { success, retryAfter } = await check(key, identifier)
+  return { success, retryAfter }
 }
 
 export async function getActionIP(): Promise<string> {
   const h = await headers()
   return h.get('x-forwarded-for')?.split(',')[0].trim() ?? '127.0.0.1'
-}
-
-/** For use inside `apiRoute` handlers. Returns the denied response or null if allowed. */
-export async function rateLimitRoute(
-  key: RateLimitKey,
-  identifier: string
-): Promise<RouteRateLimitDenied | null> {
-  const result = await check(key, identifier)
-  if (result.success) return null
-  return {
-    body: ApiResponse.TOO_MANY_REQUESTS(deniedMessage(result.retryAfter)),
-    headers: { 'Retry-After': String(result.retryAfter) },
-  }
 }
 
 /** For use inside Server Actions. Returns the denied ApiBody or null if allowed. */
@@ -147,17 +136,6 @@ export async function withRateLimit<T>(
   fn: () => Promise<ApiBody<T>>
 ): Promise<ApiBody<T>> {
   const rl = await rateLimitAction(key, await getActionIP())
-  if (rl) return rl as ApiBody<T>
-  return fn()
-}
-
-/** Higher-order action wrapper for userId-keyed rate limits (settings, billing). */
-export async function withUserRateLimit<T>(
-  key: RateLimitKey,
-  userId: string,
-  fn: () => Promise<ApiBody<T>>
-): Promise<ApiBody<T>> {
-  const rl = await rateLimitAction(key, userId)
   if (rl) return rl as ApiBody<T>
   return fn()
 }

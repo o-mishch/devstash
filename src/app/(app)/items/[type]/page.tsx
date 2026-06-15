@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
-import { getItemTypeBySlug } from '@/lib/db/items'
-import { getTypeLabel } from '@/lib/utils'
+import { getTypeLabel, slugToTypeName } from '@/lib/utils'
+import { SYSTEM_TYPE_ORDER } from '@/lib/utils/constants'
 import { ItemsGrid } from '@/components/items/items-grid'
 
 interface ItemsPageProps {
@@ -10,12 +10,14 @@ interface ItemsPageProps {
 export default async function ItemsPage({ params }: ItemsPageProps) {
   const { type: typeSlug } = await params
 
-  const itemType = await getItemTypeBySlug(typeSlug)
-  if (!itemType) notFound()
+  // Item types are a fixed, immutable system set — validate the slug against the
+  // constant instead of a per-navigation DB lookup.
+  const typeName = slugToTypeName(typeSlug)
+  if (!SYSTEM_TYPE_ORDER.includes(typeName)) notFound()
 
   return (
     <div className="app-page gap-6 p-6">
-      <ItemsGrid typeName={itemType.name} typeLabel={getTypeLabel(itemType.name)} />
+      <ItemsGrid typeName={typeName} typeLabel={getTypeLabel(typeName)} />
     </div>
   )
 }

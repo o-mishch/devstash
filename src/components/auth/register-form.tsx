@@ -5,24 +5,28 @@ import { useRouter } from 'next/navigation'
 import { SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { PasswordFields } from '@/components/auth/password-fields'
-import { post } from '@/lib/api/api-fetch'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
-import type { AuthRedirectData } from '@/types/auth'
+import { orpcClient } from '@/lib/api/client'
+import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
 
 export function RegisterForm() {
   const router = useRouter()
-  const { formAction, isPending } = useApiFormAction<AuthRedirectData>(
-    (body) => post<AuthRedirectData>('/api/auth/register', body),
+  const { formAction, isPending } = useOrpcFormAction(
+    (body) => orpcClient.auth.register({
+      name: body.name,
+      email: body.email,
+      password: body.password,
+      confirmPassword: body.confirmPassword,
+    }),
     {
       fallbackError: 'Registration failed.',
-      onSuccess: (result) => { if (result.data?.redirectTo) router.push(result.data.redirectTo) },
+      onSuccess: (data) => { router.push(data.redirectTo) },
     },
   )
 
   return (
     <>
       <form action={formAction} className="flex flex-col gap-4">
-        <AuthFormField id="name" name="name" label="Name" type="text" placeholder="Brad Traversy" autoComplete="name" required />
+        <AuthFormField id="name" name="name" label="Name" type="text" placeholder="User Display Name" autoComplete="name" required />
         <AuthFormField id="email" name="email" label="Email" type="email" placeholder="you@example.com" autoComplete="email" required />
         <PasswordFields />
 

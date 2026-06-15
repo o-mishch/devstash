@@ -33,12 +33,14 @@ type ItemWithRelations = Prisma.ItemGetPayload<{ select: typeof ITEM_SELECT }>
 
 const LIGHT_ITEM_TYPE_SELECT = { select: { name: true } } as const
 
-/** Mixed pages (recent, pinned, favorites, collections with text): tags, no text/file fields — text fetched separately as LEFT(col,150) */
+/** Mixed pages (recent, pinned, favorites): tags + url + file fields (so the drawer has a file item's name/size regardless of source list), no text — text fetched separately as LEFT(col,150) */
 export const LIGHT_ITEM_SELECT = {
   id: true,
   title: true,
   createdAt: true,
   url: true,
+  fileName: true,
+  fileSize: true,
   isFavorite: true,
   isPinned: true,
   itemType: LIGHT_ITEM_TYPE_SELECT,
@@ -57,25 +59,12 @@ export const LIGHT_ITEM_SELECT_FILE = {
   itemType: LIGHT_ITEM_TYPE_SELECT,
 } as const
 
-/** Image type page: minimal — title + status + tags, no text or file fields */
+/** Image type page: title + status + tags + fileName (drawer uses it as the <img> alt), no text or fileSize */
 export const LIGHT_ITEM_SELECT_IMAGE = {
   id: true,
   title: true,
   createdAt: true,
-  isFavorite: true,
-  isPinned: true,
-  itemType: LIGHT_ITEM_TYPE_SELECT,
-  tags: { select: { name: true } },
-} as const
-
-/** Collection pages: need file fields for FileRow + tags for ItemCard — text fetched separately as LEFT(col,150) */
-export const LIGHT_ITEM_SELECT_COLLECTION = {
-  id: true,
-  title: true,
-  createdAt: true,
-  url: true,
   fileName: true,
-  fileSize: true,
   isFavorite: true,
   isPinned: true,
   itemType: LIGHT_ITEM_TYPE_SELECT,
@@ -482,10 +471,9 @@ async function runPaginatedQuery(
   cursor?: string,
   orderBy: Prisma.ItemOrderByWithRelationInput[] = DEFAULT_ITEMS_ORDER,
   typeName?: string,
-  selectOverride?: typeof LIGHT_ITEM_SELECT_COLLECTION,
 ): Promise<ItemsPage> {
   const take = ITEMS_PAGE_SIZE + 1
-  const select = selectOverride ?? resolveLightItemSelect(typeName)
+  const select = resolveLightItemSelect(typeName)
   const needsTextPreviews = typeName !== 'image' && typeName !== 'file'
   const query = { where, orderBy, take, select }
 
@@ -551,17 +539,11 @@ async function fetchItemsByCollectionFirstPage(userId: string, collectionId: str
   const cacheKey = CacheTags.itemsByCollection(userId, collectionId)
   cacheTag(cacheKey, CacheTags.itemGroup(userId))
   cacheLife('max')
-  return runPaginatedQuery(
-    { userId, collections: { some: { collectionId } } },
-    undefined,
-    undefined,
-    undefined,
-    LIGHT_ITEM_SELECT_COLLECTION,
-  )
+  return runPaginatedQuery({ userId, collections: { some: { collectionId } } })
 }
 
 export async function getItemsByCollectionPage(userId: string, collectionId: string, cursor?: string): Promise<ItemsPage> {
-  if (cursor) return runPaginatedQuery({ userId, collections: { some: { collectionId } } }, cursor, undefined, undefined, LIGHT_ITEM_SELECT_COLLECTION)
+  if (cursor) return runPaginatedQuery({ userId, collections: { some: { collectionId } } }, cursor)
   return fetchItemsByCollectionFirstPage(userId, collectionId)
 }
 
@@ -593,25 +575,6 @@ async function fetchFavoriteItemsFirstPage(userId: string): Promise<ItemsPage> {
 export async function getFavoriteItemsPage(userId: string, cursor?: string): Promise<ItemsPage> {
   if (cursor) return runPaginatedQuery({ userId, isFavorite: true }, cursor, [{ updatedAt: 'desc' }, { id: 'desc' }])
   return fetchFavoriteItemsFirstPage(userId)
-}
-
-export async function getItemTypeBySlug(slug: string) {
-  'use cache'
-  const cacheKey = CacheTags.itemTypeBySlug(slug)
-  cacheTag(cacheKey)
-  cacheLife('days')
-  const start = Date.now()
-  const candidates = [slug]
-  if (slug.endsWith('ies')) candidates.push(slug.slice(0, -3) + 'y')
-  if (slug.endsWith('es')) candidates.push(slug.slice(0, -2))
-  if (slug.endsWith('s')) candidates.push(slug.slice(0, -1))
-
-  const result = await prisma.itemType.findFirst({
-    where: { name: { in: candidates } },
-    select: { id: true, name: true, icon: true, color: true, isSystem: true },
-  })
-  log.info({ slug, cacheKey, found: Boolean(result), duration: Date.now() - start }, 'DB: getItemTypeBySlug')
-  return result
 }
 
 async function getSystemItemTypes() {

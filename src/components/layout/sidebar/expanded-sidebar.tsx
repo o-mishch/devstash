@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type CSSProperties } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
   Star,
@@ -34,7 +34,6 @@ interface ExpandedSidebarProps {
 
 export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
   const { openPrompt } = useUpgradePromptStore()
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
@@ -63,8 +62,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
               <Link
                 href="/dashboard"
                 onClick={onClose}
-                prefetch={false}
-                onMouseEnter={() => router.prefetch('/dashboard')}
+                prefetch={true}
                 className={sidebarLinkClass(pathname === '/dashboard')}
               >
                 <Home className="size-4 shrink-0" />
@@ -73,8 +71,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
               <Link
                 href="/collections"
                 onClick={onClose}
-                prefetch={false}
-                onMouseEnter={() => router.prefetch('/collections')}
+                prefetch={true}
                 className={sidebarLinkClass(pathname === '/collections')}
               >
                 <Archive className="size-4 shrink-0" />
@@ -100,13 +97,9 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
               <Link
                 key={t.id}
                 href={typeHref}
-                prefetch={false}
-                onMouseEnter={() => {
-                  // Only prefetch if: (1) not current page, (2) not Pro-gated OR user is Pro
-                  if (!isCurrentPage && (!isProGated || isPro)) {
-                    router.prefetch(typeHref)
-                  }
-                }}
+                // Eager-prefetch the route's RSC payload so navigation is instant; skip
+                // Pro-gated routes for non-Pro users (they can't open them anyway).
+                prefetch={!isProGated || isPro}
                 onClick={(e) => {
                   const blocked = handleProGatedTypeClick(e, {
                     isPro: isPro,
@@ -148,9 +141,8 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                     <Link
                       key={c.id}
                       href={`/collections/${c.id}`}
-                      prefetch={false}
+                      prefetch={true}
                       onClick={onClose}
-                      onMouseEnter={() => router.prefetch(`/collections/${c.id}`)}
                       className={sidebarLinkClass(pathname === `/collections/${c.id}`)}
                     >
                       <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
@@ -172,9 +164,8 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                     <Link
                       key={c.id}
                       href={`/collections/${c.id}`}
-                      prefetch={false}
+                      prefetch={true}
                       onClick={onClose}
-                      onMouseEnter={() => router.prefetch(`/collections/${c.id}`)}
                       className={sidebarLinkClass(pathname === `/collections/${c.id}`)}
                     >
                       <span
@@ -193,7 +184,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
               <Link
                 href="/collections"
                 onClick={onClose}
-                prefetch={false}
+                prefetch={true}
                 className="text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
               >
                 View all collections →

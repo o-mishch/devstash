@@ -1,14 +1,19 @@
 import { useState, useCallback, startTransition } from 'react'
 import { toast } from 'sonner'
-import type { ApiBody } from '@/types/api'
 
+interface UseOptimisticToggleOptions {
+  onSuccess?: (next: boolean) => void
+  errorLabel?: string
+}
+
+/**
+ * Optimistic boolean toggle. `action` resolves on success and throws on failure
+ * (transport-agnostic — the oRPC client throws an `ORPCError`, whose `message` is surfaced).
+ */
 export function useOptimisticToggle(
   initial: boolean,
-  action: (next: boolean) => Promise<ApiBody<unknown>>,
-  options?: {
-    onSuccess?: (next: boolean) => void
-    errorLabel?: string
-  }
+  action: (next: boolean) => Promise<unknown>,
+  options?: UseOptimisticToggleOptions,
 ) {
   const [optimistic, setOptimistic] = useState<boolean | null>(null)
   const value = optimistic ?? initial
@@ -18,12 +23,12 @@ export function useOptimisticToggle(
     setOptimistic(next)
 
     startTransition(async () => {
-      const result = await action(next)
-      if (result.status === 'ok') {
+      try {
+        await action(next)
         options?.onSuccess?.(next)
-      } else {
+      } catch (error) {
         setOptimistic(!next)
-        toast.error(result.message ?? options?.errorLabel ?? 'Action failed')
+        toast.error(error instanceof Error ? error.message : (options?.errorLabel ?? 'Action failed'))
       }
     })
   }, [value, action, options])

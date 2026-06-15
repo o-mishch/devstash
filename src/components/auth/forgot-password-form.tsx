@@ -4,16 +4,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { buttonVariants, SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import { post } from '@/lib/api/api-fetch'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
-import type { AuthRedirectData } from '@/types/auth'
+import { orpcClient } from '@/lib/api/client'
+import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
 
 export function ForgotPasswordForm() {
   const router = useRouter()
-  const { formAction, isPending } = useApiFormAction<AuthRedirectData>(
-    (body) => post<AuthRedirectData>('/api/auth/forgot-password', body),
+  const { formAction, isPending } = useOrpcFormAction(
+    (body) => orpcClient.auth.forgotPassword({ email: body.email }),
     {
-      onSuccess: (result) => { if (result.data?.redirectTo) router.push(result.data.redirectTo) },
+      onSuccess: (data) => { router.push(data.redirectTo) },
     },
   )
 

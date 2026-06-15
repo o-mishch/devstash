@@ -3,12 +3,11 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
-import { post } from '@/lib/api/api-fetch'
+import { orpcClient } from '@/lib/api/client'
 import { buttonVariants } from '@/components/ui/button'
 import { PendingFormButton } from '@/components/shared/pending-form-button'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
 import { cn } from '@/lib/utils'
-import type { BillingRedirectData } from '@/types/billing'
 import {
   BILLING_CANCEL_FALLBACK_ERROR,
   BILLING_PORTAL_FALLBACK_ERROR,
@@ -20,12 +19,12 @@ interface BillingPortalFormProps {
 }
 
 function BillingPortalForm({ className }: BillingPortalFormProps) {
-  const { formAction: portalFormAction } = useApiFormAction<BillingRedirectData>(
-    () => post<BillingRedirectData>('/api/billing/portal'),
+  const { formAction: portalFormAction } = useOrpcFormAction(
+    () => orpcClient.billing.createPortal(),
     {
       fallbackError: BILLING_PORTAL_FALLBACK_ERROR,
       // Hard redirect to the Stripe-hosted billing portal (external URL, outside React routing).
-      onSuccess: (result) => { if (result.data?.url) window.location.href = result.data.url },
+      onSuccess: (data) => { window.location.href = data.url },
     },
   )
 
@@ -80,11 +79,11 @@ export function BillingActions({
   const router = useRouter()
   const refreshBilling = () => router.refresh()
 
-  const { formAction: cancelFormAction } = useApiFormAction(() => post('/api/billing/cancel'), {
+  const { formAction: cancelFormAction } = useOrpcFormAction(() => orpcClient.billing.cancelSubscription(), {
     fallbackError: BILLING_CANCEL_FALLBACK_ERROR,
     onSuccess: refreshBilling,
   })
-  const { formAction: reactivateFormAction } = useApiFormAction(() => post('/api/billing/reactivate'), {
+  const { formAction: reactivateFormAction } = useOrpcFormAction(() => orpcClient.billing.reactivateSubscription(), {
     fallbackError: BILLING_REACTIVATE_FALLBACK_ERROR,
     onSuccess: refreshBilling,
   })

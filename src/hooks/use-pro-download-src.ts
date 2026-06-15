@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { get } from '@/lib/api/api-fetch'
+import { safe } from '@orpc/client'
+import { orpcClient } from '@/lib/api/client'
 import { getDownloadUrl } from '@/lib/utils/url'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import type { SignedDownloadUrlResponse } from '@/types/item'
@@ -53,12 +54,11 @@ async function resolveSignedDownloadUrl(itemId: string, preview = false): Promis
   const inFlight = inFlightRequests.get(key)
   if (inFlight) return inFlight
 
-  const apiUrl = preview ? `/api/download/${itemId}/url?preview=1` : `/api/download/${itemId}/url`
-  const request = get<SignedDownloadUrlResponse>(apiUrl).then((result) => {
+  const request = safe(orpcClient.download.getSignedUrl({ id: itemId, preview })).then(({ error, data }) => {
     inFlightRequests.delete(key)
-    if (result.status === 'ok' && result.data?.url) {
-      setCachedSignedDownloadUrl(itemId, result.data, preview)
-      return result.data.url
+    if (!error) {
+      setCachedSignedDownloadUrl(itemId, data, preview)
+      return data.url
     }
     return null
   })

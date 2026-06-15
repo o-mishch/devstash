@@ -2,7 +2,8 @@
 
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
-import { post } from '@/lib/api/api-fetch'
+import { safe } from '@orpc/client'
+import { orpcClient } from '@/lib/api/client'
 import { useItemsStore } from '@/stores/items'
 import { seedPreviewCache, clearSignedDownloadUrlCache } from '@/hooks/use-pro-download-src'
 import { usePrependItem, useReplaceItem, useRemoveItem } from '@/hooks/use-infinite-items'
@@ -49,24 +50,22 @@ export function useCreateItem() {
     if (options?.localPreviewUrl) seedPreviewCache(tempId, options.localPreviewUrl)
 
     // The caller resolves here — dialog closes while the API call continues in background.
-    void post<LightItem>('/api/items', payload).then((result) => {
-      if (result.status === 'created' || result.status === 'ok') {
-        if (result.data) {
-          if (options?.localPreviewUrl) {
-            // Transfer the blob URL to the real ID before swapping the card — zero-flicker handoff.
-            clearSignedDownloadUrlCache(tempId)
-            seedPreviewCache(result.data.id, options.localPreviewUrl)
-          }
-          replaceItem(tempId, result.data)
-          removeItem(tempId)
-          updateItem(result.data)
+    void safe(orpcClient.items.create(payload)).then(({ error, data }) => {
+      if (!error) {
+        if (options?.localPreviewUrl) {
+          // Transfer the blob URL to the real ID before swapping the card — zero-flicker handoff.
+          clearSignedDownloadUrlCache(tempId)
+          seedPreviewCache(data.id, options.localPreviewUrl)
         }
+        replaceItem(tempId, data)
+        removeItem(tempId)
+        updateItem(data)
         void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
       } else {
         tqRemoveItem(tempId)
         removeItem(tempId)
         options?.onRollback?.()
-        toast.error(result.message ?? 'Failed to create item')
+        toast.error(error.message || 'Failed to create item')
       }
     })
   }

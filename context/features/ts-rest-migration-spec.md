@@ -1,5 +1,7 @@
 # ts-rest Migration
 
+> ⛔ **SUPERSEDED (2026-06-15)** by `context/features/orpc-migration-spec.md`. A pre-implementation spike found ts-rest is dormant: last stable `3.52.1` (Zod 3 only); Zod 4 / Standard Schema support stuck in `3.53.0-rc.1`, frozen ~12 months, never shipped stable. Migration re-targeted to **oRPC** (maintained, Zod-4-native). This file is kept for the codebase inventory and reasoning only — do not implement against it.
+
 > **Status:** Specification — not yet implemented
 > **Scope:** Replace the custom `ApiResponse` / `ApiBody` envelope + `apiRoute` wrappers + axios `api-fetch` verb helpers with [ts-rest](https://ts-rest.com) contract-first, runtime-validated, end-to-end-typed REST.
 > **Response model:** **ts-rest native** — HTTP status code is the discriminator; the payload moves from `data` into ts-rest's `body`; `message` lives inside per-status error schemas. The uniform `{ status, data, message }` envelope is dropped.

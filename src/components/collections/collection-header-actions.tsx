@@ -8,7 +8,8 @@ import { Edit2, Trash2, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CollectionEditDialog } from '@/components/dashboard/collection-edit-dialog'
 import { CollectionDeleteDialog } from '@/components/dashboard/collection-delete-dialog'
-import { patch } from '@/lib/api/api-fetch'
+import { orpcClient } from '@/lib/api/client'
+import { safe } from '@orpc/client'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionHeaderActionsProps {
@@ -21,8 +22,8 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   async function handleFavoriteToggle() {
-    const result = await patch(`/api/collections/${collection.id}`, { isFavorite: !collection.isFavorite })
-    if (result.status === 'ok') {
+    const { error } = await safe(orpcClient.collections.update({ id: collection.id, isFavorite: !collection.isFavorite }))
+    if (!error) {
       router.refresh()
     } else {
       toast.error('Failed to toggle favorite')

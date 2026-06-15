@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { SubmitButton } from '@/components/ui/button'
 import { PasswordFields } from '@/components/auth/password-fields'
-import { post } from '@/lib/api/api-fetch'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { orpcClient } from '@/lib/api/client'
+import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
 
 interface ResetPasswordFormProps {
   token: string
@@ -13,8 +13,8 @@ interface ResetPasswordFormProps {
 
 export function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const router = useRouter()
-  const { formAction, isPending } = useApiFormAction(
-    (body) => post('/api/auth/reset-password', { ...body, token }),
+  const { formAction, isPending } = useOrpcFormAction(
+    (body) => orpcClient.auth.resetPassword({ token, password: body.password, confirmPassword: body.confirmPassword }),
     {
       onSuccess: () => {
         toast.success('Password updated! You can now sign in.')

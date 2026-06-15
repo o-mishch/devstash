@@ -5,14 +5,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
-import { get } from '@/lib/api/api-fetch'
+import { safe } from '@orpc/client'
+import { orpc, orpcClient } from '@/lib/api/client'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT } from '@/lib/utils/constants'
 import type { LightItem, FullItem, ItemDetails, ItemContent } from '@/types/item'
 import { isFullItem } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDetailDrawerProps {
   item: LightItem | FullItem | null
@@ -54,8 +54,9 @@ function ItemDetailDrawerInner({
   const { data: fetchedDetails } = useQuery({
     queryKey: ['item', itemId, 'details'],
     queryFn: async () => {
-      const result = await get<ItemDetails>(`/api/items/${itemId}/details`)
-      return result.status === 'ok' ? result.data ?? null : null
+      if (itemId === null) return null
+      const { error, data } = await safe(orpcClient.items.getDetails({ id: itemId }))
+      return error ? null : data
     },
     enabled: needsDetailsFetch && itemId !== null,
   })
@@ -63,18 +64,15 @@ function ItemDetailDrawerInner({
   const { data: fetchedContent } = useQuery({
     queryKey: ['item', itemId, 'content'],
     queryFn: async () => {
-      const result = await get<ItemContent>(`/api/items/${itemId}/content`)
-      return result.status === 'ok' ? result.data ?? null : null
+      if (itemId === null) return null
+      const { error, data } = await safe(orpcClient.items.getContent({ id: itemId }))
+      return error ? null : data
     },
     enabled: needsContent && itemId !== null,
   })
 
   const { data: collections = [] } = useQuery({
-    queryKey: ['collections', 'picker'],
-    queryFn: async () => {
-      const result = await get<CollectionWithTypes[]>('/api/collections')
-      return result.status === 'ok' ? result.data ?? [] : []
-    },
+    ...orpc.collections.list.queryOptions(),
     enabled: editingItemId !== null,
   })
 

@@ -49,7 +49,6 @@ export const CacheTags = {
   stripeSubscription: (subscriptionId: string) => `stripe:subscription:${subscriptionId}`,
 
   // System / shared tags (no userId — system-wide)
-  itemTypeBySlug: (slug: string) => `item-type:slug:${slug}`,
   systemItemTypes: () => `system-item-types`,
 } as const
 

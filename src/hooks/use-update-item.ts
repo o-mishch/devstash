@@ -2,11 +2,12 @@
 
 import { toast } from 'sonner'
 import { useQueryClient, type InfiniteData } from '@tanstack/react-query'
-import { patch } from '@/lib/api/api-fetch'
+import { safe } from '@orpc/client'
+import { orpcClient } from '@/lib/api/client'
 import { mapItemInPages } from '@/hooks/use-infinite-items'
 import { useItemsStore } from '@/stores/items'
 import type { UpdateItemInput } from '@/lib/utils/validators'
-import type { ItemsPage, LightItem, FullItem, ItemSavedDetails } from '@/types/item'
+import type { ItemsPage, LightItem, FullItem } from '@/types/item'
 
 type UpdateItemPayload = UpdateItemInput
 
@@ -36,15 +37,15 @@ export function useUpdateItem() {
     )
     updateItem({ ...currentItem, ...optimisticPatch })
 
-    const result = await patch<ItemSavedDetails>(`/api/items/${currentItem.id}`, payload)
+    const { error, data } = await safe(orpcClient.items.update({ id: currentItem.id, ...payload }))
 
-    if (result.status === 'ok' && result.data) {
+    if (!error) {
       const serverPatch: Partial<LightItem> = {
-        url: result.data.url,
-        tags: result.data.tags,
-        isFavorite: result.data.isFavorite,
-        isPinned: result.data.isPinned,
-        descriptionPreview: result.data.description ? result.data.description.slice(0, 150) : null,
+        url: data.url,
+        tags: data.tags,
+        isFavorite: data.isFavorite,
+        isPinned: data.isPinned,
+        descriptionPreview: data.description ? data.description.slice(0, 150) : null,
       }
       queryClient.setQueriesData<InfiniteData<ItemsPage>>(
         { queryKey: ['items'] },
@@ -52,11 +53,11 @@ export function useUpdateItem() {
       )
       const fullUpdated: FullItem = {
         ...currentItem,
-        ...result.data,
+        ...data,
         title: payload.title,
         content: payload.content ?? null,
         language: payload.language?.trim() || null,
-        descriptionPreview: result.data.description ? result.data.description.slice(0, 150) : null,
+        descriptionPreview: data.description ? data.description.slice(0, 150) : null,
         contentPreview: payload.content ? payload.content.slice(0, 150) : null,
       }
       updateItem(fullUpdated)
@@ -65,11 +66,11 @@ export function useUpdateItem() {
       toast.success('Item saved')
     } else {
       // Rollback optimistic patch.
-      for (const [queryKey, data] of snapshots) {
-        queryClient.setQueryData(queryKey, data)
+      for (const [queryKey, snapshot] of snapshots) {
+        queryClient.setQueryData(queryKey, snapshot)
       }
       updateItem(currentItem)
-      toast.error(result.message ?? 'Failed to save item')
+      toast.error(error.message || 'Failed to save item')
     }
   }
 }

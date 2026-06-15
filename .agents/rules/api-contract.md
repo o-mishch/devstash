@@ -10,107 +10,108 @@ paths:
   - "src/actions/**/*"
   - "src/types/api.ts"
   - "src/lib/api/**/*"
-description: API contract rules for DevStash — the ApiBody<T> shape, apiRoute/authenticatedRoute wrappers, the api-fetch verb helpers (get/post/patch/del), and status codes. Loads when editing API routes, server actions, or src/lib/api.
 ---
 
 # API Contract
 
-**Every response between FE and BE must use the `ApiBody<T>` shape — no exceptions.**
+The client↔server contract for the eight feature domains is **oRPC** (contract-first, runtime-validated, end-to-end-typed). The legacy `ApiBody` envelope is **retained only** for Server Actions and the exempt explicit routes (see below).
+
+## oRPC (default for all client-driven reads/mutations)
+
+One Zod-backed **contract** per domain is the single source of truth for input, output, route, and typed errors.
+
+```
+src/lib/api/
+  contract/   [C] shared — oc-based contracts (pure Zod, no server-only); the browser imports types only
+  router/     [S] server-only — implement(contract) + .handler() bodies, lazy()-split per domain
+  orpc.ts     [S] pub / authed implementers (authed injects IDOR-safe { userId, isPro })
+  middleware.ts [S] enforceRateLimit(key, identifier) → ORPCError('TOO_MANY_REQUESTS')
+  client.ts   [C] orpcClient + orpc (TanStack Query utils)
+src/app/api/[...rest]/route.ts  [S] OpenAPIHandler.handle(request, { prefix: '/api' })  — Node runtime
+```
+
+Domains: `items` · `collections` · `profile` · `ai` · `search` · `upload` · `billing` · `auth` · `download`. The OpenAPI handler serves them as plain REST (`METHOD /api/path` from each procedure's `.route()`), so the surface is OpenAPI-spec-generatable (`src/lib/api/openapi.ts`).
+
+**Dev-only API docs:** the catch-all handler mounts oRPC's `OpenAPIReferencePlugin` (Swagger UI) **only when `NODE_ENV !== 'production'`** — `GET /api/docs` (Swagger UI) + `GET /api/spec.json` (OpenAPI 3.x). In production the plugin is never registered, so both paths fall through to the router and 404. These two paths are served by the plugin before the per-procedure `authed` middleware, so `handle()` adds an explicit **session gate** in front of them (no session → 404), keeping the API contract unreadable by unauthenticated callers even on a non-localhost dev/preview host. Never expose these in production.
+
+### Server: contract + handler
 
 ```ts
-// src/types/api.ts — client-safe, import freely
-type ApiBody<T = null> = {
-  status: ApiStatus   // string status code, never null
-  data: T | null      // null on error or when no payload
-  message: string | null  // null on success or when no message
+// contract/collections.ts  [C]
+export const collectionsContract = {
+  create: oc.route({ method: 'POST', path: '/collections', successStatus: 201 })
+    .input(collectionFormSchema).output(collectionSchema),
+}
+
+// router/collections.ts  [S]
+export const collectionsRouter = {
+  create: authed.collections.create.handler(async ({ input, context }) => {
+    if (!await canCreateCollection(context.userId, context.isPro))
+      throw new ORPCError('FORBIDDEN', { message: '…upgrade to Pro.' })
+    return createCollection(context.userId, input)   // userId from session, never input (IDOR-safe)
+  }),
 }
 ```
 
-## API Routes
+- **Output dates:** JSON has no `Date` — use `z.coerce.date<Date>()` in `.output(...)`. The client's `ResponseValidationPlugin` coerces responses back to real `Date`s.
+- **Errors:** `throw new ORPCError(code, { message })`. `code` maps to the HTTP status natively (`UNAUTHORIZED`→401, `FORBIDDEN`→403, `NOT_FOUND`→404, `CONFLICT`→409, `BAD_REQUEST`→400, `TOO_MANY_REQUESTS`→429, `INTERNAL_SERVER_ERROR`→500). Input-validation failures surface as `BAD_REQUEST`, remapped to 422 at the HTTP layer.
+- **Shared messages:** any error string used in more than one place lives in `ErrorMessage` (`src/lib/api/error-messages.ts`, `[C]`) so wording can't drift — both (1) strings used on **both** transports (oRPC + the `ApiResponse` envelope), e.g. `ErrorMessage.NOT_AUTHENTICATED`, `ErrorMessage.FILE_NOT_FOUND`, and (2) strings repeated across oRPC handlers in a domain, e.g. `ErrorMessage.ITEM_NOT_FOUND`, `ErrorMessage.COLLECTION_NOT_FOUND`. Bespoke single-site messages stay inline. (`deniedMessage()` in `rate-limit.ts` is the same idea for the 429 string.)
+- **Typed errors** (only where the client branches on structured data): `oc.errors({ CODE: { status, data: schema } })`, then `errors.CODE({ data })` in the handler. Example: `auth.login` → `EMAIL_NOT_VERIFIED` carrying `{ email }`.
+- **Rate limiting:** `await enforceRateLimit('<key>', context.userId)` at the top of the handler.
+- A new domain is added in `contract/index.ts` + `router/index.ts` (lazy).
 
-Wrap the handler with `apiRoute()` (or `authenticatedRoute()` for anything touching user data) from `@/lib/api` (`src/lib/api/index.ts`). Centralises error handling — no per-route try/catch needed.
+### Frontend
 
 ```ts
-import { ApiResponse, apiRoute } from '@/lib/api'
+import { safe } from '@orpc/client'
+import { orpcClient, orpc } from '@/lib/api/client'
 
-export const POST = apiRoute(async (request) => {
-  const { email } = await request.json()
-  if (!email) return ApiResponse.BAD_REQUEST('Email is required')
-  return ApiResponse.OK({ result })
-})
+// one-off call — resolves with typed output, throws ORPCError on failure
+const { error, data } = await safe(orpcClient.collections.create(input))
+if (!error) use(data)
+else toast.error(error.message)   // error.code === 'FORBIDDEN' for the upgrade branch
+
+// hooks — TanStack Query utils
+const create = useMutation(orpc.collections.create.mutationOptions({ ... }))
+const { data } = useInfiniteQuery({ ...orpc.items.list.infiniteOptions(...) })
 ```
 
-> For user-scoped routes use `authenticatedRoute(async (request, context, { userId, isPro }) => …)` — it runs the session + Pro check and injects an **IDOR-safe `userId`** (from the session, never the request). See `nextjs-architecture.md`.
+- Components never call `useQueryClient()` directly — cache updaters live in the hook files (see `coding-standards.md`).
+- For a built-in error code the client branches on, narrow with `error instanceof ORPCError && error.code === '…'`; for a declared typed error, narrow with `isDefinedError(error)`.
+- Form-driven submits use `useOrpcFormAction(submit, { onSuccess })` (`src/hooks/use-orpc-form-action.ts`).
+- Direct-to-S3 uploads (with progress) use `uploadToS3` (`src/lib/storage/s3-upload-client.ts`), **not** oRPC — the request goes straight to S3.
 
-## Server Actions
+## Server Actions — still `ApiBody`
 
-Return `ApiBody<T>` directly — same builders, plain object (not `NextResponse`).
+Redirect-terminating auth Server Actions (`src/actions/`) and their helpers remain on the `ApiBody` envelope (`src/types/api.ts`, `ApiResponse` builders). `parseOrFail` and `rateLimitAction`/`withRateLimit` serve these.
 
 ```ts
 import { ApiResponse } from '@/lib/api'
 import type { ApiBody } from '@/types/api'
 
-export async function myAction(
-  _prev: ApiBody<MyData | null> | null,
-  formData: FormData
-): Promise<ApiBody<MyData | null>> {
+export async function myAction(_prev: ApiBody<T | null> | null, formData: FormData): Promise<ApiBody<T | null>> {
   if (!valid) return ApiResponse.BAD_REQUEST('Validation failed')
   return ApiResponse.OK({ result })
 }
 ```
 
-## Frontend
+## Exempt explicit routes — still `apiRoute` / `ApiResponse`
 
-Use the verb helpers from `@/lib/api/api-fetch` — `get` / `post` / `put` / `patch` / `del` — never raw `fetch()`. There is **no** `apiFetch` symbol. The body is the **second positional arg** (not `{ method, body }`); each helper returns `Promise<ApiBody<T>>`.
+These never used the oRPC contract and keep their explicit `src/app/api/*/route.ts` files (different URL space, never shadowed by the catch-all):
 
-```ts
-import { post } from '@/lib/api/api-fetch'
+| Route | Why exempt |
+|-------|-----------|
+| `api/auth/[...nextauth]` | NextAuth handler |
+| `api/webhooks/stripe` | Raw body + signature verification |
+| `api/download/[id]` | 3xx redirect to a signed S3 URL |
+| `api/billing/checkout-return` | 3xx redirect to settings after Stripe |
 
-const data = await post<MyData>('/api/...', { key: value })
-if (data.status !== 'ok') {
-  toast.error(data.message ?? 'Something went wrong.')
-  return
-}
-```
-
-## Status Codes
-
-| Status              | HTTP | Meaning                       |
-| ------------------- | ---- | ----------------------------- |
-| `ok`                | 200  | Success                       |
-| `created`           | 201  | Resource created              |
-| `bad_request`       | 400  | Validation / client error     |
-| `unauthorized`      | 401  | Not authenticated             |
-| `forbidden`         | 403  | Authenticated but not allowed |
-| `not_found`         | 404  | Resource not found            |
-| `conflict`          | 409  | Duplicate / state conflict    |
-| `validation_error`  | 422  | Schema / input validation     |
-| `too_many_requests` | 429  | Rate limited                  |
-| `internal_error`    | 500  | Server error                  |
-
-## Redirects (API routes)
-
-Inside `apiRoute` handlers, use `apiRedirect()` from `@/lib/api` — not raw `NextResponse.redirect()`.
-
-```ts
-import { apiRedirect, apiRoute } from '@/lib/api'
-
-export const GET = apiRoute(async (request) => {
-  return apiRedirect(new URL('/settings', request.url))
-})
-```
-
-Raw `NextResponse.redirect` needs **strict justification** in code (comment) — e.g. route not wrapped in `apiRoute`, or framework middleware constraint.
-
-`redirect()` from `next/navigation` in Server Components / Server Actions is separate and fine.
+They use `apiRoute` / `authenticatedRoute` (IDOR-safe `userId`), `ApiResponse`, and `apiRedirect` from `@/lib/api`.
 
 ## Rules
 
-- **Never** return raw `NextResponse.json()` from API routes — use `ApiResponse` + `apiRoute`
-- **Never** return raw `NextResponse.redirect()` from API routes — use `apiRedirect` + `apiRoute`
-- **Never** return plain booleans/strings from Server Actions that communicate status to the FE
-- **Never** call `fetch()` directly from client components — always use the verb helpers (`get`/`post`/`patch`/`del`)
-- **Always** use named interfaces for response data types — no inline generics
-- Server Actions that only redirect (OAuth, sign-out) are exempt
-- API routes: errors caught by `apiRoute()` — no per-route try/catch needed
-- Server Actions: use try/catch and return `ApiResponse.INTERNAL_ERROR()` on unexpected failures
+- **Client-driven reads/mutations** go through `orpcClient` / `orpc` (oRPC). Never `fetch()`/`axios`, never a Server Action for an ordinary mutation.
+- **Never** add a new explicit `/api/*` JSON route — add a procedure to the contract instead. Explicit routes are only for the exempt cases above.
+- `userId` always comes from `context` (session), never from input — IDOR-safe.
+- Contract modules (`contract/**`) are `[C]` — never import `server-only` code into them; reuse the client-safe schemas in `src/lib/utils/validators.ts`.
+- Server Actions that only redirect (OAuth, sign-out) and the exempt routes keep the envelope; do not migrate them.

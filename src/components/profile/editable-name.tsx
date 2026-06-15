@@ -5,8 +5,8 @@ import type { KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
-import { patch } from '@/lib/api/api-fetch'
+import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
+import { orpcClient } from '@/lib/api/client'
 
 interface EditableNameProps {
   name: string | null
@@ -21,7 +21,7 @@ export function EditableName({ name }: EditableNameProps) {
   const [displayName, setDisplayName] = useState(name ?? '')
   const [value, setValue] = useState(name ?? '')
 
-  const { formAction, isPending } = useApiFormAction((body) => patch('/api/profile/name', body), {
+  const { formAction, isPending } = useOrpcFormAction((body) => orpcClient.profile.updateName({ name: body.name }), {
     onSuccess: () => {
       setDisplayName(value.trim())
       toast.success('Name updated.')

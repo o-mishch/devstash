@@ -2,9 +2,9 @@
 
 import type { MouseEvent } from 'react'
 import { toast } from 'sonner'
-import { get } from '@/lib/api/api-fetch'
+import { safe, ORPCError } from '@orpc/client'
+import { orpcClient } from '@/lib/api/client'
 import { useRestrictedAction } from '@/hooks/use-restricted-action'
-import type { SignedDownloadUrlResponse } from '@/types/item'
 
 export function showFileNotFoundToast(message?: string | null) {
   toast.error(message ?? 'File not found in storage.', {
@@ -31,13 +31,13 @@ export function useRestrictedDownload(
       return
     }
 
-    const result = await get<SignedDownloadUrlResponse>(`/api/download/${itemId}/url`)
-    if (result.status === 'not_found') {
-      showFileNotFoundToast(result.message)
-      return
-    }
-    if (result.status !== 'ok' || !result.data?.url) {
-      toast.error(result.message ?? 'Failed to download file.')
+    const { error, data } = await safe(orpcClient.download.getSignedUrl({ id: itemId }))
+    if (error) {
+      if (error instanceof ORPCError && error.code === 'NOT_FOUND') {
+        showFileNotFoundToast(error.message)
+      } else {
+        toast.error(error.message || 'Failed to download file.')
+      }
       return
     }
 
@@ -45,7 +45,7 @@ export function useRestrictedDownload(
     // the browser. Content-Disposition: attachment in the presigned S3 URL
     // drives the save dialog without leaving the current page.
     const a = document.createElement('a')
-    a.href = result.data.url
+    a.href = data.url
     a.click()
   }
 

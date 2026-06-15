@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useInfiniteQuery, useQueryClient, type InfiniteData, type Query } from '@tanstack/react-query'
-import { get } from '@/lib/api/api-fetch'
+import { orpcClient } from '@/lib/api/client'
 import type { FetchItemsQuery, ItemsPage, LightItem } from '@/types/item'
 
 function itemsQueryKey(fetchParams: FetchItemsQuery) {
@@ -163,15 +163,8 @@ export function useInfiniteItems(
 ) {
   const query = useInfiniteQuery({
     queryKey: itemsQueryKey(fetchParams),
-    queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams(fetchParams as Record<string, string>)
-      if (pageParam) params.set('cursor', pageParam as string)
-      const result = await get<ItemsPage>(`/api/items?${params.toString()}`)
-      if (result.status !== 'ok' || !result.data) {
-        throw new Error(result.message || 'Failed to fetch items')
-      }
-      return result.data
-    },
+    queryFn: async ({ pageParam }) =>
+      orpcClient.items.list({ ...fetchParams, ...(pageParam ? { cursor: pageParam } : {}) }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? null,
     ...(initialData && { initialData: { pages: [initialData], pageParams: [null] } }),

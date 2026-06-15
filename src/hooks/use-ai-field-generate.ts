@@ -2,11 +2,11 @@
 
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
-import type { ApiBody } from '@/types/api'
+import { safe } from '@orpc/client'
 
 interface UseAiFieldGenerateParams<T> {
   canGenerate: boolean
-  onGenerate: () => Promise<ApiBody<T | null>>
+  onGenerate: () => Promise<T>
   onSuccess: (data: T) => void
   onStart?: () => void
   failureMessage: string
@@ -32,18 +32,13 @@ export function useAiFieldGenerate<T>({
     onStart?.()
     setIsLoading(true)
 
-    try {
-      const response = await onGenerate()
-      if (response.status === 'ok' && response.data != null) {
-        onSuccess(response.data)
-      } else {
-        toast.error(response.message || failureMessage)
-      }
-    } catch {
-      toast.error('An unexpected error occurred.')
-    } finally {
-      setIsLoading(false)
+    const { error, data } = await safe(onGenerate())
+    if (!error) {
+      onSuccess(data)
+    } else {
+      toast.error(error.message || failureMessage)
     }
+    setIsLoading(false)
   }, [canGenerate, onGenerate, onSuccess, onStart, failureMessage])
 
   return { isLoading, run }

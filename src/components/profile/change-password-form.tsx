@@ -13,12 +13,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { patch } from '@/lib/api/api-fetch'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { orpcClient } from '@/lib/api/client'
+import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
 
 export function ChangePasswordForm() {
   const [open, setOpen] = useState(false)
-  const { formAction, isPending } = useApiFormAction((body) => patch('/api/profile/password', body), {
+  const { formAction, isPending } = useOrpcFormAction((body) => orpcClient.profile.changePassword({
+    currentPassword: body.currentPassword,
+    newPassword: body.newPassword,
+    confirmPassword: body.confirmPassword,
+  }), {
     onSuccess: () => {
       toast.success('Password updated successfully.')
       setOpen(false)

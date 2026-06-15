@@ -1,11 +1,10 @@
 import 'server-only'
 import type OpenAI from 'openai'
-import { ApiResponse } from '@/lib/api'
+import { ORPCError } from '@orpc/server'
 import { getOpenAIClient } from '@/lib/ai/openai'
 import { getItemAiMetadata } from '@/lib/db/items'
-import { rateLimitAction, type RateLimitKey } from '@/lib/infra/rate-limit'
-import type { ParseResult } from '@/lib/utils/validators'
-import type { ApiBody } from '@/types/api'
+import { enforceRateLimit } from '@/lib/api/middleware'
+import { type RateLimitKey } from '@/lib/infra/rate-limit'
 import type { Logger } from 'pino'
 
 interface ItemImageLookup {
@@ -65,7 +64,7 @@ export async function resolveItemImageDimensions(
 export interface RunProAiGenerationParams<TData, TResult> {
   isPro: boolean
   userId: string
-  parseResult: ParseResult<TData>
+  data: TData
   rateLimitKey: RateLimitKey
   notConfiguredMessage: string
   failureMessage: string
@@ -74,48 +73,42 @@ export interface RunProAiGenerationParams<TData, TResult> {
   execute: (client: OpenAI, data: TData) => Promise<TResult | null>
 }
 
+/**
+ * Shared Pro-AI orchestration: Pro gate (→ 403), per-user rate limit (→ 429), OpenAI client
+ * availability (→ 500), then `execute`. Throws ORPCError on any failure; returns the result.
+ * Input is already validated by the contract before this runs.
+ */
 export async function runProAiGeneration<TData, TResult>(
   params: RunProAiGenerationParams<TData, TResult>
-): Promise<ApiBody<TResult | null>> {
-  const {
-    isPro,
-    userId,
-    parseResult,
-    rateLimitKey,
-    notConfiguredMessage,
-    failureMessage,
-    log,
-    logLabel,
-    execute,
-  } = params
+): Promise<TResult> {
+  const { isPro, userId, data, rateLimitKey, notConfiguredMessage, failureMessage, log, logLabel, execute } = params
 
   if (!isPro) {
-    return ApiResponse.FORBIDDEN('This feature requires a Pro subscription.')
+    throw new ORPCError('FORBIDDEN', { message: 'This feature requires a Pro subscription.' })
   }
 
-  const rl = await rateLimitAction(rateLimitKey, userId)
-  if (rl) return rl as ApiBody<TResult | null>
-
-  if (!parseResult.success) return parseResult.response
+  await enforceRateLimit(rateLimitKey, userId)
 
   const client = getOpenAIClient()
   if (!client) {
     log.error('OpenAI client is not configured')
-    return ApiResponse.INTERNAL_ERROR(notConfiguredMessage)
+    throw new ORPCError('INTERNAL_SERVER_ERROR', { message: notConfiguredMessage })
   }
 
   log.info({ userId }, `Generating ${logLabel} via OpenAI`)
 
+  let result: TResult | null
   try {
-    const result = await execute(client, parseResult.data)
-    if (result == null) {
-      return ApiResponse.INTERNAL_ERROR(failureMessage)
-    }
-
-    log.info({ userId }, `Successfully generated ${logLabel}`)
-    return ApiResponse.OK(result)
+    result = await execute(client, data)
   } catch (error) {
     log.error({ err: error }, 'OpenAI API Error')
-    return ApiResponse.INTERNAL_ERROR(failureMessage)
+    throw new ORPCError('INTERNAL_SERVER_ERROR', { message: failureMessage })
   }
+
+  if (result == null) {
+    throw new ORPCError('INTERNAL_SERVER_ERROR', { message: failureMessage })
+  }
+
+  log.info({ userId }, `Successfully generated ${logLabel}`)
+  return result
 }

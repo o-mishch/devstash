@@ -21,7 +21,7 @@ import { collectionFormSchema } from '@/lib/utils/validators'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
-import type { ApiBody } from '@/types/api'
+import { safe, ORPCError } from '@orpc/client'
 
 type FormValues = z.input<typeof collectionFormSchema>
 
@@ -36,7 +36,8 @@ interface CollectionFormDialogProps {
   submitText: string
   successMessage: string
   defaultValues: CollectionFormDefaultValues
-  onSubmitAction: (data: FormValues) => Promise<ApiBody<unknown>>
+  // Returns the oRPC client call promise — resolves on success, throws an ORPCError on failure.
+  onSubmitAction: (data: FormValues) => Promise<unknown>
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -87,18 +88,19 @@ export function CollectionFormDialog({
   }, [open, form])
 
   async function onSubmit(data: FormValues) {
-    const result = await onSubmitAction(data)
+    const { error } = await safe(onSubmitAction(data))
 
-    if (result.status === 'created' || result.status === 'ok') {
+    if (!error) {
       toast.success(successMessage)
       handleOpenChange(false)
       router.refresh()
+      return
+    }
+
+    if (error instanceof ORPCError && error.code === 'FORBIDDEN') {
+      toast.warning(error.message || 'Upgrade to Pro to continue.')
     } else {
-      if (result.status === 'forbidden') {
-        toast.warning(result.message ?? 'Upgrade to Pro to continue.')
-      } else {
-        toast.error(result.message ?? 'Failed to save collection')
-      }
+      toast.error(error.message || 'Failed to save collection')
     }
   }
 

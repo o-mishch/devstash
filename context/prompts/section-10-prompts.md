@@ -74,3 +74,9 @@ evaluate is it possible to use pattern like  .agents/rules/* ?
 
 reaseach (context7) how rulles handles by claude code and by antigravity ide, to properly write and congigure the rulles.
 you can ask any question
+
+
+One more time, research recommendations and best practices of using the Route Handlers + zod-openapi + openapi-fetch.
+In context7 and webseach.
+map with the existing codebase.
+The goal is to implement the solution 100% complient with recommendations and best practices 

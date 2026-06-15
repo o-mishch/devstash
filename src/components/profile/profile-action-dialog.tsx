@@ -4,7 +4,8 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import type { ReactNode } from 'react'
-import { del } from '@/lib/api/api-fetch'
+import { safe } from '@orpc/client'
+import { orpcClient } from '@/lib/api/client'
 import { BaseProfileDialog } from './base-profile-dialog'
 
 interface ProfileActionDialogProps {
@@ -13,8 +14,8 @@ interface ProfileActionDialogProps {
   triggerText: string
   triggerIcon?: ReactNode
   confirmText: string
-  /** DELETE endpoint invoked on confirm. */
-  endpoint: string
+  /** Linked account to unlink on confirm. */
+  accountId: string
   successMessage: string
   errorMessage?: string
   triggerClassName?: string
@@ -26,7 +27,7 @@ export function ProfileActionDialog({
   triggerText,
   triggerIcon,
   confirmText,
-  endpoint,
+  accountId,
   successMessage,
   errorMessage,
   triggerClassName = "h-7 px-2 text-xs text-muted-foreground hover:text-destructive",
@@ -36,12 +37,12 @@ export function ProfileActionDialog({
 
   function handleAction() {
     startTransition(async () => {
-      const result = await del(endpoint)
-      if (result.status === 'ok') {
+      const { error } = await safe(orpcClient.profile.unlinkAccount({ id: accountId }))
+      if (!error) {
         toast.success(successMessage)
         setOpen(false)
       } else {
-        toast.error(result.message ?? errorMessage ?? 'Action failed.')
+        toast.error(error.message || errorMessage || 'Action failed.')
       }
     })
   }

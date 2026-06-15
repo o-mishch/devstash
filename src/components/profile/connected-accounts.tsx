@@ -70,7 +70,7 @@ function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
           triggerIcon={<Unlink className="mr-1 size-3 max-sm:size-4" />}
           triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-destructive max-sm:h-9 max-sm:px-2.5 max-sm:text-sm"
           confirmText={`Unlink ${label}`}
-          endpoint={`/api/profile/accounts/${account.id}`}
+          accountId={account.id}
           successMessage={`${label} account unlinked.`}
           errorMessage="Failed to unlink account."
         />

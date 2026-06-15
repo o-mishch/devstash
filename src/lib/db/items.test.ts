@@ -13,7 +13,6 @@ vi.mock('@/lib/infra/cache', () => ({
   CacheTags: {
     itemGroup: (userId: string) => `items-${userId}`,
     collectionGroup: (userId: string) => `collections-${userId}`,
-    itemTypeBySlug: (slug: string) => `item-type:slug:${slug}`,
     systemItemTypes: () => 'system-item-types',
     sidebarTypes: (userId: string) => `user:${userId}:sidebar-types`,
     pinnedItems: (userId: string) => `user:${userId}:pinned-items`,
@@ -27,9 +26,8 @@ vi.mock('@/lib/infra/cache', () => ({
 
 import { prisma } from '@/lib/infra/prisma'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
-import { createItem, getItemTypeBySlug, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem } from './items'
+import { createItem, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem } from './items'
 
-const mockFindFirst = prisma.itemType.findFirst as ReturnType<typeof vi.fn>
 const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>
 const mockItemFindFirst = prisma.item.findFirst as ReturnType<typeof vi.fn>
 const mockItemFindMany = prisma.item.findMany as ReturnType<typeof vi.fn>
@@ -66,52 +64,6 @@ describe('compareBySystemTypeOrder', () => {
 
   it('returns 0 for two types at the same position', () => {
     expect(compareBySystemTypeOrder({ name: 'note' }, { name: 'note' })).toBe(0)
-  })
-})
-
-// ── getItemTypeBySlug ────────────────────────────────────────────────────────
-
-describe('getItemTypeBySlug', () => {
-  it('passes the raw slug as a candidate', async () => {
-    mockFindFirst.mockResolvedValue(null)
-    await getItemTypeBySlug('snippet')
-    const call = mockFindFirst.mock.calls[0][0]
-    expect(call.where.name.in).toContain('snippet')
-  })
-
-  it('strips trailing -s to singularize (snippets → snippet)', async () => {
-    mockFindFirst.mockResolvedValue(null)
-    await getItemTypeBySlug('snippets')
-    const { in: candidates } = mockFindFirst.mock.calls[0][0].where.name
-    expect(candidates).toContain('snippet')
-  })
-
-  it('strips -es suffix (aliases → alias excluded; notes → note)', async () => {
-    mockFindFirst.mockResolvedValue(null)
-    await getItemTypeBySlug('notes')
-    const { in: candidates } = mockFindFirst.mock.calls[0][0].where.name
-    // -es rule fires first: "notes" → "not", then -s rule fires: "note"
-    expect(candidates).toContain('note')
-  })
-
-  it('converts -ies suffix to -y (queries → query)', async () => {
-    mockFindFirst.mockResolvedValue(null)
-    await getItemTypeBySlug('queries')
-    const { in: candidates } = mockFindFirst.mock.calls[0][0].where.name
-    expect(candidates).toContain('query')
-  })
-
-  it('returns null when no type matches', async () => {
-    mockFindFirst.mockResolvedValue(null)
-    const result = await getItemTypeBySlug('unknown')
-    expect(result).toBeNull()
-  })
-
-  it('returns the matched item type', async () => {
-    const mockType = { id: '1', name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true }
-    mockFindFirst.mockResolvedValue(mockType)
-    const result = await getItemTypeBySlug('snippets')
-    expect(result).toEqual(mockType)
   })
 })
 

@@ -6,7 +6,7 @@ globs:
 paths:
   - "src/**/*.ts"
   - "src/**/*.tsx"
-description: Next.js architecture for DevStash — where each mutation/fetch goes (REST routes + api-fetch verb helpers vs Server Actions), the server/client bundle boundary (`import 'server-only'` vs `'use server'`), file organization, data fetching, and Zod validation. Loads when editing files under src/.
+description: Next.js architecture for DevStash — where each mutation/fetch goes (oRPC client vs Server Actions vs exempt routes), the server/client bundle boundary (`import 'server-only'` vs `'use server'`), file organization, data fetching, and Zod validation. Loads when editing files under src/.
 ---
 
 # Next.js Architecture
@@ -23,15 +23,15 @@ description: Next.js architecture for DevStash — where each mutation/fetch goe
 | Situation | Use |
 |---|---|
 | Data read in a Server Component | `src/lib/db/` helper (not `prisma.*` inline) |
-| Mutation or data fetch from a client component | a verb helper (`get`/`post`/`patch`/`del` from `@/lib/api/api-fetch`) → REST route. **Never** a Server Action, **never** raw `fetch()` |
-| Webhook, file upload, third-party callback, specific HTTP status/headers, mobile/CLI endpoint | REST route (`apiRoute` / `authenticatedRoute`) |
-| Redirect-terminating auth flow that can't be REST (OAuth sign-in, sign-out, account link) | Server Action — the **only** sanctioned use |
+| Mutation or data fetch from a client component | an **oRPC** procedure via `orpcClient` / `orpc` (`@/lib/api/client`). **Never** a Server Action, **never** raw `fetch()`/`axios` |
+| Webhook, third-party callback, redirect with a specific HTTP status | exempt explicit route (`apiRoute` / `authenticatedRoute`) — see `api-contract.md` |
+| Redirect-terminating auth flow that can't be REST (OAuth sign-in, sign-out, account link) | Server Action — the **only** sanctioned use (still on the `ApiBody` envelope) |
 
-REST routes + the `api-fetch` verb helpers are the default for all client-driven mutations and reads. New code must not add Server Actions for ordinary mutations — they exist only for the redirect flows above (NextAuth `signIn`/`signOut` set cookies + redirect internally and cannot be expressed as a REST response).
+oRPC is the default for all client-driven mutations and reads (full contract in `api-contract.md`). New code must not add Server Actions for ordinary mutations, nor new explicit `/api/*` JSON routes — add a procedure to the contract instead.
 
-> **Client HTTP API:** `@/lib/api/api-fetch` exports verb helpers, **not** an `apiFetch` symbol — `get<T>(url, options?)`, `post<T>(url, body?, options?)`, `put<T>(…)`, `patch<T>(…)`, `del<T>(url, options?)`, each returning `Promise<ApiBody<T>>`. Body goes as the **second positional arg**, not `{ method, body }`.
+> **Client API:** `@/lib/api/client` exports `orpcClient` (typed proxy — `safe(orpcClient.<domain>.<op>(input))` → `{ error, data }`) and `orpc` (TanStack Query utils). The `api-fetch` verb helpers and the `ApiBody` envelope were removed for client↔server calls; `ApiBody`/`ApiResponse` survive only for Server Actions and the exempt routes.
 >
-> **Route wrappers** (`@/lib/api`): use `authenticatedRoute(async (request, context, { userId, isPro }) => …)` for anything touching user data — it runs the session + Pro check and injects an **IDOR-safe `userId`** (from the session, never the request). Use bare `apiRoute(...)` only for genuinely public routes (e.g. unauthenticated auth endpoints).
+> **Exempt route wrappers** (`@/lib/api`): `authenticatedRoute(async (request, context, { userId, isPro }) => …)` (IDOR-safe `userId`) and `apiRoute(...)` remain for the exempt explicit routes only (NextAuth, Stripe webhook, S3/Stripe redirects).
 
 ## Server / Client Boundary
 
@@ -98,8 +98,9 @@ export async function createItem(formData: FormData) { ... }
 |---|---|
 | `src/lib/utils/` | Pure TypeScript — constants, formatters, validators, no secret env vars |
 | `src/lib/editor/` | Monaco config / themes — used in client editor components |
-| `src/lib/api/api-fetch.ts` | HTTP client verb helpers (`get`/`post`/`put`/`patch`/`del`) — browser and Node.js safe |
-| `src/lib/api/api-response.ts` | `ApiBody` type helpers — shared by FE and BE |
+| `src/lib/api/contract/**` | oRPC contracts — pure `oc` + Zod, browser-safe (imported by `client.ts` for types) |
+| `src/lib/api/client.ts` | `orpcClient` + `orpc` — browser oRPC client |
+| `src/lib/api/api-response.ts` | `ApiResponse` builders / `ApiBody` type — shared by Server Actions + exempt routes |
 | `src/types/` | Type definitions only |
 | `src/stores/` | Zustand stores — client state, no server imports |
 | `src/hooks/` | React hooks — client-only by design |
@@ -110,9 +111,10 @@ export async function createItem(formData: FormData) { ... }
 A `'use client'` file must never import from `src/lib/db/`, `src/lib/infra/`, `src/lib/auth/`, `src/lib/billing/`, `src/lib/storage/`, `src/lib/stripe/`, `src/lib/session.ts`, or `src/lib/api/index.ts`.
 
 ```typescript
-// ✅ correct — client component mutates via an api-fetch verb helper → REST route
+// ✅ correct — client component mutates via the oRPC client
 'use client'
-import { post } from '@/lib/api/api-fetch'
+import { safe } from '@orpc/client'
+import { orpcClient } from '@/lib/api/client'
 
 // ❌ wrong — client component imports server-only module directly
 'use client'
@@ -135,9 +137,11 @@ import { getItems } from '@/lib/db/items'
   - `src/lib/stripe/` **[S]** — Stripe SDK client wrappers
   - `src/lib/app/` **[S]** — app shell helpers (sidebar data, action utils)
   - `src/lib/session.ts` **[S]** — session + action auth helpers (root exception)
-  - `src/lib/api/index.ts` **[S]** — `apiRoute` route wrappers
-  - `src/lib/api/api-response.ts` **[C]** — `ApiResponse` builders (shared by FE and BE)
-  - `src/lib/api/api-fetch.ts` **[C]** — HTTP client verb helpers (`get`/`post`/`put`/`patch`/`del`)
+  - `src/lib/api/index.ts` **[S]** — `apiRoute` route wrappers (exempt routes)
+  - `src/lib/api/router/**`, `orpc.ts`, `middleware.ts` **[S]** — oRPC handlers + implementers
+  - `src/lib/api/contract/**` **[C]** — oRPC contracts (pure Zod, browser-safe)
+  - `src/lib/api/client.ts` **[C]** — `orpcClient` + `orpc` (browser oRPC client)
+  - `src/lib/api/api-response.ts` **[C]** — `ApiResponse` builders (Server Actions + exempt routes)
   - `src/lib/editor/` **[C]** — editor themes and config
   - `src/lib/utils/` **[C]** — shared constants, formatters, validators (no DB/Stripe)
 - Context definitions (`createContext`, hooks, reducers, types — no JSX): `src/context/[name]-context.tsx`
@@ -146,32 +150,22 @@ import { getItems } from '@/lib/db/items'
 ## Data Fetching
 
 - Server components fetch via `src/lib/db/` helpers (not `prisma.*` inline)
-- Client components fetch and mutate via the `api-fetch` verb helpers → REST routes (not Server Actions — see [Where each mutation / fetch goes](#where-each-mutation--fetch-goes))
-- Never use `fetch()` or `axios` directly — always use the `get`/`post`/`patch`/`del` helpers from `src/lib/api/api-fetch.ts` for HTTP requests from client code
+- Client components fetch and mutate via oRPC (`orpcClient` / `orpc` from `@/lib/api/client`) — not Server Actions (see [Where each mutation / fetch goes](#where-each-mutation--fetch-goes))
+- Never use `fetch()` or `axios` directly for our API — call the oRPC client. (Direct-to-S3 uploads with progress are the one exception: `uploadToS3` in `src/lib/storage/s3-upload-client.ts`.)
 
 ## Validation
 
-All external inputs (query params, JSON bodies, route params) must be validated with Zod before use. Define schemas inline in the route file; extract to `src/lib/utils/validators.ts` only when the same schema is reused by 2+ files (e.g. a route + a client hook).
+All external inputs (JSON bodies, query params, path params) must be validated with Zod before use.
 
-Inside a route, validate with `parseOrFail` (from `@/lib/utils/validators`) — it returns the ready-made `ApiResponse.VALIDATION_ERROR` body on failure, so there's no manual `safeParse`/`flatten` plumbing:
+**oRPC procedures** (the default): the contract's `.input(schema)` validates automatically before the handler runs — never re-parse inside the handler. Reuse the client-safe schemas in `src/lib/utils/validators.ts`; define inline in the contract module otherwise. The handler receives typed, validated `input`:
 
-```typescript
-import { z } from 'zod'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { parseOrFail } from '@/lib/utils/validators'
+```ts
+// contract/items.ts  [C]
+create: oc.route({ method: 'POST', path: '/items', successStatus: 201 })
+  .input(createItemSchema).output(lightItemSchema),
 
-const createItemSchema = z.object({
-  title: z.string().min(1).max(255),
-  type: z.enum(['snippet', 'prompt', 'command', 'note', 'link']),
-  content: z.string().optional(),
-})
-
-// authenticatedRoute injects an IDOR-safe userId (from the session, never the body)
-export const POST = authenticatedRoute(async (request, _context, { userId }) => {
-  const parsed = parseOrFail(createItemSchema, await request.json())
-  if (!parsed.success) return parsed.response
-
-  // use parsed.data + userId from here on
-  return ApiResponse.CREATED(await createItem(userId, parsed.data))
-})
+// router/items.ts  [S] — input is already validated; userId from session (IDOR-safe)
+create: authed.items.create.handler(async ({ input, context }) => createItem(context.userId, input)),
 ```
+
+**Server Actions and exempt routes** keep `parseOrFail` (from `@/lib/utils/validators`), which returns a ready-made `ApiResponse.VALIDATION_ERROR` body on failure.

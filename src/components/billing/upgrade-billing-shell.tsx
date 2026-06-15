@@ -2,15 +2,14 @@
 
 import { createContext, useContext, useState, type ComponentProps, type ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
-import { post } from '@/lib/api/api-fetch'
+import { orpcClient } from '@/lib/api/client'
 import { BillingAlert } from '@/components/billing/billing-alert'
 import { BillingToggle } from '@/components/billing/billing-toggle'
 import { PendingFormButton } from '@/components/shared/pending-form-button'
 import { PricingProPrice } from '@/components/billing/pricing-cards-display'
 import { CHECKOUT_DISABLED_RECOVERY_MESSAGE } from '@/lib/billing/messages/billing-messages.client'
 import type { BillingPeriod } from '@/lib/billing/config/billing-pricing.client'
-import type { BillingRedirectData } from '@/types/billing'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
 
 interface UpgradeBillingContextValue {
   isYearly: boolean
@@ -48,12 +47,12 @@ export function UpgradeBillingShell({
   const [billing, setBilling] = useState<BillingPeriod>(defaultBilling)
   const isYearly = billing === 'yearly'
   const selectedPriceId = isYearly ? priceIdYearly : priceIdMonthly
-  const { formAction: checkoutFormAction } = useApiFormAction<BillingRedirectData>(
-    (body) => post<BillingRedirectData>('/api/billing/checkout', { priceId: body.priceId }),
+  const { formAction: checkoutFormAction } = useOrpcFormAction(
+    (body) => orpcClient.billing.createCheckout({ priceId: body.priceId }),
     {
       fallbackError: 'Unable to start checkout. Please try again.',
       // Hard redirect to the Stripe-hosted checkout (external URL, outside React routing).
-      onSuccess: (result) => { if (result.data?.url) window.location.href = result.data.url },
+      onSuccess: (data) => { window.location.href = data.url },
     },
   )
 

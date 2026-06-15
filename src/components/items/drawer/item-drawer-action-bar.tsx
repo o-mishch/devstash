@@ -9,7 +9,8 @@ import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
-import { patch, del } from '@/lib/api/api-fetch'
+import { safe } from '@orpc/client'
+import { orpcClient } from '@/lib/api/client'
 import { useItemsStore } from '@/stores/items'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
@@ -47,7 +48,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   const { value: isFavorite, toggle: handleFavoriteToggle } = useOptimisticToggle(
     item.isFavorite,
-    (next) => patch(`/api/items/${item.id}/favorite`, { isFavorite: next }),
+    (next) => orpcClient.items.toggleFavorite({ id: item.id, isFavorite: next }),
     {
       onSuccess: (next) => {
         updateItem({ ...item, isFavorite: next })
@@ -59,7 +60,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   const { value: isPinned, toggle: handlePinToggle } = useOptimisticToggle(
     item.isPinned,
-    (next) => patch(`/api/items/${item.id}/pinned`, { isPinned: next }),
+    (next) => orpcClient.items.togglePinned({ id: item.id, isPinned: next }),
     {
       onSuccess: (next) => {
         updateItem({ ...item, isPinned: next })
@@ -82,17 +83,17 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   async function handleDelete() {
     setIsDeleting(true)
-    const result = await del(`/api/items/${item.id}`)
+    const { error } = await safe(orpcClient.items.remove({ id: item.id }))
     setIsDeleting(false)
 
-    if (result.status === 'ok') {
+    if (!error) {
       toast.success('Item deleted')
       setDeleteDialogOpen(false)
       removeItem(item.id)
       removePinnedOverride(item.id)
       onDeleted()
     } else {
-      toast.error(result.message ?? 'Failed to delete item')
+      toast.error(error.message || 'Failed to delete item')
     }
   }
 

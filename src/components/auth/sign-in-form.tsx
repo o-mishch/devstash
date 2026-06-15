@@ -12,18 +12,13 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { signInWithGitHub, signInWithGoogle } from '@/actions/auth/login'
-import { post } from '@/lib/api/api-fetch'
+import { safe, isDefinedError } from '@orpc/client'
+import { orpcClient } from '@/lib/api/client'
 import { ProviderIcon } from '@/components/shared/provider-icon'
 import { WarningBanner } from '@/components/shared/warning-banner'
-import type { ApiBody } from '@/types/api'
-import type { SignInData } from '@/types/auth'
 
 interface SignInFormProps {
   successMessage?: string
-}
-
-interface ResendResponse {
-  email: string
 }
 
 interface OAuthSubmitButtonProps {
@@ -43,50 +38,54 @@ function OAuthSubmitButton({ provider, label }: OAuthSubmitButtonProps) {
 
 export function SignInForm({ successMessage }: SignInFormProps) {
   const router = useRouter()
-  const [state, setState] = useState<ApiBody<SignInData | null> | null>(null)
+  // Set when login is blocked on an unverified email — renders the resend banner below.
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
 
   async function formAction(formData: FormData) {
     setIsPending(true)
-    const result = await post<SignInData>('/api/auth/login', {
-      email: formData.get('email'),
-      password: formData.get('password'),
-    })
+    const { error } = await safe(orpcClient.auth.login({
+      email: String(formData.get('email') ?? ''),
+      password: String(formData.get('password') ?? ''),
+    }))
     setIsPending(false)
-    setState(result)
+
+    if (!error) {
+      setUnverifiedEmail(null)
+      toast.success('You successfully logged in.')
+      router.push('/dashboard')
+      return
+    }
+
+    if (isDefinedError(error) && error.code === 'EMAIL_NOT_VERIFIED') {
+      // Renders the "email not verified" banner below — no toast needed.
+      setUnverifiedEmail(error.data.email)
+      return
+    }
+
+    setUnverifiedEmail(null)
+    toast.error(error.message || 'Something went wrong. Please try again.')
   }
 
   useEffect(() => {
     if (successMessage) toast.success(successMessage)
   }, [successMessage])
 
-  useEffect(() => {
-    if (!state) return
-    if (state.status === 'ok') {
-      toast.success('You successfully logged in.')
-      router.push('/dashboard')
-    } else if (state.status !== 'forbidden') {
-      // 'forbidden' renders the "email not verified" banner below — no toast needed
-      toast.error(state.message ?? 'Something went wrong. Please try again.')
-    }
-  }, [state, router])
-
   async function handleResend() {
-    const email = state?.data?.email
-    if (!email) return
+    if (!unverifiedEmail) return
 
-    const data = await post<ResendResponse>('/api/auth/resend-verification', { email })
+    const { error } = await safe(orpcClient.auth.resendVerification({ email: unverifiedEmail }))
 
-    if (data.status === 'ok') {
+    if (!error) {
       toast.success('Verification email sent. Check your inbox.')
     } else {
-      toast.error(data.message ?? 'Failed to send verification email. Please try again later.')
+      toast.error(error.message || 'Failed to send verification email. Please try again later.')
     }
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {state?.status === 'forbidden' && (
+      {unverifiedEmail && (
         <WarningBanner>
           <p className="font-medium">Email not verified</p>
           <p className="mt-0.5 text-muted-foreground">

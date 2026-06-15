@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Star, MoreHorizontal, Edit2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { patch } from '@/lib/api/api-fetch'
+import { orpcClient } from '@/lib/api/client'
 import { useCollectionDialogs } from './collection-dialog-provider'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import type { CollectionWithTypes } from '@/types/collection'
@@ -19,7 +19,7 @@ export function CollectionCardActions({ collection }: CollectionCardActionsProps
   const { openEdit, openDelete } = useCollectionDialogs()
   const { value: isFavorite, toggle: toggleFavorite } = useOptimisticToggle(
     collection.isFavorite,
-    (next) => patch(`/api/collections/${collection.id}/favorite`, { isFavorite: next }),
+    (next) => orpcClient.collections.toggleFavorite({ id: collection.id, isFavorite: next }),
     {
       onSuccess: () => router.refresh(),
       errorLabel: 'Failed to toggle favorite',
@@ -45,7 +45,7 @@ export function CollectionCardActions({ collection }: CollectionCardActionsProps
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger render={
-          <Button variant="ghost" size="icon" className="size-8 rounded-full bg-background/50 backdrop-blur-sm hover:bg-background/80 text-muted-foreground hover:text-foreground opacity-0 group-hover/card:opacity-100 touch:opacity-100 transition-all" title="More options">
+          <Button variant="ghost" size="icon" className="size-8 rounded-full bg-background/50 backdrop-blur-sm hover:bg-background/80 text-muted-foreground hover:text-foreground opacity-0 group-hover/card:opacity-100 touch:opacity-100 data-[popup-open]:opacity-100 data-[popup-open]:bg-background/80 transition-all" title="More options">
             <MoreHorizontal className="size-4" />
             <span className="sr-only">Open menu</span>
           </Button>

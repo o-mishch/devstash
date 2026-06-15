@@ -2,6 +2,7 @@ import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { auth } from '@/auth'
 import { ApiResponse } from '@/lib/api'
+import { ErrorMessage } from '@/lib/api/error-messages'
 import { logger } from '@/lib/infra/pino'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { z } from 'zod'
@@ -64,7 +65,7 @@ export async function requireAuthSessionWithRateLimit(
 ): Promise<AuthSessionRateLimitOutcome> {
   const session = await requireAuthSession()
   if (!session) {
-    return { ok: false, response: ApiResponse.UNAUTHORIZED('Not authenticated.') }
+    return { ok: false, response: ApiResponse.UNAUTHORIZED(ErrorMessage.NOT_AUTHENTICATED) }
   }
 
   const rateLimit = await rateLimitAction(rateLimitKey, session.userId)
@@ -86,7 +87,7 @@ export async function withAuth<T>(
 ): Promise<ApiBody<T>> {
   const actionName = context ?? 'action'
   const session = await getCachedSession()
-  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.') as ApiBody<T>
+  if (!session?.user?.id) return ApiResponse.UNAUTHORIZED(ErrorMessage.NOT_AUTHENTICATED) as ApiBody<T>
   log.info({ actionName }, 'actionRequest')
   try {
     const isPro = await getCachedVerifiedProAccess(session.user.id)
