@@ -1,5 +1,7 @@
 # Improve — Report Template
 
+> **Rendered by the Stage-A research subagent** and returned as its final message — that markdown *is* the subagent's only output. The main agent relays it verbatim, then **STOPs** to drive approval → fix → verify. The subagent never edits code or asks for approval; it only researches and reports.
+
 User-facing report. **STOP** after report unless user requests fixes.
 
 **Principles:** Lead with what matters. Plain language. Major issues first. Skip empty sections. No wall of tables. File list = area summary only (not every path). **KISS = decrease LOC** — always surface −LOC opportunities; flag +LOC creep.

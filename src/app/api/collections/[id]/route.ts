@@ -8,9 +8,9 @@ import {
   getCollectionById,
 } from '@/lib/db/collections'
 import { invalidateCollectionsCache } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('api-collections-id')
+const log = logger.child({ tag: 'api-collections-id' })
 
 const updateCollectionSchema = collectionFormSchema.partial().extend({
   isFavorite: z.boolean().optional(),
@@ -27,7 +27,7 @@ export const PATCH = authenticatedRoute(async (request, context, { userId }) => 
 
   const updated = await dbUpdateCollection(userId, id, parsed.data)
   invalidateCollectionsCache(userId)
-  log.info('Collection updated', { userId, id })
+  log.info({ userId, id }, 'Collection updated')
   return ApiResponse.OK(updated)
 })
 
@@ -39,6 +39,6 @@ export const DELETE = authenticatedRoute(async (_request, context, { userId }) =
 
   await dbDeleteCollection(userId, id)
   invalidateCollectionsCache(userId)
-  log.info('Collection deleted', { userId, id })
+  log.info({ userId, id }, 'Collection deleted')
   return ApiResponse.OK()
 })

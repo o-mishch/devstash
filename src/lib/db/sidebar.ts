@@ -2,11 +2,11 @@ import 'server-only'
 
 import { getSidebarCollections } from './collections'
 import { getSidebarItemTypes } from './items'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { cache } from 'react'
 import type { SidebarData, SidebarUser } from '@/types/sidebar'
 
-const log = createLogger('sidebar')
+const log = logger.child({ tag: 'sidebar' })
 
 const EMPTY_SIDEBAR: Omit<SidebarData, 'user'> = { collections: [], itemTypes: [] }
 
@@ -26,7 +26,7 @@ export async function fetchSidebarData(
     const { collections, itemTypes } = await fetchSidebarDataInternal(userId)
     return { collections, itemTypes, user }
   } catch (error) {
-    log.error('DB: fetchSidebarData failed, returning empty sidebar', error)
+    log.error({ err: error }, 'DB: fetchSidebarData failed, returning empty sidebar')
     return { ...EMPTY_SIDEBAR, user }
   }
 }

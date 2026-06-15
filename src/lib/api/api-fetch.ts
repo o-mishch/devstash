@@ -1,7 +1,10 @@
 import axios from 'axios'
 import type { Method } from 'axios'
 import type { ApiBody } from '@/types/api'
-import { toErrorMessage } from '@/lib/infra/logger'
+
+function toErrorMessage(err: unknown, fallback?: string): string {
+  return err instanceof Error ? err.message : (fallback ?? String(err))
+}
 
 export interface RequestOptions {
   body?: unknown

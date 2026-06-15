@@ -3,11 +3,11 @@ import 'server-only'
 import { cacheTag, cacheLife } from 'next/cache'
 import { prisma } from '@/lib/infra/prisma'
 import { CacheTags } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import type { CollectionWithTypes, CollectionStats, SidebarCollection } from '@/types/collection'
 import type { Prisma } from '@/generated/prisma/client'
 
-const log = createLogger('db:collections')
+const log = logger.child({ tag: 'db:collections' })
 
 // Used only for single-record mutation returns (create/update) where the items join on one row is acceptable
 export const COLLECTION_SELECT = {
@@ -211,7 +211,7 @@ export async function getSidebarCollections(userId: string): Promise<SidebarColl
   const duration = Date.now() - start
 
   if (collections.length === 0) {
-    log.info('DB: getSidebarCollections', { userId, cacheKey, count: 0, duration })
+    log.info({ userId, cacheKey, count: 0, duration }, 'DB: getSidebarCollections')
     return []
   }
 
@@ -219,7 +219,7 @@ export async function getSidebarCollections(userId: string): Promise<SidebarColl
   const countsByCollection = groupTypeCountsByCollection(typeCounts)
   const result = collections.map((col) => mapSidebarCollection(col, countsByCollection.get(col.id)?.[0]?.color ?? null))
 
-  log.info('DB: getSidebarCollections', { userId, cacheKey, count: result.length, duration })
+  log.info({ userId, cacheKey, count: result.length, duration }, 'DB: getSidebarCollections')
   return result
 }
 
@@ -230,7 +230,7 @@ export async function getAllCollections(userId: string): Promise<CollectionWithT
   cacheLife('max')
   const start = Date.now()
   const result = await fetchCollectionsWithTypes(userId)
-  log.info('DB: getAllCollections', { userId, cacheKey, count: result.length, duration: Date.now() - start })
+  log.info({ userId, cacheKey, count: result.length, duration: Date.now() - start }, 'DB: getAllCollections')
   return result
 }
 
@@ -244,7 +244,7 @@ export async function getCollectionsPreview(
   cacheLife('max')
   const start = Date.now()
   const result = await fetchCollectionsWithTypes(userId, { limit })
-  log.info('DB: getCollectionsPreview', { userId, cacheKey, count: result.length, limit, duration: Date.now() - start })
+  log.info({ userId, cacheKey, count: result.length, limit, duration: Date.now() - start }, 'DB: getCollectionsPreview')
   return result
 }
 
@@ -255,7 +255,7 @@ export async function getFavoriteCollections(userId: string): Promise<Collection
   cacheLife('max')
   const start = Date.now()
   const result = await fetchCollectionsWithTypes(userId, { favoritesOnly: true })
-  log.info('DB: getFavoriteCollections', { userId, cacheKey, count: result.length, duration: Date.now() - start })
+  log.info({ userId, cacheKey, count: result.length, duration: Date.now() - start }, 'DB: getFavoriteCollections')
   return result
 }
 
@@ -269,7 +269,7 @@ export async function getCollectionById(userId: string, collectionId: string): P
     where: { id: collectionId, userId },
     select: COLLECTION_BASE_SELECT,
   })
-  log.info('DB: getCollectionById', { userId, collectionId, cacheKey, found: Boolean(col), duration: Date.now() - start })
+  log.info({ userId, collectionId, cacheKey, found: Boolean(col), duration: Date.now() - start }, 'DB: getCollectionById')
   if (!col) return null
   const typeCounts = await getCollectionTypeCounts([col.id])
   return mapCollectionBase(col, typeCounts)
@@ -291,7 +291,7 @@ export async function createCollection(userId: string, input: CreateCollectionIn
     select: COLLECTION_SELECT,
   })
   const duration = Date.now() - start
-  log.info('DB: createCollection', { userId, collectionId: col.id, name: input.name, duration })
+  log.info({ userId, collectionId: col.id, name: input.name, duration }, 'DB: createCollection')
   return mapCollection(col)
 }
 
@@ -309,7 +309,7 @@ export async function getCollectionStats(userId: string): Promise<CollectionStat
   const duration = Date.now() - start
   const totalCollections = rows.reduce((sum, r) => sum + r._count, 0)
   const favoriteCollections = rows.find((r) => r.isFavorite)?._count ?? 0
-  log.info('DB: getCollectionStats', { userId, cacheKey, totalCollections, favoriteCollections, duration })
+  log.info({ userId, cacheKey, totalCollections, favoriteCollections, duration }, 'DB: getCollectionStats')
   return { totalCollections, favoriteCollections }
 }
 
@@ -327,7 +327,7 @@ export async function updateCollection(userId: string, collectionId: string, inp
     select: COLLECTION_SELECT,
   })
   const duration = Date.now() - start
-  log.info('DB: updateCollection', { userId, collectionId, duration })
+  log.info({ userId, collectionId, duration }, 'DB: updateCollection')
   return mapCollection(col)
 }
 
@@ -337,7 +337,7 @@ export async function deleteCollection(userId: string, collectionId: string): Pr
     where: { id: collectionId, userId },
   })
   const duration = Date.now() - start
-  log.info('DB: deleteCollection', { userId, collectionId, duration })
+  log.info({ userId, collectionId, duration }, 'DB: deleteCollection')
 }
 
 export async function toggleCollectionFavorite(userId: string, collectionId: string, isFavorite: boolean): Promise<boolean> {
@@ -347,6 +347,6 @@ export async function toggleCollectionFavorite(userId: string, collectionId: str
     data: { isFavorite },
   })
   const duration = Date.now() - start
-  log.info('DB: toggleCollectionFavorite', { userId, collectionId, isFavorite, updated: result.count > 0, duration })
+  log.info({ userId, collectionId, isFavorite, updated: result.count > 0, duration }, 'DB: toggleCollectionFavorite')
   return result.count > 0
 }

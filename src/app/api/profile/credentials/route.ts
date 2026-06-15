@@ -4,9 +4,9 @@ import { rateLimitRoute } from '@/lib/infra/rate-limit'
 import { getUserAuthMethods, removeUserPassword } from '@/lib/db/users'
 import { verifyPasswordFromBody } from '@/lib/app/profile-helpers'
 import { invalidateProfileCache } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('api-profile-credentials')
+const log = logger.child({ tag: 'api-profile-credentials' })
 
 export const DELETE = authenticatedRoute(async (request, _context, { userId }) => {
   const denied = await rateLimitRoute('changeCredentials', userId)
@@ -25,6 +25,6 @@ export const DELETE = authenticatedRoute(async (request, _context, { userId }) =
 
   await removeUserPassword(userId)
   invalidateProfileCache(userId)
-  log.info('Credentials removed', { userId })
+  log.info({ userId }, 'Credentials removed')
   return ApiResponse.OK()
 })

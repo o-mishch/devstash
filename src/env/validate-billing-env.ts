@@ -1,12 +1,8 @@
-import { createLogger } from '../lib/infra/logger'
-
 const REQUIRED_STRIPE_PRICE_ENV_KEYS = ['STRIPE_PRICE_ID_MONTHLY', 'STRIPE_PRICE_ID_YEARLY'] as const
 
 const REQUIRED_REDIS_ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] as const
 
 const REQUIRED_STRIPE_SECRET_ENV_KEYS = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] as const
-
-const log = createLogger('stripe-config')
 
 function getMissingEnvKeys(keys: readonly string[]): string[] {
   return keys.filter((key) => !process.env[key]?.trim())
@@ -20,7 +16,7 @@ export function validateStripeBillingEnv(): void {
     if (process.env.NODE_ENV === 'production') {
       throw new Error(message)
     }
-    log.warn(message)
+    console.warn(`[stripe-config] ${message}`)
   }
 
   if (process.env.NODE_ENV === 'production') {

@@ -1,9 +1,9 @@
 import { ApiResponse } from '@/lib/api'
 import { withAuth } from '@/lib/session'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import type { ApiBody } from '@/types/api'
 
-const log = createLogger('actions')
+const log = logger.child({ tag: 'actions' })
 
 export function createToggleAction(
   dbAction: (userId: string, entityId: string, flag: boolean) => Promise<boolean>,
@@ -16,7 +16,7 @@ export function createToggleAction(
       if (!ok) return ApiResponse.NOT_FOUND(`${entityName} not found.`)
       
       invalidateCache(userId)
-      log.info(`toggled ${entityName}:${entityId} flag:${flag} user:${userId}`)
+      log.info({ entityName, entityId, flag, userId }, `toggled ${entityName}`)
       return ApiResponse.OK()
     }, `toggle${entityName}Action`)
   }

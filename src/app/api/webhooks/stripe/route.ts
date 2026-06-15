@@ -8,9 +8,9 @@ import {
   releaseStripeWebhookEvent,
 } from '@/lib/billing/webhook/stripe-webhook-idempotency'
 import { apiRoute, ApiResponse } from '@/lib/api'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('stripe-webhook-route')
+const log = logger.child({ tag: 'stripe-webhook-route' })
 
 // Stripe Dashboard webhook endpoint must subscribe to every event in
 // REQUIRED_STRIPE_WEBHOOK_EVENTS (src/lib/billing/config/stripe-webhook-config.ts).
@@ -21,12 +21,12 @@ export const POST = apiRoute(async (req: NextRequest) => {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
 
   if (!signature) {
-    log.error('Webhook received with no stripe-signature header', { bodyLength: body.length })
+    log.error({ bodyLength: body.length }, 'Webhook received with no stripe-signature header')
     return ApiResponse.BAD_REQUEST('No signature found')
   }
 
   if (!webhookSecret) {
-    log.error('STRIPE_WEBHOOK_SECRET is not configured', { bodyLength: body.length })
+    log.error({ bodyLength: body.length }, 'STRIPE_WEBHOOK_SECRET is not configured')
     return ApiResponse.INTERNAL_ERROR('Webhook secret not configured')
   }
 
@@ -34,13 +34,13 @@ export const POST = apiRoute(async (req: NextRequest) => {
   try {
     event = constructStripeWebhookEvent(body, signature, webhookSecret)
   } catch (err: unknown) {
-    log.error('Webhook signature verification failed', { error: err })
+    log.error({ err }, 'Webhook signature verification failed')
     return ApiResponse.BAD_REQUEST('Invalid signature')
   }
 
   const claimed = await claimStripeWebhookEvent(event.id, event.type)
   if (!claimed) {
-    log.info('Skipped duplicate Stripe webhook event', { eventId: event.id, eventType: event.type })
+    log.info({ eventId: event.id, eventType: event.type }, 'Skipped duplicate Stripe webhook event')
     return ApiResponse.OK({ received: true })
   }
 
@@ -48,11 +48,11 @@ export const POST = apiRoute(async (req: NextRequest) => {
     await processStripeWebhookEvent(event)
   } catch (error) {
     await releaseStripeWebhookEvent(event.id)
-    log.error('Webhook handler failed — requesting Stripe retry', {
+    log.error({
       eventId: event.id,
       eventType: event.type,
-      error,
-    })
+      err: error,
+    }, 'Webhook handler failed — requesting Stripe retry')
     return ApiResponse.INTERNAL_ERROR('Webhook handler failed')
   }
 
@@ -61,17 +61,16 @@ export const POST = apiRoute(async (req: NextRequest) => {
   } catch (error) {
     await releaseStripeWebhookEvent(event.id)
     log.error(
-      'WEBHOOK_PROCESSED_MARK_FAILED',
       {
         eventId: event.id,
         eventType: event.type,
-        error,
+        err: error,
       },
-      'Handler succeeded but processed mark failed — released claim for Stripe retry',
+      'WEBHOOK_PROCESSED_MARK_FAILED — Handler succeeded but processed mark failed — released claim for Stripe retry',
     )
     return ApiResponse.INTERNAL_ERROR('Failed to mark webhook event as processed')
   }
 
-  log.info('Webhook processed', { eventId: event.id, eventType: event.type })
+  log.info({ eventId: event.id, eventType: event.type }, 'Webhook processed')
   return ApiResponse.OK({ received: true })
 })

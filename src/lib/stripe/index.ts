@@ -1,10 +1,10 @@
 import Stripe from 'stripe'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
 /** Thin Stripe SDK adapter — checkout/portal/customer mutations live here.
  *  Domain billing logic and reads belong in `src/lib/billing/*`. */
 
-const log = createLogger('stripe-sdk')
+const log = logger.child({ tag: 'stripe-sdk' })
 
 export { fromStripeTs, stripeIntervalToEnum } from '@/lib/billing/stripe-utils'
 
@@ -62,11 +62,11 @@ export async function ensureStripeCustomerUserId(customerId: string, userId: str
   const existingUserId = typeof customer.metadata?.userId === 'string' ? customer.metadata.userId : null
   if (existingUserId === userId) return true
   if (existingUserId && existingUserId !== userId) {
-    log.warn('Stripe customer already linked to another app user — refusing metadata update', {
+    log.warn({
       customerId,
       requestedUserId: userId,
       existingUserId,
-    })
+    }, 'Stripe customer already linked to another app user — refusing metadata update')
     return false
   }
 

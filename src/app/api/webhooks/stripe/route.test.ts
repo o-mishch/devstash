@@ -129,8 +129,8 @@ vi.mock('@/lib/infra/redis', () => ({
   getRedis: vi.fn(() => null),
 }))
 
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 vi.mock('@/lib/billing/emails/billing-payment-failed', () => ({

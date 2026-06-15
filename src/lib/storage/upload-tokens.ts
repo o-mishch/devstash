@@ -2,10 +2,10 @@ import 'server-only'
 import { z } from 'zod'
 import { getRedis } from '@/lib/infra/redis'
 import { deleteFromS3, SIGNED_URL_TTL_SECONDS } from '@/lib/storage/s3'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import type { UploadUrlResult } from '@/types/item'
 
-const log = createLogger('upload-tokens')
+const log = logger.child({ tag: 'upload-tokens' })
 
 const KEY_PREFIX = 'pending_upload:'
 // Keep entry alive past the presign window so background sweeps can reclaim S3 orphans
@@ -35,7 +35,7 @@ function tryValidateStoredUpload(raw: unknown): StoredUpload | null {
   try {
     return storedUploadSchema.parse(raw)
   } catch (err) {
-    log.warn('upload token parse failed', { err, raw })
+    log.warn({ err, raw }, 'upload token parse failed')
     return null
   }
 }
@@ -96,7 +96,7 @@ export async function consumePendingUpload(fileKey: string, userId: string): Pro
       },
     }
   } catch (err) {
-    log.warn('failed to consume pending upload', { fileKey, userId, err })
+    log.warn({ fileKey, userId, err }, 'failed to consume pending upload')
     return { ok: false, reason: 'unavailable' }
   }
 }
@@ -136,13 +136,13 @@ export async function sweepExpiredUploads(): Promise<void> {
           await redis.del(key)
           swept++
         } catch (err) {
-          log.warn('sweep: failed to process entry', { key, err })
+          log.warn({ key, err }, 'sweep: failed to process entry')
         }
       }
     } while (cursor !== 0)
 
-    if (swept > 0) log.info('sweep complete', { swept })
+    if (swept > 0) log.info({ swept }, 'sweep complete')
   } catch (err) {
-    log.error('sweep failed', { err })
+    log.error({ err }, 'sweep failed')
   }
 }

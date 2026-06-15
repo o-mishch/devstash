@@ -1,6 +1,8 @@
 import { vi } from 'vitest'
 
 process.env.STRIPE_SECRET_KEY ??= 'sk_test_vitest_dummy_key'
+// Silence Pino output for modules that use the real logger (no per-test mock).
+process.env.LOG_LEVEL = 'silent'
 
 vi.mock('server-only', () => ({}))
 

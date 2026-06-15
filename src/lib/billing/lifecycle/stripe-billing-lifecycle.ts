@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import {
   cancelSubscriptionImmediately,
   deleteStripeCustomer,
@@ -8,7 +8,7 @@ import {
 } from '@/lib/stripe'
 import { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 
-const log = createLogger('billing-lifecycle')
+const log = logger.child({ tag: 'billing-lifecycle' })
 
 /** Syncs the app account email to the linked Stripe customer record. */
 export async function syncStripeCustomerEmailForUser(userId: string, email: string): Promise<void> {
@@ -17,16 +17,16 @@ export async function syncStripeCustomerEmailForUser(userId: string, email: stri
 
   try {
     await updateStripeCustomerEmail(user.stripeCustomerId, email)
-    log.info('Synced Stripe customer email after app email change', {
+    log.info({
       userId,
       customerId: user.stripeCustomerId,
-    })
+    }, 'Synced Stripe customer email after app email change')
   } catch (error) {
-    log.error('Failed to sync Stripe customer email after app email change', {
+    log.error({
       userId,
       customerId: user.stripeCustomerId,
-      error,
-    })
+      err: error,
+    }, 'Failed to sync Stripe customer email after app email change')
     throw error
   }
 }
@@ -42,16 +42,16 @@ export async function teardownStripeBillingForUser(userId: string): Promise<void
   if (user.stripeSubscriptionId) {
     try {
       await cancelSubscriptionImmediately(user.stripeSubscriptionId)
-      log.info('Canceled Stripe subscription during account deletion', {
+      log.info({
         userId,
         subscriptionId: user.stripeSubscriptionId,
-      })
+      }, 'Canceled Stripe subscription during account deletion')
     } catch (error) {
-      log.error('Failed to cancel Stripe subscription during account deletion', {
+      log.error({
         userId,
         subscriptionId: user.stripeSubscriptionId,
-        error,
-      })
+        err: error,
+      }, 'Failed to cancel Stripe subscription during account deletion')
       throw error
     }
   }
@@ -59,16 +59,16 @@ export async function teardownStripeBillingForUser(userId: string): Promise<void
   if (user.stripeCustomerId) {
     try {
       await deleteStripeCustomer(user.stripeCustomerId)
-      log.info('Deleted Stripe customer during account deletion', {
+      log.info({
         userId,
         customerId: user.stripeCustomerId,
-      })
+      }, 'Deleted Stripe customer during account deletion')
     } catch (error) {
-      log.error('Failed to delete Stripe customer during account deletion', {
+      log.error({
         userId,
         customerId: user.stripeCustomerId,
-        error,
-      })
+        err: error,
+      }, 'Failed to delete Stripe customer during account deletion')
       throw error
     }
   }

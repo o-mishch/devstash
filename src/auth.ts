@@ -24,9 +24,9 @@ import {
 import { resolveSessionUserIsPro } from '@/lib/billing/access/pro-access-resolution'
 import { SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils/constants'
 import { validateUserPassword } from '@/lib/auth/auth-service'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('auth')
+const log = logger.child({ tag: 'auth' })
 export const LINK_INTENT_COOKIE = 'devstash_link_token'
 
 const SESSION_MAX_AGE = 24 * 60 * 60  // 1 day
@@ -136,7 +136,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         try {
           const dbUser = await getUserSessionInfo(token.id as string)
           if (!dbUser) {
-            log.warn('Session invalidated — user not found', { userId: token.id })
+            log.warn({ userId: token.id }, 'Session invalidated — user not found')
             return null
           }
           // Last 8 chars of the bcrypt hash — changes on every password rotation
@@ -156,15 +156,14 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           }
         } catch (error) {
           if (!isTransientDatabaseError(error)) {
-            log.warn('Session invalidated — non-transient DB validation error', { userId: token.id, error })
+            log.warn({ userId: token.id, err: error }, 'Session invalidated — non-transient DB validation error')
             return null
           }
           // Availability trade-off: preserve session during transient DB outages so paying users
           // are not locked out. Deleted users are invalidated above when DB returns null.
           log.error(
-            'Session DB validation failed',
-            { userId: token.id, error },
-            'preserving token during outage',
+            { userId: token.id, err: error },
+            'Session DB validation failed — preserving token during outage',
           )
         }
       }
@@ -172,11 +171,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       // Backfill Account.email for OAuth sign-ins handled by PrismaAdapter
       if (account && account.provider !== 'credentials' && user?.email) {
         void backfillOAuthAccountEmail(account.provider, account.providerAccountId, user.email).catch((error) => {
-          log.warn('Failed to backfill OAuth account email', {
+          log.warn({
             provider: account.provider,
             providerAccountId: account.providerAccountId,
-            error,
-          })
+            err: error,
+          }, 'Failed to backfill OAuth account email')
         })
       }
 

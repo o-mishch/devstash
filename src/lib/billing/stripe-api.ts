@@ -6,9 +6,9 @@ import { getAllowedCheckoutPriceIds } from '@/lib/billing/config/billing-pricing
 import { isSubscriptionCanceling } from '@/lib/billing/subscription/subscription-access'
 import { stripe } from '@/lib/stripe'
 import { fromStripeTs, stripeIntervalToEnum } from '@/lib/billing/stripe-utils'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('stripe-api')
+const log = logger.child({ tag: 'stripe-api' })
 
 const CUSTOMER_SUBSCRIPTIONS_PAGE_SIZE = 100
 
@@ -89,7 +89,7 @@ async function retrieveExpandedSubscription(subscriptionId: string): Promise<Ret
     if (error instanceof Stripe.errors.StripeInvalidRequestError && error.code === 'resource_missing') {
       return { status: 'missing' }
     }
-    log.error('Failed to retrieve subscription from Stripe', { subscriptionId, error })
+    log.error({ subscriptionId, err: error }, 'Failed to retrieve subscription from Stripe')
     return { status: 'error' }
   }
 }
@@ -151,7 +151,7 @@ export async function fetchCheckoutSessionDetails(sessionId: string): Promise<St
       userId: session.client_reference_id ?? userIdFromSubscription,
     }
   } catch (error) {
-    log.error('Failed to fetch checkout session details from Stripe', { sessionId, error })
+    log.error({ sessionId, err: error }, 'Failed to fetch checkout session details from Stripe')
     return null
   }
 }
@@ -174,7 +174,7 @@ async function retrieveStripeCustomerResult(customerId: string): Promise<Retriev
     if ('deleted' in customer && customer.deleted) return { status: 'deleted' }
     return { status: 'ok', customer }
   } catch (error) {
-    log.warn('Failed to retrieve Stripe customer', { customerId, error })
+    log.warn({ customerId, err: error }, 'Failed to retrieve Stripe customer')
     return { status: 'error' }
   }
 }
@@ -213,7 +213,7 @@ export async function retrieveStripeCharge(chargeId: string): Promise<Stripe.Cha
   try {
     return await stripe.charges.retrieve(chargeId)
   } catch (error) {
-    log.warn('Failed to retrieve Stripe charge', { chargeId, error })
+    log.warn({ chargeId, err: error }, 'Failed to retrieve Stripe charge')
     return null
   }
 }
@@ -223,7 +223,7 @@ export async function retrieveStripeInvoice(invoiceId: string): Promise<Stripe.I
   try {
     return await stripe.invoices.retrieve(invoiceId)
   } catch (error) {
-    log.warn('Failed to retrieve Stripe invoice', { invoiceId, error })
+    log.warn({ invoiceId, err: error }, 'Failed to retrieve Stripe invoice')
     return null
   }
 }

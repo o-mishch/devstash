@@ -3,11 +3,11 @@ import { z } from 'zod'
 import { authenticatedRoute } from '@/lib/api'
 import { ApiResponse } from '@/lib/api'
 import { parseOrFail } from '@/lib/utils/validators'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { globalSearch } from '@/lib/db/search'
 import type { SearchResult } from '@/types/search'
 
-const log = createLogger('search')
+const log = logger.child({ tag: 'search' })
 
 const searchSchema = z.object({
   q: z.string().trim().min(1, 'Search query is required'),
@@ -25,7 +25,7 @@ export const GET = authenticatedRoute(async (request, _context, { userId }) => {
   // Use contains with insensitive mode to leverage pg_trgm GIN indexes for fuzzy substring matching
   const [items, collections] = await globalSearch(q, userId)
 
-  log.info('Global search', { userId, items: items.length, collections: collections.length })
+  log.info({ userId, items: items.length, collections: collections.length }, 'Global search')
 
   return ApiResponse.OK<SearchResult>({ items, collections })
 })

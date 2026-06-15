@@ -5,9 +5,9 @@ import { rateLimitRoute } from '@/lib/infra/rate-limit'
 import { getUserAuthMethods, deleteUserById } from '@/lib/db/users'
 import { verifyPasswordFromBody } from '@/lib/app/profile-helpers'
 import { teardownStripeBillingForUser } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('api-profile-delete')
+const log = logger.child({ tag: 'api-profile-delete' })
 
 export const DELETE = authenticatedRoute(async (request, _context, { userId }) => {
   const denied = await rateLimitRoute('deleteAccount', userId)
@@ -25,7 +25,7 @@ export const DELETE = authenticatedRoute(async (request, _context, { userId }) =
   try {
     await teardownStripeBillingForUser(userId)
   } catch (error) {
-    log.error('Stripe billing teardown failed — aborting account deletion', { userId, error })
+    log.error({ userId, err: error }, 'Stripe billing teardown failed — aborting account deletion')
     return ApiResponse.INTERNAL_ERROR(
       'We could not finish billing cleanup. Please try again shortly or contact support.',
     )
@@ -34,13 +34,13 @@ export const DELETE = authenticatedRoute(async (request, _context, { userId }) =
   try {
     await deleteUserById(userId)
   } catch (error) {
-    log.error('ACCOUNT_DELETE_PARTIAL_FAILURE', { userId, error }, 'billing teardown succeeded but user row deletion failed')
+    log.error({ userId, err: error }, 'ACCOUNT_DELETE_PARTIAL_FAILURE — billing teardown succeeded but user row deletion failed')
     return ApiResponse.INTERNAL_ERROR(
       'Billing was cleaned up, but account deletion failed. Please try again or contact support.',
     )
   }
 
   await signOut({ redirect: false })
-  log.info('Account deleted', { userId })
+  log.info({ userId }, 'Account deleted')
   return ApiResponse.OK()
 })

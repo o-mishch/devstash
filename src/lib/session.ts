@@ -2,20 +2,20 @@ import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { auth } from '@/auth'
 import { ApiResponse } from '@/lib/api'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { z } from 'zod'
 import { parseOrFail } from '@/lib/utils/validators'
 import type { ApiBody } from '@/types/api'
 import { rateLimitAction, type RateLimitKey } from '@/lib/infra/rate-limit'
 
-const log = createLogger('session')
+const log = logger.child({ tag: 'session' })
 
 export async function getSession() {
   try {
     return await auth()
   } catch (error) {
-    log.warn('Failed to read auth session', { error })
+    log.warn({ err: error }, 'Failed to read auth session')
     return null
   }
 }
@@ -87,14 +87,14 @@ export async function withAuth<T>(
   const actionName = context ?? 'action'
   const session = await getCachedSession()
   if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.') as ApiBody<T>
-  log.info('actionRequest', { actionName })
+  log.info({ actionName }, 'actionRequest')
   try {
     const isPro = await getCachedVerifiedProAccess(session.user.id)
     const result = await fn({ userId: session.user.id, isPro })
-    log.info('actionResponse', { actionName, status: result.status })
+    log.info({ actionName, status: result.status }, 'actionResponse')
     return result
   } catch (error) {
-    log.error('Auth action failed', { context: actionName, error })
+    log.error({ context: actionName, err: error }, 'Auth action failed')
     return ApiResponse.INTERNAL_ERROR() as ApiBody<T>
   }
 }

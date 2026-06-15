@@ -2,9 +2,9 @@ import 'server-only'
 
 import { Prisma } from '@/generated/prisma'
 import { prisma } from '@/lib/infra/prisma'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('stripe-webhook-events')
+const log = logger.child({ tag: 'stripe-webhook-events' })
 
 const WEBHOOK_EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 /** Processing claims older than this are treated as stale so Stripe retries can reclaim them. */
@@ -24,7 +24,7 @@ export async function releaseStaleStripeWebhookEvents(now = Date.now()): Promise
     },
   })
   if (result.count > 0) {
-    log.info('DB: stale_webhook_claims_released', { count: result.count })
+    log.info({ count: result.count }, 'DB: stale_webhook_claims_released')
   }
   return result.count
 }
@@ -47,7 +47,7 @@ export async function claimStripeWebhookEventInDb(eventId: string, eventType: st
           select: { status: true, createdAt: true },
         })
         if (existing?.status === 'processing' && isStaleWebhookProcessing(existing.createdAt, Date.now())) {
-          log.warn('DB: Reclaiming stale webhook processing claim', { eventId, attempt: attempt + 1 })
+          log.warn({ eventId, attempt: attempt + 1 }, 'DB: Reclaiming stale webhook processing claim')
           await prisma.stripeWebhookEvent.delete({ where: { id: eventId } })
           continue
         }
@@ -87,6 +87,6 @@ export async function pruneOldStripeWebhookEvents(now = Date.now()): Promise<voi
     },
   })
   if (result.count > 0) {
-    log.info('DB: old_webhook_events_pruned', { count: result.count })
+    log.info({ count: result.count }, 'DB: old_webhook_events_pruned')
   }
 }

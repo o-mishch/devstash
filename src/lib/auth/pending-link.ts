@@ -2,9 +2,9 @@ import 'server-only'
 
 import { getRedis } from '@/lib/infra/redis'
 import { generateSecureToken } from '@/lib/auth/tokens'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('pending-link')
+const log = logger.child({ tag: 'pending-link' })
 
 
 export interface PendingLinkData {
@@ -36,7 +36,7 @@ export async function createPendingLink(data: PendingLinkData): Promise<string |
     await redis.set(key, data, { ex: ttl })
     return token
   } catch (error) {
-    log.warn('Failed to create pending link in Redis', { error })
+    log.warn({ err: error }, 'Failed to create pending link in Redis')
     return null
   }
 }
@@ -47,7 +47,7 @@ export async function getPendingLink(token: string): Promise<PendingLinkData | n
     if (!redis) return null
     return await redis.get<PendingLinkData>(`pending-link:${token}`)
   } catch (error) {
-    log.warn('Failed to read pending link from Redis', { error })
+    log.warn({ err: error }, 'Failed to read pending link from Redis')
     return null
   }
 }
@@ -70,7 +70,7 @@ export async function createLinkIntent(userId: string): Promise<string | null> {
     await redis.set(`link-intent:${token}`, { userId } as LinkIntentData, { ex: 60 * 5 })
     return token
   } catch (error) {
-    log.warn('Failed to create link intent in Redis', { userId, error })
+    log.warn({ userId, err: error }, 'Failed to create link intent in Redis')
     return null
   }
 }
@@ -81,7 +81,7 @@ export async function getLinkIntent(token: string): Promise<LinkIntentData | nul
     if (!redis) return null
     return await redis.get<LinkIntentData>(`link-intent:${token}`)
   } catch (error) {
-    log.warn('Failed to read link intent from Redis', { error })
+    log.warn({ err: error }, 'Failed to read link intent from Redis')
     return null
   }
 }

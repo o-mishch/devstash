@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Star, Pin, Pencil, Trash2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { usePatchItem, useRemoveItem } from '@/hooks/use-infinite-items'
+import { usePatchItem, useRemoveItem, useToggleFavoriteInCache } from '@/hooks/use-infinite-items'
 import { useRestrictedAction } from '@/hooks/use-restricted-action'
 import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
@@ -30,8 +30,9 @@ interface ItemDrawerActionBarProps {
 export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted }: ItemDrawerActionBarProps) {
   const patchItem = usePatchItem()
   const removeItem = useRemoveItem()
+  const toggleFavoriteInCache = useToggleFavoriteInCache()
   const { updateItem } = useItemsStore()
-  const { setPinnedOverride } = usePinnedItemsStore()
+  const { setPinnedOverride, removePinnedOverride } = usePinnedItemsStore()
   const { closeDrawer } = useItemDrawerStore()
   const { isPro } = useAppUserFlagsStore()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
@@ -50,7 +51,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     {
       onSuccess: (next) => {
         updateItem({ ...item, isFavorite: next })
-        patchItem(item.id, { isFavorite: next })
+        toggleFavoriteInCache(item, next)
       },
       errorLabel: 'Failed to toggle favorite',
     }
@@ -88,6 +89,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
       toast.success('Item deleted')
       setDeleteDialogOpen(false)
       removeItem(item.id)
+      removePinnedOverride(item.id)
       onDeleted()
     } else {
       toast.error(result.message ?? 'Failed to delete item')

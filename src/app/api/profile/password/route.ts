@@ -6,9 +6,9 @@ import { changeUserPassword } from '@/lib/auth/auth-service'
 import { getUserAuthMethods } from '@/lib/db/users'
 import { applyOwnedEmailChange, verifyPasswordOrFail } from '@/lib/app/profile-helpers'
 import { invalidateProfileCache } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('api-profile-password')
+const log = logger.child({ tag: 'api-profile-password' })
 
 /** Change an existing password. */
 export const PATCH = authenticatedRoute(async (request, _context, { userId }) => {
@@ -23,7 +23,7 @@ export const PATCH = authenticatedRoute(async (request, _context, { userId }) =>
   if (pwError) return pwError
 
   await changeUserPassword(userId, parsed.data.newPassword)
-  log.info('Password changed', { userId })
+  log.info({ userId }, 'Password changed')
   return ApiResponse.OK()
 })
 
@@ -50,6 +50,6 @@ export const POST = authenticatedRoute(async (request, _context, { userId }) => 
 
   await changeUserPassword(userId, newPassword)
   invalidateProfileCache(userId)
-  log.info('Initial password set', { userId })
+  log.info({ userId }, 'Initial password set')
   return ApiResponse.OK()
 })

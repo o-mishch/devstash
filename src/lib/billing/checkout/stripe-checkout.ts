@@ -7,9 +7,9 @@ import { fetchCheckoutSessionDetails, iterateCustomerSubscriptions, listStripeCu
 import { isAllowedCheckoutPriceId } from '@/lib/billing/config/billing-pricing'
 import { persistSubscriptionFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'
 import { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('stripe-checkout')
+const log = logger.child({ tag: 'stripe-checkout' })
 
 export interface CheckoutEligibilityResult {
   status: 'ok' | 'invalid_price' | 'existing_subscription' | 'error'
@@ -102,12 +102,12 @@ export async function findCheckoutCustomerByEmail(
         ? blockingSubscription.metadata.userId
         : null
       if (options?.userId && subscriptionUserId && subscriptionUserId !== options.userId) {
-        log.warn('Skipped Stripe customer with subscription owned by another user', {
+        log.warn({
           customerId: customer.id,
           subscriptionId: blockingSubscription.id,
           requestedUserId: options.userId,
           subscriptionUserId,
-        })
+        }, 'Skipped Stripe customer with subscription owned by another user')
         continue
       }
       return {
@@ -150,10 +150,10 @@ export async function resolveStripeCustomerForUser(
     return { customerId: null, blockingSubscription: null }
   }
 
-  log.info('Recovering Stripe customer by email for checkout eligibility', {
+  log.info({
     userId: input.userId,
     email: input.email,
-  })
+  }, 'Recovering Stripe customer by email for checkout eligibility')
 
   const recovered = await findCheckoutCustomerByEmail(input.email, { userId: input.userId })
   return {
@@ -173,7 +173,7 @@ export async function cancelIncompleteSubscriptionsForCustomer(customerId: strin
 
 export async function validateCheckoutEligibility(userId: string, priceId: string): Promise<CheckoutEligibilityResult> {
   if (!isAllowedCheckoutPriceId(priceId)) {
-    log.warn('Rejected checkout session for invalid Stripe price', { userId, priceId })
+    log.warn({ userId, priceId }, 'Rejected checkout session for invalid Stripe price')
     return { status: 'invalid_price' }
   }
 
@@ -193,13 +193,13 @@ export async function validateCheckoutEligibility(userId: string, priceId: strin
       return { status: 'ok', customerId }
     }
 
-    log.warn('Rejected checkout because customer already has an existing subscription', {
+    log.warn({
       userId,
       customerId,
       subscriptionId: blockingSubscription.id,
       status: blockingSubscription.status,
       recoveredByEmail: !user.stripeCustomerId,
-    })
+    }, 'Rejected checkout because customer already has an existing subscription')
 
     return {
       status: 'existing_subscription',
@@ -209,7 +209,7 @@ export async function validateCheckoutEligibility(userId: string, priceId: strin
       blockingSubscription,
     }
   } catch (error) {
-    log.error('Failed to validate existing subscription before checkout', { userId, error })
+    log.error({ userId, err: error }, 'Failed to validate existing subscription before checkout')
     return { status: 'error' }
   }
 }

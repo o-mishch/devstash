@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type Stripe from 'stripe'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import {
   fetchSubscriptionDetails,
   getIntervalFromSub,
@@ -29,7 +29,7 @@ import {
 } from '@/lib/billing/subscription/subscription-state'
 import { invalidateBillingCache, invalidateStripeSubscriptionCache } from '@/lib/infra/cache'
 
-const log = createLogger('stripe-subscription')
+const log = logger.child({ tag: 'stripe-subscription' })
 
 export interface ApplySubscriptionStateParams {
   subscriptionId: string
@@ -184,13 +184,13 @@ export async function persistSubscriptionFromStripe(
 ): Promise<PersistSubscriptionResult> {
   const subscription = await fetchSubscriptionDetails(subscriptionId)
   if (!subscription) {
-    log.warn('Failed to retrieve subscription details', { userId, subscriptionId })
+    log.warn({ userId, subscriptionId }, 'Failed to retrieve subscription details')
     return { persisted: false, grantsAccess: false, outcome: null }
   }
 
   const customerId = subscription.customerId ?? fallbackCustomerId
   if (!customerId) {
-    log.warn('Failed to persist subscription because Stripe customer ID was missing', { userId, subscriptionId })
+    log.warn({ userId, subscriptionId }, 'Failed to persist subscription because Stripe customer ID was missing')
     return { persisted: false, grantsAccess: false, outcome: null }
   }
 
@@ -213,19 +213,18 @@ export async function persistSubscriptionFromStripe(
   })
 
   if (outcome === 'cleared') {
-    log.warn('Failed to persist checkout subscription because Stripe status cleared the local link', {
+    log.warn({
       userId,
       subscriptionId,
       paymentStatus: paymentStatus ?? 'unknown',
       status: subscription.status,
       outcome,
-    })
+    }, 'Failed to persist checkout subscription because Stripe status cleared the local link')
     return { persisted: false, grantsAccess: false, outcome: 'cleared' }
   }
 
   const eventType = forceActivate ? 'checkout.session.async_payment_succeeded' : 'checkout.session.completed'
   log.info(
-    eventType,
     {
       userId,
       subscriptionId,
@@ -236,7 +235,7 @@ export async function persistSubscriptionFromStripe(
       startedAt: subscription.startDate.toISOString(),
       outcome,
     },
-    getStripeEventDescription(eventType)
+    `${eventType} — ${getStripeEventDescription(eventType)}`,
   )
 
   return { persisted: true, grantsAccess, outcome }
@@ -331,44 +330,40 @@ export async function upsertSubscriptionStateFromObject(
 
   if (outcome === 'updated') {
     log.info(
-      sourceEvent,
       {
         ...logContext,
         interval: interval ?? 'unknown',
         currentPeriodEndsAt: periodEndDate?.toISOString() ?? 'unknown',
         accessEndsAt: isCanceling ? periodEndDate?.toISOString() ?? 'unknown' : null,
       },
-      isCanceling ? 'subscription scheduled to cancel at period end' : 'subscription active after renewal or reactivation',
+      `${sourceEvent} — ${isCanceling ? 'subscription scheduled to cancel at period end' : 'subscription active after renewal or reactivation'}`,
     )
     return
   }
 
   if (outcome === 'unchanged') {
     log.info(
-      sourceEvent,
       logContext,
-      grantsAccess
+      `${sourceEvent} — ${grantsAccess
         ? 'subscription already matches Stripe — no database write needed'
-        : 'subscription state unchanged',
+        : 'subscription state unchanged'}`,
     )
     return
   }
 
   if (outcome === 'cleared') {
     log.warn(
-      sourceEvent,
       logContext,
-      'abandoned subscription cleared locally so checkout can be retried',
+      `${sourceEvent} — abandoned subscription cleared locally so checkout can be retried`,
     )
     return
   }
 
   log.warn(
-    sourceEvent,
     {
       ...logContext,
       accessEndsAt: periodEndDate?.toISOString() ?? 'immediately',
     },
-    'subscription retained locally without Pro access because Stripe status no longer grants entitlements',
+    `${sourceEvent} — subscription retained locally without Pro access because Stripe status no longer grants entitlements`,
   )
 }

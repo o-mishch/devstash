@@ -4,11 +4,11 @@ import { cacheTag, cacheLife } from 'next/cache'
 import { prisma } from '@/lib/infra/prisma'
 import { CacheTags } from '@/lib/infra/cache'
 import { FREE_TIER_COLLECTION_LIMIT, FREE_TIER_ITEM_LIMIT } from '@/lib/utils/constants'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
 export { FREE_TIER_COLLECTION_LIMIT, FREE_TIER_ITEM_LIMIT } from '@/lib/utils/constants'
 
-const log = createLogger('db:usage')
+const log = logger.child({ tag: 'db:usage' })
 
 export async function getUserUsageStats(userId: string) {
   const [itemsCount, collectionsCount] = await Promise.all([
@@ -25,7 +25,7 @@ export async function countItemsByUserId(userId: string): Promise<number> {
   cacheLife('max')
   const start = Date.now()
   const count = await prisma.item.count({ where: { userId } })
-  log.info('DB: countItemsByUserId', { userId, cacheKey, count, duration: Date.now() - start })
+  log.info({ userId, cacheKey, count, duration: Date.now() - start }, 'DB: countItemsByUserId')
   return count
 }
 
@@ -36,7 +36,7 @@ export async function countCollectionsByUserId(userId: string): Promise<number> 
   cacheLife('max')
   const start = Date.now()
   const count = await prisma.collection.count({ where: { userId } })
-  log.info('DB: countCollectionsByUserId', { userId, cacheKey, count, duration: Date.now() - start })
+  log.info({ userId, cacheKey, count, duration: Date.now() - start }, 'DB: countCollectionsByUserId')
   return count
 }
 

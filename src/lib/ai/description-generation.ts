@@ -6,9 +6,7 @@ import { getItemAiMetadata } from '@/lib/db/items'
 import { rateLimitAction, type RateLimitKey } from '@/lib/infra/rate-limit'
 import type { ParseResult } from '@/lib/utils/validators'
 import type { ApiBody } from '@/types/api'
-import type { createLogger } from '@/lib/infra/logger'
-
-type AiGenerationLogger = ReturnType<typeof createLogger>
+import type { Logger } from 'pino'
 
 interface ItemImageLookup {
   itemType: string
@@ -33,7 +31,7 @@ export async function runOpenAiCompletion<TResult>(
   client: OpenAI,
   request: OpenAiCompletionRequest,
   parse: (responseContent: string) => TResult | null,
-  log: AiGenerationLogger,
+  log: Logger,
 ): Promise<TResult | null> {
   const completion = await client.responses.create(request)
 
@@ -44,7 +42,7 @@ export async function runOpenAiCompletion<TResult>(
 
   const result = parse(responseContent)
   if (result == null) {
-    log.error('Failed to parse OpenAI JSON response', { responseLength: responseContent.length })
+    log.error({ responseLength: responseContent.length }, 'Failed to parse OpenAI JSON response')
     return null
   }
 
@@ -71,7 +69,7 @@ export interface RunProAiGenerationParams<TData, TResult> {
   rateLimitKey: RateLimitKey
   notConfiguredMessage: string
   failureMessage: string
-  log: AiGenerationLogger
+  log: Logger
   logLabel: string
   execute: (client: OpenAI, data: TData) => Promise<TResult | null>
 }
@@ -106,7 +104,7 @@ export async function runProAiGeneration<TData, TResult>(
     return ApiResponse.INTERNAL_ERROR(notConfiguredMessage)
   }
 
-  log.info(`Generating ${logLabel} via OpenAI`, { userId })
+  log.info({ userId }, `Generating ${logLabel} via OpenAI`)
 
   try {
     const result = await execute(client, parseResult.data)
@@ -114,10 +112,10 @@ export async function runProAiGeneration<TData, TResult>(
       return ApiResponse.INTERNAL_ERROR(failureMessage)
     }
 
-    log.info(`Successfully generated ${logLabel}`, { userId })
+    log.info({ userId }, `Successfully generated ${logLabel}`)
     return ApiResponse.OK(result)
   } catch (error) {
-    log.error('OpenAI API Error', error)
+    log.error({ err: error }, 'OpenAI API Error')
     return ApiResponse.INTERNAL_ERROR(failureMessage)
   }
 }

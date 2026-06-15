@@ -9,9 +9,9 @@ import {
 import { invalidateCollectionsCache, invalidateItemsCache } from '@/lib/infra/cache'
 import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 import { PRO_ITEM_TYPE_NAMES, PRO_ITEM_TYPE_NAMES_LABEL } from '@/lib/utils/constants'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('api-items-id')
+const log = logger.child({ tag: 'api-items-id' })
 
 export const PATCH = authenticatedRoute(async (request, context, { userId, isPro }) => {
   const { id } = await context.params
@@ -31,7 +31,7 @@ export const PATCH = authenticatedRoute(async (request, context, { userId, isPro
 
   invalidateItemsCache(userId)
   invalidateCollectionsCache(userId)
-  log.info('Item updated', { userId, itemId: id })
+  log.info({ userId, itemId: id }, 'Item updated')
   return ApiResponse.OK(updated)
 })
 
@@ -45,7 +45,7 @@ export const DELETE = authenticatedRoute(async (_request, context, { userId }) =
     try {
       await deleteStoredFile(existing.fileUrl)
     } catch (error) {
-      log.error('Failed to delete file from storage', { userId, itemId: id, error })
+      log.error({ userId, itemId: id, err: error }, 'Failed to delete file from storage')
       return ApiResponse.INTERNAL_ERROR('Failed to delete file from storage.')
     }
   }
@@ -56,6 +56,6 @@ export const DELETE = authenticatedRoute(async (_request, context, { userId }) =
   invalidateItemsCache(userId)
   invalidateCollectionsCache(userId)
 
-  log.info('Item deleted', { userId, itemId: id })
+  log.info({ userId, itemId: id }, 'Item deleted')
   return ApiResponse.OK()
 })

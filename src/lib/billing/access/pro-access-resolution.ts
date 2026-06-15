@@ -6,9 +6,9 @@ import {
   getCachedUserStripeInfo,
   getFreshUserStripeInfo,
 } from '@/lib/billing/sync/user-billing-state'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('pro-access')
+const log = logger.child({ tag: 'pro-access' })
 
 /** Per-request map — prevents duplicate fresh DB reads when getFreshVerifiedProAccess is called multiple times. */
 const getBillingRequestScope = cache(() => ({
@@ -40,7 +40,7 @@ type UserStripeRow = NonNullable<Awaited<ReturnType<typeof getCachedUserStripeIn
 function resolveProAccessFromRow(userId: string, user: UserStripeRow): boolean {
   if (!user.stripeSubscriptionId) {
     if (user.isPro) {
-      log.warn('User has isPro without a linked Stripe subscription — denying Pro access', { userId })
+      log.warn({ userId }, 'User has isPro without a linked Stripe subscription — denying Pro access')
     }
     return false
   }
@@ -78,7 +78,7 @@ export async function resolveSessionUserIsPro(userId: string): Promise<boolean> 
   try {
     return await getCachedVerifiedProAccess(userId)
   } catch (error) {
-    log.error('Failed to resolve Pro access for session', { userId, error })
+    log.error({ userId, err: error }, 'Failed to resolve Pro access for session')
     return false
   }
 }

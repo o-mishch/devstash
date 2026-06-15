@@ -9,7 +9,7 @@ import {
   ITEM_DESCRIPTION_SYSTEM_PROMPT,
   parseAiDescriptionResponse,
 } from '@/lib/ai/description-response'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import {
   buildItemAiUserMessage,
   itemTypeSchema,
@@ -17,7 +17,7 @@ import {
   trimOptionalAiField,
 } from '@/lib/ai/item-context'
 
-const log = createLogger('ai-description')
+const log = logger.child({ tag: 'ai-description' })
 
 const MAX_AI_INPUT_CHARS = 6000
 
