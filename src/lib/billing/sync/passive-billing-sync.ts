@@ -2,7 +2,7 @@ import 'server-only'
 
 import type Stripe from 'stripe'
 import { cache } from 'react'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { shouldPassiveSyncBilling, shouldRunOrphanReconcile } from '@/lib/billing/config/billing-config'
 import {
   getCachedLiveSubscriptionState,
@@ -16,8 +16,8 @@ import { resolveStripeCustomerForUser } from '@/lib/billing/checkout/stripe-chec
 import { applySubscriptionAccessFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'
 import { touchUserLastStripeSyncAt } from '@/lib/billing/subscription/subscription-state'
 
-const log = createLogger('passive-billing-sync')
-const logOrphan = createLogger('stripe-orphan-reconcile')
+const log = logger.child({ tag: 'passive-billing-sync' })
+const logOrphan = logger.child({ tag: 'stripe-orphan-reconcile' })
 
 export interface SubscriptionSyncResult {
   status: 'no_subscription' | 'unavailable' | 'revoked' | 'cleared' | 'updated' | 'unchanged'
@@ -88,11 +88,14 @@ export async function reconcileOrphanStripeSubscriptionForUser(
     return false
   }
   if (!await subscriptionBelongsToUser(blockingSubscription, userId, customerId)) {
-    logOrphan.warn('Skipped orphan reconcile because subscription metadata points to another user', {
-      userId,
-      subscriptionId: blockingSubscription.id,
-      metadataUserId: blockingSubscription.metadata?.userId ?? null,
-    })
+    logOrphan.warn(
+      {
+        userId,
+        subscriptionId: blockingSubscription.id,
+        metadataUserId: blockingSubscription.metadata?.userId ?? null,
+      },
+      'Skipped orphan reconcile because subscription metadata points to another user',
+    )
     if (usedStripeLookup) await touchUserLastStripeSyncAt(userId)
     return false
   }
@@ -115,22 +118,28 @@ export async function reconcileOrphanStripeSubscriptionForUser(
   })
 
   if (outcome !== 'updated' && outcome !== 'unchanged') {
-    logOrphan.warn('Skipped orphan reconcile because subscription state could not be linked', {
-      userId,
-      subscriptionId: blockingSubscription.id,
-      outcome,
-    })
+    logOrphan.warn(
+      {
+        userId,
+        subscriptionId: blockingSubscription.id,
+        outcome,
+      },
+      'Skipped orphan reconcile because subscription state could not be linked',
+    )
     if (usedStripeLookup) await touchUserLastStripeSyncAt(userId)
     return false
   }
 
-  logOrphan.info('Orphan Stripe subscription linked to user after missed sync', {
-    userId,
-    subscriptionId: blockingSubscription.id,
-    customerId,
-    status: details.status,
-    outcome,
-  })
+  logOrphan.info(
+    {
+      userId,
+      subscriptionId: blockingSubscription.id,
+      customerId,
+      status: details.status,
+      outcome,
+    },
+    'Orphan Stripe subscription linked to user after missed sync',
+  )
 
   return true
 }
@@ -162,11 +171,11 @@ export async function syncSubscriptionStateForUser(
   })
 
   if (outcome === 'revoked') {
-    log.warn('syncSubscriptionState → local Pro access revoked from live Stripe state', {
+    log.warn({
       subscriptionId,
       status: live.status,
       exists: live.exists,
-    })
+    }, 'syncSubscriptionState → local Pro access revoked from live Stripe state')
     return {
       status: 'revoked',
       subscriptionId,
@@ -176,11 +185,11 @@ export async function syncSubscriptionStateForUser(
   }
 
   if (outcome === 'cleared') {
-    log.warn('syncSubscriptionState → local subscription link cleared from live Stripe state', {
+    log.warn({
       subscriptionId,
       status: live.status,
       exists: live.exists,
-    })
+    }, 'syncSubscriptionState → local subscription link cleared from live Stripe state')
     return {
       status: 'cleared',
       subscriptionId,
@@ -190,7 +199,7 @@ export async function syncSubscriptionStateForUser(
   }
 
   if (outcome === 'unchanged') {
-    log.info('syncSubscriptionState → local state already matches Stripe', { subscriptionId })
+    log.info({ subscriptionId }, 'syncSubscriptionState → local state already matches Stripe')
     return {
       status: 'unchanged',
       subscriptionId,
@@ -199,7 +208,7 @@ export async function syncSubscriptionStateForUser(
     }
   }
 
-  log.info('syncSubscriptionState → stale DB state synced from Stripe', { subscriptionId })
+  log.info({ subscriptionId }, 'syncSubscriptionState → stale DB state synced from Stripe')
   return {
     status: 'updated',
     subscriptionId,
@@ -215,7 +224,7 @@ export const maybeReconcileBillingStateForUser = cache(async (userId: string): P
 
   const result = await syncSubscriptionStateForUser(userId)
   if (result.status === 'no_subscription' || result.status === 'unavailable') {
-    log.info('Passive billing sync completed without state change', { userId, outcome: result.status })
+    log.info({ userId, outcome: result.status }, 'Passive billing sync completed without state change')
   }
   return result
 })

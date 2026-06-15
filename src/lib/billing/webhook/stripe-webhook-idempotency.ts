@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { getRedis, isAbortOrTimeout } from '@/lib/infra/redis'
 import {
   claimStripeWebhookEventInDb,
@@ -11,7 +11,7 @@ import {
   STALE_WEBHOOK_PROCESSING_MS,
 } from '@/lib/db/stripe-webhook-events'
 
-const log = createLogger('stripe-webhook-idempotency')
+const log = logger.child({ tag: 'stripe-webhook-idempotency' })
 
 const WEBHOOK_EVENT_TTL_SECONDS = 60 * 60 * 24 * 30
 const WEBHOOK_EVENT_NS = 'stripe:webhook:event'
@@ -85,12 +85,9 @@ async function claimWithRedis(eventId: string, eventType: string): Promise<boole
     return await claimWithRedisOnce(redis, eventId, eventType, true)
   } catch (error) {
     if (isAbortOrTimeout(error)) {
-      log.warn('Redis webhook claim timed out — falling back to DB idempotency', {
-        eventId,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      })
+      log.warn({ eventId, err: error }, 'Redis webhook claim timed out — falling back to DB idempotency')
     } else {
-      log.warn('Redis webhook claim failed — falling back to DB idempotency', { eventId, error })
+      log.warn({ eventId, err: error }, 'Redis webhook claim failed — falling back to DB idempotency')
     }
     return null
   }
@@ -102,7 +99,7 @@ export async function claimStripeWebhookEvent(eventId: string, eventType: string
   try {
     dbClaimed = await claimStripeWebhookEventInDb(eventId, eventType)
   } catch (error) {
-    log.error('DB webhook claim failed', { eventId, error })
+    log.error({ eventId, err: error }, 'DB webhook claim failed')
     throw new Error(`Failed to claim webhook event ${eventId} after stale reclaim retries`)
   }
   if (!dbClaimed) return false
@@ -129,19 +126,19 @@ export async function markStripeWebhookEventProcessed(eventId: string, eventType
     }
   } catch (error) {
     // Redis marker is optional — DB is authoritative. Log so we notice persistent Redis issues.
-    log.warn('Redis webhook processed marker failed', { eventId, eventType, error })
+    log.warn({ eventId, eventType, err: error }, 'Redis webhook processed marker failed')
   }
 
   try {
     await markStripeWebhookEventProcessedInDb(eventId)
   } catch (error) {
-    log.error('Failed to mark webhook event processed in database — retrying', { eventId, error })
+    log.error({ eventId, err: error }, 'Failed to mark webhook event processed in database — retrying')
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         await markStripeWebhookEventProcessedInDb(eventId)
         return
       } catch (retryError) {
-        log.error('Webhook processed mark retry failed', { eventId, attempt, error: retryError })
+        log.error({ eventId, attempt, err: retryError }, 'Webhook processed mark retry failed')
       }
     }
     throw new Error(`Failed to mark webhook event ${eventId} as processed`)
@@ -154,7 +151,7 @@ export async function releaseStripeWebhookEvent(eventId: string): Promise<void> 
     if (redis) await redis.del(getWebhookEventKey(eventId))
   } catch (error) {
     // Non-fatal — event expires via TTL. Log so persistent Redis issues are visible.
-    log.warn('Redis webhook event release failed', { eventId, error })
+    log.warn({ eventId, err: error }, 'Redis webhook event release failed')
   }
 
   try {

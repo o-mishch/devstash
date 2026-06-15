@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type Stripe from 'stripe'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { cancelAbandonedSubscription, cancelSubscriptionImmediately, isChargeFullyRefunded } from '@/lib/stripe'
 import { fromStripeTs } from '@/lib/billing/stripe-utils'
 import {
@@ -37,12 +37,12 @@ import {
 } from '@/lib/billing/subscription/subscription-state'
 import { getUserIdByStripeCustomerId } from '@/lib/db/stripe'
 
-const logCheckout = createLogger('stripe-webhook-checkout')
-const logCharge = createLogger('stripe-webhook-charge')
-const logInvoice = createLogger('stripe-webhook-invoice')
-const logSubscription = createLogger('stripe-webhook-subscription')
-const logCustomer = createLogger('stripe-webhook-customer')
-const logRecovery = createLogger('billing-recovery-email')
+const logCheckout = logger.child({ tag: 'stripe-webhook-checkout' })
+const logCharge = logger.child({ tag: 'stripe-webhook-charge' })
+const logInvoice = logger.child({ tag: 'stripe-webhook-invoice' })
+const logSubscription = logger.child({ tag: 'stripe-webhook-subscription' })
+const logCustomer = logger.child({ tag: 'stripe-webhook-customer' })
+const logRecovery = logger.child({ tag: 'billing-recovery-email' })
 
 // ─── Invoice subscription resolution (formerly stripe-invoice.ts) ───────────────
 
@@ -112,10 +112,13 @@ export async function resolveSubscriptionIdFromCharge(charge: Stripe.Charge): Pr
 
 export async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session, forceActivate: boolean) {
   if (session.mode !== 'subscription') {
-    logCheckout.warn('Ignoring checkout session that is not a subscription checkout', {
-      sessionId: session.id,
-      mode: session.mode,
-    })
+    logCheckout.warn(
+      {
+        sessionId: session.id,
+        mode: session.mode,
+      },
+      'Ignoring checkout session that is not a subscription checkout',
+    )
     return
   }
 
@@ -195,13 +198,12 @@ export async function handleAbandonedCheckoutSession(
   }
 
   logCheckout.warn(
-    eventType,
     {
       sessionId: session.id,
       subscriptionId,
       customerId: getStripeCustomerId(session.customer),
     },
-    description
+    `${eventType} — ${description}`,
   )
 }
 
@@ -223,21 +225,20 @@ async function revokeSubscriptionAccessLocally(subscriptionId: string): Promise<
 export async function handleChargeRefunded(charge: Stripe.Charge) {
   const subscriptionId = await resolveSubscriptionIdFromCharge(charge)
   if (!subscriptionId) {
-    logCharge.warn('charge.refunded', { chargeId: charge.id }, 'no linked subscription found for refunded charge')
+    logCharge.warn({ chargeId: charge.id }, 'charge.refunded — no linked subscription found for refunded charge')
     return
   }
 
   if (isChargeFullyRefunded(charge)) {
     await revokeSubscriptionAccessLocally(subscriptionId)
     logCharge.warn(
-      'charge.refunded',
       {
         chargeId: charge.id,
         subscriptionId,
         amountRefunded: charge.amount_refunded,
         revokedAccess: true,
       },
-      'full refund received — subscription reconciled and local Pro access revoked when still entitled'
+      'charge.refunded — full refund received — subscription reconciled and local Pro access revoked when still entitled',
     )
     return
   }
@@ -249,7 +250,6 @@ export async function handleChargeRefunded(charge: Stripe.Charge) {
     )
   }
   logCharge.info(
-    'charge.refunded',
     {
       chargeId: charge.id,
       subscriptionId,
@@ -257,7 +257,7 @@ export async function handleChargeRefunded(charge: Stripe.Charge) {
       subscriptionStatus: details.status,
       accessRetained: subscriptionHasProAccess(details.status),
     },
-    getStripeEventDescription('charge.refunded')
+    `charge.refunded — ${getStripeEventDescription('charge.refunded')}`,
   )
 }
 
@@ -292,7 +292,6 @@ export async function handleChargeDisputeCreated(dispute: Stripe.Dispute) {
   })
 
   logCharge.warn(
-    'charge.dispute.created',
     {
       disputeId: dispute.id,
       chargeId,
@@ -302,14 +301,14 @@ export async function handleChargeDisputeCreated(dispute: Stripe.Dispute) {
       status: dispute.status,
       adminEmailSent: emailSent,
     },
-    getStripeEventDescription('charge.dispute.created')
+    `charge.dispute.created — ${getStripeEventDescription('charge.dispute.created')}`,
   )
 }
 
 export async function handleChargeDisputeClosed(dispute: Stripe.Dispute) {
   const chargeId = typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id ?? null
   if (!chargeId) {
-    logCharge.warn('charge.dispute.closed', { disputeId: dispute.id }, 'dispute had no charge reference')
+    logCharge.warn({ disputeId: dispute.id }, 'charge.dispute.closed — dispute had no charge reference')
     return
   }
 
@@ -325,14 +324,13 @@ export async function handleChargeDisputeClosed(dispute: Stripe.Dispute) {
     if (subscriptionId) {
       await revokeSubscriptionAccessLocally(subscriptionId)
       logCharge.warn(
-        'charge.dispute.closed',
         {
           disputeId: dispute.id,
           chargeId,
           subscriptionId,
           revokedAccess: true,
         },
-        'dispute lost — subscription reconciled and local Pro access revoked when still entitled'
+        'charge.dispute.closed — dispute lost — subscription reconciled and local Pro access revoked when still entitled',
       )
       return
     }
@@ -346,7 +344,6 @@ export async function handleChargeDisputeClosed(dispute: Stripe.Dispute) {
       )
     }
     logCharge.info(
-      'charge.dispute.closed',
       {
         disputeId: dispute.id,
         chargeId,
@@ -354,19 +351,18 @@ export async function handleChargeDisputeClosed(dispute: Stripe.Dispute) {
         subscriptionStatus: details?.status ?? 'unknown',
         restoredAccess: details ? subscriptionHasProAccess(details.status) : false,
       },
-      'dispute won — subscription state reconciled from Stripe'
+      'charge.dispute.closed — dispute won — subscription state reconciled from Stripe',
     )
     return
   }
 
   logCharge.info(
-    'charge.dispute.closed',
     {
       disputeId: dispute.id,
       chargeId,
       status: dispute.status,
     },
-    getStripeEventDescription('charge.dispute.closed')
+    `charge.dispute.closed — ${getStripeEventDescription('charge.dispute.closed')}`,
   )
 }
 
@@ -412,7 +408,7 @@ export async function handleInvoiceBillingRecovery(
 export async function handleInvoicePaid(invoice: Stripe.Invoice) {
   const subscriptionId = getSubscriptionIdFromInvoice(invoice)
   if (!subscriptionId) {
-    logInvoice.warn('invoice.paid', { invoiceId: invoice.id }, 'skipped period update because subscription ID was missing')
+    logInvoice.warn({ invoiceId: invoice.id }, 'invoice.paid — skipped period update because subscription ID was missing')
     return
   }
 
@@ -426,9 +422,8 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
   if (!subscriptionHasProAccess(subscription.status)) {
     await reconcileSubscriptionById(subscriptionId)
     logInvoice.warn(
-      'invoice.paid',
       { invoiceId: invoice.id, subscriptionId, status: subscription.status },
-      'skipped Pro grant because subscription status does not entitle access'
+      'invoice.paid — skipped Pro grant because subscription status does not entitle access',
     )
     return
   }
@@ -438,7 +433,7 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
     newPeriodEnd = subscription.currentPeriodEnd ?? null
   }
   if (!newPeriodEnd) {
-    logInvoice.warn('invoice.paid', { invoiceId: invoice.id, subscriptionId }, 'skipped period update because period end could not be resolved')
+    logInvoice.warn({ invoiceId: invoice.id, subscriptionId }, 'invoice.paid — skipped period update because period end could not be resolved')
     return
   }
 
@@ -461,11 +456,14 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
           `invoice.paid could not link subscription ${subscriptionId} to an app user (invoice ${invoice.id})`,
         )
       }
-      logInvoice.error('invoice.paid skipped — no linkable app user for subscription', {
-        invoiceId: invoice.id,
-        subscriptionId,
-        customerId,
-      })
+      logInvoice.error(
+        {
+          invoiceId: invoice.id,
+          subscriptionId,
+          customerId,
+        },
+        'invoice.paid skipped — no linkable app user for subscription',
+      )
       return
     }
     throw new Error(
@@ -474,9 +472,8 @@ export async function handleInvoicePaid(invoice: Stripe.Invoice) {
   }
 
   logInvoice.info(
-    'invoice.paid',
     { subscriptionId, invoiceId: invoice.id, newPeriodEndsAt: newPeriodEnd.toISOString() },
-    'subscription renewed, next period updated'
+    'invoice.paid — subscription renewed, next period updated',
   )
 }
 
@@ -487,9 +484,8 @@ export async function handleSubscriptionDeleted(subscription: Stripe.Subscriptio
   const periodEndDate = periodEnd ? fromStripeTs(periodEnd) : undefined
   await clearStripeSubscriptionBySubId(subscription.id, periodEndDate)
   logSubscription.info(
-    'customer.subscription.deleted',
     { subscriptionId: subscription.id, endsAt: periodEndDate?.toISOString() ?? 'immediately' },
-    getStripeEventDescription('customer.subscription.deleted')
+    `customer.subscription.deleted — ${getStripeEventDescription('customer.subscription.deleted')}`,
   )
 }
 
@@ -523,14 +519,13 @@ export async function handleSubscriptionTrialWillEnd(subscription: Stripe.Subscr
   }
 
   logSubscription.info(
-    'customer.subscription.trial_will_end',
     {
       subscriptionId: subscription.id,
       status: subscription.status,
       trialEnd: subscription.trial_end ? fromStripeTs(subscription.trial_end).toISOString() : null,
       emailSent,
     },
-    getStripeEventDescription('customer.subscription.trial_will_end')
+    `customer.subscription.trial_will_end — ${getStripeEventDescription('customer.subscription.trial_will_end')}`,
   )
 }
 
@@ -539,7 +534,7 @@ export async function handleSubscriptionTrialWillEnd(subscription: Stripe.Subscr
 export async function handleCustomerDeleted(customer: Stripe.Customer | Stripe.DeletedCustomer) {
   const linkedUserId = await getUserIdByStripeCustomerId(customer.id)
   await clearStripeCustomerByCustomerId(customer.id)
-  logCustomer.info('customer.deleted', { customerId: customer.id, linkedUserId }, 'local Stripe customer link cleared')
+  logCustomer.info({ customerId: customer.id, linkedUserId }, 'customer.deleted — local Stripe customer link cleared')
 }
 
 // ─── Billing recovery email (formerly stripe-billing-recovery-email.ts) ───────
@@ -583,9 +578,8 @@ export async function sendBillingPortalRecoveryEmail(
 
   if (!customerId || !email) {
     logRecovery.warn(
-      sourceEvent,
       { contextId, customerId, hasCustomerEmail: Boolean(email) },
-      missingFieldsMessage,
+      `${sourceEvent} — ${missingFieldsMessage}`,
     )
     return { emailSent: false }
   }
@@ -594,13 +588,13 @@ export async function sendBillingPortalRecoveryEmail(
   try {
     portalSession = await createPortalSession(customerId, `${getBaseUrl()}/settings`)
   } catch (error) {
-    logRecovery.error(sourceEvent, { contextId, customerId, error }, 'billing portal session creation failed')
+    logRecovery.error({ contextId, customerId, err: error }, `${sourceEvent} — billing portal session creation failed`)
     throw new Error(
       `billing recovery portal session failed for ${contextId}`,
     )
   }
   if (!portalSession.url) {
-    logRecovery.warn(sourceEvent, { contextId, customerId }, missingPortalUrlMessage)
+    logRecovery.warn({ contextId, customerId }, `${sourceEvent} — ${missingPortalUrlMessage}`)
     return { emailSent: false }
   }
 
@@ -608,9 +602,9 @@ export async function sendBillingPortalRecoveryEmail(
   const logContext = { contextId, customerId, email, emailSent }
 
   if (emailSent) {
-    logRecovery.info(sourceEvent, logContext, successMessage)
+    logRecovery.info(logContext, `${sourceEvent} — ${successMessage}`)
   } else {
-    logRecovery.warn(sourceEvent, logContext, failureMessage)
+    logRecovery.warn(logContext, `${sourceEvent} — ${failureMessage}`)
   }
 
   return { emailSent }
@@ -676,9 +670,12 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
       await handleChargeDisputeClosed(event.data.object as Stripe.Dispute)
       return
     default:
-      logCustomer.warn('Unhandled Stripe webhook event ignored', {
-        eventId: event.id,
-        eventType: event.type,
-      })
+      logCustomer.warn(
+        {
+          eventId: event.id,
+          eventType: event.type,
+        },
+        'Unhandled Stripe webhook event ignored',
+      )
   }
 }

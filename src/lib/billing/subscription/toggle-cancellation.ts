@@ -9,10 +9,10 @@ import {
 import { applyLiveSubscriptionAccessFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'
 import { syncSubscriptionStateForUser } from '@/lib/billing/sync/passive-billing-sync'
 import { invalidateBillingCache } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import type { ApiBody } from '@/types/api'
 
-const log = createLogger('billing-subscription-toggle')
+const log = logger.child({ tag: 'billing-subscription-toggle' })
 
 /** Cancel (or reactivate) the signed-in user's subscription at period end. */
 export async function toggleSubscriptionCancellation(userId: string, cancel: boolean): Promise<ApiBody<null>> {
@@ -34,17 +34,17 @@ export async function toggleSubscriptionCancellation(userId: string, cancel: boo
     const isPro = await getFreshVerifiedProAccess(userId)
     markFreshProAccessResolved(userId, isPro)
     invalidateBillingCache(userId)
-    log.info(cancel ? 'Canceled subscription' : 'Reactivated subscription', {
+    log.info({
       userId,
       subscriptionId: user.stripeSubscriptionId,
-    })
+    }, cancel ? 'Canceled subscription' : 'Reactivated subscription')
     return ApiResponse.OK()
   } catch (err) {
-    log.error('Subscription toggle failed — attempting billing sync recovery', { userId, cancel, error: err })
+    log.error({ userId, cancel, err }, 'Subscription toggle failed — attempting billing sync recovery')
     try {
       await syncSubscriptionStateForUser(userId)
     } catch (syncErr) {
-      log.error('Billing sync recovery after subscription toggle failed', { userId, error: syncErr })
+      log.error({ userId, err: syncErr }, 'Billing sync recovery after subscription toggle failed')
     }
     return ApiResponse.INTERNAL_ERROR(
       `Unable to ${cancel ? 'cancel' : 'reactivate'} subscription. Please refresh billing settings and try again.`,

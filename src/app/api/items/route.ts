@@ -15,10 +15,10 @@ import { invalidateCollectionsCache, invalidateItemsCache } from '@/lib/infra/ca
 import { deleteFromS3 } from '@/lib/storage/s3'
 import { consumePendingUpload } from '@/lib/storage/upload-tokens'
 import { ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES, PRO_ITEM_TYPE_NAMES_LABEL } from '@/lib/utils/constants'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import type { ItemsPage } from '@/types/item'
 
-const log = createLogger('api-items')
+const log = logger.child({ tag: 'api-items' })
 
 const fetchItemsQuerySchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('recent'), cursor: z.string().optional() }),
@@ -99,7 +99,7 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
     fileSize,
     imageWidth: isFileType ? (data.imageWidth ?? null) : null,
     imageHeight: isFileType ? (data.imageHeight ?? null) : null,
-  }).catch((err) => { log.error('createItem failed', { userId, err }); return null })
+  }).catch((err) => { log.error({ userId, err }, 'createItem failed'); return null })
 
   if (!created) {
     if (isFileType && data.fileUrl) {
@@ -111,6 +111,6 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
 
   invalidateItemsCache(userId)
   if (data.collectionIds.length > 0) invalidateCollectionsCache(userId)
-  log.info('Item created', { userId, itemTypeName: data.itemTypeName, title: data.title })
+  log.info({ userId, itemTypeName: data.itemTypeName, title: data.title }, 'Item created')
   return ApiResponse.CREATED(created)
 })

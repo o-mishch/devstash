@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCachedSession, type SessionContext } from '@/lib/session'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { ApiResponse } from '@/lib/api/api-response'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import type { ApiStatus, ApiBody } from '@/types/api'
 
 export { ApiResponse } from '@/lib/api/api-response'
 
-const log = createLogger('api')
+const log = logger.child({ tag: 'api' })
 
 const HTTP_STATUS: Record<ApiStatus, number> = {
   ok: 200,
@@ -75,7 +75,7 @@ export function apiRoute(
       if (isWithHeaders(result)) return toNextResponse(result.body, result.headers)
       return toNextResponse(result)
     } catch (err) {
-      log.error('unhandled route error', err)
+      log.error({ err }, 'unhandled route error')
       return toNextResponse(ApiResponse.INTERNAL_ERROR())
     }
   }

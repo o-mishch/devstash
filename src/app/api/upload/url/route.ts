@@ -9,10 +9,10 @@ import { getImageThumbnailKey, canGenerateImageThumbnail } from '@/lib/storage/i
 import { writePendingUpload, sweepExpiredUploads } from '@/lib/storage/upload-tokens'
 import { rateLimitRoute } from '@/lib/infra/rate-limit'
 import { ALLOWED_IMAGE_EXTS, ALLOWED_FILE_EXTS, IMAGE_MAX_BYTES, FILE_MAX_BYTES, THUMB_MAX_BYTES } from '@/lib/utils/constants'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import type { UploadUrlResult } from '@/types/item'
 
-const log = createLogger('upload-url')
+const log = logger.child({ tag: 'upload-url' })
 
 const uploadUrlSchema = z.object({
   fileName: z.string().trim().min(1),
@@ -59,11 +59,11 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
   try {
     await writePendingUpload(originalKey, { upload: uploadResult, userId, fileName, fileSize })
   } catch (err) {
-    log.error('failed to write pending upload', { userId, err })
+    log.error({ userId, err }, 'failed to write pending upload')
     return ApiResponse.INTERNAL_ERROR('Upload service temporarily unavailable. Please try again.')
   }
 
   after(sweepExpiredUploads)
-  log.info('presigned url issued', { userId, originalKey, isImage })
+  log.info({ userId, originalKey, isImage }, 'presigned url issued')
   return ApiResponse.OK<UploadUrlResult>(uploadResult)
 })

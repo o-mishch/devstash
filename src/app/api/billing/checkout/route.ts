@@ -11,11 +11,11 @@ import { resolveProAccessBypassingCache } from '@/lib/billing/access/pro-access-
 import { getExistingSubscriptionMessage } from '@/lib/billing/messages/billing-messages'
 import { reconcileOrphanStripeSubscriptionForUser } from '@/lib/billing/sync/passive-billing-sync'
 import { isAllowedCheckoutPriceId, isStripeCheckoutConfigured } from '@/lib/billing/config/billing-pricing'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { getBaseUrl } from '@/lib/utils/url'
 import type { BillingRedirectData } from '@/types/billing'
 
-const log = createLogger('api-billing-checkout')
+const log = logger.child({ tag: 'api-billing-checkout' })
 
 const checkoutPriceIdSchema = z
   .string()
@@ -82,13 +82,13 @@ export const POST = authenticatedRoute(async (request, _context, { userId }) => 
       cancelUrl: `${getBaseUrl()}/settings?checkout=canceled`,
     })
     if (!stripeSession.url) {
-      log.warn('Stripe checkout session created but URL missing', { userId })
+      log.warn({ userId }, 'Stripe checkout session created but URL missing')
       return ApiResponse.INTERNAL_ERROR('Failed to create Stripe session URL')
     }
-    log.info('Created checkout session', { userId, checkoutSessionId: stripeSession.id })
+    log.info({ userId, checkoutSessionId: stripeSession.id }, 'Created checkout session')
     return ApiResponse.OK<BillingRedirectData>({ url: stripeSession.url })
   } catch (err) {
-    log.error('Failed to create checkout session', { userId, error: err })
+    log.error({ userId, err }, 'Failed to create checkout session')
     return ApiResponse.INTERNAL_ERROR('Unable to start checkout. Please try again.')
   }
 })

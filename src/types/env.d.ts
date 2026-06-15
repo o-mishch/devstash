@@ -29,5 +29,6 @@ declare namespace NodeJS {
     STRIPE_PRICE_ID_YEARLY: string;
     OPENAI_API_KEY: string;
     SKIP_ENV_VALIDATION?: string;
+    LOG_LEVEL?: string;
   }
 }

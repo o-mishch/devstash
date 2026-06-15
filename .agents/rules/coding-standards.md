@@ -182,17 +182,25 @@ if (err instanceof Error && err.name === 'MyRetryError') { /* skip log */ }
 ## Logging
 
 - In Node.js-runtime code, every important/key step should be logged (e.g., critical state changes, external API calls, webhook events).
-- Use `createLogger` from `@/lib/infra/logger` — no wrappers, no custom logger classes:
+- Use the root Pino `logger` from `@/lib/infra/pino` — derive a scoped child with `logger.child({ tag })`. No wrappers, no custom logger classes:
 
 ```typescript
-const log = createLogger('stripe-webhook')
-log.info('invoice.paid', { invoiceId, subscriptionId })
-log.error('subscription fetch failed', { subscriptionId }, 'Stripe returned 404 — subscription may have been deleted')
+import { logger } from '@/lib/infra/pino'
+
+const log = logger.child({ tag: 'stripe-webhook' })
+log.info({ invoiceId, subscriptionId }, 'invoice.paid')
+log.error(
+  { subscriptionId, err: error },
+  'subscription fetch failed — Stripe returned 404, subscription may have been deleted',
+)
 ```
 
+- **Native Pino call convention** — bindings object first, message string second: `log.info({ userId }, 'msg')`. This is the opposite order of the headline-first style; do not pass the message first.
+- **`Error` values must be wrapped as `{ err: error }`** so `pino.stdSerializers.err` runs and `err.stack` is preserved. Never pass an `Error` as the message or spread it into the bindings under another key.
+- When a module receives an injected logger, type it as `Logger` from `pino` (not `ReturnType<typeof createLogger>`).
 - Maintain balance: avoid logging excessive, useless information to prevent logs from becoming unreadable garbage. Use appropriate log levels (`info`, `warn`, `error`).
 - Follow a two-part log shape by default; add a third part only when it adds value:
-  - First (required): a short, high-signal headline such as an event type or action name.
-  - Second (required): the useful extracted data needed for debugging, such as IDs, status values, or event payload fields.
-  - Third (optional): a detailed human-readable description when the headline and data alone are not enough — e.g. a Stripe event explanation or external API rationale.
-- Keep the headline concise. Do not bury the key event/action in the middle or end of the message.
+  - First (required): a bindings object holding the useful extracted data needed for debugging — IDs, status values, event payload fields, and any `Error` as `{ err: error }`.
+  - Second (required): a short, high-signal message string — an event type or action name.
+  - Optional: fold a detailed human-readable explanation into the message when the data alone is not enough — e.g. a Stripe event explanation or external API rationale.
+- Keep the message concise. Do not bury the key event/action in the middle or end of the message.

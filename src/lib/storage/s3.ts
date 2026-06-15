@@ -2,10 +2,10 @@ import 'server-only'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import type { PresignedPostCredential } from '@/types/item'
 
-const log = createLogger('s3')
+const log = logger.child({ tag: 's3' })
 
 export const SIGNED_URL_TTL_SECONDS = 900
 
@@ -48,7 +48,7 @@ export async function deleteFromS3(key: string): Promise<void> {
       Key: key,
     }))
   } catch (err) {
-    log.error('delete failed', { key, err })
+    log.error({ key, err }, 'delete failed')
   }
 }
 

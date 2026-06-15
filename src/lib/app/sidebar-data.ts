@@ -2,7 +2,7 @@ import 'server-only'
 
 import { cache } from 'react'
 import { after } from 'next/server'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { fetchSidebarData } from '@/lib/db/sidebar'
 import {
   maybeReconcileBillingStateForUser,
@@ -11,7 +11,7 @@ import {
 import { resolveProAccessForBillingContext } from '@/lib/billing/access/pro-access-resolution'
 import type { FreshBillingContextOptions } from '@/lib/billing/sync/user-billing-state'
 
-const log = createLogger('sidebar-data')
+const log = logger.child({ tag: 'sidebar-data' })
 
 /** Stable cache keys for `getCachedSidebarData` — always pass one of these. */
 export const SIDEBAR_DEFAULT_OPTIONS = {} as const satisfies FreshBillingContextOptions
@@ -59,7 +59,7 @@ export async function resolveLayoutBillingSidebarOptions(
         await maybeReconcileBillingStateForUser(userId)
         await maybeReconcileOrphanSubscriptionForUser(userId)
       } catch (error) {
-        log.warn('Background billing sync failed', { userId, error })
+        log.warn({ userId, err: error }, 'Background billing sync failed')
       }
     })
   } catch {
@@ -98,10 +98,10 @@ export const loadAppSidebarData = cache(async (session: AppSessionLike | null) =
       snapshot,
     )
   } catch (error) {
-    log.warn('Failed to load sidebar billing data — using degraded shell', {
+    log.warn({
       userId: snapshot.userId,
-      error,
-    })
+      err: error,
+    }, 'Failed to load sidebar billing data — using degraded shell')
     const fallbackUser = snapshot.userId
       ? {
           id: snapshot.userId,

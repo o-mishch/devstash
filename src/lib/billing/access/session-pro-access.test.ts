@@ -23,8 +23,8 @@ vi.mock('@/lib/billing/sync/user-billing-state', () => ({
   getFreshUserStripeInfo: vi.fn(),
 }))
 
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }) },
 }))
 
 vi.unmock('@/lib/billing/access/pro-access-resolution')

@@ -13,8 +13,8 @@ vi.mock('@/lib/billing/sync/user-billing-state', () => ({
   getCachedUserStripeInfo: mockGetCachedUserStripeInfo,
 }))
 
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }),
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }) },
 }))
 
 import { cancelSubscriptionImmediately, deleteStripeCustomer } from '@/lib/stripe'

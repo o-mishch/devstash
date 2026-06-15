@@ -4,9 +4,9 @@ import { parseOrFail, EmailSchema } from '@/lib/utils/validators'
 import { rateLimitRoute } from '@/lib/infra/rate-limit'
 import { getProfileData } from '@/lib/db/profile'
 import { applyOwnedEmailChange, verifyPasswordFromBody } from '@/lib/app/profile-helpers'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('api-profile-main-email')
+const log = logger.child({ tag: 'api-profile-main-email' })
 
 export const PATCH = authenticatedRoute(async (request, _context, { userId }) => {
   const denied = await rateLimitRoute('changeCredentials', userId)
@@ -32,6 +32,6 @@ export const PATCH = authenticatedRoute(async (request, _context, { userId }) =>
   })
   if (applied) return applied
 
-  log.info('Main email updated', { userId })
+  log.info({ userId }, 'Main email updated')
   return ApiResponse.OK()
 })

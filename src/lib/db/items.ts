@@ -3,12 +3,12 @@ import 'server-only'
 import { cacheTag, cacheLife } from 'next/cache'
 import { prisma } from '@/lib/infra/prisma'
 import { CacheTags } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
 import type { FullItem, ItemDetails, ItemSavedDetails, ItemContent, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
 import { Prisma, ContentType } from '@/generated/prisma/client'
 
-const log = createLogger('db:items')
+const log = logger.child({ tag: 'db:items' })
 
 const ITEM_SELECT = {
   id: true,
@@ -170,7 +170,7 @@ export async function getPinnedItems(userId: string, limit = PINNED_LIMIT): Prom
     take: safeLimit,
     select: LIGHT_ITEM_SELECT,
   })
-  log.info('DB: getPinnedItems', { userId, cacheKey, count: items.length, duration: Date.now() - start })
+  log.info({ userId, cacheKey, count: items.length, duration: Date.now() - start }, 'DB: getPinnedItems')
   const textPreviews = await fetchTextPreviews(items.map((r) => r.id))
   return items.map((r) => toLightItem(r, textPreviews))
 }
@@ -188,7 +188,7 @@ export async function getItemStats(userId: string): Promise<ItemStats> {
   })
   const totalItems = rows.reduce((sum, r) => sum + r._count, 0)
   const favoriteItems = rows.find((r) => r.isFavorite)?._count ?? 0
-  log.info('DB: getItemStats', { userId, cacheKey, totalItems, favoriteItems, duration: Date.now() - start })
+  log.info({ userId, cacheKey, totalItems, favoriteItems, duration: Date.now() - start }, 'DB: getItemStats')
   return { totalItems, favoriteItems }
 }
 
@@ -202,7 +202,7 @@ export async function getItemById(userId: string, itemId: string): Promise<FullI
     where: { id: itemId, userId },
     select: ITEM_SELECT,
   })
-  log.info('DB: getItemById', { userId, itemId, cacheKey, found: Boolean(item), duration: Date.now() - start })
+  log.info({ userId, itemId, cacheKey, found: Boolean(item), duration: Date.now() - start }, 'DB: getItemById')
   if (!item) return null
   return toFullItem(item)
 }
@@ -225,7 +225,7 @@ export async function getDownloadItem(userId: string, itemId: string): Promise<D
     where: { id: itemId, userId },
     select: DOWNLOAD_ITEM_SELECT,
   })
-  log.info('DB: getDownloadItem', { userId, itemId, cacheKey, found: Boolean(result), duration: Date.now() - start })
+  log.info({ userId, itemId, cacheKey, found: Boolean(result), duration: Date.now() - start }, 'DB: getDownloadItem')
   return result
 }
 
@@ -268,7 +268,7 @@ export async function getItemForAuth(userId: string, itemId: string): Promise<It
     where: { id: itemId, userId },
     select: ITEM_AUTH_SELECT,
   })
-  log.info('DB: getItemForAuth', { userId, itemId, found: Boolean(result), duration: Date.now() - start })
+  log.info({ userId, itemId, found: Boolean(result), duration: Date.now() - start }, 'DB: getItemForAuth')
   return result
 }
 
@@ -281,7 +281,7 @@ export async function getItemAiMetadata(
     where: { id: itemId, userId },
     select: { imageWidth: true, imageHeight: true },
   })
-  log.info('DB: getItemAiMetadata', { userId, itemId, found: Boolean(row), duration: Date.now() - start })
+  log.info({ userId, itemId, found: Boolean(row), duration: Date.now() - start }, 'DB: getItemAiMetadata')
   return row ?? null
 }
 
@@ -300,7 +300,7 @@ export async function getItemDetails(userId: string, itemId: string): Promise<It
     where: { id: itemId, userId },
     select: ITEM_DETAILS_SELECT,
   })
-  log.info('DB: getItemDetails', { userId, itemId, cacheKey, found: Boolean(row), duration: Date.now() - start })
+  log.info({ userId, itemId, cacheKey, found: Boolean(row), duration: Date.now() - start }, 'DB: getItemDetails')
   if (!row) return null
   return {
     ...row,
@@ -318,7 +318,7 @@ export async function getItemContent(userId: string, itemId: string): Promise<It
     where: { id: itemId, userId },
     select: ITEM_CONTENT_SELECT,
   })
-  log.info('DB: getItemContent', { userId, itemId, cacheKey, found: Boolean(row), duration: Date.now() - start })
+  log.info({ userId, itemId, cacheKey, found: Boolean(row), duration: Date.now() - start }, 'DB: getItemContent')
   if (!row) return null
   return row
 }
@@ -348,7 +348,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
     (await prisma.itemType.findFirst({ where: { name: data.itemTypeName, userId } }))
 
   if (!itemType) {
-    log.warn('DB: createItem: itemType not found', { userId, itemTypeName: data.itemTypeName })
+    log.warn({ userId, itemTypeName: data.itemTypeName }, 'DB: createItem: itemType not found')
     return null
   }
 
@@ -385,7 +385,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
     select: resolveLightItemSelect(data.itemTypeName),
   })
 
-  log.info('DB: createItem', { userId, itemId: created.id, itemTypeName: data.itemTypeName, duration: Date.now() - start })
+  log.info({ userId, itemId: created.id, itemTypeName: data.itemTypeName, duration: Date.now() - start }, 'DB: createItem')
   return toLightItem(created)
 }
 
@@ -425,7 +425,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
       },
       select: ITEM_UPDATE_SELECT,
     })
-    log.info('DB: updateItem', { userId, itemId, duration: Date.now() - start })
+    log.info({ userId, itemId, duration: Date.now() - start }, 'DB: updateItem')
     return {
       ...updated,
       tags: updated.tags.map((t: { name: string }) => t.name),
@@ -433,7 +433,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
     }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-      log.warn('DB: updateItem: not found', { userId, itemId, duration: Date.now() - start })
+      log.warn({ userId, itemId, duration: Date.now() - start }, 'DB: updateItem: not found')
       return null
     }
     throw error
@@ -445,7 +445,7 @@ export async function deleteItem(userId: string, itemId: string): Promise<boolea
   const result = await prisma.item.deleteMany({
     where: { id: itemId, userId },
   })
-  log.info('DB: deleteItem', { userId, itemId, deleted: result.count > 0, duration: Date.now() - start })
+  log.info({ userId, itemId, deleted: result.count > 0, duration: Date.now() - start }, 'DB: deleteItem')
   return result.count > 0
 }
 
@@ -455,7 +455,7 @@ export async function toggleItemFavorite(userId: string, itemId: string, isFavor
     where: { id: itemId, userId },
     data: { isFavorite },
   })
-  log.info('DB: toggleItemFavorite', { userId, itemId, isFavorite, updated: result.count > 0, duration: Date.now() - start })
+  log.info({ userId, itemId, isFavorite, updated: result.count > 0, duration: Date.now() - start }, 'DB: toggleItemFavorite')
   return result.count > 0
 }
 
@@ -465,7 +465,7 @@ export async function toggleItemPinned(userId: string, itemId: string, isPinned:
     where: { id: itemId, userId },
     data: { isPinned },
   })
-  log.info('DB: toggleItemPinned', { userId, itemId, isPinned, updated: result.count > 0, duration: Date.now() - start })
+  log.info({ userId, itemId, isPinned, updated: result.count > 0, duration: Date.now() - start }, 'DB: toggleItemPinned')
   return result.count > 0
 }
 
@@ -495,7 +495,7 @@ async function runPaginatedQuery(
     : await prisma.item.findMany(query)
   const hasMore = rows.length > ITEMS_PAGE_SIZE
   const page = rows.slice(0, ITEMS_PAGE_SIZE)
-  log.info('DB: runPaginatedQuery', { typeName: typeName ?? 'mixed', cursor: Boolean(cursor), count: page.length, hasMore, duration: Date.now() - start })
+  log.info({ typeName: typeName ?? 'mixed', cursor: Boolean(cursor), count: page.length, hasMore, duration: Date.now() - start }, 'DB: runPaginatedQuery')
   const textPreviews = needsTextPreviews
     ? await fetchTextPreviews(page.map((r) => r.id))
     : new Map<string, TextPreview>()
@@ -542,7 +542,7 @@ export async function getItemCountByType(userId: string, itemTypeId: string): Pr
   cacheLife('max')
   const start = Date.now()
   const count = await prisma.item.count({ where: { userId, itemTypeId } })
-  log.info('DB: getItemCountByType', { userId, itemTypeId, cacheKey, count, duration: Date.now() - start })
+  log.info({ userId, itemTypeId, cacheKey, count, duration: Date.now() - start }, 'DB: getItemCountByType')
   return count
 }
 
@@ -578,7 +578,7 @@ export async function getFavoriteItemTypeCounts(userId: string): Promise<Record<
     JOIN item_types it ON i."itemTypeId" = it.id
     WHERE i."userId" = ${userId} AND i."isFavorite" = true
     GROUP BY it.name`
-  log.info('DB: getFavoriteItemTypeCounts', { userId, cacheKey, typeCount: rows.length, duration: Date.now() - start })
+  log.info({ userId, cacheKey, typeCount: rows.length, duration: Date.now() - start }, 'DB: getFavoriteItemTypeCounts')
   return Object.fromEntries(rows.map((r) => [r.name, Number(r.count)]))
 }
 
@@ -610,7 +610,7 @@ export async function getItemTypeBySlug(slug: string) {
     where: { name: { in: candidates } },
     select: { id: true, name: true, icon: true, color: true, isSystem: true },
   })
-  log.info('DB: getItemTypeBySlug', { slug, cacheKey, found: Boolean(result), duration: Date.now() - start })
+  log.info({ slug, cacheKey, found: Boolean(result), duration: Date.now() - start }, 'DB: getItemTypeBySlug')
   return result
 }
 
@@ -624,7 +624,7 @@ async function getSystemItemTypes() {
     where: { isSystem: true, userId: null },
     select: { id: true, name: true, icon: true, color: true, isSystem: true },
   })
-  log.info('DB: getSystemItemTypes', { cacheKey, count: types.length, duration: Date.now() - start })
+  log.info({ cacheKey, count: types.length, duration: Date.now() - start }, 'DB: getSystemItemTypes')
   return types.sort(compareBySystemTypeOrder)
 }
 
@@ -641,7 +641,7 @@ async function fetchSidebarItemTypesForUser(userId: string): Promise<SidebarItem
     _count: true,
   })
   const duration = Date.now() - start
-  log.info('DB: getSidebarItemTypes', { userId, cacheKey, typeCount: typeCounts.length, duration })
+  log.info({ userId, cacheKey, typeCount: typeCounts.length, duration }, 'DB: getSidebarItemTypes')
   const countMap = new Map(typeCounts.map((tc) => [tc.itemTypeId, tc._count]))
   return types.map((t) => ({
     id: t.id,

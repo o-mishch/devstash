@@ -4,7 +4,7 @@ import { authenticatedRoute } from '@/lib/api'
 import { parseOrFail } from '@/lib/utils/validators'
 import { runProAiGeneration, runOpenAiCompletion, resolveItemImageDimensions } from '@/lib/ai/description-generation'
 import { TAG_SYSTEM_PROMPT, parseTagsResponse } from '@/lib/ai/tag-response'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { AI_MODELS } from '@/lib/ai/openai'
 import {
   buildItemAiUserMessage,
@@ -13,7 +13,7 @@ import {
   trimOptionalAiField,
 } from '@/lib/ai/item-context'
 
-const log = createLogger('ai-tags')
+const log = logger.child({ tag: 'ai-tags' })
 
 const MAX_AI_INPUT_CHARS = 4000
 

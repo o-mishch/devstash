@@ -14,13 +14,13 @@ import {
 } from '@/lib/db/stripe'
 import { getUserById } from '@/lib/db/users'
 import { retrieveStripeCustomer } from '@/lib/billing/stripe-api'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
 type ClearStripeCustomerResult = Awaited<ReturnType<typeof clearStripeCustomerByCustomerIdInDb>>
 type UpdateUserStripeSubscriptionParams = Parameters<typeof updateUserStripeSubscriptionInDb>[1]
 type UpdateSubscriptionStateData = Parameters<typeof updateSubscriptionStateInDb>[1]
 
-const resolveLog = createLogger('stripe-subscription-resolve')
+const resolveLog = logger.child({ tag: 'stripe-subscription-resolve' })
 
 export async function clearStripeCustomerByCustomerId(
   stripeCustomerId: string,
@@ -74,21 +74,27 @@ export async function resolveAppUserIdForSubscription(
     if (input.customerId) {
       const fromDb = await getUserIdByStripeCustomerId(input.customerId)
       if (fromDb && fromDb !== fromSubscription) {
-        resolveLog.warn('Subscription metadata userId mismatches local customer link — using DB user', {
-          customerId: input.customerId,
-          metadataUserId: fromSubscription,
-          dbUserId: fromDb,
-        })
+        resolveLog.warn(
+          {
+            customerId: input.customerId,
+            metadataUserId: fromSubscription,
+            dbUserId: fromDb,
+          },
+          'Subscription metadata userId mismatches local customer link — using DB user',
+        )
         return fromDb
       }
       if (fromDb) return fromSubscription
     }
     const metadataUser = await getUserById(fromSubscription)
     if (!metadataUser) {
-      resolveLog.warn('Subscription metadata userId does not match a local user', {
-        customerId: input.customerId,
-        metadataUserId: fromSubscription,
-      })
+      resolveLog.warn(
+        {
+          customerId: input.customerId,
+          metadataUserId: fromSubscription,
+        },
+        'Subscription metadata userId does not match a local user',
+      )
       return null
     }
     return fromSubscription
@@ -106,10 +112,13 @@ export async function resolveAppUserIdForSubscription(
   if (typeof fromCustomerMeta === 'string' && fromCustomerMeta.trim()) {
     const metaUser = await getUserById(fromCustomerMeta.trim())
     if (!metaUser) {
-      resolveLog.warn('Stripe customer metadata userId does not match a local user', {
-        customerId: input.customerId,
-        metadataUserId: fromCustomerMeta,
-      })
+      resolveLog.warn(
+        {
+          customerId: input.customerId,
+          metadataUserId: fromCustomerMeta,
+        },
+        'Stripe customer metadata userId does not match a local user',
+      )
       return null
     }
     return fromCustomerMeta.trim()

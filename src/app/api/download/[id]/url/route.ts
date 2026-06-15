@@ -5,9 +5,9 @@ import { canGenerateImageThumbnail, getImageThumbnailKey } from '@/lib/storage/i
 import type { RouteContext } from '@/lib/api'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { SignedDownloadUrlResponse } from '@/types/item'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('download-url')
+const log = logger.child({ tag: 'download-url' })
 
 async function signedDownloadUrlResponse(storageKey: string, fileName?: string) {
   const url = await getSignedDownloadUrl(storageKey, undefined, fileName)
@@ -28,7 +28,7 @@ export const GET = authenticatedRoute(async (request, context: RouteContext, { u
 
   // Legacy items stored as external URLs predate S3 migration and cannot be signed
   if (!item.fileUrl || item.fileUrl.startsWith('http')) {
-    log.warn('file not signable', { userId, itemId: item.id, fileUrl: item.fileUrl ?? null })
+    log.warn({ userId, itemId: item.id, fileUrl: item.fileUrl ?? null }, 'file not signable')
     return ApiResponse.NOT_FOUND('File not found.')
   }
 
@@ -46,6 +46,6 @@ export const GET = authenticatedRoute(async (request, context: RouteContext, { u
 
   const storageKey = isImagePreview ? getImageThumbnailKey(item.fileUrl) : item.fileUrl
   const fileName = isImagePreview ? undefined : (item.fileName ?? undefined)
-  log.info('signedDownloadUrl', { userId, itemId: item.id, itemType: item.itemType.name })
+  log.info({ userId, itemId: item.id, itemType: item.itemType.name }, 'signedDownloadUrl')
   return signedDownloadUrlResponse(storageKey, fileName)
 })

@@ -35,8 +35,8 @@ vi.mock('@/lib/billing/sync/user-billing-state', () => ({
   getCachedUserStripeInfo: mockGetCachedUserStripeInfo,
 }))
 
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 import {

@@ -1,9 +1,9 @@
 import 'server-only'
 
 import { revalidateTag, updateTag } from 'next/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('cache')
+const log = logger.child({ tag: 'cache' })
 
 // ─── Cache tag helpers ────────────────────────────────────────────────────────
 // Single source of truth for all tag strings used by 'use cache' functions
@@ -66,15 +66,15 @@ function scheduleTagInvalidation(tag: string): void {
   // revalidateTag is synchronous (in-memory pendingRevalidatedTags), so no after() needed.
   try {
     updateTag(tag)
-    log.info('cache tag updated', { tag })
+    log.info({ tag }, 'cache tag updated')
     return
   } catch { /* not a Server Action — fall through to revalidateTag */ }
 
   try {
     revalidateTag(tag, 'max')
-    log.info('cache tag revalidated', { tag })
+    log.info({ tag }, 'cache tag revalidated')
   } catch (err) {
-    log.warn('Cache invalidation skipped', {}, err instanceof Error ? err.message : String(err))
+    log.warn({ err }, 'Cache invalidation skipped')
   }
 }
 

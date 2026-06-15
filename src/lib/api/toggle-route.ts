@@ -2,7 +2,7 @@ import 'server-only'
 import { z } from 'zod'
 import { authenticatedRoute, ApiResponse } from '@/lib/api'
 import { parseOrFail } from '@/lib/utils/validators'
-import type { createLogger } from '@/lib/infra/logger'
+import type { Logger } from 'pino'
 
 interface ToggleRouteConfig {
   /** Body field carrying the new boolean value (also used as the log data key). */
@@ -11,7 +11,7 @@ interface ToggleRouteConfig {
   toggle: (userId: string, id: string, value: boolean) => Promise<boolean>
   invalidate: (userId: string) => void
   notFoundMessage: string
-  log: ReturnType<typeof createLogger>
+  log: Logger
   logHeadline: string
 }
 
@@ -34,7 +34,7 @@ export function toggleRoute({ flagKey, toggle, invalidate, notFoundMessage, log,
     if (!ok) return ApiResponse.NOT_FOUND(notFoundMessage)
 
     invalidate(userId)
-    log.info(logHeadline, { userId, id, [flagKey]: value })
+    log.info({ userId, id, [flagKey]: value }, logHeadline)
     return ApiResponse.OK()
   })
 }

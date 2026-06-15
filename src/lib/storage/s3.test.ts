@@ -11,9 +11,14 @@ import {
 
 // Mock the AWS SDK
 const mockSend = vi.fn()
-const { mockGetSignedUrl, mockCreatePresignedPost } = vi.hoisted(() => ({
+const { mockGetSignedUrl, mockCreatePresignedPost, mockLogError } = vi.hoisted(() => ({
   mockGetSignedUrl: vi.fn(),
   mockCreatePresignedPost: vi.fn(),
+  mockLogError: vi.fn(),
+}))
+
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: mockLogError }) },
 }))
 
 vi.mock('@aws-sdk/s3-presigned-post', () => ({
@@ -72,12 +77,13 @@ describe('s3 utility', () => {
     })
 
     it('catches and logs error instead of throwing', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       mockSend.mockRejectedValueOnce(new Error('S3 error'))
-      
+
       await expect(deleteFromS3('test/key.png')).resolves.not.toThrow()
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('delete failed | key="test/key.png" err="S3 error"'))
-      consoleSpy.mockRestore()
+      expect(mockLogError).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'test/key.png' }),
+        'delete failed',
+      )
     })
   })
 

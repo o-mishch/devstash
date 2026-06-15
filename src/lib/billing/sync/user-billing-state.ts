@@ -15,9 +15,9 @@ import {
 } from '@/lib/billing/messages/billing-messages'
 import { CHECKOUT_NOT_CONFIGURED_MESSAGE } from '@/lib/billing/messages/billing-messages.client'
 import { CacheTags } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('billing-state')
+const log = logger.child({ tag: 'billing-state' })
 
 export interface FreshBillingContextOptions {
   /** Bypass request-scoped caches for the DB Stripe row. */
@@ -151,7 +151,7 @@ export async function loadBillingDisplayContext(
       needsBillingRecovery: resolveNeedsBillingRecovery(isPro, billing),
     }
   } catch (error) {
-    log.warn('Failed to load billing state for display', { userId, error })
+    log.warn({ userId, err: error }, 'Failed to load billing state for display')
     return {
       billing: null,
       unavailable: true,

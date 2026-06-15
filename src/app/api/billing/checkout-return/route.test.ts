@@ -36,8 +36,8 @@ vi.mock('@/lib/billing/checkout/finalize-checkout-return', () => ({
   finalizeCheckoutReturn: mockFinalizeCheckoutReturn,
 }))
 
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 import { GET } from './route'

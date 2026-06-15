@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('email')
+const log = logger.child({ tag: 'email' })
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -37,7 +37,7 @@ export async function sendEmail({ to, subject, html, idempotencyKey, operation }
   )
 
   if (error) {
-    log.error('Email send failed', { operation, to, error: error.message })
+    log.error({ operation, to, err: error }, 'Email send failed')
     return false
   }
   return true

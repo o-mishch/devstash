@@ -3,12 +3,12 @@ import 'server-only'
 import { cacheTag, cacheLife } from 'next/cache'
 import { prisma } from '@/lib/infra/prisma'
 import { CacheTags } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { compareBySystemTypeOrder, PROVIDER_LABELS } from '@/lib/utils/constants'
 import type { EditorPreferences } from '@/types/editor-preferences'
 import type { Prisma } from '@/generated/prisma/client'
 
-const log = createLogger('db:profile')
+const log = logger.child({ tag: 'db:profile' })
 
 export interface LinkedAccount {
   id: string
@@ -103,7 +103,7 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
   const duration = Date.now() - start
 
   if (!user) {
-    log.info('DB: getProfileData', { userId, cacheKey, found: false, duration })
+    log.info({ userId, cacheKey, found: false, duration }, 'DB: getProfileData')
     return null
   }
 
@@ -130,20 +130,20 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
     stats: { totalItems: user._count.items, totalCollections: user._count.collections, itemTypeCounts },
   }
 
-  log.info('DB: getProfileData', { userId, cacheKey, found: true, itemCount: user._count.items, collectionCount: user._count.collections, duration })
+  log.info({ userId, cacheKey, found: true, itemCount: user._count.items, collectionCount: user._count.collections, duration }, 'DB: getProfileData')
   return result
 }
 
 export async function updateUserEmail(userId: string, email: string): Promise<void> {
   const start = Date.now()
   await prisma.user.update({ where: { id: userId }, data: { email } })
-  log.info('DB: updateUserEmail', { userId, duration: Date.now() - start })
+  log.info({ userId, duration: Date.now() - start }, 'DB: updateUserEmail')
 }
 
 export async function updateUserName(userId: string, name: string): Promise<void> {
   const start = Date.now()
   await prisma.user.update({ where: { id: userId }, data: { name } })
-  log.info('DB: updateUserName', { userId, duration: Date.now() - start })
+  log.info({ userId, duration: Date.now() - start }, 'DB: updateUserName')
 }
 
 export async function updateEditorPreferences(userId: string, preferences: EditorPreferences): Promise<void> {
@@ -152,5 +152,5 @@ export async function updateEditorPreferences(userId: string, preferences: Edito
     where: { id: userId },
     data: { editorPreferences: preferences as unknown as Prisma.InputJsonValue },
   })
-  log.info('DB: updateEditorPreferences', { userId, duration: Date.now() - start })
+  log.info({ userId, duration: Date.now() - start }, 'DB: updateEditorPreferences')
 }

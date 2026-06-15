@@ -7,12 +7,12 @@ import {
   type CheckoutReturnNotification,
 } from '@/lib/billing/checkout/checkout-return-params'
 import { finalizeCheckoutReturn } from '@/lib/billing/checkout/finalize-checkout-return'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { rateLimitAction } from '@/lib/infra/rate-limit'
 import { apiRedirect, apiRoute } from '@/lib/api'
 import { z } from 'zod'
 
-const log = createLogger('checkout-return')
+const log = logger.child({ tag: 'checkout-return' })
 
 const checkoutSessionIdSchema = z
   .string()
@@ -50,10 +50,10 @@ export const GET = apiRoute(async (request: NextRequest) => {
   if (rawSessionId !== null) {
     const parsedSessionId = checkoutSessionIdSchema.safeParse(rawSessionId)
     if (!parsedSessionId.success) {
-      log.warn('Invalid checkout session_id — falling back to passive sync', {
+      log.warn({
         userId: session.user.id,
         sessionId: rawSessionId,
-      })
+      }, 'Invalid checkout session_id — falling back to passive sync')
       sessionId = undefined
     } else {
       sessionId = parsedSessionId.data
@@ -67,26 +67,26 @@ export const GET = apiRoute(async (request: NextRequest) => {
       sessionId,
     })
   } catch (error) {
-    log.error('Checkout return finalization failed — redirecting with sync recovery', {
+    log.error({
       userId: session.user.id,
       sessionId,
-      error,
-    })
+      err: error,
+    }, 'Checkout return finalization failed — redirecting with sync recovery')
     const redirectPath = buildCheckoutReturnRedirectPath({ type: 'syncing' })
     return apiRedirect(new URL(redirectPath, request.url))
   }
 
   if (!notification) {
-    log.warn('Checkout return API hit without a finalization result', { userId: session.user.id })
+    log.warn({ userId: session.user.id }, 'Checkout return API hit without a finalization result')
     return apiRedirect(new URL('/settings', request.url))
   }
 
   const redirectPath = buildCheckoutReturnRedirectPath(notification)
-  log.info('Checkout return finalized — redirecting to settings', {
+  log.info({
     userId: session.user.id,
     sessionId,
     outcome: notification.type,
-  })
+  }, 'Checkout return finalized — redirecting to settings')
 
   return apiRedirect(new URL(redirectPath, request.url))
 })

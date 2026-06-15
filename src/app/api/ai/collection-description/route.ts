@@ -9,9 +9,9 @@ import {
   COLLECTION_DESCRIPTION_SYSTEM_PROMPT,
   parseAiDescriptionResponse,
 } from '@/lib/ai/description-response'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('ai-collection-description')
+const log = logger.child({ tag: 'ai-collection-description' })
 
 const MAX_NAME_CHARS = 100
 

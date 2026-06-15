@@ -18,8 +18,8 @@ vi.mock('@/lib/infra/prisma', () => ({
   },
 }))
 
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 import { updateUserStripeSubscription } from './stripe'

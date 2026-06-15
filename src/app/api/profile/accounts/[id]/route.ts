@@ -5,9 +5,9 @@ import { parseOrFail } from '@/lib/utils/validators'
 import { rateLimitRoute } from '@/lib/infra/rate-limit'
 import { getUserAuthMethods, checkAccountExists, unlinkUserAccount } from '@/lib/db/users'
 import { invalidateProfileCache } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('api-profile-accounts')
+const log = logger.child({ tag: 'api-profile-accounts' })
 
 const accountIdSchema = z.string().trim().min(1, 'Account is required.')
 
@@ -32,6 +32,6 @@ export const DELETE = authenticatedRoute(async (_request, context, { userId }) =
 
   await unlinkUserAccount(userId, parsed.data)
   invalidateProfileCache(userId)
-  log.info('Provider unlinked', { userId, accountId: parsed.data })
+  log.info({ userId, accountId: parsed.data }, 'Provider unlinked')
   return ApiResponse.OK()
 })

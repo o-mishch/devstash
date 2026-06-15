@@ -10,9 +10,9 @@ import {
   syncSubscriptionStateForUser,
   type SubscriptionSyncResult,
 } from '@/lib/billing/sync/passive-billing-sync'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('checkout-finalize')
+const log = logger.child({ tag: 'checkout-finalize' })
 
 function revalidateBillingShell(): void {
   revalidatePath('/settings')
@@ -57,7 +57,7 @@ export async function finalizeCheckoutReturn(
     const result = await syncSubscriptionStateForUser(userId, { attemptOrphanReconcile: true })
     const notification = notificationFromSyncResult(result)
     revalidateBillingShell()
-    log.info('Checkout return finalized without session id', { userId, syncStatus: result.status, outcome: notification.type })
+    log.info({ userId, syncStatus: result.status, outcome: notification.type }, 'Checkout return finalized without session id')
     return notification
   }
 
@@ -67,35 +67,35 @@ export async function finalizeCheckoutReturn(
     const notification: CheckoutReturnNotification = result.grantsAccess
       ? { type: 'success' }
       : { type: 'syncing' }
-    log.info('Checkout return finalized', {
+    log.info({
       userId,
       sessionId,
       outcome: notification.type,
       grantsAccess: result.grantsAccess,
-    })
+    }, 'Checkout return finalized')
     return notification
   }
   if (result.status === 'forbidden') {
-    log.warn('Checkout return forbidden for session owner mismatch', { userId, sessionId })
+    log.warn({ userId, sessionId }, 'Checkout return forbidden for session owner mismatch')
     return checkoutInfoNotification('session_owner_mismatch')
   }
   if (result.status === 'invalid_session') {
-    log.warn('Checkout return invalid session', { userId, sessionId })
+    log.warn({ userId, sessionId }, 'Checkout return invalid session')
     return checkoutInfoNotification('invalid_session')
   }
   if (result.status === 'unavailable') {
     const syncResult = await syncSubscriptionStateForUser(userId, { attemptOrphanReconcile: true })
     revalidateBillingShell()
     const notification = notificationFromSyncResult(syncResult)
-    log.info('Checkout return unavailable — attempted sync recovery', {
+    log.info({
       userId,
       sessionId,
       syncStatus: syncResult.status,
       outcome: notification.type,
-    })
+    }, 'Checkout return unavailable — attempted sync recovery')
     return notification
   }
 
-  log.warn('Checkout return finalization returned unexpected status', { userId, sessionId, status: result.status })
+  log.warn({ userId, sessionId, status: result.status }, 'Checkout return finalization returned unexpected status')
   return checkoutInfoNotification('sync_pending')
 }

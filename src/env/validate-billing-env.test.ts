@@ -1,13 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockWarn } = vi.hoisted(() => ({
-  mockWarn: vi.fn(),
-}))
-
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ warn: mockWarn, info: vi.fn(), error: vi.fn() }),
-}))
-
 describe('validateStripeBillingEnv', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -15,6 +7,7 @@ describe('validateStripeBillingEnv', () => {
   })
 
   it('warns in development when Stripe price IDs are missing', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.stubEnv('NODE_ENV', 'development')
     vi.stubEnv('STRIPE_PRICE_ID_MONTHLY', '')
     vi.stubEnv('STRIPE_PRICE_ID_YEARLY', '')
@@ -23,7 +16,8 @@ describe('validateStripeBillingEnv', () => {
     const { validateStripeBillingEnv } = await import('./validate-billing-env')
 
     expect(() => validateStripeBillingEnv()).not.toThrow()
-    expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('Missing Stripe billing'))
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Missing Stripe billing'))
+    warnSpy.mockRestore()
   })
 
   it('throws in production when Stripe price IDs are missing', async () => {

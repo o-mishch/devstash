@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type Stripe from 'stripe'
 
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 vi.mock('@/lib/billing/checkout/stripe-checkout', async (importOriginal) => {

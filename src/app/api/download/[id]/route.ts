@@ -2,10 +2,10 @@ import { ApiResponse, apiRedirect, authenticatedRoute } from '@/lib/api'
 import { getDownloadItem } from '@/lib/db/items'
 import { getSignedDownloadUrl } from '@/lib/storage/s3'
 import type { RouteContext } from '@/lib/api'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 
-const log = createLogger('download')
+const log = logger.child({ tag: 'download' })
 
 export const GET = authenticatedRoute(async (_request, context: RouteContext, { userId, isPro }) => {
   const { id } = await context.params
@@ -16,7 +16,7 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, { 
 
   // Legacy items stored as external URLs predate S3 migration and cannot be signed
   if (!item.fileUrl || item.fileUrl.startsWith('http')) {
-    log.warn('file not downloadable', { userId, itemId: item.id, fileUrl: item.fileUrl ?? null })
+    log.warn({ userId, itemId: item.id, fileUrl: item.fileUrl ?? null }, 'file not downloadable')
     return ApiResponse.NOT_FOUND('File not found.')
   }
 
@@ -25,6 +25,6 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, { 
   }
 
   const signedUrl = await getSignedDownloadUrl(item.fileUrl, undefined, item.fileName ?? undefined)
-  log.info('signedDownloadUrl', { userId, itemId: item.id, itemType: item.itemType.name })
+  log.info({ userId, itemId: item.id, itemType: item.itemType.name }, 'signedDownloadUrl')
   return apiRedirect(signedUrl)
 })

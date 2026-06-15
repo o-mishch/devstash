@@ -1,5 +1,7 @@
 # Improve — Evaluation Checklist
 
+> **Executed by the Stage-A research subagent** (opus, background) spawned by the `cleanup improve` skill — not the main agent. The subagent reads this file plus every `.agents/rules/*` file cold, runs the full codebase-wide analysis, and returns only the rendered audit (see `report.md`). The main agent never reads this file.
+
 Five priority lenses, applied across the whole changeset (holistic, not per-file). **KISS = simplicity** (fewer concepts, less indirection, easier to read) — not always fewer lines. **DRY = one source of truth** — always scan P2 for duplication.
 
 ## Strict rule compliance (hard gate)
@@ -114,15 +116,15 @@ Major → row in Security & access risks table (`Fix now`).
 
 Major bug → row in Bugs & regressions table (`Fix now`).
 
-*Logging — coding-standards § Logging; `createLogger('tag')` only, no wrappers*
+*Logging — coding-standards § Logging; `logger.child({ tag })` from `@/lib/infra/pino` only, no wrappers*
 
 | Signal | Look for |
 | --- | --- |
 | Missing | critical state change / API call / webhook not logged |
 | Swallowed | error on a critical path (auth, webhook, payment, write) without `log.error` |
-| Shape | no headline → context (IDs) → description when useful |
+| Shape | not bindings-first → message; `log.info({ ids }, 'msg')`, `Error` as `{ err: error }` |
 | Noise | excessive low-signal logs; wrong level |
-| Wrapper | custom logger around `createLogger` |
+| Wrapper | custom logger around `logger.child`; importing from old `@/lib/infra/logger` instead of `@/lib/infra/pino` |
 
 ---
 

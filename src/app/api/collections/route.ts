@@ -4,9 +4,9 @@ import { parseOrFail, collectionFormSchema } from '@/lib/utils/validators'
 import { getAllCollections, createCollection as dbCreateCollection } from '@/lib/db/collections'
 import { canCreateCollection, FREE_TIER_COLLECTION_LIMIT } from '@/lib/db/usage'
 import { invalidateCollectionsCache } from '@/lib/infra/cache'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
-const log = createLogger('api-collections')
+const log = logger.child({ tag: 'api-collections' })
 
 export const GET = authenticatedRoute(async (_request, _context, { userId }) => {
   const collections = await getAllCollections(userId)
@@ -27,6 +27,6 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
 
   const created = await dbCreateCollection(userId, parsed.data)
   invalidateCollectionsCache(userId)
-  log.info('Collection created', { userId, name: parsed.data.name })
+  log.info({ userId, name: parsed.data.name }, 'Collection created')
   return ApiResponse.CREATED(created)
 })

@@ -44,9 +44,8 @@ vi.mock('@/lib/infra/rate-limit', async () => {
   return { ...actual, rateLimitRoute: mockRateLimitRoute }
 })
 vi.mock('@/lib/utils/url', () => ({ getBaseUrl: vi.fn(() => 'https://devstash.io') }))
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }),
-  toErrorMessage: (_err: unknown, fallback: string) => fallback,
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }) },
 }))
 
 import { auth } from '@/auth'

@@ -5,13 +5,13 @@ vi.mock('@/lib/infra/redis', async (importOriginal) => {
   return { ...actual, getRedis: vi.fn() }
 })
 
-vi.mock('@/lib/infra/logger', () => ({
-  createLogger: vi.fn(),
+vi.mock('@/lib/infra/pino', () => ({
+  logger: { child: vi.fn() },
 }))
 
 import { makeRedisCache } from './redis-cache'
 import { getRedis } from '@/lib/infra/redis'
-import { createLogger } from '@/lib/infra/logger'
+import { logger } from '@/lib/infra/pino'
 
 const mockLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 const mockRedis = { get: vi.fn(), set: vi.fn(), del: vi.fn() }
@@ -22,7 +22,7 @@ function makeCache<T = string>(overrides?: Partial<Parameters<typeof makeRedisCa
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(createLogger).mockReturnValue(mockLog as never)
+  vi.mocked(logger.child).mockReturnValue(mockLog as never)
   vi.mocked(getRedis).mockReturnValue(mockRedis as never)
 })
 
@@ -59,21 +59,21 @@ describe('read', () => {
     const cache = makeCache()
     mockRedis.get.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }))
     await expect(cache.read('k')).resolves.toBeNull()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache read timed out', expect.objectContaining({ key: 'k' }))
+    expect(mockLog.warn).toHaveBeenCalledWith(expect.objectContaining({ key: 'k' }), 'Cache read timed out')
   })
 
   it('warns and falls through on TimeoutError', async () => {
     const cache = makeCache()
     mockRedis.get.mockRejectedValue(Object.assign(new Error('timeout'), { name: 'TimeoutError' }))
     await expect(cache.read('k')).resolves.toBeNull()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache read timed out', expect.objectContaining({ key: 'k' }))
+    expect(mockLog.warn).toHaveBeenCalledWith(expect.objectContaining({ key: 'k' }), 'Cache read timed out')
   })
 
   it('warns and falls through on generic Redis error', async () => {
     const cache = makeCache()
     mockRedis.get.mockRejectedValue(new Error('connection refused'))
     await expect(cache.read('k')).resolves.toBeNull()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache read failed', expect.objectContaining({ key: 'k' }))
+    expect(mockLog.warn).toHaveBeenCalledWith(expect.objectContaining({ key: 'k' }), 'Cache read failed')
   })
 })
 
@@ -96,14 +96,14 @@ describe('write', () => {
     const cache = makeCache()
     mockRedis.set.mockRejectedValue(Object.assign(new Error('timeout'), { name: 'TimeoutError' }))
     await expect(cache.write('k', 'v')).resolves.toBeUndefined()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache write timed out', expect.objectContaining({ key: 'k' }))
+    expect(mockLog.warn).toHaveBeenCalledWith(expect.objectContaining({ key: 'k' }), 'Cache write timed out')
   })
 
   it('warns on generic write error and does not throw', async () => {
     const cache = makeCache()
     mockRedis.set.mockRejectedValue(new Error('boom'))
     await expect(cache.write('k', 'v')).resolves.toBeUndefined()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache write failed', expect.objectContaining({ key: 'k' }))
+    expect(mockLog.warn).toHaveBeenCalledWith(expect.objectContaining({ key: 'k' }), 'Cache write failed')
   })
 })
 
@@ -129,7 +129,7 @@ describe('invalidate', () => {
     const cache = makeCache()
     mockRedis.del.mockRejectedValue(Object.assign(new Error('t'), { name: 'TimeoutError' }))
     await expect(cache.invalidate('k')).resolves.toBeUndefined()
-    expect(mockLog.warn).toHaveBeenCalledWith('Cache invalidation timed out', expect.objectContaining({ key: 'k' }))
+    expect(mockLog.warn).toHaveBeenCalledWith(expect.objectContaining({ key: 'k' }), 'Cache invalidation timed out')
   })
 })
 
