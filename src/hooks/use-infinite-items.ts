@@ -57,6 +57,48 @@ export function usePrependItem() {
   }
 }
 
+/**
+ * Toggles an item's favorite state across every cached items query. Patches the
+ * `isFavorite` flag everywhere (so the star is consistent in all lists) AND adds/
+ * removes the item from the favorites list query — a plain patch can't, since the
+ * newly favorited item isn't yet a member of that list (and an un-favorited one
+ * must leave it).
+ */
+export function useToggleFavoriteInCache() {
+  const queryClient = useQueryClient()
+  return (item: LightItem, next: boolean) => {
+    queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+      { queryKey: ['items'] },
+      (old) => mapItemInPages(old, item.id, { isFavorite: next })
+    )
+    queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+      {
+        queryKey: ['items'],
+        predicate: (query: Query) => {
+          const raw = query.queryKey[1]
+          if (typeof raw !== 'string') return false
+          return (JSON.parse(raw) as FetchItemsQuery).type === 'favorites'
+        },
+      },
+      (old) => {
+        if (!old) return old
+        if (next) {
+          const exists = old.pages.some((page) => page.items.some((i) => i.id === item.id))
+          return exists ? old : prependToPage(old, { ...item, isFavorite: true })
+        }
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            items: page.items.filter((i) => i.id !== item.id),
+          })),
+        }
+      }
+    )
+    void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
+  }
+}
+
 export function usePatchItem() {
   const queryClient = useQueryClient()
   return (id: string, patch: Partial<LightItem>) => {
