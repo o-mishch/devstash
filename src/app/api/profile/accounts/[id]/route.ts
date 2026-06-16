@@ -3,6 +3,7 @@ import { noContent, problem, problemFrom } from '@/lib/api/http'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { checkAccountExists, unlinkUserAccount } from '@/lib/db/users'
 import { requireAuthMethods } from '@/lib/app/profile-helpers'
+import { sendSecurityNotification } from '@/lib/emails/security-notification'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 
@@ -22,6 +23,7 @@ export const DELETE = authedRouteWithParams<IdParam>(
 
     await unlinkUserAccount(userId, params.id)
     invalidateProfileCache(userId)
+    void sendSecurityNotification(userId, 'method-unlinked')
     log.info({ userId, accountId: params.id }, 'Provider unlinked')
     return noContent()
   },

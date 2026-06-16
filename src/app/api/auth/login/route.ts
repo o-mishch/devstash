@@ -5,32 +5,36 @@ import { noContent, problem, parseOr422 } from '@/lib/api/http'
 import { loginInput } from '@/lib/api/schemas/auth'
 import { checkRateLimit, getActionIP } from '@/lib/infra/rate-limit'
 import { emailVerificationEnabled } from '@/lib/emails/verification'
-import { getUserEmailVerified } from '@/lib/db/users'
+import { validateUserPassword } from '@/lib/auth/auth-service'
 
 export const POST = publicRoute(async ({ request }) => {
   const parsed = parseOr422(loginInput, await request.json())
   if (!parsed.ok) return parsed.res
   const { email, password } = parsed.data
 
-  if (emailVerificationEnabled()) {
-    const user = await getUserEmailVerified(email)
-    if (user && !user.emailVerified) {
-      // Typed 403 carrying the email so the client can offer "resend verification". No rate-limit
-      // budget is consumed — this is not a failed credential attempt.
-      return problem(403, 'Please verify your email before signing in.', { email })
-    }
+  // Validate the password FIRST. `validateUserPassword` runs a constant-time bcrypt compare even on
+  // a missing / OAuth-only account (Case 9), so timing can't enumerate accounts.
+  const user = await validateUserPassword(email, password)
+
+  if (!user) {
+    // Wrong password, or no credential account — generic 400 that consumes the failed-attempt
+    // budget. Never reveals whether the account exists. (Case 5)
+    const { success, retryAfter } = await checkRateLimit('login', `${await getActionIP()}:${email}`)
+    if (!success) return rateLimited(retryAfter)
+    return problem(400, 'Invalid email or password.')
+  }
+
+  // Password is correct. Only now is it safe to reveal unverified state — existence of an unverified
+  // account is no longer enumerable by anyone who doesn't already know the password. No rate-limit
+  // budget is consumed for a correct-but-unverified attempt. (Case 5)
+  if (emailVerificationEnabled() && !user.emailVerified) {
+    return problem(403, 'Please verify your email before signing in.', { email })
   }
 
   try {
     await signIn('credentials', { email, password, redirect: false })
   } catch (error) {
     if (error instanceof AuthError) {
-      if (error.type === 'CredentialsSignin') {
-        // Only count FAILED attempts — successful logins must not consume the budget.
-        const { success, retryAfter } = await checkRateLimit('login', `${await getActionIP()}:${email}`)
-        if (!success) return rateLimited(retryAfter)
-        return problem(400, 'Invalid email or password.')
-      }
       return problem(400, 'Something went wrong. Please try again.')
     }
     throw error

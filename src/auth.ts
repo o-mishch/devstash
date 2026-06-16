@@ -1,4 +1,4 @@
-import NextAuth, { type User, type Account } from 'next-auth'
+import NextAuth, { type User, type Account, type Profile } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import type { AdapterUser } from 'next-auth/adapters'
 import { PrismaAdapter } from '@auth/prisma-adapter'
@@ -24,6 +24,7 @@ import {
 import { resolveSessionUserIsPro } from '@/lib/billing/access/pro-access-resolution'
 import { SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils/constants'
 import { validateUserPassword } from '@/lib/auth/auth-service'
+import { oauthEmailIsVerified } from '@/lib/auth/oauth-email'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'auth' })
@@ -57,6 +58,7 @@ interface JwtParams {
   token: JWT
   user?: AdapterUser | User
   account?: Account | null
+  profile?: Profile
 }
 
 function buildPendingLinkData(email: string, userEmail: string | null | undefined, account: Account): PendingLinkData {
@@ -130,7 +132,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
-    async jwt({ token, user, account }: JwtParams): Promise<JWT | null> {
+    async jwt({ token, user, account, profile }: JwtParams): Promise<JWT | null> {
       if (user) token.id = user.id
       if (token.id) {
         try {
@@ -168,8 +170,15 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         }
       }
 
-      // Backfill Account.email for OAuth sign-ins handled by PrismaAdapter
-      if (account && account.provider !== 'credentials' && user?.email) {
+      // Backfill Account.email for OAuth sign-ins handled by PrismaAdapter — but only when the
+      // provider asserts the email is verified, so the any-email-resolution paths (Cases 2/4) never
+      // trust an unverified OAuth email. Otherwise the identity falls back to User.email-only. (Case 6)
+      if (
+        account &&
+        account.provider !== 'credentials' &&
+        user?.email &&
+        oauthEmailIsVerified(account.provider, profile)
+      ) {
         void backfillOAuthAccountEmail(account.provider, account.providerAccountId, user.email).catch((error) => {
           log.warn({
             provider: account.provider,
