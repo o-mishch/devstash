@@ -8,8 +8,8 @@ import { SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
-import { orpcClient } from '@/lib/api/client'
+import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { api } from '@/lib/api/client'
 import { ProfileFormDialog } from './profile-form-dialog'
 
 interface SetPasswordDialogProps {
@@ -26,11 +26,16 @@ export function SetPasswordDialog({ suggestedEmails }: SetPasswordDialogProps) {
     router.refresh()
   }, [router])
 
-  const { formAction, isPending } = useOrpcFormAction((body) => orpcClient.profile.setInitialPassword({
-    email: body.email,
-    newPassword: body.newPassword,
-    confirmPassword: body.confirmPassword,
-  }), { onSuccess })
+  const { formAction, isPending } = useApiFormAction(async (body) => {
+    const { error } = await api.POST('/profile/password', {
+      body: {
+        email: body.email,
+        newPassword: body.newPassword,
+        confirmPassword: body.confirmPassword,
+      },
+    })
+    if (error) throw new Error(error.message)
+  }, { onSuccess })
 
   return (
     <ProfileFormDialog

@@ -2,9 +2,8 @@
 
 import { toast } from 'sonner'
 import { useQueryClient, type InfiniteData } from '@tanstack/react-query'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
-import { mapItemInPages } from '@/hooks/use-infinite-items'
+import { api } from '@/lib/api/client'
+import { usePatchItem } from '@/hooks/use-infinite-items'
 import { useItemsStore } from '@/stores/items'
 import type { UpdateItemInput } from '@/lib/utils/validators'
 import type { ItemsPage, LightItem, FullItem } from '@/types/item'
@@ -17,6 +16,7 @@ interface UpdateItemOptions {
 
 export function useUpdateItem() {
   const queryClient = useQueryClient()
+  const patchItem = usePatchItem()
   const { updateItem } = useItemsStore()
 
   return async (currentItem: FullItem, payload: UpdateItemPayload, options: UpdateItemOptions): Promise<void> => {
@@ -31,13 +31,13 @@ export function useUpdateItem() {
       contentPreview: payload.content ? payload.content.slice(0, 150) : null,
     }
 
-    queryClient.setQueriesData<InfiniteData<ItemsPage>>(
-      { queryKey: ['items'] },
-      (old) => mapItemInPages(old, currentItem.id, optimisticPatch)
-    )
+    patchItem(currentItem.id, optimisticPatch)
     updateItem({ ...currentItem, ...optimisticPatch })
 
-    const { error, data } = await safe(orpcClient.items.update({ id: currentItem.id, ...payload }))
+    const { data, error } = await api.PATCH('/items/{id}', {
+      params: { path: { id: currentItem.id } },
+      body: payload,
+    })
 
     if (!error) {
       const serverPatch: Partial<LightItem> = {
@@ -47,10 +47,7 @@ export function useUpdateItem() {
         isPinned: data.isPinned,
         descriptionPreview: data.description ? data.description.slice(0, 150) : null,
       }
-      queryClient.setQueriesData<InfiniteData<ItemsPage>>(
-        { queryKey: ['items'] },
-        (old) => mapItemInPages(old, currentItem.id, { ...optimisticPatch, ...serverPatch })
-      )
+      patchItem(currentItem.id, { ...optimisticPatch, ...serverPatch })
       const fullUpdated: FullItem = {
         ...currentItem,
         ...data,
@@ -61,7 +58,6 @@ export function useUpdateItem() {
         contentPreview: payload.content ? payload.content.slice(0, 150) : null,
       }
       updateItem(fullUpdated)
-      void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
       options.onSave(fullUpdated)
       toast.success('Item saved')
     } else {

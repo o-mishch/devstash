@@ -1,12 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
-import { safe } from '@orpc/client'
-import { orpc, orpcClient } from '@/lib/api/client'
+import { $api } from '@/lib/api/client'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
@@ -51,30 +49,26 @@ function ItemDetailDrawerInner({
   const needsDetailsFetch = item !== null && !isFullItem(item)
   const needsContent = item !== null && ITEM_TYPES_WITH_CONTENT.has(item.itemType.name) && !isFullItem(item)
 
-  const { data: fetchedDetails } = useQuery({
-    queryKey: ['item', itemId, 'details'],
-    queryFn: async () => {
-      if (itemId === null) return null
-      const { error, data } = await safe(orpcClient.items.getDetails({ id: itemId }))
-      return error ? null : data
-    },
-    enabled: needsDetailsFetch && itemId !== null,
-  })
+  const { data: fetchedDetails } = $api.useQuery(
+    'get',
+    '/items/{id}/details',
+    { params: { path: { id: itemId ?? '' } } },
+    { enabled: needsDetailsFetch && itemId !== null },
+  )
 
-  const { data: fetchedContent } = useQuery({
-    queryKey: ['item', itemId, 'content'],
-    queryFn: async () => {
-      if (itemId === null) return null
-      const { error, data } = await safe(orpcClient.items.getContent({ id: itemId }))
-      return error ? null : data
-    },
-    enabled: needsContent && itemId !== null,
-  })
+  const { data: fetchedContent } = $api.useQuery(
+    'get',
+    '/items/{id}/content',
+    { params: { path: { id: itemId ?? '' } } },
+    { enabled: needsContent && itemId !== null },
+  )
 
-  const { data: collections = [] } = useQuery({
-    ...orpc.collections.list.queryOptions(),
-    enabled: editingItemId !== null,
-  })
+  const { data: collections = [] } = $api.useQuery(
+    'get',
+    '/collections',
+    {},
+    { enabled: editingItemId !== null },
+  )
 
   const initialDetails: ItemDetails | null =
     item && isFullItem(item)

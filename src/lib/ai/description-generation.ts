@@ -1,10 +1,9 @@
 import 'server-only'
 import type OpenAI from 'openai'
-import { ORPCError } from '@orpc/server'
 import { getOpenAIClient } from '@/lib/ai/openai'
 import { getItemAiMetadata } from '@/lib/db/items'
-import { enforceRateLimit } from '@/lib/api/middleware'
-import { type RateLimitKey } from '@/lib/infra/rate-limit'
+import { checkRateLimit, deniedMessage, type RateLimitKey } from '@/lib/infra/rate-limit'
+import type { FailureResult } from '@/lib/api/http'
 import type { Logger } from 'pino'
 
 interface ItemImageLookup {
@@ -73,26 +72,39 @@ export interface RunProAiGenerationParams<TData, TResult> {
   execute: (client: OpenAI, data: TData) => Promise<TResult | null>
 }
 
+// REST-native result for the AI route handlers — `ok` carries the generated value; a failure is a
+// FailureResult (status + message + optional retryAfter) the handler maps to a response via
+// `problemFrom` (no thrown control-flow, per coding-standards).
+export interface AiGenerationFailure extends FailureResult {
+  ok: false
+}
+
+export type AiGenerationResult<T> = { ok: true; value: T } | AiGenerationFailure
+
 /**
  * Shared Pro-AI orchestration: Pro gate (→ 403), per-user rate limit (→ 429), OpenAI client
- * availability (→ 500), then `execute`. Throws ORPCError on any failure; returns the result.
- * Input is already validated by the contract before this runs.
+ * availability (→ 500), then `execute` (→ 500 on throw/empty). Returns a result the handler maps to
+ * a response. The Pro gate runs BEFORE the rate limit so non-Pro callers get 403 without consuming
+ * rate-limit budget. Input is validated by the handler before this runs.
  */
 export async function runProAiGeneration<TData, TResult>(
   params: RunProAiGenerationParams<TData, TResult>
-): Promise<TResult> {
+): Promise<AiGenerationResult<TResult>> {
   const { isPro, userId, data, rateLimitKey, notConfiguredMessage, failureMessage, log, logLabel, execute } = params
 
   if (!isPro) {
-    throw new ORPCError('FORBIDDEN', { message: 'This feature requires a Pro subscription.' })
+    return { ok: false, status: 403, message: 'This feature requires a Pro subscription.' }
   }
 
-  await enforceRateLimit(rateLimitKey, userId)
+  const { success, retryAfter } = await checkRateLimit(rateLimitKey, userId)
+  if (!success) {
+    return { ok: false, status: 429, message: deniedMessage(retryAfter), retryAfter }
+  }
 
   const client = getOpenAIClient()
   if (!client) {
     log.error('OpenAI client is not configured')
-    throw new ORPCError('INTERNAL_SERVER_ERROR', { message: notConfiguredMessage })
+    return { ok: false, status: 500, message: notConfiguredMessage }
   }
 
   log.info({ userId }, `Generating ${logLabel} via OpenAI`)
@@ -102,13 +114,13 @@ export async function runProAiGeneration<TData, TResult>(
     result = await execute(client, data)
   } catch (error) {
     log.error({ err: error }, 'OpenAI API Error')
-    throw new ORPCError('INTERNAL_SERVER_ERROR', { message: failureMessage })
+    return { ok: false, status: 500, message: failureMessage }
   }
 
   if (result == null) {
-    throw new ORPCError('INTERNAL_SERVER_ERROR', { message: failureMessage })
+    return { ok: false, status: 500, message: failureMessage }
   }
 
   log.info({ userId }, `Successfully generated ${logLabel}`)
-  return result
+  return { ok: true, value: result }
 }

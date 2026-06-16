@@ -27,8 +27,7 @@ import {
 } from '@/components/ui/select'
 
 import { useCreateItem } from '@/hooks/use-create-item'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES, FREE_TIER_ITEM_LIMIT, type FileItemType } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
@@ -41,7 +40,7 @@ import type { SidebarItemType } from '@/types/item'
 import type { CollectionPickerItem } from '@/types/collection'
 
 async function deleteOrphanedFile(file: UploadedFile): Promise<void> {
-  await safe(orpcClient.upload.deleteUpload({ key: file.key }))
+  await api.DELETE('/upload', { params: { query: { key: file.key } } })
 }
 
 interface CreateItemDialogProps {

@@ -12,8 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
-import { orpcClient } from '@/lib/api/client'
-import { safe } from '@orpc/client'
+import { api } from '@/lib/api/client'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import type { CollectionWithTypes } from '@/types/collection'
 
@@ -36,7 +35,7 @@ export function CollectionDeleteDialog({ collection, trigger, open: controlledOp
 
   async function handleDelete() {
     setIsDeleting(true)
-    const { error } = await safe(orpcClient.collections.remove({ id: collection.id }))
+    const { error } = await api.DELETE('/collections/{id}', { params: { path: { id: collection.id } } })
     setIsDeleting(false)
 
     if (!error) {

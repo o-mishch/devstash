@@ -12,8 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { signInWithGitHub, signInWithGoogle } from '@/actions/auth/login'
-import { safe, isDefinedError } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { ProviderIcon } from '@/components/shared/provider-icon'
 import { WarningBanner } from '@/components/shared/warning-banner'
 
@@ -44,10 +43,12 @@ export function SignInForm({ successMessage }: SignInFormProps) {
 
   async function formAction(formData: FormData) {
     setIsPending(true)
-    const { error } = await safe(orpcClient.auth.login({
-      email: String(formData.get('email') ?? ''),
-      password: String(formData.get('password') ?? ''),
-    }))
+    const { error } = await api.POST('/auth/login', {
+      body: {
+        email: String(formData.get('email') ?? ''),
+        password: String(formData.get('password') ?? ''),
+      },
+    })
     setIsPending(false)
 
     if (!error) {
@@ -57,8 +58,9 @@ export function SignInForm({ successMessage }: SignInFormProps) {
       return
     }
 
-    if (isDefinedError(error) && error.code === 'EMAIL_NOT_VERIFIED') {
-      // Renders the "email not verified" banner below — no toast needed.
+    // Only the 403 "email not verified" error carries a structured `data.email`; `'data' in error`
+    // narrows the error union to that member. Renders the resend banner below — no toast needed.
+    if ('data' in error && error.data) {
       setUnverifiedEmail(error.data.email)
       return
     }
@@ -74,7 +76,7 @@ export function SignInForm({ successMessage }: SignInFormProps) {
   async function handleResend() {
     if (!unverifiedEmail) return
 
-    const { error } = await safe(orpcClient.auth.resendVerification({ email: unverifiedEmail }))
+    const { error } = await api.POST('/auth/resend-verification', { body: { email: unverifiedEmail } })
 
     if (!error) {
       toast.success('Verification email sent. Check your inbox.')

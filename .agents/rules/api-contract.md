@@ -14,76 +14,84 @@ paths:
 
 # API Contract
 
-The client↔server contract for the eight feature domains is **oRPC** (contract-first, runtime-validated, end-to-end-typed). The legacy `ApiBody` envelope is **retained only** for Server Actions and the exempt explicit routes (see below).
+The client↔server contract for the nine feature domains is **native Next.js Route Handlers** with **Zod** schemas as the single source of truth, an **OpenAPI 3.1** document generated from those schemas (`zod-openapi`), and a **generated, typed client** (`openapi-typescript` → `openapi-fetch` + `openapi-react-query`). The legacy `ApiBody` envelope is **retained only** for Server Actions and the exempt explicit routes (see below).
 
-## oRPC (default for all client-driven reads/mutations)
+## Route Handlers (default for all client-driven reads/mutations)
 
-One Zod-backed **contract** per domain is the single source of truth for input, output, route, and typed errors.
+Every endpoint is an explicit `src/app/api/<domain>/.../route.ts` (file = URL). Bare Zod schemas validate input; success returns resource JSON with the right status, errors return `{ message }` (+ optional `data`) with the right status.
 
 ```
 src/lib/api/
-  contract/   [C] shared — oc-based contracts (pure Zod, no server-only); the browser imports types only
-  router/     [S] server-only — implement(contract) + .handler() bodies, lazy()-split per domain
-  orpc.ts     [S] pub / authed implementers (authed injects IDOR-safe { userId, isPro })
-  middleware.ts [S] enforceRateLimit(key, identifier) → ORPCError('TOO_MANY_REQUESTS')
-  client.ts   [C] orpcClient + orpc (TanStack Query utils)
-src/app/api/[...rest]/route.ts  [S] OpenAPIHandler.handle(request, { prefix: '/api' })  — Node runtime
+  route.ts    [S] authedRoute / authedRouteWithParams<P> / publicRoute — session gate, optional
+              rate limit, Pro resolution, single 500 catch (inject IDOR-safe { userId, isPro })
+  http.ts     [C] json() / noContent() / problem(status, message, data?, headers?) / parseOr422()
+  schemas/    [C] bare Zod request/response schemas per domain (no server-only); the source of truth
+  openapi/    [C] paths.ts (method+path → schemas/status) + spec.ts (createDocument)
+  client.ts   [C] api (openapi-fetch) + $api (openapi-react-query), credentials: 'include'
+  error-messages.ts [C] ErrorMessage — strings shared across transports / repeated across handlers
+scripts/generate-openapi.ts   build-tooling — writes openapi.json
+openapi.json + src/types/openapi.ts   generated, committed; a no-diff CI gate keeps them fresh
 ```
 
-Domains: `items` · `collections` · `profile` · `ai` · `search` · `upload` · `billing` · `auth` · `download`. The OpenAPI handler serves them as plain REST (`METHOD /api/path` from each procedure's `.route()`), so the surface is OpenAPI-spec-generatable (`src/lib/api/openapi.ts`).
+The OpenAPI doc and the handlers import the **same** Zod schemas, so their shapes can't disagree; `npm run openapi:gen` regenerates `openapi.json` + `src/types/openapi.ts` and must produce **no git diff**.
 
-**Dev-only API docs:** the catch-all handler mounts oRPC's `OpenAPIReferencePlugin` (Swagger UI) **only when `NODE_ENV !== 'production'`** — `GET /api/docs` (Swagger UI) + `GET /api/spec.json` (OpenAPI 3.x). In production the plugin is never registered, so both paths fall through to the router and 404. These two paths are served by the plugin before the per-procedure `authed` middleware, so `handle()` adds an explicit **session gate** in front of them (no session → 404), keeping the API contract unreadable by unauthenticated callers even on a non-localhost dev/preview host. Never expose these in production.
+Domains: `items` · `collections` · `profile` · `ai` · `search` · `upload` · `billing` · `auth` · `download`.
 
-### Server: contract + handler
+### Server: route handler + path declaration
 
 ```ts
-// contract/collections.ts  [C]
-export const collectionsContract = {
-  create: oc.route({ method: 'POST', path: '/collections', successStatus: 201 })
-    .input(collectionFormSchema).output(collectionSchema),
-}
+// schemas/collections.ts  [C]
+export const createCollectionInput = z.object({ name: z.string().min(1), description: z.string().nullable() })
+export const collectionSchema = z.object({ /* … */ createdAt: z.coerce.date<Date>() }).meta({ id: 'Collection' })
 
-// router/collections.ts  [S]
-export const collectionsRouter = {
-  create: authed.collections.create.handler(async ({ input, context }) => {
-    if (!await canCreateCollection(context.userId, context.isPro))
-      throw new ORPCError('FORBIDDEN', { message: '…upgrade to Pro.' })
-    return createCollection(context.userId, input)   // userId from session, never input (IDOR-safe)
-  }),
-}
+// app/api/collections/route.ts  [S]
+export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
+  const parsed = parseOr422(createCollectionInput, await request.json())
+  if (!parsed.ok) return parsed.res
+  if (!(await canCreateCollection(userId, isPro))) return problem(403, '…upgrade to Pro.')
+  return json(await createCollection(userId, parsed.data), 201) // userId from session, never input (IDOR-safe)
+})
+
+// openapi/paths.ts  [C] — same schemas the handler imports
+'/collections': { post: {
+  requestBody: { content: { 'application/json': { schema: createCollectionInput } } },
+  responses: { 201: { /* collectionSchema */ }, 401: unauthorized, 403: problem('…'), 422: problem('…') },
+} }
 ```
 
-- **Output dates:** JSON has no `Date` — use `z.coerce.date<Date>()` in `.output(...)`. The client's `ResponseValidationPlugin` coerces responses back to real `Date`s.
-- **Errors:** `throw new ORPCError(code, { message })`. `code` maps to the HTTP status natively (`UNAUTHORIZED`→401, `FORBIDDEN`→403, `NOT_FOUND`→404, `CONFLICT`→409, `BAD_REQUEST`→400, `TOO_MANY_REQUESTS`→429, `INTERNAL_SERVER_ERROR`→500). Input-validation failures surface as `BAD_REQUEST`, remapped to 422 at the HTTP layer.
-- **Shared messages:** any error string used in more than one place lives in `ErrorMessage` (`src/lib/api/error-messages.ts`, `[C]`) so wording can't drift — both (1) strings used on **both** transports (oRPC + the `ApiResponse` envelope), e.g. `ErrorMessage.NOT_AUTHENTICATED`, `ErrorMessage.FILE_NOT_FOUND`, and (2) strings repeated across oRPC handlers in a domain, e.g. `ErrorMessage.ITEM_NOT_FOUND`, `ErrorMessage.COLLECTION_NOT_FOUND`. Bespoke single-site messages stay inline. (`deniedMessage()` in `rate-limit.ts` is the same idea for the 429 string.)
-- **Typed errors** (only where the client branches on structured data): `oc.errors({ CODE: { status, data: schema } })`, then `errors.CODE({ data })` in the handler. Example: `auth.login` → `EMAIL_NOT_VERIFIED` carrying `{ email }`.
-- **Rate limiting:** `await enforceRateLimit('<key>', context.userId)` at the top of the handler.
-- A new domain is added in `contract/index.ts` + `router/index.ts` (lazy).
+- **Helpers:** `authedRoute(opts, handler)` for static paths; `authedRouteWithParams<P>(opts, handler)` for dynamic segments (`ctx.params` is the awaited `Promise<P>`); `publicRoute(handler)` for unauthenticated routes (auth domain — no session gate; rate-limit inline).
+- **Validation:** path params, query (`request.nextUrl.searchParams`), and body (`await request.json()`) parse from their **own** sources via `parseOr422` → 422 with `z.prettifyError` + `z.flattenError`.
+- **Errors:** *expected* non-200s are **returned** via `problem(status, message, data?, headers?)` — no thrown control flow (`coding-standards.md`: no custom Error subclasses, no `instanceof` routing). Only unexpected throws hit the single 500 catch in the wrapper.
+- **Output dates:** keep `z.date()` / `z.coerce.date<Date>()` in schemas; `spec.ts`'s `override` emits `date-time` in the output context so the generated client types the field as `string` (the honest JSON wire type). Per-field, flip the matching hand-written domain TS type to `string` only where the value is rendered from a client fetch.
+- **Reusable components:** add `.meta({ id })` to shared output schemas so they become `$ref` components instead of inlining across operations. (Do **not** set `reused: 'ref'` — in `zod-openapi` v6 it also hoists repeated primitives into anonymous `__schemaN` components.)
+- **Rate limiting:** `authedRoute({ rateLimit: '<key>' })` gates by `userId` (429 + `Retry-After`) before the handler. When Pro/validation must gate first (ai, upload) or the key is IP-based (auth), call `checkRateLimit` inline instead.
+- **Typed errors** (only where the client branches on structured data): return `problem(status, message, data)` and declare a dedicated response schema with that `data` shape. Example: `auth/login` → 403 `{ message, data: { email } }`.
+- **Shared messages:** strings used on both transports or repeated across a domain's handlers live in `ErrorMessage` (`src/lib/api/error-messages.ts`, `[C]`) — e.g. `ErrorMessage.NOT_AUTHENTICATED`, `ErrorMessage.FILE_NOT_FOUND`, `ErrorMessage.ITEM_NOT_FOUND`. Bespoke single-site messages stay inline. (`deniedMessage()` in `rate-limit.ts` is the same idea for the 429 string.)
 
 ### Frontend
 
 ```ts
-import { safe } from '@orpc/client'
-import { orpcClient, orpc } from '@/lib/api/client'
+import { api, $api } from '@/lib/api/client'
 
-// one-off call — resolves with typed output, throws ORPCError on failure
-const { error, data } = await safe(orpcClient.collections.create(input))
+// one-off call — openapi-fetch returns { data, error, response }; never throws
+const { data, error, response } = await api.POST('/collections', { body: input })
 if (!error) use(data)
-else toast.error(error.message)   // error.code === 'FORBIDDEN' for the upgrade branch
+else toast.error(error.message)               // response.status === 403 for the upgrade branch
 
-// hooks — TanStack Query utils
-const create = useMutation(orpc.collections.create.mutationOptions({ ... }))
-const { data } = useInfiniteQuery({ ...orpc.items.list.infiniteOptions(...) })
+// hooks — openapi-react-query re-throws so TanStack's `error` holds the typed body
+const create = $api.useMutation('post', '/collections')
+const list = $api.useQuery('get', '/collections')
 ```
 
-- Components never call `useQueryClient()` directly — cache updaters live in the hook files (see `coding-standards.md`).
-- For a built-in error code the client branches on, narrow with `error instanceof ORPCError && error.code === '…'`; for a declared typed error, narrow with `isDefinedError(error)`.
-- Form-driven submits use `useOrpcFormAction(submit, { onSuccess })` (`src/hooks/use-orpc-form-action.ts`).
-- Direct-to-S3 uploads (with progress) use `uploadToS3` (`src/lib/storage/s3-upload-client.ts`), **not** oRPC — the request goes straight to S3.
+- Path/query params go under `params: { path: { id }, query: { … } }`; the body under `body`.
+- Components never call `useQueryClient()` directly — cache updaters live in the hook files (see `coding-standards.md`). `use-infinite-items` keeps its manual `useInfiniteQuery` + custom `['items']` keys.
+- **Typed errors:** narrow on the structured member — e.g. `if ('data' in error && error.data)` for `auth/login`'s 403 — and/or read `response.status`.
+- Form-driven submits use `useApiFormAction(submit, { onSuccess })` (`src/hooks/use-api-form-action.ts`), where `submit` throws `new Error(error.message)` on failure.
+- Direct-to-S3 uploads (with progress) use `uploadToS3` (`src/lib/storage/s3-upload-client.ts`), **not** the api client — the request goes straight to S3.
 
 ## Server Actions — still `ApiBody`
 
-Redirect-terminating auth Server Actions (`src/actions/`) and their helpers remain on the `ApiBody` envelope (`src/types/api.ts`, `ApiResponse` builders). `parseOrFail` and `rateLimitAction`/`withRateLimit` serve these.
+Redirect-terminating auth Server Actions (`src/actions/`) and their helpers remain on the `ApiBody` envelope (`src/types/api.ts`, `ApiResponse` builders). `parseOrFail` and `rateLimitAction`/`withRateLimit` serve these. Server Actions aren't HTTP/OpenAPI endpoints (no URL), so they can't be route handlers.
 
 ```ts
 import { ApiResponse } from '@/lib/api'
@@ -97,21 +105,21 @@ export async function myAction(_prev: ApiBody<T | null> | null, formData: FormDa
 
 ## Exempt explicit routes — still `apiRoute` / `ApiResponse`
 
-These never used the oRPC contract and keep their explicit `src/app/api/*/route.ts` files (different URL space, never shadowed by the catch-all):
+These don't fit the typed-JSON model and keep their explicit `src/app/api/*/route.ts` files:
 
 | Route | Why exempt |
 |-------|-----------|
 | `api/auth/[...nextauth]` | NextAuth handler |
 | `api/webhooks/stripe` | Raw body + signature verification |
-| `api/download/[id]` | 3xx redirect to a signed S3 URL |
+| `api/download/[id]` | 3xx redirect to a signed S3 URL (the `download/[id]/url` JSON endpoint is a normal route handler) |
 | `api/billing/checkout-return` | 3xx redirect to settings after Stripe |
 
 They use `apiRoute` / `authenticatedRoute` (IDOR-safe `userId`), `ApiResponse`, and `apiRedirect` from `@/lib/api`.
 
 ## Rules
 
-- **Client-driven reads/mutations** go through `orpcClient` / `orpc` (oRPC). Never `fetch()`/`axios`, never a Server Action for an ordinary mutation.
-- **Never** add a new explicit `/api/*` JSON route — add a procedure to the contract instead. Explicit routes are only for the exempt cases above.
-- `userId` always comes from `context` (session), never from input — IDOR-safe.
-- Contract modules (`contract/**`) are `[C]` — never import `server-only` code into them; reuse the client-safe schemas in `src/lib/utils/validators.ts`.
+- **Client-driven reads/mutations** go through `api` / `$api` (`@/lib/api/client`). Never `fetch()`/`axios`, never a Server Action for an ordinary mutation.
+- **A new endpoint is a new `route.ts` + a `paths.ts` declaration + schemas** — both importing the same Zod schema; then `npm run openapi:gen`. Do not hand-edit `openapi.json` or `src/types/openapi.ts`.
+- `userId` always comes from the session (`ctx.userId`), never from input — IDOR-safe.
+- Schema modules (`schemas/**`) are `[C]` — never import `server-only` code into them; reuse the client-safe schemas in `src/lib/utils/validators.ts`.
 - Server Actions that only redirect (OAuth, sign-out) and the exempt routes keep the envelope; do not migrate them.

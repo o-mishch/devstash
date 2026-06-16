@@ -16,8 +16,7 @@ import {
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
@@ -35,7 +34,7 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
   function handleDelete() {
     startTransition(async () => {
       setTheme(DEFAULT_EDITOR_PREFERENCES.appTheme)
-      const { error } = await safe(orpcClient.profile.deleteAccount({ password: hasPassword ? password : undefined }))
+      const { error } = await api.DELETE('/profile', { body: { password: hasPassword ? password : undefined } })
       if (error) {
         toast.error(error.message || 'Failed to delete account. Please try again.')
         return

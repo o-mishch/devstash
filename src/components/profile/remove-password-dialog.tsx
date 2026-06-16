@@ -5,8 +5,7 @@ import { toast } from 'sonner'
 import { Unlink } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { BaseProfileDialog } from './base-profile-dialog'
 
@@ -22,7 +21,7 @@ export function RemovePasswordDialog() {
 
   function handleRemove() {
     startTransition(async () => {
-      const { error } = await safe(orpcClient.profile.removeCredentials({ password }))
+      const { error } = await api.DELETE('/profile/credentials', { body: { password } })
       if (!error) {
         toast.success('Password removed. Sign in via a linked account.')
         setOpen(false)

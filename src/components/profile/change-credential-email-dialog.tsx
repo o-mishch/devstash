@@ -8,8 +8,7 @@ import { SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { ProfileFormDialog } from './profile-form-dialog'
 import { WarningBanner } from '@/components/shared/warning-banner'
 
@@ -41,7 +40,7 @@ export function ChangeCredentialEmailDialog({ currentEmail }: ChangeCredentialEm
       setEmailError('')
 
       startTransition(async () => {
-        const { error } = await safe(orpcClient.profile.changeEmail({ email, password: String(data.get('password') ?? '') }))
+        const { error } = await api.PATCH('/profile/email', { body: { email, password: String(data.get('password') ?? '') } })
         if (!error) {
           toast.warning('Sign-in email updated. Use your new email to sign in next time.')
           closeDialog()

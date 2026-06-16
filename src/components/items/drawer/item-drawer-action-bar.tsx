@@ -9,8 +9,7 @@ import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { useItemsStore } from '@/stores/items'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
@@ -48,7 +47,13 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   const { value: isFavorite, toggle: handleFavoriteToggle } = useOptimisticToggle(
     item.isFavorite,
-    (next) => orpcClient.items.toggleFavorite({ id: item.id, isFavorite: next }),
+    async (next) => {
+      const { error } = await api.PATCH('/items/{id}/favorite', {
+        params: { path: { id: item.id } },
+        body: { isFavorite: next },
+      })
+      if (error) throw new Error(error.message)
+    },
     {
       onSuccess: (next) => {
         updateItem({ ...item, isFavorite: next })
@@ -60,7 +65,13 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   const { value: isPinned, toggle: handlePinToggle } = useOptimisticToggle(
     item.isPinned,
-    (next) => orpcClient.items.togglePinned({ id: item.id, isPinned: next }),
+    async (next) => {
+      const { error } = await api.PATCH('/items/{id}/pinned', {
+        params: { path: { id: item.id } },
+        body: { isPinned: next },
+      })
+      if (error) throw new Error(error.message)
+    },
     {
       onSuccess: (next) => {
         updateItem({ ...item, isPinned: next })
@@ -83,7 +94,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   async function handleDelete() {
     setIsDeleting(true)
-    const { error } = await safe(orpcClient.items.remove({ id: item.id }))
+    const { error } = await api.DELETE('/items/{id}', { params: { path: { id: item.id } } })
     setIsDeleting(false)
 
     if (!error) {

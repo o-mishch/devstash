@@ -8,8 +8,7 @@ import { Edit2, Trash2, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CollectionEditDialog } from '@/components/dashboard/collection-edit-dialog'
 import { CollectionDeleteDialog } from '@/components/dashboard/collection-delete-dialog'
-import { orpcClient } from '@/lib/api/client'
-import { safe } from '@orpc/client'
+import { api } from '@/lib/api/client'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionHeaderActionsProps {
@@ -22,7 +21,10 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   async function handleFavoriteToggle() {
-    const { error } = await safe(orpcClient.collections.update({ id: collection.id, isFavorite: !collection.isFavorite }))
+    const { error } = await api.PATCH('/collections/{id}', {
+      params: { path: { id: collection.id } },
+      body: { isFavorite: !collection.isFavorite },
+    })
     if (!error) {
       router.refresh()
     } else {

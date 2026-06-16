@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 
 interface ResendVerificationButtonProps {
   email: string
@@ -16,7 +15,7 @@ export function ResendVerificationButton({ email }: ResendVerificationButtonProp
 
   async function handleResend() {
     setIsPending(true)
-    const { error } = await safe(orpcClient.auth.resendVerification({ email }))
+    const { error } = await api.POST('/auth/resend-verification', { body: { email } })
     setIsPending(false)
     if (!error) {
       router.push('/sign-in?resent=1')

@@ -1,0 +1,588 @@
+import { z } from 'zod'
+import type { ZodOpenApiPathsObject, ZodOpenApiResponseObject } from 'zod-openapi'
+import {
+  createCollectionInput,
+  updateCollectionInput,
+  collectionSchema,
+} from '../schemas/collections'
+import {
+  createItemInput,
+  updateItemInput,
+  itemsQueryParam,
+  togglePinnedInput,
+  lightItemSchema,
+  itemsPageSchema,
+  itemDetailsSchema,
+  itemSavedDetailsSchema,
+  itemContentSchema,
+} from '../schemas/items'
+import {
+  optionalPasswordInput,
+  updateNameInput,
+  editorPreferencesInput,
+  changePasswordInput,
+  setInitialPasswordInput,
+  changeEmailInput,
+  updateMainEmailInput,
+  accountIdParam,
+} from '../schemas/profile'
+import {
+  generateDescriptionInput,
+  generateTagsInput,
+  generateCollectionDescriptionInput,
+  aiDescriptionOutput,
+  aiTagsOutput,
+} from '../schemas/ai'
+import { searchQueryParam, searchResultSchema } from '../schemas/search'
+import { getUploadUrlInput, deleteUploadQuery, uploadUrlResultSchema } from '../schemas/upload'
+import { createCheckoutInput, billingRedirectSchema } from '../schemas/billing'
+import {
+  loginInput,
+  registerInput,
+  forgotPasswordInput,
+  resetPasswordInput,
+  resendVerificationInput,
+  authRedirectSchema,
+  loginEmailNotVerifiedSchema,
+} from '../schemas/auth'
+import { downloadQueryParam, signedDownloadUrlSchema } from '../schemas/download'
+import { problemSchema, idParam, toggleFavoriteInput } from '../schemas/common'
+
+// Declares each `method + path → { request schema, response schema, status }` referencing the SAME
+// Zod schemas the route handlers import — so the generated OpenAPI doc and the handlers can't
+// disagree on shape. [C]. `npm run openapi:gen` turns this into openapi.json + src/types/openapi.ts;
+// the drift guard in openapi/spec.test.ts fails if a schema/path changed but openapi.json wasn't
+// regenerated. Domains are added here as they migrate.
+
+// Error responses share the `Problem` body so the generated client types `error` as `{ message }`.
+const problem = (description: string): ZodOpenApiResponseObject => ({
+  description,
+  content: { 'application/json': { schema: problemSchema } },
+})
+
+// Every authed operation can return 401; declared once here for reuse.
+const unauthorized = problem('Not authenticated')
+
+// Rate-limited mutations can return 429; declared once for reuse.
+const rateLimited = problem('Rate limit exceeded')
+
+export const paths: ZodOpenApiPathsObject = {
+  '/collections': {
+    get: {
+      summary: 'List the current user\'s collections',
+      responses: {
+        200: {
+          description: 'All collections for the user',
+          content: { 'application/json': { schema: z.array(collectionSchema) } },
+        },
+        401: unauthorized,
+      },
+    },
+    post: {
+      summary: 'Create a collection',
+      requestBody: { content: { 'application/json': { schema: createCollectionInput } } },
+      responses: {
+        201: {
+          description: 'The created collection',
+          content: { 'application/json': { schema: collectionSchema } },
+        },
+        401: unauthorized,
+        403: problem('Free-tier collection limit reached'),
+        422: problem('Validation failed'),
+      },
+    },
+  },
+  '/collections/{id}': {
+    patch: {
+      summary: 'Update a collection',
+      requestParams: { path: idParam },
+      requestBody: { content: { 'application/json': { schema: updateCollectionInput } } },
+      responses: {
+        200: {
+          description: 'The updated collection',
+          content: { 'application/json': { schema: collectionSchema } },
+        },
+        401: unauthorized,
+        404: problem('Collection not found'),
+        422: problem('Validation failed'),
+      },
+    },
+    delete: {
+      summary: 'Delete a collection',
+      requestParams: { path: idParam },
+      responses: {
+        204: { description: 'Collection deleted' },
+        401: unauthorized,
+        404: problem('Collection not found'),
+      },
+    },
+  },
+  '/collections/{id}/favorite': {
+    patch: {
+      summary: 'Toggle a collection\'s favorite flag',
+      requestParams: { path: idParam },
+      requestBody: { content: { 'application/json': { schema: toggleFavoriteInput } } },
+      responses: {
+        204: { description: 'Favorite toggled' },
+        401: unauthorized,
+        404: problem('Collection not found'),
+        422: problem('Validation failed'),
+      },
+    },
+  },
+  '/items': {
+    get: {
+      summary: 'List the current user\'s items (keyset paginated)',
+      requestParams: { query: itemsQueryParam },
+      responses: {
+        200: {
+          description: 'A page of items',
+          content: { 'application/json': { schema: itemsPageSchema } },
+        },
+        401: unauthorized,
+        422: problem('Invalid query'),
+      },
+    },
+    post: {
+      summary: 'Create an item',
+      requestBody: { content: { 'application/json': { schema: createItemInput } } },
+      responses: {
+        201: {
+          description: 'The created item',
+          content: { 'application/json': { schema: lightItemSchema } },
+        },
+        401: unauthorized,
+        403: problem('Pro-only type or free-tier item limit reached'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/items/{id}': {
+    patch: {
+      summary: 'Update an item',
+      requestParams: { path: idParam },
+      requestBody: { content: { 'application/json': { schema: updateItemInput } } },
+      responses: {
+        200: {
+          description: 'The saved item details',
+          content: { 'application/json': { schema: itemSavedDetailsSchema } },
+        },
+        401: unauthorized,
+        403: problem('Pro-only type'),
+        404: problem('Item not found'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+    delete: {
+      summary: 'Delete an item',
+      requestParams: { path: idParam },
+      responses: {
+        204: { description: 'Item deleted' },
+        401: unauthorized,
+        404: problem('Item not found'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/items/{id}/details': {
+    get: {
+      summary: 'Get an item\'s details (fetched on drawer open)',
+      requestParams: { path: idParam },
+      responses: {
+        200: {
+          description: 'The item details',
+          content: { 'application/json': { schema: itemDetailsSchema } },
+        },
+        401: unauthorized,
+        404: problem('Item not found'),
+      },
+    },
+  },
+  '/items/{id}/content': {
+    get: {
+      summary: 'Get an item\'s content (content-bearing types)',
+      requestParams: { path: idParam },
+      responses: {
+        200: {
+          description: 'The item content',
+          content: { 'application/json': { schema: itemContentSchema } },
+        },
+        401: unauthorized,
+        404: problem('Item not found'),
+      },
+    },
+  },
+  '/items/{id}/favorite': {
+    patch: {
+      summary: 'Toggle an item\'s favorite flag',
+      requestParams: { path: idParam },
+      requestBody: { content: { 'application/json': { schema: toggleFavoriteInput } } },
+      responses: {
+        204: { description: 'Favorite toggled' },
+        401: unauthorized,
+        404: problem('Item not found'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/items/{id}/pinned': {
+    patch: {
+      summary: 'Toggle an item\'s pinned flag',
+      requestParams: { path: idParam },
+      requestBody: { content: { 'application/json': { schema: togglePinnedInput } } },
+      responses: {
+        204: { description: 'Pinned toggled' },
+        401: unauthorized,
+        404: problem('Item not found'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/profile': {
+    delete: {
+      summary: 'Delete the current user\'s account',
+      requestBody: { content: { 'application/json': { schema: optionalPasswordInput } } },
+      responses: {
+        204: { description: 'Account deleted' },
+        400: problem('Password required or incorrect'),
+        401: unauthorized,
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/profile/name': {
+    patch: {
+      summary: 'Update the display name',
+      requestBody: { content: { 'application/json': { schema: updateNameInput } } },
+      responses: {
+        204: { description: 'Name updated' },
+        401: unauthorized,
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/profile/editor-preferences': {
+    patch: {
+      summary: 'Update editor preferences',
+      requestBody: { content: { 'application/json': { schema: editorPreferencesInput } } },
+      responses: {
+        204: { description: 'Preferences updated' },
+        401: unauthorized,
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/profile/password': {
+    patch: {
+      summary: 'Change the password',
+      requestBody: { content: { 'application/json': { schema: changePasswordInput } } },
+      responses: {
+        204: { description: 'Password changed' },
+        400: problem('Current password incorrect or not set'),
+        401: unauthorized,
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+    post: {
+      summary: 'Set an initial password (OAuth-only accounts)',
+      requestBody: { content: { 'application/json': { schema: setInitialPasswordInput } } },
+      responses: {
+        204: { description: 'Password set' },
+        401: unauthorized,
+        403: problem('Email not owned by the user'),
+        409: problem('A password is already set'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/profile/credentials': {
+    delete: {
+      summary: 'Remove email & password sign-in',
+      requestBody: { content: { 'application/json': { schema: optionalPasswordInput } } },
+      responses: {
+        204: { description: 'Credentials removed' },
+        400: problem('No password set, only sign-in method, or password incorrect'),
+        401: unauthorized,
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/profile/email': {
+    patch: {
+      summary: 'Change the sign-in email',
+      requestBody: { content: { 'application/json': { schema: changeEmailInput } } },
+      responses: {
+        204: { description: 'Email changed' },
+        400: problem('No password set or password incorrect'),
+        401: unauthorized,
+        403: problem('Email not owned by the user'),
+        409: problem('Email already in use'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/profile/main-email': {
+    patch: {
+      summary: 'Change the main (display/sign-in) email',
+      requestBody: { content: { 'application/json': { schema: updateMainEmailInput } } },
+      responses: {
+        204: { description: 'Main email updated' },
+        400: problem('Password required or incorrect'),
+        401: unauthorized,
+        403: problem('Email not owned by the user'),
+        409: problem('Email already in use'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/profile/accounts/{id}': {
+    delete: {
+      summary: 'Unlink an OAuth provider account',
+      requestParams: { path: accountIdParam },
+      responses: {
+        204: { description: 'Account unlinked' },
+        400: problem('Cannot remove the only sign-in method'),
+        401: unauthorized,
+        404: problem('Account not found'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/ai/description': {
+    post: {
+      summary: 'Generate an AI item description (Pro)',
+      requestBody: { content: { 'application/json': { schema: generateDescriptionInput } } },
+      responses: {
+        200: {
+          description: 'The generated description',
+          content: { 'application/json': { schema: aiDescriptionOutput } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/ai/tags': {
+    post: {
+      summary: 'Generate AI tag suggestions (Pro)',
+      requestBody: { content: { 'application/json': { schema: generateTagsInput } } },
+      responses: {
+        200: {
+          description: 'The suggested tags',
+          content: { 'application/json': { schema: aiTagsOutput } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/ai/collection-description': {
+    post: {
+      summary: 'Generate an AI collection description (Pro)',
+      requestBody: { content: { 'application/json': { schema: generateCollectionDescriptionInput } } },
+      responses: {
+        200: {
+          description: 'The generated description',
+          content: { 'application/json': { schema: aiDescriptionOutput } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/search': {
+    get: {
+      summary: 'Global fuzzy search across the user\'s items and collections',
+      requestParams: { query: searchQueryParam },
+      responses: {
+        200: {
+          description: 'Matching items and collections',
+          content: { 'application/json': { schema: searchResultSchema } },
+        },
+        401: unauthorized,
+        422: problem('Validation failed'),
+      },
+    },
+  },
+  '/upload/url': {
+    post: {
+      summary: 'Issue a presigned S3 upload credential (Pro)',
+      requestBody: { content: { 'application/json': { schema: getUploadUrlInput } } },
+      responses: {
+        200: {
+          description: 'Presigned POST credentials for the original (and optional thumbnail)',
+          content: { 'application/json': { schema: uploadUrlResultSchema } },
+        },
+        400: problem('Disallowed extension or file too large'),
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/upload': {
+    delete: {
+      summary: 'Delete a pending/orphaned upload by S3 key',
+      requestParams: { query: deleteUploadQuery },
+      responses: {
+        204: { description: 'Upload deleted' },
+        401: unauthorized,
+        403: problem('Key does not belong to the user'),
+        422: problem('Validation failed'),
+      },
+    },
+  },
+  '/billing/checkout': {
+    post: {
+      summary: 'Start a Stripe Checkout session',
+      requestBody: { content: { 'application/json': { schema: createCheckoutInput } } },
+      responses: {
+        200: {
+          description: 'The Stripe Checkout URL to redirect to',
+          content: { 'application/json': { schema: billingRedirectSchema } },
+        },
+        400: problem('Invalid subscription plan'),
+        401: unauthorized,
+        409: problem('Already subscribed or existing subscription'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/billing/portal': {
+    post: {
+      summary: 'Open the Stripe Customer Portal',
+      responses: {
+        200: {
+          description: 'The Stripe Portal URL to redirect to',
+          content: { 'application/json': { schema: billingRedirectSchema } },
+        },
+        400: problem('No subscription found'),
+        401: unauthorized,
+        429: rateLimited,
+      },
+    },
+  },
+  '/billing/cancel': {
+    post: {
+      summary: 'Schedule subscription cancellation at period end',
+      responses: {
+        204: { description: 'Cancellation scheduled' },
+        401: unauthorized,
+        429: rateLimited,
+      },
+    },
+  },
+  '/billing/reactivate': {
+    post: {
+      summary: 'Reactivate a subscription scheduled for cancellation',
+      responses: {
+        204: { description: 'Subscription reactivated' },
+        401: unauthorized,
+        429: rateLimited,
+      },
+    },
+  },
+  '/auth/login': {
+    post: {
+      summary: 'Sign in with email & password',
+      requestBody: { content: { 'application/json': { schema: loginInput } } },
+      responses: {
+        204: { description: 'Signed in (session cookie set)' },
+        400: problem('Invalid email or password'),
+        403: {
+          description: 'Email not verified — carries the unverified email',
+          content: { 'application/json': { schema: loginEmailNotVerifiedSchema } },
+        },
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/auth/register': {
+    post: {
+      summary: 'Create an account',
+      requestBody: { content: { 'application/json': { schema: registerInput } } },
+      responses: {
+        200: {
+          description: 'Where to navigate after registering',
+          content: { 'application/json': { schema: authRedirectSchema } },
+        },
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/auth/forgot-password': {
+    post: {
+      summary: 'Request a password reset email',
+      requestBody: { content: { 'application/json': { schema: forgotPasswordInput } } },
+      responses: {
+        200: {
+          description: 'Where to navigate after requesting a reset',
+          content: { 'application/json': { schema: authRedirectSchema } },
+        },
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/auth/reset-password': {
+    post: {
+      summary: 'Apply a password reset using a token',
+      requestBody: { content: { 'application/json': { schema: resetPasswordInput } } },
+      responses: {
+        204: { description: 'Password reset' },
+        400: problem('Reset link invalid or expired'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/auth/resend-verification': {
+    post: {
+      summary: 'Resend the email verification message',
+      requestBody: { content: { 'application/json': { schema: resendVerificationInput } } },
+      responses: {
+        204: { description: 'Verification email sent' },
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/download/{id}/url': {
+    get: {
+      summary: 'Get a signed download or preview URL for a file/image item',
+      requestParams: { path: idParam, query: downloadQueryParam },
+      responses: {
+        200: {
+          description: 'The signed S3 URL',
+          content: { 'application/json': { schema: signedDownloadUrlSchema } },
+        },
+        400: problem('Not a file or image item'),
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        404: problem('File not found'),
+      },
+    },
+  },
+}

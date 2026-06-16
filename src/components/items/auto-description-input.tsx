@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import {
   AiDescriptionField,
   AI_DESCRIPTION_INPUT_CLASS,
@@ -52,7 +52,11 @@ export function AutoDescriptionInput({
   )
   const canGenerate = disabledReason === null
 
-  const onGenerate = useCallback(() => orpcClient.ai.generateDescription(payload), [payload])
+  const onGenerate = useCallback(async () => {
+    const { data, error } = await api.POST('/ai/description', { body: payload })
+    if (error) throw new Error(error.message)
+    return data
+  }, [payload])
 
   const inputProps = form.register('description')
   const actionClassName =

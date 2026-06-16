@@ -12,12 +12,10 @@ const log = logger.child({ tag: 'api' })
 
 const HTTP_STATUS: Record<ApiStatus, number> = {
   ok: 200,
-  created: 201,
   bad_request: 400,
   unauthorized: 401,
   forbidden: 403,
   not_found: 404,
-  conflict: 409,
   validation_error: 422,
   too_many_requests: 429,
   internal_error: 500,

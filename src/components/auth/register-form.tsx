@@ -5,18 +5,24 @@ import { useRouter } from 'next/navigation'
 import { SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { PasswordFields } from '@/components/auth/password-fields'
-import { orpcClient } from '@/lib/api/client'
-import { useOrpcFormAction } from '@/hooks/use-orpc-form-action'
+import { api } from '@/lib/api/client'
+import { useApiFormAction } from '@/hooks/use-api-form-action'
 
 export function RegisterForm() {
   const router = useRouter()
-  const { formAction, isPending } = useOrpcFormAction(
-    (body) => orpcClient.auth.register({
-      name: body.name,
-      email: body.email,
-      password: body.password,
-      confirmPassword: body.confirmPassword,
-    }),
+  const { formAction, isPending } = useApiFormAction(
+    async (body) => {
+      const { data, error } = await api.POST('/auth/register', {
+        body: {
+          name: body.name,
+          email: body.email,
+          password: body.password,
+          confirmPassword: body.confirmPassword,
+        },
+      })
+      if (error) throw new Error(error.message)
+      return data
+    },
     {
       fallbackError: 'Registration failed.',
       onSuccess: (data) => { router.push(data.redirectTo) },

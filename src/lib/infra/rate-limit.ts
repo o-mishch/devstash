@@ -107,7 +107,7 @@ export interface RateLimitResult {
   retryAfter: number
 }
 
-/** Envelope-free rate-limit check for the oRPC layer (see `src/lib/api/middleware.ts`). */
+/** Envelope-free rate-limit check for the route handlers (see `src/lib/api/route.ts`). */
 export async function checkRateLimit(key: RateLimitKey, identifier: string): Promise<RateLimitResult> {
   const { success, retryAfter } = await check(key, identifier)
   return { success, retryAfter }

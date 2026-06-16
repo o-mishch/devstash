@@ -131,7 +131,7 @@ export function toLightItem(item: LightItemRow, textPreviews = new Map<string, T
   return {
     id: item.id,
     title: item.title,
-    createdAt: item.createdAt,
+    createdAt: item.createdAt.toISOString(),
     itemType: item.itemType,
     descriptionPreview: preview?.dp ?? null,
     contentPreview: preview?.cp ?? null,
@@ -293,6 +293,7 @@ export async function getItemDetails(userId: string, itemId: string): Promise<It
   if (!row) return null
   return {
     ...row,
+    updatedAt: row.updatedAt.toISOString(),
     collections: row.collections.map((ic) => ic.collection),
   }
 }
@@ -417,6 +418,7 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
     log.info({ userId, itemId, duration: Date.now() - start }, 'DB: updateItem')
     return {
       ...updated,
+      updatedAt: updated.updatedAt.toISOString(),
       tags: updated.tags.map((t: { name: string }) => t.name),
       collections: updated.collections.map((ic) => ic.collection),
     }
@@ -627,8 +629,8 @@ function toFullItem(item: ItemWithRelations): FullItem {
   return {
     id: item.id,
     title: item.title,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
     itemType: item.itemType,
     descriptionPreview: item.description ? item.description.slice(0, 150) : null,
     contentPreview: item.content ? item.content.slice(0, 150) : null,

@@ -3,8 +3,7 @@
 import { useRef, useState, useEffect, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/styles'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { uploadToPresignedPost } from '@/lib/storage/s3-upload-client'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
@@ -84,10 +83,9 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       thumb = await buildImageThumb(file)
     }
 
-    const { error: urlError, data: urlData } = await safe(orpcClient.upload.getUploadUrl({
-      fileName: file.name,
-      fileSize: file.size,
-    }))
+    const { data: urlData, error: urlError } = await api.POST('/upload/url', {
+      body: { fileName: file.name, fileSize: file.size },
+    })
 
     if (urlError) {
       setProgress(null)
@@ -123,7 +121,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       setProgress(null)
       setError('Upload failed. Please try again.')
       // Cleanup goes through our server (DELETE /api/upload → server calls S3), not direct S3.
-      void safe(orpcClient.upload.deleteUpload({ key: originalKey }))
+      void api.DELETE('/upload', { params: { query: { key: originalKey } } })
       return
     }
 

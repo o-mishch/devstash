@@ -3,7 +3,7 @@ description: Run housekeeping checks or a holistic quality audit over the curren
 when_to_use: Use when asked to clean up, run housekeeping, find dead code, remove console.log/TODO leftovers, check env var drift, review code quality, simplify over-engineered code, or audit all uncommitted work before shipping. Modes: check, run, improve.
 argument-hint: check|run|improve
 disable-model-invocation: true
-allowed-tools: Agent, TaskOutput, Glob, Grep, Read, Write, Edit, Skill, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(git *), Bash(rg *), Bash(find *), Bash(npm run *), Bash(npx prisma *), Bash(pgrep *), Bash(pkill *), Bash(rm -rf .next)
+allowed-tools: Agent, Glob, Grep, Read, Write, Edit, Skill, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(git *), Bash(rg *), Bash(grep *), Bash(find *), Bash(ls *), Bash(cat *), Bash(head *), Bash(tail *), Bash(wc *), Bash(echo *), Bash(cd *), Bash(npm run *), Bash(npx prisma *), Bash(pgrep *), Bash(pkill *), Bash(rm -rf .next)
 ---
 
 DevStash cleanup. **Mode:** `$ARGUMENTS`
@@ -43,7 +43,7 @@ In Claude Code the two lines below inject their command output automatically. If
 | --- | --- | --- | --- |
 | `check` | Fast scan (9 essential checks) · numbered report · no edits | ~2–3 min | Before commit; verify basics |
 | `run` | Same as `check` · ask which items to fix · apply approved | ~3–4 min | Before commit; fix basic issues |
-| `improve` | Deep audit (7 quality categories) — **research runs in a background opus subagent**, main agent only relays the audit + fixes approved IDs | ~5–10 min | After review; prepare for ship; refactoring |
+| `improve` | Deep audit (7 quality categories) — **research runs in a foreground opus subagent (single turn)**, main agent only relays the audit + fixes approved IDs | ~5–10 min | After review; prepare for ship; refactoring |
 
 ## Read order
 
@@ -124,7 +124,7 @@ Which checks should I fix? Format: "1, 3, 5" or "all" or "none"
 
 **When to use:** `check` mode passed, user asks for deeper analysis, or significant refactor needed.
 
-**Context discipline — research runs in a subagent.** All codebase research (reading the rules, every changed file, neighbourhood widening, pattern `rg` sweeps, rule-compliance, context7 lookups) runs inside **one background subagent on the opus model**. Intermediate file reads and scan output stay in the subagent's context; the main agent's context never fills with them. The subagent returns **only** the finished `Code quality audit` markdown. The main agent then relays that report and handles approval, fixes, and verification — it does not re-read the changeset.
+**Context discipline — research runs in a subagent.** All codebase research (reading the rules, every changed file, neighbourhood widening, pattern `rg` sweeps, rule-compliance, context7 lookups) runs inside **one foreground subagent on the opus model** (spawned synchronously within this turn — never `run_in_background`). Intermediate file reads and scan output stay in the subagent's context; the main agent's context never fills with them. The subagent returns **only** the finished `Code quality audit` markdown. The main agent then relays that report and handles approval, fixes, and verification — it does not re-read the changeset.
 
 **Posture — be critical (subagent's job).** A clean changeset is the *floor*, not the result. Assume repeated patterns and simplifications exist until you have looked wide enough to rule them out. Analysis is **codebase-wide**; only *edits* stay scoped to the changeset. If the audit reports few or zero findings, it must justify per category *why* it is genuinely clean — never default to "looks good."
 
@@ -132,21 +132,23 @@ Which checks should I fix? Format: "1, 3, 5" or "all" or "none"
 
 **Flow — two stages.** Stage A (subagent): inventory → scan → widen → pattern pass → **rule-compliance pass** → research → categorize → report. Stage B (main agent): relay → approve → fix → verify (~5–10 min).
 
-### Stage A — research subagent (opus, background)
+### Stage A — research subagent (opus, foreground)
 
-The main agent spawns **one** subagent with the Agent tool and then waits for its completion notification — it runs no research itself.
+The main agent spawns **one** foreground subagent with the Agent tool and receives the finished audit as that call's result, in the same turn — it runs no research itself, and must **not** poll, watch the subagent transcript, arm background watchers, or use `TaskOutput`/`TaskStop`.
 
-- `subagent_type: general-purpose` · `model: opus` · `run_in_background: true`
+- `subagent_type: general-purpose` · `model: opus` · `run_in_background: false` (foreground — blocks this turn until the audit returns)
+- **Why foreground, not background:** a fresh user turn interrupts any in-flight background agent, so a background research run gets killed mid-pass and its result is lost — and the main agent then wastes turns babysitting a transcript that never completes. A foreground run finishes inside the spawning turn and cannot be interrupted.
 - The prompt must be **self-contained** (subagents start cold — they do not inherit this conversation). It instructs the subagent to:
   1. Read **every** file under `.agents/rules/*` in full, plus `.agents/skills/cleanup/improve/checklist.md` and `.agents/skills/cleanup/improve/report.md`.
   2. Take the scope snapshot — `git diff --name-only HEAD` + `git ls-files --others --exclude-standard` — and stop if empty.
   3. Run phases 1–8 below (INVENTORY → REPORT), codebase-wide.
   4. Honour the feature-doc precedence in `context/current-feature.md` (an in-flight migration supersedes a standing rule for files in its scope).
-  5. **Return only** the rendered `Code quality audit` markdown (per `improve/report.md`) as its final message — no intermediate logs, no file dumps, no preamble.
+  5. Prefer the **Grep / Glob / Read tools** (which never prompt for permission) for content and file searches; reserve **Bash** for `git`, `rg`, and `find`, plus read-only inspection (`grep`, `cat`, `head`, `tail`, `wc`, `ls`, `echo`). Avoid `while`/`for` read-loops and `>` temp-file redirects — run the Grep tool over a path glob instead.
+  6. **Return only** the rendered `Code quality audit` markdown (per `improve/report.md`) as its final message — no intermediate logs, no file dumps, no preamble.
 
 ### Stage B — main agent (orchestration)
 
-On the subagent's completion: **relay** the returned audit verbatim, then drive approval → fix → verify using the finding cards in that audit. The main agent never reads `.agents/rules/*` or `improve/*` — everything it needs is in the returned report.
+When the foreground Agent call returns: **relay** the returned audit verbatim, then drive approval → fix → verify using the finding cards in that audit. The main agent never reads `.agents/rules/*` or `improve/*` — everything it needs is in the returned report.
 
 | # | Phase | Runs in | Action |
 | ---: | --- | --- | --- |

@@ -8,7 +8,7 @@ interface UseOptimisticToggleOptions {
 
 /**
  * Optimistic boolean toggle. `action` resolves on success and throws on failure
- * (transport-agnostic — the oRPC client throws an `ORPCError`, whose `message` is surfaced).
+ * (transport-agnostic — callers throw `new Error(message)` so the message is surfaced via toast).
  */
 export function useOptimisticToggle(
   initial: boolean,

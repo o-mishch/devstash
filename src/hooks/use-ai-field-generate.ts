@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
-import { safe } from '@orpc/client'
 
 interface UseAiFieldGenerateParams<T> {
   canGenerate: boolean
@@ -32,13 +31,13 @@ export function useAiFieldGenerate<T>({
     onStart?.()
     setIsLoading(true)
 
-    const { error, data } = await safe(onGenerate())
-    if (!error) {
-      onSuccess(data)
-    } else {
-      toast.error(error.message || failureMessage)
+    try {
+      onSuccess(await onGenerate())
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : failureMessage)
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }, [canGenerate, onGenerate, onSuccess, onStart, failureMessage])
 
   return { isLoading, run }

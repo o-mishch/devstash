@@ -2,8 +2,7 @@
 
 import type { MouseEvent } from 'react'
 import { toast } from 'sonner'
-import { safe, ORPCError } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { useRestrictedAction } from '@/hooks/use-restricted-action'
 
 export function showFileNotFoundToast(message?: string | null) {
@@ -31,9 +30,9 @@ export function useRestrictedDownload(
       return
     }
 
-    const { error, data } = await safe(orpcClient.download.getSignedUrl({ id: itemId }))
+    const { error, data, response } = await api.GET('/download/{id}/url', { params: { path: { id: itemId } } })
     if (error) {
-      if (error instanceof ORPCError && error.code === 'NOT_FOUND') {
+      if (response.status === 404) {
         showFileNotFoundToast(error.message)
       } else {
         toast.error(error.message || 'Failed to download file.')

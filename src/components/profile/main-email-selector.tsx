@@ -21,8 +21,7 @@ import {
 import { Button, SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { WarningBanner } from '@/components/shared/warning-banner'
 
 interface MainEmailSelectorProps {
@@ -50,7 +49,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword }
 
   function applyChange(target: string, currentPassword?: string) {
     startTransition(async () => {
-      const { error } = await safe(orpcClient.profile.updateMainEmail({ email: target, password: currentPassword }))
+      const { error } = await api.PATCH('/profile/main-email', { body: { email: target, password: currentPassword } })
       if (!error) {
         setEmail(target)
         toast.success(hasPassword ? 'Sign-in email updated.' : 'Display email updated.')

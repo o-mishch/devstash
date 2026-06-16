@@ -1,21 +1,25 @@
-import { createORPCClient } from '@orpc/client'
-import { OpenAPILink } from '@orpc/openapi-client/fetch'
-import { ResponseValidationPlugin } from '@orpc/contract/plugins'
-import { createTanstackQueryUtils } from '@orpc/tanstack-query'
-import type { ContractRouterClient } from '@orpc/contract'
-import { contract } from './contract'
+import createFetchClient from 'openapi-fetch'
+import createQueryClient from 'openapi-react-query'
+import type { paths } from '@/types/openapi'
 
-const link = new OpenAPILink(contract, {
-  url: typeof window !== 'undefined' ? `${window.location.origin}/api` : '/api',
-  // Send the session cookie on same-origin requests.
-  fetch: (request, init) => globalThis.fetch(request, { ...init, credentials: 'include' }),
-  // Validate + coerce responses through the contract's output schemas so the client receives
-  // the real types (e.g. z.coerce.date<Date>() → Date), not the raw JSON wire types. This
-  // replaces the JsonifiedClient wrapper and keeps the existing Date-based domain types intact.
-  plugins: [new ResponseValidationPlugin(contract)],
+// Typed client for the native Route Handlers, generated end-to-end from the OpenAPI `paths`
+// (src/types/openapi.ts via `openapi:gen`). [C] — browser-safe.
+const fetchClient = createFetchClient<paths>({
+  baseUrl: typeof window !== 'undefined' ? `${window.location.origin}/api` : '/api',
+  credentials: 'include', // session cookie, same-origin — no auth middleware needed
 })
 
-export const orpcClient: ContractRouterClient<typeof contract> = createORPCClient(link)
+// Centralize cross-cutting error logging in one middleware instead of at every call site.
+// openapi-fetch does NOT throw on non-2xx — it returns { data, error }; openapi-react-query
+// re-throws so TanStack's `error` state holds the typed { message, data? } body. (The shared Pino
+// logger is server-only, so browser-side we log via console.) Only surface unexpected server errors
+// (5xx) — the expected 4xx (401/403/404/422/429) are already handled at the call sites.
+fetchClient.use({
+  onResponse({ response }) {
+    if (response.status >= 500) console.warn(`[api] ${response.status} ${response.url}`)
+    return response
+  },
+})
 
-// TanStack Query utils — queryOptions / infiniteOptions / mutationOptions / typed keys.
-export const orpc = createTanstackQueryUtils(orpcClient)
+export const api = fetchClient // one-off calls: api.POST('/collections', { body })
+export const $api = createQueryClient(fetchClient) // hooks: $api.useQuery('get', '/collections', …)

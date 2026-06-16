@@ -1,5 +1,4 @@
 import 'server-only'
-import { ORPCError } from '@orpc/server'
 import { setSubscriptionCancelAtPeriodEnd } from '@/lib/stripe'
 import { getCachedLiveSubscriptionState, getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 import {
@@ -13,18 +12,25 @@ import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'billing-subscription-toggle' })
 
-/** Cancel (or reactivate) the signed-in user's subscription at period end. Throws ORPCError on failure. */
+/**
+ * Cancel (or reactivate) the signed-in user's subscription at period end. Throws on failure; the
+ * billing cancel/reactivate route handlers let the throw surface as a 500.
+ */
 export async function toggleSubscriptionCancellation(userId: string, cancel: boolean): Promise<void> {
   const user = await getCachedUserStripeInfo(userId)
   if (!user?.stripeSubscriptionId) {
-    throw new ORPCError('BAD_REQUEST', { message: 'No active subscription found. Please contact support.' })
+    throw new Error('No active subscription found. Please contact support.')
   }
 
+  // Distinguishes a deliberate failure (already the right response — don't run sync recovery) from
+  // an unexpected throw during the Stripe sequence (recover, then surface a generic message).
+  let deliberate = false
   try {
     await setSubscriptionCancelAtPeriodEnd(user.stripeSubscriptionId, cancel)
     const live = await getCachedLiveSubscriptionState(user.stripeSubscriptionId)
     if (!live) {
-      throw new ORPCError('INTERNAL_SERVER_ERROR', { message: `Unable to ${cancel ? 'cancel' : 'reactivate'} subscription. Please try again.` })
+      deliberate = true
+      throw new Error(`Unable to ${cancel ? 'cancel' : 'reactivate'} subscription. Please try again.`)
     }
     await applyLiveSubscriptionAccessFromStripe(user.stripeSubscriptionId, live, {
       userId,
@@ -38,16 +44,15 @@ export async function toggleSubscriptionCancellation(userId: string, cancel: boo
       subscriptionId: user.stripeSubscriptionId,
     }, cancel ? 'Canceled subscription' : 'Reactivated subscription')
   } catch (err) {
-    // A deliberate ORPCError (e.g. missing live state) is already the right response — re-throw it.
-    if (err instanceof ORPCError) throw err
+    if (deliberate) throw err
     log.error({ userId, cancel, err }, 'Subscription toggle failed — attempting billing sync recovery')
     try {
       await syncSubscriptionStateForUser(userId)
     } catch (syncErr) {
       log.error({ userId, err: syncErr }, 'Billing sync recovery after subscription toggle failed')
     }
-    throw new ORPCError('INTERNAL_SERVER_ERROR', {
-      message: `Unable to ${cancel ? 'cancel' : 'reactivate'} subscription. Please refresh billing settings and try again.`,
-    })
+    throw new Error(
+      `Unable to ${cancel ? 'cancel' : 'reactivate'} subscription. Please refresh billing settings and try again.`,
+    )
   }
 }

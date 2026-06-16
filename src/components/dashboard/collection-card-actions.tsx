@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Star, MoreHorizontal, Edit2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { useCollectionDialogs } from './collection-dialog-provider'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import type { CollectionWithTypes } from '@/types/collection'
@@ -19,7 +19,13 @@ export function CollectionCardActions({ collection }: CollectionCardActionsProps
   const { openEdit, openDelete } = useCollectionDialogs()
   const { value: isFavorite, toggle: toggleFavorite } = useOptimisticToggle(
     collection.isFavorite,
-    (next) => orpcClient.collections.toggleFavorite({ id: collection.id, isFavorite: next }),
+    async (next) => {
+      const { error } = await api.PATCH('/collections/{id}/favorite', {
+        params: { path: { id: collection.id } },
+        body: { isFavorite: next },
+      })
+      if (error) throw new Error(error.message)
+    },
     {
       onSuccess: () => router.refresh(),
       errorLabel: 'Failed to toggle favorite',

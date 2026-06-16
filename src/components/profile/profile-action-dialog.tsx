@@ -4,8 +4,7 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import type { ReactNode } from 'react'
-import { safe } from '@orpc/client'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import { BaseProfileDialog } from './base-profile-dialog'
 
 interface ProfileActionDialogProps {
@@ -37,7 +36,7 @@ export function ProfileActionDialog({
 
   function handleAction() {
     startTransition(async () => {
-      const { error } = await safe(orpcClient.profile.unlinkAccount({ id: accountId }))
+      const { error } = await api.DELETE('/profile/accounts/{id}', { params: { path: { id: accountId } } })
       if (!error) {
         toast.success(successMessage)
         setOpen(false)

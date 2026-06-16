@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useInfiniteQuery, useQueryClient, type InfiniteData, type Query } from '@tanstack/react-query'
-import { orpcClient } from '@/lib/api/client'
+import { api } from '@/lib/api/client'
 import type { FetchItemsQuery, ItemsPage, LightItem } from '@/types/item'
 
 function itemsQueryKey(fetchParams: FetchItemsQuery) {
@@ -152,9 +152,13 @@ export function useReplaceItem() {
   }
 }
 
+// Invalidates every cached items query. Pass 'none' to mark stale WITHOUT an immediate refetch
+// (avoids racing the server-side revalidateTag that runs via after() — same rationale as usePatchItem
+// / useRemoveItem). Omit it for a normal invalidate-and-refetch.
 export function useInvalidateItems() {
   const queryClient = useQueryClient()
-  return () => void queryClient.invalidateQueries({ queryKey: ['items'] })
+  return (refetchType?: 'none') =>
+    void queryClient.invalidateQueries({ queryKey: ['items'], ...(refetchType && { refetchType }) })
 }
 
 export function useInfiniteItems(
@@ -163,8 +167,13 @@ export function useInfiniteItems(
 ) {
   const query = useInfiniteQuery({
     queryKey: itemsQueryKey(fetchParams),
-    queryFn: async ({ pageParam }) =>
-      orpcClient.items.list({ ...fetchParams, ...(pageParam ? { cursor: pageParam } : {}) }),
+    queryFn: async ({ pageParam }) => {
+      const { data, error } = await api.GET('/items', {
+        params: { query: { ...fetchParams, ...(pageParam ? { cursor: pageParam } : {}) } },
+      })
+      if (error) throw new Error(error.message)
+      return data
+    },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? null,
     ...(initialData && { initialData: { pages: [initialData], pageParams: [null] } }),
