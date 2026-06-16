@@ -44,6 +44,21 @@ export async function getUserAuthInfoByEmail(email: string) {
   })
 }
 
+// Resolves a user by their primary User.email OR any linked Account.email (different-email OAuth
+// links), so password recovery / registration can be reached via any address the user owns. The
+// caller always acts on the returned primary `email`, never the typed input. (Case 2 / Case 4)
+export async function findUserByAnyEmail(email: string) {
+  return prisma.user.findFirst({
+    where: {
+      OR: [
+        { email },
+        { accounts: { some: { email } } },
+      ],
+    },
+    select: { id: true, email: true, password: true, emailVerified: true },
+  })
+}
+
 export async function getUserAuthMethods(id: string) {
   return prisma.user.findUnique({
     where: { id },
@@ -51,13 +66,6 @@ export async function getUserAuthMethods(id: string) {
       password: true,
       accounts: { select: { id: true, provider: true } },
     },
-  })
-}
-
-export async function getUserEmailVerified(email: string) {
-  return prisma.user.findUnique({
-    where: { email },
-    select: { emailVerified: true }
   })
 }
 
@@ -125,6 +133,17 @@ export async function updateUserPassword(userId: string, hashed: string): Promis
   await prisma.user.update({
     where: { id: userId },
     data: { password: hashed },
+  })
+}
+
+// Sets the password AND marks the email verified. Used when a credential is bootstrapped via a
+// proof-of-ownership flow (password-reset link to the primary inbox, or an authenticated in-app set)
+// on an account whose `emailVerified` is null — otherwise `authorize` would block the new login.
+// (Case 1)
+export async function setPasswordAndVerifyEmail(userId: string, hashed: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashed, emailVerified: new Date() },
   })
 }
 

@@ -4,6 +4,7 @@ import { optionalPasswordInput } from '@/lib/api/schemas/profile'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { removeUserPassword } from '@/lib/db/users'
 import { verifyPasswordFromBody, requireAuthMethods } from '@/lib/app/profile-helpers'
+import { sendSecurityNotification } from '@/lib/emails/security-notification'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 
@@ -27,6 +28,7 @@ export const DELETE = authedRoute({ rateLimit: 'changeCredentials' }, async ({ u
 
   await removeUserPassword(userId)
   invalidateProfileCache(userId)
+  void sendSecurityNotification(userId, 'password-removed')
   log.info({ userId }, 'Credentials removed')
   return noContent()
 })

@@ -25,7 +25,8 @@ vi.mock('@/lib/db/profile', () => ({
   getProfileData: vi.fn(),
   updateUserEmail: vi.fn(),
 }))
-vi.mock('@/lib/auth/auth-service', () => ({ changeUserPassword: vi.fn(), verifyUserPasswordById: vi.fn() }))
+vi.mock('@/lib/auth/auth-service', () => ({ changeUserPassword: vi.fn(), setInitialUserPassword: vi.fn(), verifyUserPasswordById: vi.fn() }))
+vi.mock('@/lib/emails/security-notification', () => ({ sendSecurityNotification: vi.fn() }))
 vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', () => ({
   teardownStripeBillingForUser: vi.fn(),
   syncStripeCustomerEmailForUser: vi.fn(),
@@ -43,7 +44,8 @@ import {
   getUserAuthInfoByEmail,
 } from '@/lib/db/users'
 import { updateUserName, getProfileData, updateUserEmail } from '@/lib/db/profile'
-import { changeUserPassword, verifyUserPasswordById } from '@/lib/auth/auth-service'
+import { changeUserPassword, setInitialUserPassword, verifyUserPasswordById } from '@/lib/auth/auth-service'
+import { sendSecurityNotification } from '@/lib/emails/security-notification'
 import { teardownStripeBillingForUser } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 
 import { DELETE as DELETE_ACCOUNT } from './route'
@@ -68,7 +70,9 @@ const mockUpdateName = updateUserName as ReturnType<typeof vi.fn>
 const mockGetProfile = getProfileData as ReturnType<typeof vi.fn>
 const mockUpdateEmail = updateUserEmail as ReturnType<typeof vi.fn>
 const mockChangePassword = changeUserPassword as ReturnType<typeof vi.fn>
+const mockSetInitialPassword = setInitialUserPassword as ReturnType<typeof vi.fn>
 const mockVerifyPassword = verifyUserPasswordById as ReturnType<typeof vi.fn>
+const mockNotify = sendSecurityNotification as ReturnType<typeof vi.fn>
 const mockTeardown = teardownStripeBillingForUser as ReturnType<typeof vi.fn>
 
 const OWNED_EMAIL = 'owned@google.com'
@@ -189,11 +193,12 @@ describe('POST /profile/password (set initial)', () => {
     expect(res.status).toBe(403)
   })
 
-  it('returns 204 when no password is set and the email is owned', async () => {
+  it('sets password + emailVerified via setInitialUserPassword when no password and email owned (Case 1 twin)', async () => {
     mockAuthMethods.mockResolvedValue({ password: null, accounts: [{ id: 'acc-1', provider: 'google' }] })
     const res = await SET_PASSWORD(req('POST', { email: OWNED_EMAIL, newPassword: 'new12345', confirmPassword: 'new12345' }))
     expect(res.status).toBe(204)
-    expect(mockChangePassword).toHaveBeenCalledWith('user-1', 'new12345')
+    expect(mockSetInitialPassword).toHaveBeenCalledWith('user-1', 'new12345')
+    expect(mockChangePassword).not.toHaveBeenCalled()
   })
 })
 
@@ -210,10 +215,11 @@ describe('DELETE /profile/credentials', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 204 on success', async () => {
+  it('returns 204 on success and notifies the owner (Case 7)', async () => {
     const res = await REMOVE_CREDENTIALS(req('DELETE', { password: 'password123' }))
     expect(res.status).toBe(204)
     expect(mockRemovePassword).toHaveBeenCalledWith('user-1')
+    expect(mockNotify).toHaveBeenCalledWith('user-1', 'password-removed')
   })
 })
 
@@ -273,9 +279,10 @@ describe('DELETE /profile/accounts/{id}', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 204 and unlinks scoped to the session userId', async () => {
+  it('returns 204, unlinks scoped to the session userId, and notifies the owner (Case 7)', async () => {
     const res = await UNLINK_ACCOUNT(req('DELETE'), params('acc-1'))
     expect(res.status).toBe(204)
     expect(mockUnlink).toHaveBeenCalledWith('user-1', 'acc-1')
+    expect(mockNotify).toHaveBeenCalledWith('user-1', 'method-unlinked')
   })
 })

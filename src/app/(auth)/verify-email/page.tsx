@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { getVerificationToken, deleteVerificationToken, verifyUserEmailAndToken } from '@/lib/db/users'
+import { hashToken } from '@/lib/auth/tokens'
 import { AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
 import { ResendVerificationButton } from '@/components/auth/resend-verification-button'
 
@@ -14,7 +15,9 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     return <MissingTokenPage noun="verification token" />
   }
 
-  const record = await getVerificationToken(token)
+  // Tokens are stored hashed at rest (Case 8); the URL carries the raw token, so hash it to look up.
+  const hashed = hashToken(token)
+  const record = await getVerificationToken(hashed)
 
   if (!record || record.identifier.startsWith('password-reset:')) {
     return (
@@ -26,7 +29,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
   }
 
   if (record.expires < new Date()) {
-    await deleteVerificationToken(token)
+    await deleteVerificationToken(hashed)
     return (
       <ExpiredTokenPage
         noun="verification link"
@@ -35,7 +38,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     )
   }
 
-  await verifyUserEmailAndToken(record.identifier, token)
+  await verifyUserEmailAndToken(record.identifier, hashed)
 
   return (
     <AuthStatusPage

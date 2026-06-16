@@ -1,9 +1,8 @@
 import { authedRoute } from '@/lib/api/route'
 import { noContent, problem, problemFrom, parseOr422 } from '@/lib/api/http'
 import { changePasswordInput, setInitialPasswordInput } from '@/lib/api/schemas/profile'
-import { changeUserPassword } from '@/lib/auth/auth-service'
+import { changeUserPassword, setInitialUserPassword } from '@/lib/auth/auth-service'
 import { verifyPasswordOrFail, requireAuthMethods, applyOwnedEmailChange } from '@/lib/app/profile-helpers'
-import { invalidateProfileCache } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'api-profile' })
@@ -41,8 +40,9 @@ export const POST = authedRoute({ rateLimit: 'changePassword' }, async ({ userId
   })
   if (fail) return problemFrom(fail)
 
-  await changeUserPassword(userId, parsed.data.newPassword)
-  invalidateProfileCache(userId)
+  // Sets the password AND marks emailVerified (OAuth sign-ups leave it null) so the new credential
+  // login isn't blocked by `authorize`; also notifies the owner. (Case 1 twin, Case 7)
+  await setInitialUserPassword(userId, parsed.data.newPassword)
   log.info({ userId }, 'Initial password set')
   return noContent()
 })

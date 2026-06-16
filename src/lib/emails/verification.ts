@@ -37,8 +37,11 @@ export async function resendVerification(email: string): Promise<boolean> {
   const tokenCreatedAt = existing ? existing.expires.getTime() - TOKEN_TTL_MS : 0
   const isTokenFresh = !!existing && Date.now() - tokenCreatedAt < RATE_LIMIT_MS
 
+  // A verification email was already sent within the rate-limit window. The stored token is hashed
+  // (Case 8), so the original link can't be reproduced — rather than mint a fresh one (which would
+  // defeat the anti-spam window), treat it as already sent. The recent email is still valid.
   if (isTokenFresh) {
-    return sendVerificationEmail(email, existing.token)
+    return true
   }
 
   const token = await createVerificationToken(email)
