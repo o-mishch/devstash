@@ -1,31 +1,17 @@
-import 'server-only'
-import { z } from 'zod'
-import { authenticatedRoute } from '@/lib/api'
-import { ApiResponse } from '@/lib/api'
-import { parseOrFail } from '@/lib/utils/validators'
-import { logger } from '@/lib/infra/pino'
+import { authedRoute } from '@/lib/api/route'
+import { json, parseOr422 } from '@/lib/api/http'
+import { searchQueryParam } from '@/lib/api/schemas/search'
 import { globalSearch } from '@/lib/db/search'
-import type { SearchResult } from '@/types/search'
+import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'search' })
 
-const searchSchema = z.object({
-  q: z.string().trim().min(1, 'Search query is required'),
-})
+export const GET = authedRoute({}, async ({ userId, request }) => {
+  const parsed = parseOr422(searchQueryParam, Object.fromEntries(request.nextUrl.searchParams))
+  if (!parsed.ok) return parsed.res
 
-export const GET = authenticatedRoute(async (request, _context, { userId }) => {
-  const { searchParams } = new URL(request.url)
-  const raw = { q: searchParams.get('q') ?? '' }
-
-  const parsed = parseOrFail(searchSchema, raw)
-  if (!parsed.success) return parsed.response
-
-  const { q } = parsed.data
-
-  // Use contains with insensitive mode to leverage pg_trgm GIN indexes for fuzzy substring matching
-  const [items, collections] = await globalSearch(q, userId)
-
+  // contains + insensitive mode leverages pg_trgm GIN indexes for fuzzy substring matching
+  const [items, collections] = await globalSearch(parsed.data.q, userId)
   log.info({ userId, items: items.length, collections: collections.length }, 'Global search')
-
-  return ApiResponse.OK<SearchResult>({ items, collections })
+  return json({ items, collections })
 })

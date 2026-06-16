@@ -20,13 +20,10 @@ function makeBuilder(status: ApiStatus) {
 
 export const ApiResponse = {
   OK: makeBuilder('ok'),
-  CREATED: makeBuilder('created'),
   BAD_REQUEST: makeBuilder('bad_request'),
   UNAUTHORIZED: makeBuilder('unauthorized'),
   FORBIDDEN: makeBuilder('forbidden'),
   NOT_FOUND: makeBuilder('not_found'),
-  CONFLICT: makeBuilder('conflict'),
-  VALIDATION_ERROR: makeBuilder('validation_error'),
   TOO_MANY_REQUESTS: makeBuilder('too_many_requests'),
   INTERNAL_ERROR: makeBuilder('internal_error'),
 }

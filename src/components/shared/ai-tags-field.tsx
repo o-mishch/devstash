@@ -13,12 +13,11 @@ import {
 } from '@/components/shared/ai-field-chrome'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
-import type { ApiBody } from '@/types/api'
 
 interface AiTagsFieldProps {
   canGenerate: boolean
   disabledReason: string | null
-  onGenerate: () => Promise<ApiBody<string[] | null>>
+  onGenerate: () => Promise<string[]>
   onAcceptTag: (tag: string) => void
   actionClassName: string
   children: ReactNode

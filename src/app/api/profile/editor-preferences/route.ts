@@ -1,19 +1,14 @@
-import 'server-only'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { parseOrFail, editorPreferencesSchema } from '@/lib/utils/validators'
-import { rateLimitRoute } from '@/lib/infra/rate-limit'
+import { authedRoute } from '@/lib/api/route'
+import { noContent, parseOr422 } from '@/lib/api/http'
+import { editorPreferencesInput } from '@/lib/api/schemas/profile'
 import { updateEditorPreferences } from '@/lib/db/profile'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 
-export const PATCH = authenticatedRoute(async (request, _context, { userId }) => {
-  const denied = await rateLimitRoute('updateSettings', userId)
-  if (denied) return denied
-
-  const body: unknown = await request.json()
-  const parsed = parseOrFail(editorPreferencesSchema, body)
-  if (!parsed.success) return parsed.response
+export const PATCH = authedRoute({ rateLimit: 'updateSettings' }, async ({ userId, request }) => {
+  const parsed = parseOr422(editorPreferencesInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
   await updateEditorPreferences(userId, parsed.data)
   invalidateProfileCache(userId)
-  return ApiResponse.OK()
+  return noContent()
 })

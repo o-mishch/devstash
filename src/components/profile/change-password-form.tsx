@@ -13,12 +13,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { patch } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
 import { useApiFormAction } from '@/hooks/use-api-form-action'
 
 export function ChangePasswordForm() {
   const [open, setOpen] = useState(false)
-  const { formAction, isPending } = useApiFormAction((body) => patch('/api/profile/password', body), {
+  const { formAction, isPending } = useApiFormAction(async (body) => {
+    const { error } = await api.PATCH('/profile/password', {
+      body: {
+        currentPassword: body.currentPassword,
+        newPassword: body.newPassword,
+        confirmPassword: body.confirmPassword,
+      },
+    })
+    if (error) throw new Error(error.message)
+  }, {
     onSuccess: () => {
       toast.success('Password updated successfully.')
       setOpen(false)

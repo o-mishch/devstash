@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
-import { del } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import type { CollectionWithTypes } from '@/types/collection'
 
@@ -35,10 +35,10 @@ export function CollectionDeleteDialog({ collection, trigger, open: controlledOp
 
   async function handleDelete() {
     setIsDeleting(true)
-    const result = await del(`/api/collections/${collection.id}`)
+    const { error } = await api.DELETE('/collections/{id}', { params: { path: { id: collection.id } } })
     setIsDeleting(false)
 
-    if (result.status === 'ok') {
+    if (!error) {
       toast.success('Collection deleted')
       handleOpenChange(false)
       if (onSuccess) {
@@ -47,7 +47,7 @@ export function CollectionDeleteDialog({ collection, trigger, open: controlledOp
         router.refresh()
       }
     } else {
-      toast.error(result.message ?? 'Failed to delete collection')
+      toast.error(error.message || 'Failed to delete collection')
     }
   }
 

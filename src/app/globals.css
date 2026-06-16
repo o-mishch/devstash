@@ -349,11 +349,18 @@
     }
     /* App-wide mobile text bump: enlarge the rem scale on touch/narrow screens so
      * every rem-based text size grows together. Reuses the `touch` custom variant
-     * (defined above) so the breakpoint lives in one place. Real desktop (fine
-     * pointer AND >=1024px) keeps the 16px base. */
+     * (defined above) so the breakpoint lives in one place. */
     @variant touch {
         :root {
             font-size: 110%;
+        }
+    }
+    /* Desktop global scale: bump the rem base to 125% on real desktop (fine pointer
+     * AND >=1024px) so the entire UI renders larger. Mirrors the `touch` breakpoint
+     * (64rem = Tailwind's lg) so the two cases never overlap. */
+    @media (pointer: fine) and (width >= 64rem) {
+        :root {
+            font-size: 125%;
         }
     }
 }

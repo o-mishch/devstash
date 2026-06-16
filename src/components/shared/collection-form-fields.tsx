@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { post } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
 import {
   AiDescriptionField,
   AI_DESCRIPTION_INPUT_CLASS,
@@ -32,10 +32,11 @@ export function CollectionFormFields({ form, idPrefix }: CollectionFormFieldsPro
   const canGenerate = name.trim().length > 0
   const disabledReason = canGenerate ? null : 'Enter a collection name first'
 
-  const onGenerate = useCallback(
-    () => post<{ description: string } | null>('/api/ai/collection-description', { name: name.trim() }),
-    [name]
-  )
+  const onGenerate = useCallback(async () => {
+    const { data, error } = await api.POST('/ai/collection-description', { body: { name: name.trim() } })
+    if (error) throw new Error(error.message)
+    return data
+  }, [name])
 
   const inputProps = form.register('description')
 

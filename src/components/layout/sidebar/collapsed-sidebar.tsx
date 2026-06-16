@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { PanelRight, Star, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -23,7 +23,6 @@ interface CollapsedSidebarProps {
 
 export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
   const { openPrompt } = useUpgradePromptStore()
   const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
 
@@ -49,13 +48,9 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
                 <TooltipTrigger render={<span />}>
                   <Link
                     href={typeHref}
-                    prefetch={false}
-                    onMouseEnter={() => {
-                      // Only prefetch if: (1) not current page, (2) not Pro-gated OR user is Pro
-                      if (!isCurrentPage && (!isProGated || isPro)) {
-                        router.prefetch(typeHref)
-                      }
-                    }}
+                    // Eager-prefetch the route's RSC payload so navigation is instant; skip
+                    // Pro-gated routes for non-Pro users (they can't open them anyway).
+                    prefetch={!isProGated || isPro}
                     onClick={(e) => handleProGatedTypeClick(e, {
                       isPro: isPro,
                       count: t.count,
@@ -85,8 +80,7 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
                     <TooltipTrigger render={<span />}>
                       <Link
                         href={`/collections/${c.id}`}
-                        prefetch={false}
-                        onMouseEnter={() => router.prefetch(`/collections/${c.id}`)}
+                        prefetch={true}
                         className={cn(
                           'flex size-11 items-center justify-center rounded-lg transition-colors',
                           pathname === `/collections/${c.id}`

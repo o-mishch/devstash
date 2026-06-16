@@ -24,7 +24,7 @@ vi.mock('@/lib/api/api-response', () => ({
 }))
 
 import { getRedis } from '@/lib/infra/redis'
-import { rateLimitAction, resetRateLimitersForTests, withUserRateLimit } from '@/lib/infra/rate-limit'
+import { rateLimitAction, resetRateLimitersForTests } from '@/lib/infra/rate-limit'
 
 const mockGetRedis = getRedis as ReturnType<typeof vi.fn>
 
@@ -72,17 +72,5 @@ describe('rateLimitAction', () => {
 
     expect(result?.status).toBe('too_many_requests')
     expect(result?.message).toMatch(/Too many attempts/)
-  })
-
-  it('withUserRateLimit returns the inner action result when not rate limited', async () => {
-    vi.stubEnv('NODE_ENV', 'development')
-
-    const result = await withUserRateLimit('updateSettings', 'user-42', async () => ({
-      status: 'ok' as const,
-      data: null,
-      message: null,
-    }))
-
-    expect(result.status).toBe('ok')
   })
 })

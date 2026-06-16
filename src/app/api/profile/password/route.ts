@@ -1,55 +1,48 @@
-import 'server-only'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { parseOrFail, changePasswordSchema, setInitialPasswordSchema } from '@/lib/utils/validators'
-import { rateLimitRoute } from '@/lib/infra/rate-limit'
+import { authedRoute } from '@/lib/api/route'
+import { noContent, problem, problemFrom, parseOr422 } from '@/lib/api/http'
+import { changePasswordInput, setInitialPasswordInput } from '@/lib/api/schemas/profile'
 import { changeUserPassword } from '@/lib/auth/auth-service'
-import { getUserAuthMethods } from '@/lib/db/users'
-import { applyOwnedEmailChange, verifyPasswordOrFail } from '@/lib/app/profile-helpers'
+import { verifyPasswordOrFail, requireAuthMethods, applyOwnedEmailChange } from '@/lib/app/profile-helpers'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 
-const log = logger.child({ tag: 'api-profile-password' })
+const log = logger.child({ tag: 'api-profile' })
 
-/** Change an existing password. */
-export const PATCH = authenticatedRoute(async (request, _context, { userId }) => {
-  const denied = await rateLimitRoute('changePassword', userId)
-  if (denied) return denied
+export const PATCH = authedRoute({ rateLimit: 'changePassword' }, async ({ userId, request }) => {
+  const parsed = parseOr422(changePasswordInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
-  const body: unknown = await request.json()
-  const parsed = parseOrFail(changePasswordSchema, body)
-  if (!parsed.success) return parsed.response
-
-  const pwError = await verifyPasswordOrFail(userId, parsed.data.currentPassword, 'Current password is incorrect or not set.')
-  if (pwError) return pwError
+  const fail = await verifyPasswordOrFail(
+    userId,
+    parsed.data.currentPassword,
+    'Current password is incorrect or not set.',
+  )
+  if (fail) return problemFrom(fail)
 
   await changeUserPassword(userId, parsed.data.newPassword)
   log.info({ userId }, 'Password changed')
-  return ApiResponse.OK()
+  return noContent()
 })
 
-/** Set an initial password for an OAuth-only account. */
-export const POST = authenticatedRoute(async (request, _context, { userId }) => {
-  const denied = await rateLimitRoute('changePassword', userId)
-  if (denied) return denied
+export const POST = authedRoute({ rateLimit: 'changePassword' }, async ({ userId, request }) => {
+  const parsed = parseOr422(setInitialPasswordInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
-  const body: unknown = await request.json()
-  const parsed = parseOrFail(setInitialPasswordSchema, body)
-  if (!parsed.success) return parsed.response
-  const { email: selectedEmail, newPassword } = parsed.data
+  const auth = await requireAuthMethods(userId)
+  if (!auth.ok) return problemFrom(auth.failure)
+  if (auth.user.password) {
+    return problem(409, 'You already have a password. Use Change Password instead.')
+  }
 
-  const user = await getUserAuthMethods(userId)
-  if (!user) return ApiResponse.UNAUTHORIZED('Not authenticated.')
-  if (user.password) return ApiResponse.CONFLICT('You already have a password. Use Change Password instead.')
-
-  const applied = await applyOwnedEmailChange({
+  const fail = await applyOwnedEmailChange({
     userId,
-    newEmail: selectedEmail,
+    newEmail: parsed.data.email,
     notOwnedMessage: 'You can only use an email from one of your linked accounts.',
   })
-  if (applied) return applied
+  if (fail) return problemFrom(fail)
 
-  await changeUserPassword(userId, newPassword)
+  await changeUserPassword(userId, parsed.data.newPassword)
   invalidateProfileCache(userId)
   log.info({ userId }, 'Initial password set')
-  return ApiResponse.OK()
+  return noContent()
 })

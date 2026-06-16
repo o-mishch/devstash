@@ -1,30 +1,32 @@
-import 'server-only'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { rateLimitRoute } from '@/lib/infra/rate-limit'
-import { getUserAuthMethods, removeUserPassword } from '@/lib/db/users'
-import { verifyPasswordFromBody } from '@/lib/app/profile-helpers'
+import { authedRoute } from '@/lib/api/route'
+import { noContent, problem, problemFrom, parseOr422 } from '@/lib/api/http'
+import { optionalPasswordInput } from '@/lib/api/schemas/profile'
+import { ErrorMessage } from '@/lib/api/error-messages'
+import { removeUserPassword } from '@/lib/db/users'
+import { verifyPasswordFromBody, requireAuthMethods } from '@/lib/app/profile-helpers'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 
-const log = logger.child({ tag: 'api-profile-credentials' })
+const log = logger.child({ tag: 'api-profile' })
 
-export const DELETE = authenticatedRoute(async (request, _context, { userId }) => {
-  const denied = await rateLimitRoute('changeCredentials', userId)
-  if (denied) return denied
+export const DELETE = authedRoute({ rateLimit: 'changeCredentials' }, async ({ userId, request }) => {
+  const parsed = parseOr422(optionalPasswordInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
-  const body: unknown = await request.json().catch(() => null)
-  const password = (body as { password?: unknown })?.password
+  const auth = await requireAuthMethods(userId)
+  if (!auth.ok) return problemFrom(auth.failure)
+  if (!auth.user.password) return problem(400, ErrorMessage.NO_PASSWORD_SET)
+  if (auth.user.accounts.length === 0) return problem(400, ErrorMessage.CANNOT_REMOVE_ONLY_SIGN_IN_METHOD)
 
-  const user = await getUserAuthMethods(userId)
-  if (!user) return ApiResponse.UNAUTHORIZED('Not authenticated.')
-  if (!user.password) return ApiResponse.BAD_REQUEST('No password set.')
-  if (user.accounts.length === 0) return ApiResponse.BAD_REQUEST('Cannot remove your only sign-in method.')
-
-  const pwError = await verifyPasswordFromBody(userId, password, 'Password is required to remove your password.')
-  if (pwError) return pwError
+  const fail = await verifyPasswordFromBody(
+    userId,
+    parsed.data.password,
+    'Password is required to remove your password.',
+  )
+  if (fail) return problemFrom(fail)
 
   await removeUserPassword(userId)
   invalidateProfileCache(userId)
   log.info({ userId }, 'Credentials removed')
-  return ApiResponse.OK()
+  return noContent()
 })

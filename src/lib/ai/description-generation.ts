@@ -1,11 +1,9 @@
 import 'server-only'
 import type OpenAI from 'openai'
-import { ApiResponse } from '@/lib/api'
 import { getOpenAIClient } from '@/lib/ai/openai'
 import { getItemAiMetadata } from '@/lib/db/items'
-import { rateLimitAction, type RateLimitKey } from '@/lib/infra/rate-limit'
-import type { ParseResult } from '@/lib/utils/validators'
-import type { ApiBody } from '@/types/api'
+import { checkRateLimit, deniedMessage, type RateLimitKey } from '@/lib/infra/rate-limit'
+import type { FailureResult } from '@/lib/api/http'
 import type { Logger } from 'pino'
 
 interface ItemImageLookup {
@@ -65,7 +63,7 @@ export async function resolveItemImageDimensions(
 export interface RunProAiGenerationParams<TData, TResult> {
   isPro: boolean
   userId: string
-  parseResult: ParseResult<TData>
+  data: TData
   rateLimitKey: RateLimitKey
   notConfiguredMessage: string
   failureMessage: string
@@ -74,48 +72,55 @@ export interface RunProAiGenerationParams<TData, TResult> {
   execute: (client: OpenAI, data: TData) => Promise<TResult | null>
 }
 
+// REST-native result for the AI route handlers — `ok` carries the generated value; a failure is a
+// FailureResult (status + message + optional retryAfter) the handler maps to a response via
+// `problemFrom` (no thrown control-flow, per coding-standards).
+export interface AiGenerationFailure extends FailureResult {
+  ok: false
+}
+
+export type AiGenerationResult<T> = { ok: true; value: T } | AiGenerationFailure
+
+/**
+ * Shared Pro-AI orchestration: Pro gate (→ 403), per-user rate limit (→ 429), OpenAI client
+ * availability (→ 500), then `execute` (→ 500 on throw/empty). Returns a result the handler maps to
+ * a response. The Pro gate runs BEFORE the rate limit so non-Pro callers get 403 without consuming
+ * rate-limit budget. Input is validated by the handler before this runs.
+ */
 export async function runProAiGeneration<TData, TResult>(
   params: RunProAiGenerationParams<TData, TResult>
-): Promise<ApiBody<TResult | null>> {
-  const {
-    isPro,
-    userId,
-    parseResult,
-    rateLimitKey,
-    notConfiguredMessage,
-    failureMessage,
-    log,
-    logLabel,
-    execute,
-  } = params
+): Promise<AiGenerationResult<TResult>> {
+  const { isPro, userId, data, rateLimitKey, notConfiguredMessage, failureMessage, log, logLabel, execute } = params
 
   if (!isPro) {
-    return ApiResponse.FORBIDDEN('This feature requires a Pro subscription.')
+    return { ok: false, status: 403, message: 'This feature requires a Pro subscription.' }
   }
 
-  const rl = await rateLimitAction(rateLimitKey, userId)
-  if (rl) return rl as ApiBody<TResult | null>
-
-  if (!parseResult.success) return parseResult.response
+  const { success, retryAfter } = await checkRateLimit(rateLimitKey, userId)
+  if (!success) {
+    return { ok: false, status: 429, message: deniedMessage(retryAfter), retryAfter }
+  }
 
   const client = getOpenAIClient()
   if (!client) {
     log.error('OpenAI client is not configured')
-    return ApiResponse.INTERNAL_ERROR(notConfiguredMessage)
+    return { ok: false, status: 500, message: notConfiguredMessage }
   }
 
   log.info({ userId }, `Generating ${logLabel} via OpenAI`)
 
+  let result: TResult | null
   try {
-    const result = await execute(client, parseResult.data)
-    if (result == null) {
-      return ApiResponse.INTERNAL_ERROR(failureMessage)
-    }
-
-    log.info({ userId }, `Successfully generated ${logLabel}`)
-    return ApiResponse.OK(result)
+    result = await execute(client, data)
   } catch (error) {
     log.error({ err: error }, 'OpenAI API Error')
-    return ApiResponse.INTERNAL_ERROR(failureMessage)
+    return { ok: false, status: 500, message: failureMessage }
   }
+
+  if (result == null) {
+    return { ok: false, status: 500, message: failureMessage }
+  }
+
+  log.info({ userId }, `Successfully generated ${logLabel}`)
+  return { ok: true, value: result }
 }

@@ -1,44 +1,34 @@
-import 'server-only'
-import { z } from 'zod'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { parseOrFail, collectionFormSchema } from '@/lib/utils/validators'
-import {
-  updateCollection as dbUpdateCollection,
-  deleteCollection as dbDeleteCollection,
-  getCollectionById,
-} from '@/lib/db/collections'
+import { authedRouteWithParams, type IdParam } from '@/lib/api/route'
+import { json, noContent, problem, parseOr422 } from '@/lib/api/http'
+import { updateCollectionInput } from '@/lib/api/schemas/collections'
+import { ErrorMessage } from '@/lib/api/error-messages'
+import { getCollectionById, updateCollection, deleteCollection } from '@/lib/db/collections'
 import { invalidateCollectionsCache } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 
-const log = logger.child({ tag: 'api-collections-id' })
+const log = logger.child({ tag: 'api-collections' })
 
-const updateCollectionSchema = collectionFormSchema.partial().extend({
-  isFavorite: z.boolean().optional(),
+export const PATCH = authedRouteWithParams<IdParam>({}, async ({ userId, params, request }) => {
+  const parsed = parseOr422(updateCollectionInput, await request.json())
+  if (!parsed.ok) return parsed.res
+
+  if (!(await getCollectionById(userId, params.id))) {
+    return problem(404, ErrorMessage.COLLECTION_NOT_FOUND)
+  }
+
+  const updated = await updateCollection(userId, params.id, parsed.data)
+  invalidateCollectionsCache(userId)
+  log.info({ userId, id: params.id }, 'Collection updated')
+  return json(updated)
 })
 
-export const PATCH = authenticatedRoute(async (request, context, { userId }) => {
-  const { id } = await context.params
-  const body: unknown = await request.json()
-  const parsed = parseOrFail(updateCollectionSchema, body)
-  if (!parsed.success) return parsed.response
+export const DELETE = authedRouteWithParams<IdParam>({}, async ({ userId, params }) => {
+  if (!(await getCollectionById(userId, params.id))) {
+    return problem(404, ErrorMessage.COLLECTION_NOT_FOUND)
+  }
 
-  const existing = await getCollectionById(userId, id)
-  if (!existing) return ApiResponse.NOT_FOUND('Collection not found.')
-
-  const updated = await dbUpdateCollection(userId, id, parsed.data)
+  await deleteCollection(userId, params.id)
   invalidateCollectionsCache(userId)
-  log.info({ userId, id }, 'Collection updated')
-  return ApiResponse.OK(updated)
-})
-
-export const DELETE = authenticatedRoute(async (_request, context, { userId }) => {
-  const { id } = await context.params
-
-  const existing = await getCollectionById(userId, id)
-  if (!existing) return ApiResponse.NOT_FOUND('Collection not found.')
-
-  await dbDeleteCollection(userId, id)
-  invalidateCollectionsCache(userId)
-  log.info({ userId, id }, 'Collection deleted')
-  return ApiResponse.OK()
+  log.info({ userId, id: params.id }, 'Collection deleted')
+  return noContent()
 })

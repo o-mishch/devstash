@@ -4,6 +4,7 @@ import { AuthFormLayout } from '@/components/auth/auth-page-header'
 import { getCachedSession } from '@/lib/session'
 import { buttonVariants } from '@/components/ui/button'
 import { RegisterForm } from '@/components/auth/register-form'
+import { ResendVerificationButton } from '@/components/auth/resend-verification-button'
 
 interface RegisterPageProps {
   searchParams: Promise<{ pending?: string; email?: string; sent?: string }>
@@ -36,6 +37,11 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
               </>
             )}
           </p>
+          {email ? (
+            <div className="text-center">
+              <ResendVerificationButton email={email} />
+            </div>
+          ) : null}
           <Link
             href="/sign-in"
             className={buttonVariants({ variant: 'outline', className: 'w-full' })}

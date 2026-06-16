@@ -1,16 +1,15 @@
-import { ApiResponse, authenticatedRoute } from '@/lib/api'
+import { authedRoute } from '@/lib/api/route'
+import { noContent, problem, parseOr422 } from '@/lib/api/http'
+import { deleteUploadQuery } from '@/lib/api/schemas/upload'
 import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 
-export const DELETE = authenticatedRoute(async (request, _context, { userId }) => {
-  const { searchParams } = new URL(request.url)
-  const key = searchParams.get('key')
+export const DELETE = authedRoute({}, async ({ userId, request }) => {
+  const parsed = parseOr422(deleteUploadQuery, Object.fromEntries(request.nextUrl.searchParams))
+  if (!parsed.ok) return parsed.res
 
-  if (!key) return ApiResponse.BAD_REQUEST('Missing key.')
+  // Only allow deleting keys that belong to this user (IDOR-safe).
+  if (!parsed.data.key.startsWith(`${userId}/`)) return problem(403, 'Access denied.')
 
-  // Only allow deleting keys that belong to this user
-  if (!key.startsWith(`${userId}/`)) return ApiResponse.FORBIDDEN('Access denied.')
-
-  await deleteStoredFile(key)
-
-  return ApiResponse.OK()
+  await deleteStoredFile(parsed.data.key)
+  return noContent()
 })

@@ -1,24 +1,23 @@
-import { NextRequest } from 'next/server'
+import { publicRoute, rateLimited } from '@/lib/api/route'
+import { noContent, parseOr422 } from '@/lib/api/http'
+import { resendVerificationInput } from '@/lib/api/schemas/auth'
+import { checkRateLimit, getActionIP } from '@/lib/infra/rate-limit'
 import { resendVerification } from '@/lib/emails/verification'
-import { ApiResponse, apiRoute } from '@/lib/api'
-import { rateLimitRoute, getRequestIP } from '@/lib/infra/rate-limit'
 
-export const POST = apiRoute(async (request: NextRequest) => {
-  const ip = getRequestIP(request)
+export const POST = publicRoute(async ({ request }) => {
+  const ip = await getActionIP()
+  // Broad IP-only guard before body parse — separate bucket, does not consume the per-email quota.
+  const ipGuard = await checkRateLimit('resendVerificationIP', ip)
+  if (!ipGuard.success) return rateLimited(ipGuard.retryAfter)
 
-  // Broad IP-only guard — separate bucket, does not consume per-email quota
-  const ipRl = await rateLimitRoute('resendVerificationIP', ip)
-  if (ipRl) return ipRl
+  const parsed = parseOr422(resendVerificationInput, await request.json())
+  if (!parsed.ok) return parsed.res
+  const { email } = parsed.data
 
-  const { email } = await request.json()
-
-  if (!email || typeof email !== 'string') return ApiResponse.BAD_REQUEST('Email is required.')
-
-  // Tighter per-IP+email guard for the actual send
-  const emailRl = await rateLimitRoute('resendVerification', `${ip}:${email}`)
-  if (emailRl) return emailRl
+  // Tighter per-IP+email guard for the actual send.
+  const sendGuard = await checkRateLimit('resendVerification', `${ip}:${email}`)
+  if (!sendGuard.success) return rateLimited(sendGuard.retryAfter)
 
   await resendVerification(email)
-
-  return ApiResponse.OK()
+  return noContent()
 })

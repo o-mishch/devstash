@@ -1,30 +1,23 @@
-import 'server-only'
-import { z } from 'zod'
-import { signIn } from '@/auth'
 import { AuthError } from 'next-auth'
-import { apiRoute, ApiResponse } from '@/lib/api'
-import { rateLimitRoute, getRequestIP } from '@/lib/infra/rate-limit'
+import { signIn } from '@/auth'
+import { publicRoute, rateLimited } from '@/lib/api/route'
+import { noContent, problem, parseOr422 } from '@/lib/api/http'
+import { loginInput } from '@/lib/api/schemas/auth'
+import { checkRateLimit, getActionIP } from '@/lib/infra/rate-limit'
 import { emailVerificationEnabled } from '@/lib/emails/verification'
 import { getUserEmailVerified } from '@/lib/db/users'
-import { parseOrFail, EmailSchema } from '@/lib/utils/validators'
-import type { SignInData } from '@/types/auth'
 
-const SignInSchema = z.object({
-  email: EmailSchema,
-  password: z.string().min(1, 'Password is required.'),
-})
-
-export const POST = apiRoute(async (request) => {
-  const body: unknown = await request.json().catch(() => null)
-  const result = parseOrFail(SignInSchema, body)
-  if (!result.success) return result.response
-
-  const { email, password } = result.data
+export const POST = publicRoute(async ({ request }) => {
+  const parsed = parseOr422(loginInput, await request.json())
+  if (!parsed.ok) return parsed.res
+  const { email, password } = parsed.data
 
   if (emailVerificationEnabled()) {
     const user = await getUserEmailVerified(email)
     if (user && !user.emailVerified) {
-      return ApiResponse.FORBIDDEN<SignInData>({ email }, 'Please verify your email before signing in.')
+      // Typed 403 carrying the email so the client can offer "resend verification". No rate-limit
+      // budget is consumed — this is not a failed credential attempt.
+      return problem(403, 'Please verify your email before signing in.', { email })
     }
   }
 
@@ -33,16 +26,15 @@ export const POST = apiRoute(async (request) => {
   } catch (error) {
     if (error instanceof AuthError) {
       if (error.type === 'CredentialsSignin') {
-        // Only count failed attempts — successful logins must not consume the budget
-        const ip = getRequestIP(request)
-        const rl = await rateLimitRoute('login', `${ip}:${email}`)
-        if (rl) return rl
-        return ApiResponse.BAD_REQUEST('Invalid email or password.')
+        // Only count FAILED attempts — successful logins must not consume the budget.
+        const { success, retryAfter } = await checkRateLimit('login', `${await getActionIP()}:${email}`)
+        if (!success) return rateLimited(retryAfter)
+        return problem(400, 'Invalid email or password.')
       }
-      return ApiResponse.BAD_REQUEST('Something went wrong. Please try again.')
+      return problem(400, 'Something went wrong. Please try again.')
     }
     throw error
   }
 
-  return ApiResponse.OK()
+  return noContent()
 })

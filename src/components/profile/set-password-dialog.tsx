@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { useApiFormAction } from '@/hooks/use-api-form-action'
-import { post } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
 import { ProfileFormDialog } from './profile-form-dialog'
 
 interface SetPasswordDialogProps {
@@ -26,7 +26,16 @@ export function SetPasswordDialog({ suggestedEmails }: SetPasswordDialogProps) {
     router.refresh()
   }, [router])
 
-  const { formAction, isPending } = useApiFormAction((body) => post('/api/profile/password', body), { onSuccess })
+  const { formAction, isPending } = useApiFormAction(async (body) => {
+    const { error } = await api.POST('/profile/password', {
+      body: {
+        email: body.email,
+        newPassword: body.newPassword,
+        confirmPassword: body.confirmPassword,
+      },
+    })
+    if (error) throw new Error(error.message)
+  }, { onSuccess })
 
   return (
     <ProfileFormDialog

@@ -1,7 +1,6 @@
-import 'server-only'
-import { z } from 'zod'
-import { authenticatedRoute } from '@/lib/api'
-import { parseOrFail } from '@/lib/utils/validators'
+import { authedRoute } from '@/lib/api/route'
+import { json, problemFrom, parseOr422 } from '@/lib/api/http'
+import { generateCollectionDescriptionInput } from '@/lib/api/schemas/ai'
 import { runProAiGeneration, runOpenAiCompletion } from '@/lib/ai/description-generation'
 import { AI_MODELS } from '@/lib/ai/openai'
 import {
@@ -13,31 +12,20 @@ import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'ai-collection-description' })
 
-const MAX_NAME_CHARS = 100
+export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
+  const parsed = parseOr422(generateCollectionDescriptionInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
-const generateCollectionDescriptionSchema = z
-  .object({
-    name: z.string(),
-  })
-  .transform((data) => ({
-    name: data.name.trim().slice(0, MAX_NAME_CHARS),
-  }))
-  .refine((data) => data.name.length > 0, { message: 'Collection name is required' })
-
-export const POST = authenticatedRoute(async (request, _context, { userId, isPro }) => {
-  const body: unknown = await request.json()
-  const parseResult = parseOrFail(generateCollectionDescriptionSchema, body)
-
-  return runProAiGeneration({
+  const result = await runProAiGeneration({
     isPro,
     userId,
-    parseResult,
+    data: parsed.data,
     rateLimitKey: 'aiDescription',
     notConfiguredMessage: 'AI description generation is not configured.',
     failureMessage: 'Failed to generate description.',
     log,
     logLabel: 'AI collection description',
-    execute: async (client, data) =>
+    execute: (client, data) =>
       runOpenAiCompletion(
         client,
         {
@@ -52,4 +40,7 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
         log,
       ),
   })
+
+  if (!result.ok) return problemFrom(result)
+  return json(result.value)
 })

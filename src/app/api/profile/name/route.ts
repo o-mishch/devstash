@@ -1,22 +1,14 @@
-import 'server-only'
-import { z } from 'zod'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { parseOrFail, NameSchema } from '@/lib/utils/validators'
-import { rateLimitRoute } from '@/lib/infra/rate-limit'
+import { authedRoute } from '@/lib/api/route'
+import { noContent, parseOr422 } from '@/lib/api/http'
+import { updateNameInput } from '@/lib/api/schemas/profile'
 import { updateUserName } from '@/lib/db/profile'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 
-const updateNameSchema = z.object({ name: NameSchema })
-
-export const PATCH = authenticatedRoute(async (request, _context, { userId }) => {
-  const denied = await rateLimitRoute('updateSettings', userId)
-  if (denied) return denied
-
-  const body: unknown = await request.json()
-  const parsed = parseOrFail(updateNameSchema, body)
-  if (!parsed.success) return parsed.response
+export const PATCH = authedRoute({ rateLimit: 'updateSettings' }, async ({ userId, request }) => {
+  const parsed = parseOr422(updateNameInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
   await updateUserName(userId, parsed.data.name)
   invalidateProfileCache(userId)
-  return ApiResponse.OK()
+  return noContent()
 })

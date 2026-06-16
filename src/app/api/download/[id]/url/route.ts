@@ -1,51 +1,54 @@
-import { ApiResponse, authenticatedRoute } from '@/lib/api'
+import { authedRouteWithParams, type IdParam } from '@/lib/api/route'
+import { json, problem, parseOr422 } from '@/lib/api/http'
+import { downloadQueryParse } from '@/lib/api/schemas/download'
+import { ErrorMessage } from '@/lib/api/error-messages'
 import { getDownloadItem } from '@/lib/db/items'
 import { getSignedDownloadUrl, getSignedUrlExpiresAt } from '@/lib/storage/s3'
 import { canGenerateImageThumbnail, getImageThumbnailKey } from '@/lib/storage/image-thumbnails'
-import type { RouteContext } from '@/lib/api'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
-import type { SignedDownloadUrlResponse } from '@/types/item'
 import { logger } from '@/lib/infra/pino'
+import type { SignedDownloadUrlResponse } from '@/types/item'
 
 const log = logger.child({ tag: 'download-url' })
 
-async function signedDownloadUrlResponse(storageKey: string, fileName?: string) {
+async function signedDownloadUrlResponse(storageKey: string, fileName?: string): Promise<SignedDownloadUrlResponse> {
   const url = await getSignedDownloadUrl(storageKey, undefined, fileName)
-  const expiresAt = getSignedUrlExpiresAt()
-  return ApiResponse.OK<SignedDownloadUrlResponse>({ url, expiresAt: expiresAt.toISOString() })
+  return { url, expiresAt: getSignedUrlExpiresAt().toISOString() }
 }
 
-export const GET = authenticatedRoute(async (request, context: RouteContext, { userId, isPro }) => {
-  const { id } = await context.params
-  if (!id) return ApiResponse.BAD_REQUEST('Missing item ID.')
+export const GET = authedRouteWithParams<IdParam>({}, async ({ userId, isPro, request, params }) => {
+  const parsed = parseOr422(downloadQueryParse, {
+    preview: request.nextUrl.searchParams.get('preview') ?? undefined,
+  })
+  if (!parsed.ok) return parsed.res
+  const preview = parsed.data.preview ?? false
 
-  const item = await getDownloadItem(userId, id)
-  if (!item) return ApiResponse.NOT_FOUND('File not found.')
+  const item = await getDownloadItem(userId, params.id)
+  if (!item) return problem(404, ErrorMessage.FILE_NOT_FOUND)
 
   if (!PRO_ITEM_TYPE_NAMES.has(item.itemType.name)) {
-    return ApiResponse.BAD_REQUEST('Signed URLs are only available for file and image items.')
+    return problem(400, 'Signed URLs are only available for file and image items.')
   }
 
-  // Legacy items stored as external URLs predate S3 migration and cannot be signed
+  // Legacy items stored as external URLs predate S3 migration and cannot be signed.
   if (!item.fileUrl || item.fileUrl.startsWith('http')) {
     log.warn({ userId, itemId: item.id, fileUrl: item.fileUrl ?? null }, 'file not signable')
-    return ApiResponse.NOT_FOUND('File not found.')
+    return problem(404, ErrorMessage.FILE_NOT_FOUND)
   }
 
-  const preview = new URL(request.url).searchParams.get('preview') === '1'
-  const isImagePreview = preview && item.itemType.name === 'image'
+  const isImagePreview = preview === true && item.itemType.name === 'image'
 
   if (!isPro && !isImagePreview) {
-    return ApiResponse.FORBIDDEN('Direct download URLs require a Pro subscription.')
+    return problem(403, 'Direct download URLs require a Pro subscription.')
   }
 
   if (isImagePreview && !canGenerateImageThumbnail(item.fileUrl)) {
-    if (!isPro) return ApiResponse.FORBIDDEN('Direct preview URLs require a generated thumbnail.')
-    return signedDownloadUrlResponse(item.fileUrl)
+    if (!isPro) return problem(403, 'Direct preview URLs require a generated thumbnail.')
+    return json(await signedDownloadUrlResponse(item.fileUrl))
   }
 
   const storageKey = isImagePreview ? getImageThumbnailKey(item.fileUrl) : item.fileUrl
   const fileName = isImagePreview ? undefined : (item.fileName ?? undefined)
   log.info({ userId, itemId: item.id, itemType: item.itemType.name }, 'signedDownloadUrl')
-  return signedDownloadUrlResponse(storageKey, fileName)
+  return json(await signedDownloadUrlResponse(storageKey, fileName))
 })

@@ -14,7 +14,9 @@ export interface SlimItemType {
 export interface LightItem {
   id: string
   title: string
-  createdAt: Date
+  // ISO date-time string — fetched from the API as a string (no client-side Date coercion) and
+  // only ever rendered via formatDate(Date | string). §6.4 Option A.
+  createdAt: string
   itemType: SlimItemType
   descriptionPreview: string | null
   contentPreview: string | null
@@ -41,7 +43,7 @@ export function searchResultToLightItem(hit: SearchResultItem): LightItem {
     itemType: hit.itemType,
     descriptionPreview: hit.descriptionPreview,
     contentPreview: null,
-    createdAt: new Date(0),
+    createdAt: new Date(0).toISOString(),
     url: null,
     tags: [],
     fileName: null,
@@ -58,7 +60,8 @@ export function isSearchResultItem(item: LightItem | SearchResultItem): item is 
 /** Fetched on drawer open — only what LightItem doesn't already carry */
 export interface ItemDetails {
   description: string | null
-  updatedAt: Date
+  // ISO date-time string — see LightItem.createdAt (§6.4 Option A).
+  updatedAt: string
   collections: { id: string; name: string }[]
 }
 

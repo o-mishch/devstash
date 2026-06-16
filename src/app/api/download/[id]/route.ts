@@ -1,4 +1,5 @@
 import { ApiResponse, apiRedirect, authenticatedRoute } from '@/lib/api'
+import { ErrorMessage } from '@/lib/api/error-messages'
 import { getDownloadItem } from '@/lib/db/items'
 import { getSignedDownloadUrl } from '@/lib/storage/s3'
 import type { RouteContext } from '@/lib/api'
@@ -12,12 +13,12 @@ export const GET = authenticatedRoute(async (_request, context: RouteContext, { 
   if (!id) return ApiResponse.BAD_REQUEST('Missing item ID.')
 
   const item = await getDownloadItem(userId, id)
-  if (!item) return ApiResponse.NOT_FOUND('File not found.')
+  if (!item) return ApiResponse.NOT_FOUND(ErrorMessage.FILE_NOT_FOUND)
 
   // Legacy items stored as external URLs predate S3 migration and cannot be signed
   if (!item.fileUrl || item.fileUrl.startsWith('http')) {
     log.warn({ userId, itemId: item.id, fileUrl: item.fileUrl ?? null }, 'file not downloadable')
-    return ApiResponse.NOT_FOUND('File not found.')
+    return ApiResponse.NOT_FOUND(ErrorMessage.FILE_NOT_FOUND)
   }
 
   if (!isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)) {

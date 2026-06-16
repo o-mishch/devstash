@@ -3,14 +3,14 @@
 import { useRef, useState, useEffect, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/styles'
-import { post, del } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
+import { uploadToPresignedPost } from '@/lib/storage/s3-upload-client'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { FILE_UPLOAD_CONFIG, IMAGE_THUMBNAIL_MAX_WIDTH, IMAGE_THUMBNAIL_QUALITY } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { getFileExtension } from '@/lib/utils/files'
 import type { FileItemType } from '@/lib/utils/constants'
-import type { UploadUrlResult } from '@/types/item'
 
 export interface UploadedFile {
   /** S3 object key — used as the pending-upload token by POST /api/items and for orphan cleanup. */
@@ -83,46 +83,45 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       thumb = await buildImageThumb(file)
     }
 
-    const urlResult = await post<UploadUrlResult>('/api/upload/url', {
-      fileName: file.name,
-      fileSize: file.size,
+    const { data: urlData, error: urlError } = await api.POST('/upload/url', {
+      body: { fileName: file.name, fileSize: file.size },
     })
 
-    if (urlResult.status !== 'ok' || !urlResult.data) {
+    if (urlError) {
       setProgress(null)
-      setError(urlResult.message ?? 'Upload failed')
+      setError(urlError.message || 'Upload failed')
       return
     }
 
-    const { original, thumb: thumbCredential } = urlResult.data
+    const { original, thumb: thumbCredential } = urlData
     const originalKey = original.fields['key']
 
     // POST multipart to S3 using the presigned policy credential.
     // Per S3 POST spec, policy fields must come before the file.
     // Content-Type is carried as a form field inside original.fields — do NOT set it as an HTTP header
-    // (axios auto-sets multipart/form-data + boundary for FormData bodies).
+    // (the browser auto-sets multipart/form-data + boundary for FormData bodies).
     const formData = new FormData()
     Object.entries(original.fields).forEach(([k, v]) => formData.append(k, v))
     formData.append('file', file)
 
     // Thumb uses a presigned POST policy — same pattern as the original upload.
     // S3 enforces both Content-Type and content-length-range via the signed policy.
-    const uploads: Promise<{ status: string }>[] = [
-      post(original.url, formData, { onProgress: setProgress }),
+    const uploads: Promise<boolean>[] = [
+      uploadToPresignedPost(original.url, formData, { onProgress: setProgress }),
     ]
     if (thumb && thumbCredential) {
       const thumbForm = new FormData()
       Object.entries(thumbCredential.fields).forEach(([k, v]) => thumbForm.append(k, v))
       thumbForm.append('file', thumb.blob)
-      uploads.push(post(thumbCredential.url, thumbForm))
+      uploads.push(uploadToPresignedPost(thumbCredential.url, thumbForm))
     }
 
     const results = await Promise.all(uploads)
-    if (results.some((r) => r.status !== 'ok')) {
+    if (results.some((ok) => !ok)) {
       setProgress(null)
       setError('Upload failed. Please try again.')
       // Cleanup goes through our server (DELETE /api/upload → server calls S3), not direct S3.
-      void del(`/api/upload?key=${encodeURIComponent(originalKey)}`)
+      void api.DELETE('/upload', { params: { query: { key: originalKey } } })
       return
     }
 

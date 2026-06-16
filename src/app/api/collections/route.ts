@@ -1,32 +1,28 @@
-import 'server-only'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { parseOrFail, collectionFormSchema } from '@/lib/utils/validators'
-import { getAllCollections, createCollection as dbCreateCollection } from '@/lib/db/collections'
+import { authedRoute } from '@/lib/api/route'
+import { json, problem, parseOr422 } from '@/lib/api/http'
+import { createCollectionInput } from '@/lib/api/schemas/collections'
+import { getAllCollections, createCollection } from '@/lib/db/collections'
 import { canCreateCollection, FREE_TIER_COLLECTION_LIMIT } from '@/lib/db/usage'
 import { invalidateCollectionsCache } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'api-collections' })
 
-export const GET = authenticatedRoute(async (_request, _context, { userId }) => {
-  const collections = await getAllCollections(userId)
-  return ApiResponse.OK(collections)
-})
+export const GET = authedRoute({}, async ({ userId }) => json(await getAllCollections(userId)))
 
-export const POST = authenticatedRoute(async (request, _context, { userId, isPro }) => {
-  const body: unknown = await request.json()
-  const parsed = parseOrFail(collectionFormSchema, body)
-  if (!parsed.success) return parsed.response
+export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
+  const parsed = parseOr422(createCollectionInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
-  const canCreate = await canCreateCollection(userId, isPro)
-  if (!canCreate) {
-    return ApiResponse.FORBIDDEN(
+  if (!(await canCreateCollection(userId, isPro))) {
+    return problem(
+      403,
       `You have reached your free tier limit of ${FREE_TIER_COLLECTION_LIMIT} collections. Please upgrade to Pro.`,
     )
   }
 
-  const created = await dbCreateCollection(userId, parsed.data)
+  const created = await createCollection(userId, parsed.data) // userId from session — IDOR-safe
   invalidateCollectionsCache(userId)
   log.info({ userId, name: parsed.data.name }, 'Collection created')
-  return ApiResponse.CREATED(created)
+  return json(created, 201)
 })

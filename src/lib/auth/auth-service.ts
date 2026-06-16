@@ -6,10 +6,14 @@ import type { PendingLinkData } from '@/lib/auth/pending-link'
 import {
   emailVerificationEnabled,
   sendRegistrationVerification,
+  resendVerification,
   type VerificationResult,
 } from '@/lib/emails/verification'
 import { sendPasswordResetRequest } from '@/lib/emails/password-reset'
 import { consumePasswordResetToken } from '@/lib/auth/tokens'
+import { logger } from '@/lib/infra/pino'
+
+const log = logger.child({ tag: 'auth-service' })
 
 export type { VerificationResult }
 
@@ -68,10 +72,23 @@ export async function registerUser(
       password: hashedPassword,
       emailVerified: verificationEnabled ? undefined : new Date(),
     })
+    log.info({ verificationEnabled }, 'register new user')
 
     if (verificationEnabled) {
       return sendRegistrationVerification(email)
     }
+
+    return 'skipped'
+  }
+
+  // Email already taken. Mirror a successful response either way to prevent
+  // account enumeration — but re-send the verification link to unverified
+  // accounts so the legitimate owner can finish signing up.
+  if (verificationEnabled && !existing.emailVerified) {
+    log.info({ userId: existing.id }, 'register re-attempt on unverified email — resending verification')
+    await resendVerification(email)
+  } else {
+    log.info({ userId: existing.id, verified: !!existing.emailVerified }, 'register re-attempt on existing email — no email sent')
   }
 
   return verificationEnabled ? 'sent' : 'skipped'

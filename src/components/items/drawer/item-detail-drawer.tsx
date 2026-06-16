@@ -1,18 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
-import { get } from '@/lib/api/api-fetch'
+import { $api } from '@/lib/api/client'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
 import { ITEM_TYPES_WITH_CONTENT } from '@/lib/utils/constants'
 import type { LightItem, FullItem, ItemDetails, ItemContent } from '@/types/item'
 import { isFullItem } from '@/types/item'
-import type { CollectionWithTypes } from '@/types/collection'
 
 interface ItemDetailDrawerProps {
   item: LightItem | FullItem | null
@@ -51,32 +49,26 @@ function ItemDetailDrawerInner({
   const needsDetailsFetch = item !== null && !isFullItem(item)
   const needsContent = item !== null && ITEM_TYPES_WITH_CONTENT.has(item.itemType.name) && !isFullItem(item)
 
-  const { data: fetchedDetails } = useQuery({
-    queryKey: ['item', itemId, 'details'],
-    queryFn: async () => {
-      const result = await get<ItemDetails>(`/api/items/${itemId}/details`)
-      return result.status === 'ok' ? result.data ?? null : null
-    },
-    enabled: needsDetailsFetch && itemId !== null,
-  })
+  const { data: fetchedDetails } = $api.useQuery(
+    'get',
+    '/items/{id}/details',
+    { params: { path: { id: itemId ?? '' } } },
+    { enabled: needsDetailsFetch && itemId !== null },
+  )
 
-  const { data: fetchedContent } = useQuery({
-    queryKey: ['item', itemId, 'content'],
-    queryFn: async () => {
-      const result = await get<ItemContent>(`/api/items/${itemId}/content`)
-      return result.status === 'ok' ? result.data ?? null : null
-    },
-    enabled: needsContent && itemId !== null,
-  })
+  const { data: fetchedContent } = $api.useQuery(
+    'get',
+    '/items/{id}/content',
+    { params: { path: { id: itemId ?? '' } } },
+    { enabled: needsContent && itemId !== null },
+  )
 
-  const { data: collections = [] } = useQuery({
-    queryKey: ['collections', 'picker'],
-    queryFn: async () => {
-      const result = await get<CollectionWithTypes[]>('/api/collections')
-      return result.status === 'ok' ? result.data ?? [] : []
-    },
-    enabled: editingItemId !== null,
-  })
+  const { data: collections = [] } = $api.useQuery(
+    'get',
+    '/collections',
+    {},
+    { enabled: editingItemId !== null },
+  )
 
   const initialDetails: ItemDetails | null =
     item && isFullItem(item)

@@ -1,7 +1,8 @@
 import { create } from 'zustand'
+import { toast } from 'sonner'
 import type { EditorPreferences } from '@/types/editor-preferences'
 import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
-import { patch } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
 
 interface EditorPreferencesStore extends EditorPreferences {
   isInitialized: boolean
@@ -21,19 +22,13 @@ export const useEditorPreferencesStore = create<EditorPreferencesStore>((set, ge
 
     try {
       const { fontSize, tabSize, wordWrap, minimap, theme, appTheme } = get()
-      const res = await patch('/api/profile/editor-preferences', {
-        fontSize,
-        tabSize,
-        wordWrap,
-        minimap,
-        theme,
-        appTheme,
+      const { error } = await api.PATCH('/profile/editor-preferences', {
+        body: { fontSize, tabSize, wordWrap, minimap, theme, appTheme },
       })
-      if (res.status !== 'ok') {
-        set(prev)
-      }
+      if (error) throw new Error(error.message)
     } catch {
       set(prev)
+      toast.error('Could not save editor preferences. Please try again.')
     }
   },
   setPreferences: (prefs) => {

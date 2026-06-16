@@ -21,9 +21,15 @@ import { collectionFormSchema } from '@/lib/utils/validators'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
-import type { ApiBody } from '@/types/api'
 
 type FormValues = z.input<typeof collectionFormSchema>
+
+// What `onSubmitAction` resolves to — the openapi-fetch result shape (it does not throw): `error` is
+// the parsed `{ message }` body on failure; `response.status` drives the Pro-gate (403) branch.
+interface CollectionSubmitResult {
+  error?: { message?: string }
+  response: Response
+}
 
 interface CollectionFormDefaultValues {
   name: string
@@ -36,7 +42,8 @@ interface CollectionFormDialogProps {
   submitText: string
   successMessage: string
   defaultValues: CollectionFormDefaultValues
-  onSubmitAction: (data: FormValues) => Promise<ApiBody<unknown>>
+  // Returns the openapi-fetch result — `{ error, response }`, never throws.
+  onSubmitAction: (data: FormValues) => Promise<CollectionSubmitResult>
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -87,18 +94,19 @@ export function CollectionFormDialog({
   }, [open, form])
 
   async function onSubmit(data: FormValues) {
-    const result = await onSubmitAction(data)
+    const { error, response } = await onSubmitAction(data)
 
-    if (result.status === 'created' || result.status === 'ok') {
+    if (!error) {
       toast.success(successMessage)
       handleOpenChange(false)
       router.refresh()
+      return
+    }
+
+    if (response.status === 403) {
+      toast.warning(error.message || 'Upgrade to Pro to continue.')
     } else {
-      if (result.status === 'forbidden') {
-        toast.warning(result.message ?? 'Upgrade to Pro to continue.')
-      } else {
-        toast.error(result.message ?? 'Failed to save collection')
-      }
+      toast.error(error.message || 'Failed to save collection')
     }
   }
 

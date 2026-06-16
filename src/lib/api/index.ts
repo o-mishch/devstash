@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCachedSession, type SessionContext } from '@/lib/session'
 import { logger } from '@/lib/infra/pino'
 import { ApiResponse } from '@/lib/api/api-response'
+import { ErrorMessage } from '@/lib/api/error-messages'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
+import { isPrerenderInterrupt } from '@/lib/utils/prerender'
 import type { ApiStatus, ApiBody } from '@/types/api'
 
 export { ApiResponse } from '@/lib/api/api-response'
@@ -11,12 +13,10 @@ const log = logger.child({ tag: 'api' })
 
 const HTTP_STATUS: Record<ApiStatus, number> = {
   ok: 200,
-  created: 201,
   bad_request: 400,
   unauthorized: 401,
   forbidden: 403,
   not_found: 404,
-  conflict: 409,
   validation_error: 422,
   too_many_requests: 429,
   internal_error: 500,
@@ -59,7 +59,7 @@ export function apiRedirect(url: string | URL, status?: number): Response {
 export function authenticatedRoute(handler: AuthenticatedHandler) {
   return apiRoute(async (request, context) => {
     const session = await getCachedSession()
-    if (!session?.user?.id) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+    if (!session?.user?.id) return ApiResponse.UNAUTHORIZED(ErrorMessage.NOT_AUTHENTICATED)
     const isPro = await getCachedVerifiedProAccess(session.user.id)
     return handler(request, context, { userId: session.user.id, isPro })
   })
@@ -75,6 +75,8 @@ export function apiRoute(
       if (isWithHeaders(result)) return toNextResponse(result.body, result.headers)
       return toNextResponse(result)
     } catch (err) {
+      // Let Next.js's prerender-abort signal propagate — it's not a 500.
+      if (isPrerenderInterrupt(err)) throw err
       log.error({ err }, 'unhandled route error')
       return toNextResponse(ApiResponse.INTERNAL_ERROR())
     }

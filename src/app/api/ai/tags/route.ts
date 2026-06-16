@@ -1,52 +1,22 @@
-import 'server-only'
-import { z } from 'zod'
-import { authenticatedRoute } from '@/lib/api'
-import { parseOrFail } from '@/lib/utils/validators'
+import { authedRoute } from '@/lib/api/route'
+import { json, problemFrom, parseOr422 } from '@/lib/api/http'
+import { generateTagsInput } from '@/lib/api/schemas/ai'
 import { runProAiGeneration, runOpenAiCompletion, resolveItemImageDimensions } from '@/lib/ai/description-generation'
-import { TAG_SYSTEM_PROMPT, parseTagsResponse } from '@/lib/ai/tag-response'
-import { logger } from '@/lib/infra/pino'
 import { AI_MODELS } from '@/lib/ai/openai'
-import {
-  buildItemAiUserMessage,
-  itemTypeSchema,
-  itemAiFileMetadataSchema,
-  trimOptionalAiField,
-} from '@/lib/ai/item-context'
+import { TAG_SYSTEM_PROMPT, parseTagsResponse } from '@/lib/ai/tag-response'
+import { buildItemAiUserMessage } from '@/lib/ai/item-context'
+import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'ai-tags' })
 
-const MAX_AI_INPUT_CHARS = 4000
+export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
+  const parsed = parseOr422(generateTagsInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
-const generateTagsSchema = z
-  .object({
-    itemType: itemTypeSchema,
-    itemId: z.string().optional(),
-    title: z.string().optional(),
-    content: z.string().optional(),
-    fileName: z.string().optional(),
-    ...itemAiFileMetadataSchema,
-  })
-  .transform((data) => ({
-    itemType: data.itemType,
-    itemId: data.itemId,
-    title: trimOptionalAiField(data.title, MAX_AI_INPUT_CHARS),
-    content: trimOptionalAiField(data.content, MAX_AI_INPUT_CHARS),
-    fileName: trimOptionalAiField(data.fileName, 255),
-    fileSize: data.fileSize,
-  }))
-  .refine(
-    (data) => Boolean(data.title || data.fileName),
-    { message: 'Provide a title or file name to suggest tags.' }
-  )
-
-export const POST = authenticatedRoute(async (request, _context, { userId, isPro }) => {
-  const body: unknown = await request.json()
-  const parseResult = parseOrFail(generateTagsSchema, body)
-
-  return runProAiGeneration({
+  const result = await runProAiGeneration({
     isPro,
     userId,
-    parseResult,
+    data: parsed.data,
     rateLimitKey: 'aiTags',
     notConfiguredMessage: 'AI tag generation is not configured.',
     failureMessage: 'Failed to generate tags.',
@@ -66,4 +36,7 @@ export const POST = authenticatedRoute(async (request, _context, { userId, isPro
       )
     },
   })
+
+  if (!result.ok) return problemFrom(result)
+  return json(result.value)
 })

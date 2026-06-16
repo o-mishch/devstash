@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useInfiniteQuery, useQueryClient, type InfiniteData, type Query } from '@tanstack/react-query'
-import { get } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
 import type { FetchItemsQuery, ItemsPage, LightItem } from '@/types/item'
 
 function itemsQueryKey(fetchParams: FetchItemsQuery) {
@@ -152,9 +152,13 @@ export function useReplaceItem() {
   }
 }
 
+// Invalidates every cached items query. Pass 'none' to mark stale WITHOUT an immediate refetch
+// (avoids racing the server-side revalidateTag that runs via after() — same rationale as usePatchItem
+// / useRemoveItem). Omit it for a normal invalidate-and-refetch.
 export function useInvalidateItems() {
   const queryClient = useQueryClient()
-  return () => void queryClient.invalidateQueries({ queryKey: ['items'] })
+  return (refetchType?: 'none') =>
+    void queryClient.invalidateQueries({ queryKey: ['items'], ...(refetchType && { refetchType }) })
 }
 
 export function useInfiniteItems(
@@ -164,13 +168,11 @@ export function useInfiniteItems(
   const query = useInfiniteQuery({
     queryKey: itemsQueryKey(fetchParams),
     queryFn: async ({ pageParam }) => {
-      const params = new URLSearchParams(fetchParams as Record<string, string>)
-      if (pageParam) params.set('cursor', pageParam as string)
-      const result = await get<ItemsPage>(`/api/items?${params.toString()}`)
-      if (result.status !== 'ok' || !result.data) {
-        throw new Error(result.message || 'Failed to fetch items')
-      }
-      return result.data
+      const { data, error } = await api.GET('/items', {
+        params: { query: { ...fetchParams, ...(pageParam ? { cursor: pageParam } : {}) } },
+      })
+      if (error) throw new Error(error.message)
+      return data
     },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? null,

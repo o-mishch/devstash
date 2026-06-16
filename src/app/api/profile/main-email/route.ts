@@ -1,37 +1,36 @@
-import 'server-only'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { parseOrFail, EmailSchema } from '@/lib/utils/validators'
-import { rateLimitRoute } from '@/lib/infra/rate-limit'
+import { authedRoute } from '@/lib/api/route'
+import { noContent, problem, problemFrom, parseOr422 } from '@/lib/api/http'
+import { updateMainEmailInput } from '@/lib/api/schemas/profile'
+import { ErrorMessage } from '@/lib/api/error-messages'
 import { getProfileData } from '@/lib/db/profile'
-import { applyOwnedEmailChange, verifyPasswordFromBody } from '@/lib/app/profile-helpers'
+import { verifyPasswordFromBody, applyOwnedEmailChange } from '@/lib/app/profile-helpers'
 import { logger } from '@/lib/infra/pino'
 
-const log = logger.child({ tag: 'api-profile-main-email' })
+const log = logger.child({ tag: 'api-profile' })
 
-export const PATCH = authenticatedRoute(async (request, _context, { userId }) => {
-  const denied = await rateLimitRoute('changeCredentials', userId)
-  if (denied) return denied
-
-  const body = (await request.json().catch(() => null)) as { email?: unknown; password?: unknown } | null
-  const result = parseOrFail(EmailSchema, body?.email)
-  if (!result.success) return result.response
-  const newEmail = result.data
+export const PATCH = authedRoute({ rateLimit: 'changeCredentials' }, async ({ userId, request }) => {
+  const parsed = parseOr422(updateMainEmailInput, await request.json())
+  if (!parsed.ok) return parsed.res
 
   const data = await getProfileData(userId)
-  if (!data) return ApiResponse.UNAUTHORIZED('Not authenticated.')
+  if (!data) return problem(401, ErrorMessage.NOT_AUTHENTICATED)
 
   if (data.user.hasPassword) {
-    const pwError = await verifyPasswordFromBody(userId, body?.password, 'Password is required to change your sign-in email.')
-    if (pwError) return pwError
+    const fail = await verifyPasswordFromBody(
+      userId,
+      parsed.data.password,
+      'Password is required to change your sign-in email.',
+    )
+    if (fail) return problemFrom(fail)
   }
 
-  const applied = await applyOwnedEmailChange({
+  const efail = await applyOwnedEmailChange({
     userId,
-    newEmail,
+    newEmail: parsed.data.email,
     notOwnedMessage: 'You can only set an email from one of your linked accounts.',
   })
-  if (applied) return applied
+  if (efail) return problemFrom(efail)
 
   log.info({ userId }, 'Main email updated')
-  return ApiResponse.OK()
+  return noContent()
 })

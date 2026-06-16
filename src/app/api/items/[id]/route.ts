@@ -1,61 +1,60 @@
-import 'server-only'
-import { authenticatedRoute, ApiResponse } from '@/lib/api'
-import { parseOrFail, itemMutationSchema } from '@/lib/utils/validators'
-import {
-  updateItem as dbUpdateItem,
-  deleteItem as dbDeleteItem,
-  getItemForAuth as dbGetItemForAuth,
-} from '@/lib/db/items'
+import { authedRouteWithParams, type IdParam } from '@/lib/api/route'
+import { json, noContent, problem, parseOr422 } from '@/lib/api/http'
+import { updateItemInput } from '@/lib/api/schemas/items'
+import { ErrorMessage } from '@/lib/api/error-messages'
+import { getItemForAuth, updateItem, deleteItem } from '@/lib/db/items'
 import { invalidateCollectionsCache, invalidateItemsCache } from '@/lib/infra/cache'
 import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 import { PRO_ITEM_TYPE_NAMES, PRO_ITEM_TYPE_NAMES_LABEL } from '@/lib/utils/constants'
 import { logger } from '@/lib/infra/pino'
 
-const log = logger.child({ tag: 'api-items-id' })
+const log = logger.child({ tag: 'api-items' })
 
-export const PATCH = authenticatedRoute(async (request, context, { userId, isPro }) => {
-  const { id } = await context.params
-  const body: unknown = await request.json()
-  const parsed = parseOrFail(itemMutationSchema, body)
-  if (!parsed.success) return parsed.response
+export const PATCH = authedRouteWithParams<IdParam>(
+  { rateLimit: 'itemMutation' },
+  async ({ userId, isPro, params, request }) => {
+    const parsed = parseOr422(updateItemInput, await request.json())
+    if (!parsed.ok) return parsed.res
 
-  const existing = await dbGetItemForAuth(userId, id)
-  if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
+    const existing = await getItemForAuth(userId, params.id)
+    if (!existing) return problem(404, ErrorMessage.ITEM_NOT_FOUND)
 
-  if (PRO_ITEM_TYPE_NAMES.has(existing.itemType.name) && !isPro) {
-    return ApiResponse.FORBIDDEN(`Upgrade to Pro to edit ${PRO_ITEM_TYPE_NAMES_LABEL}.`)
-  }
-
-  const updated = await dbUpdateItem(userId, id, parsed.data)
-  if (!updated) return ApiResponse.NOT_FOUND('Item not found.')
-
-  invalidateItemsCache(userId)
-  invalidateCollectionsCache(userId)
-  log.info({ userId, itemId: id }, 'Item updated')
-  return ApiResponse.OK(updated)
-})
-
-export const DELETE = authenticatedRoute(async (_request, context, { userId }) => {
-  const { id } = await context.params
-
-  const existing = await dbGetItemForAuth(userId, id)
-  if (!existing) return ApiResponse.NOT_FOUND('Item not found.')
-
-  if (existing.fileUrl) {
-    try {
-      await deleteStoredFile(existing.fileUrl)
-    } catch (error) {
-      log.error({ userId, itemId: id, err: error }, 'Failed to delete file from storage')
-      return ApiResponse.INTERNAL_ERROR('Failed to delete file from storage.')
+    if (PRO_ITEM_TYPE_NAMES.has(existing.itemType.name) && !isPro) {
+      return problem(403, `Upgrade to Pro to edit ${PRO_ITEM_TYPE_NAMES_LABEL}.`)
     }
-  }
 
-  const deleted = await dbDeleteItem(userId, id)
-  if (!deleted) return ApiResponse.INTERNAL_ERROR('Failed to delete item.')
+    const updated = await updateItem(userId, params.id, parsed.data)
+    if (!updated) return problem(404, ErrorMessage.ITEM_NOT_FOUND)
 
-  invalidateItemsCache(userId)
-  invalidateCollectionsCache(userId)
+    invalidateItemsCache(userId)
+    invalidateCollectionsCache(userId)
+    log.info({ userId, itemId: params.id }, 'Item updated')
+    return json(updated)
+  },
+)
 
-  log.info({ userId, itemId: id }, 'Item deleted')
-  return ApiResponse.OK()
-})
+export const DELETE = authedRouteWithParams<IdParam>(
+  { rateLimit: 'itemMutation' },
+  async ({ userId, params }) => {
+    const existing = await getItemForAuth(userId, params.id)
+    if (!existing) return problem(404, ErrorMessage.ITEM_NOT_FOUND)
+
+    if (existing.fileUrl) {
+      try {
+        await deleteStoredFile(existing.fileUrl)
+      } catch (error) {
+        log.error({ userId, itemId: params.id, err: error }, 'Failed to delete file from storage')
+        return problem(500, 'Failed to delete file from storage.')
+      }
+    }
+
+    if (!(await deleteItem(userId, params.id))) {
+      return problem(500, 'Failed to delete item.')
+    }
+
+    invalidateItemsCache(userId)
+    invalidateCollectionsCache(userId)
+    log.info({ userId, itemId: params.id }, 'Item deleted')
+    return noContent()
+  },
+)

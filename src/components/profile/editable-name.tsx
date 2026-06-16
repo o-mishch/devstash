@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useApiFormAction } from '@/hooks/use-api-form-action'
-import { patch } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
 
 interface EditableNameProps {
   name: string | null
@@ -21,7 +21,10 @@ export function EditableName({ name }: EditableNameProps) {
   const [displayName, setDisplayName] = useState(name ?? '')
   const [value, setValue] = useState(name ?? '')
 
-  const { formAction, isPending } = useApiFormAction((body) => patch('/api/profile/name', body), {
+  const { formAction, isPending } = useApiFormAction(async (body) => {
+    const { error } = await api.PATCH('/profile/name', { body: { name: body.name } })
+    if (error) throw new Error(error.message)
+  }, {
     onSuccess: () => {
       setDisplayName(value.trim())
       toast.success('Name updated.')

@@ -1,6 +1,6 @@
 # Improve — Evaluation Checklist
 
-> **Executed by the Stage-A research subagent** (opus, background) spawned by the `cleanup improve` skill — not the main agent. The subagent reads this file plus every `.agents/rules/*` file cold, runs the full codebase-wide analysis, and returns only the rendered audit (see `report.md`). The main agent never reads this file.
+> **Executed by the Stage-A research subagent** (opus, foreground) spawned by the `cleanup improve` skill — not the main agent. The subagent reads this file plus every `.agents/rules/*` file cold, runs the full codebase-wide analysis, and returns only the rendered audit (see `report.md`). The main agent never reads this file.
 
 Five priority lenses, applied across the whole changeset (holistic, not per-file). **KISS = simplicity** (fewer concepts, less indirection, easier to read) — not always fewer lines. **DRY = one source of truth** — always scan P2 for duplication.
 

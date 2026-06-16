@@ -1,11 +1,10 @@
 'use client'
 
 import { toast } from 'sonner'
-import { useQueryClient } from '@tanstack/react-query'
-import { post } from '@/lib/api/api-fetch'
+import { api } from '@/lib/api/client'
 import { useItemsStore } from '@/stores/items'
 import { seedPreviewCache, clearSignedDownloadUrlCache } from '@/hooks/use-pro-download-src'
-import { usePrependItem, useReplaceItem, useRemoveItem } from '@/hooks/use-infinite-items'
+import { usePrependItem, useReplaceItem, useRemoveItem, useInvalidateItems } from '@/hooks/use-infinite-items'
 import type { CreateItemInput } from '@/lib/utils/validators'
 import type { LightItem } from '@/types/item'
 
@@ -21,10 +20,10 @@ interface CreateItemOptions {
 }
 
 export function useCreateItem() {
-  const queryClient = useQueryClient()
   const prependItem = usePrependItem()
   const replaceItem = useReplaceItem()
   const tqRemoveItem = useRemoveItem()
+  const invalidateItems = useInvalidateItems()
   const { updateItem, removeItem } = useItemsStore()
 
   return async (payload: CreateItemPayload, options?: CreateItemOptions): Promise<void> => {
@@ -32,7 +31,7 @@ export function useCreateItem() {
     const tempItem: LightItem = {
       id: tempId,
       title: payload.title,
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
       itemType: { name: payload.itemTypeName },
       descriptionPreview: payload.description ?? null,
       contentPreview: payload.content ?? null,
@@ -49,24 +48,22 @@ export function useCreateItem() {
     if (options?.localPreviewUrl) seedPreviewCache(tempId, options.localPreviewUrl)
 
     // The caller resolves here — dialog closes while the API call continues in background.
-    void post<LightItem>('/api/items', payload).then((result) => {
-      if (result.status === 'created' || result.status === 'ok') {
-        if (result.data) {
-          if (options?.localPreviewUrl) {
-            // Transfer the blob URL to the real ID before swapping the card — zero-flicker handoff.
-            clearSignedDownloadUrlCache(tempId)
-            seedPreviewCache(result.data.id, options.localPreviewUrl)
-          }
-          replaceItem(tempId, result.data)
-          removeItem(tempId)
-          updateItem(result.data)
+    void api.POST('/items', { body: payload }).then(({ data, error }) => {
+      if (!error) {
+        if (options?.localPreviewUrl) {
+          // Transfer the blob URL to the real ID before swapping the card — zero-flicker handoff.
+          clearSignedDownloadUrlCache(tempId)
+          seedPreviewCache(data.id, options.localPreviewUrl)
         }
-        void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
+        replaceItem(tempId, data)
+        removeItem(tempId)
+        updateItem(data)
+        invalidateItems('none')
       } else {
         tqRemoveItem(tempId)
         removeItem(tempId)
         options?.onRollback?.()
-        toast.error(result.message ?? 'Failed to create item')
+        toast.error(error.message || 'Failed to create item')
       }
     })
   }

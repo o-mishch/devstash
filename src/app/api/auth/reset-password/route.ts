@@ -1,30 +1,20 @@
-import 'server-only'
-import { z } from 'zod'
-import { apiRoute, ApiResponse } from '@/lib/api'
-import { rateLimitRoute, getRequestIP } from '@/lib/infra/rate-limit'
+import { publicRoute, rateLimited } from '@/lib/api/route'
+import { noContent, problem, parseOr422 } from '@/lib/api/http'
+import { resetPasswordInput } from '@/lib/api/schemas/auth'
+import { checkRateLimit, getActionIP } from '@/lib/infra/rate-limit'
 import { applyPasswordReset } from '@/lib/auth/auth-service'
-import { parseOrFail, passwordFieldSchema, passwordMatchRefine } from '@/lib/utils/validators'
 
-const resetPasswordSchema = z
-  .object({
-    token: z.string().min(1, 'This reset link is invalid or has expired.'),
-    password: passwordFieldSchema,
-    confirmPassword: passwordFieldSchema,
-  })
-  .superRefine(passwordMatchRefine('password'))
+export const POST = publicRoute(async ({ request }) => {
+  const { success, retryAfter } = await checkRateLimit('resetPassword', await getActionIP())
+  if (!success) return rateLimited(retryAfter)
 
-export const POST = apiRoute(async (request) => {
-  const ip = getRequestIP(request)
-  const denied = await rateLimitRoute('resetPassword', ip)
-  if (denied) return denied
-
-  const body: unknown = await request.json().catch(() => null)
-  const parsed = parseOrFail(resetPasswordSchema, body)
-  if (!parsed.success) return parsed.response
+  const parsed = parseOr422(resetPasswordInput, await request.json())
+  if (!parsed.ok) return parsed.res
   const { token, password } = parsed.data
 
   const result = await applyPasswordReset(token, password)
-  if (result !== 'ok') return ApiResponse.BAD_REQUEST('This reset link is invalid or has expired.')
-
-  return ApiResponse.OK()
+  if (result !== 'ok') {
+    return problem(400, 'This reset link is invalid or has expired.')
+  }
+  return noContent()
 })
