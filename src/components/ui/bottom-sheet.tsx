@@ -1,8 +1,9 @@
 'use client'
 
-import { useRef, useState, type ReactNode, type UIEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type UIEvent, type PointerEvent } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
+import { useVisualViewport } from '@/hooks/use-visual-viewport'
 import { cn } from '@/lib/utils'
 
 interface BottomSheetProps {
@@ -23,8 +24,6 @@ interface BottomSheetProps {
 
 // h-14 app header the sheet rises just beneath; the resize gesture is clamped to leave it visible.
 const APP_HEADER_PX = 56
-// Smallest height the sheet can be dragged to mid-gesture, and the release height below which we
-// treat the drag as a dismiss rather than a resize.
 // Smallest height the sheet resizes to (Description ~one line). Dragging down further doesn't
 // shrink it more — it slides the whole sheet down (dragShift), and releasing past
 // DISMISS_OVERSHOOT_PX dismisses, so "drag down at minimum = close".
@@ -44,6 +43,63 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
     onDismiss: () => onOpenChange(false),
   })
   const [scrolled, setScrolled] = useState(false)
+
+  // When the on-screen keyboard opens it covers the lower part of the screen. The sheet is a fixed
+  // `bottom-0` panel, so without this its footer and any low fields sit *behind* the keyboard.
+  const viewport = useVisualViewport()
+  const keyboardOpen = (viewport?.keyboardHeight ?? 0) > 0
+  // Lift the sheet to rest directly on top of the keyboard and cap its height to the visible area,
+  // so the footer and the focused field stay above the keyboard instead of hidden behind it.
+  const keyboardStyle: CSSProperties =
+    viewport && viewport.keyboardHeight > 0
+      ? { bottom: viewport.keyboardHeight, maxHeight: viewport.height }
+      : {}
+
+  // Scroll the sheet's form body to reveal the focused field above the keyboard. iOS doesn't
+  // scroll inputs into view correctly inside a fixed sheet, so we do it ourselves.
+  // For deeply nested inputs (e.g. Monaco editor's textarea) scrollIntoView targets the tiny
+  // cursor element rather than the full editor block, so we walk up to the first overflow-y:auto
+  // ancestor and scroll it explicitly — placing the active element ~80px from the top so the
+  // field label above it stays visible.
+  const centerFocusedField = useCallback(() => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement)) return
+    if (!active.closest('[data-slot=sheet-content]')) return
+
+    // Find the sheet's scrollable body (first overflow-y:auto/scroll ancestor inside the sheet).
+    let scrollEl: HTMLElement | null = null
+    let el: HTMLElement | null = active.parentElement
+    while (el) {
+      if (el.dataset.slot === 'sheet-content') break
+      const oy = getComputedStyle(el).overflowY
+      if (oy === 'auto' || oy === 'scroll') { scrollEl = el; break }
+      el = el.parentElement
+    }
+
+    if (!scrollEl) { active.scrollIntoView({ block: 'center' }); return }
+
+    const bodyRect = scrollEl.getBoundingClientRect()
+    const activeRect = active.getBoundingClientRect()
+    // 80px above the active element: enough room to show the field label (and Monaco's chrome bar).
+    const targetTop = scrollEl.scrollTop + activeRect.top - bodyRect.top - 80
+    scrollEl.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+  }, [])
+
+  // Re-centre once the keyboard inset settles — rAF lets the sheet finish resizing before we
+  // measure element positions, avoiding a no-op scroll against stale layout geometry.
+  useEffect(() => {
+    if (!keyboardOpen) return
+    const id = requestAnimationFrame(centerFocusedField)
+    return () => cancelAnimationFrame(id)
+  }, [keyboardOpen, centerFocusedField])
+
+  // …and immediately when focus moves between fields while the keyboard is already open.
+  useEffect(() => {
+    if (!open) return
+    const onFocusIn = () => requestAnimationFrame(centerFocusedField)
+    document.addEventListener('focusin', onFocusIn)
+    return () => document.removeEventListener('focusin', onFocusIn)
+  }, [open, centerFocusedField])
 
   // Resizable mode: the sheet height is driven by the handle drag. Null means "use the default
   // height class" (before the first drag); a number pins an explicit pixel height.
@@ -137,15 +193,18 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        style={
-          resizable
+        style={{
+          ...(resizable
             ? {
                 height: dragHeight ? `${dragHeight}px` : undefined,
                 transform: dragShift ? `translateY(${dragShift}px)` : undefined,
                 transition: resizing ? 'none' : undefined,
               }
-            : dragStyle
-        }
+            : dragStyle),
+          // Lift above the keyboard last so it overrides the base `bottom-0` / `max-h` (compatible
+          // with the drag transform, which only sets `transform`).
+          ...keyboardStyle,
+        }}
         onScrollCapture={handleScrollCapture}
         {...(resizable ? {} : handlers)}
         // Timing (duration + easing) is inherited from the shared SheetContent base so the bottom

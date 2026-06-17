@@ -6,7 +6,7 @@ import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog'
 import { api } from '@/lib/api/client'
 import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
+import { useProfileEmailsStore } from '@/stores/profile-emails'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
 interface DeleteAccountDialogProps {
@@ -39,6 +40,9 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
         toast.error(error.message || 'Failed to delete account. Please try again.')
         return
       }
+      // Clear user-scoped client state so the deleted account's emails (PII) don't linger in the
+      // module-global store for the next sign-in on this device.
+      useProfileEmailsStore.getState().reset()
       router.push('/')
       router.refresh()
     })
@@ -70,9 +74,8 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
         {hasPassword && (
           <div className="space-y-2">
             <Label htmlFor="delete-account-password">Current password</Label>
-            <Input
+            <PasswordInput
               id="delete-account-password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

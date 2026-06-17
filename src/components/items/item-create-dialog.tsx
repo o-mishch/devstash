@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type SyntheticEvent, type ReactNode } from 'react'
+import { useRef, useState, startTransition, type SyntheticEvent, type ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -85,7 +85,9 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     open: controlledOpen,
     onOpenChange: (isOpen) => {
       controlledOnOpenChange?.(isOpen)
-      if (isOpen) setItemType(defaultItemType)
+      if (isOpen) {
+        setItemType(defaultItemType)
+      }
     },
     onClose: () => {
       if (uploadedFile && !savedRef.current) deleteOrphanedFile(uploadedFile)
@@ -102,9 +104,15 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
       openPrompt({ title: 'Pro feature', description: 'File and image uploads are only available on the Pro plan.', onUpgrade: () => handleOpenChange(false) })
       return
     }
-    setItemType(val)
     setFileError(null)
     form.clearErrors()
+    // startTransition: if the target editor chunk isn't cached yet, React keeps the
+    // current editor mounted until the new one is ready — no flash. If the chunk is
+    // already in memory (preloaded on dialog open), the transition commits in the
+    // same frame so the switch is still instant.
+    startTransition(() => {
+      setItemType(val)
+    })
   }
 
   const handleFormSubmit = (e: SyntheticEvent) => {
@@ -400,6 +408,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
         description={descriptionNode}
         desktopClassName="flex flex-col gap-2 max-h-[90dvh] sm:max-w-[860px]"
         headerClassName="shrink-0 pb-2 border-b border-border/50"
+        mobileClassName="data-[side=bottom]:h-[calc(100dvh-3.5rem)]"
       >
         {(isDesktop, scrolled) => (
           <form onSubmit={handleFormSubmit} className="flex flex-col flex-1 min-h-0">

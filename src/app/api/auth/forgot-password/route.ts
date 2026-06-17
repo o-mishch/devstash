@@ -15,7 +15,7 @@ export const POST = publicRoute(async ({ request }) => {
 
   // Defer the lookup + email send to after the response is sent, so response time is constant
   // regardless of whether the account exists — latency can't be used as an enumeration oracle.
-  // The rate limit above still runs in front. (Case 9)
+  // The rate limit above still runs in front.
   after(() => triggerPasswordReset(email))
 
   // Always report "sent" — no account enumeration.

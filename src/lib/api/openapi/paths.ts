@@ -21,10 +21,9 @@ import {
   updateNameInput,
   editorPreferencesInput,
   changePasswordInput,
-  setInitialPasswordInput,
-  changeEmailInput,
   updateMainEmailInput,
   accountIdParam,
+  requestCredentialEmailInput,
 } from '../schemas/profile'
 import {
   generateDescriptionInput,
@@ -42,6 +41,7 @@ import {
   forgotPasswordInput,
   resetPasswordInput,
   resendVerificationInput,
+  confirmLoginEmailInput,
   authRedirectSchema,
   loginEmailNotVerifiedSchema,
 } from '../schemas/auth'
@@ -291,18 +291,6 @@ export const paths: ZodOpenApiPathsObject = {
         429: rateLimited,
       },
     },
-    post: {
-      summary: 'Set an initial password (OAuth-only accounts)',
-      requestBody: { content: { 'application/json': { schema: setInitialPasswordInput } } },
-      responses: {
-        204: { description: 'Password set' },
-        401: unauthorized,
-        403: problem('Email not owned by the user'),
-        409: problem('A password is already set'),
-        422: problem('Validation failed'),
-        429: rateLimited,
-      },
-    },
   },
   '/profile/credentials': {
     delete: {
@@ -312,21 +300,6 @@ export const paths: ZodOpenApiPathsObject = {
         204: { description: 'Credentials removed' },
         400: problem('No password set, only sign-in method, or password incorrect'),
         401: unauthorized,
-        422: problem('Validation failed'),
-        429: rateLimited,
-      },
-    },
-  },
-  '/profile/email': {
-    patch: {
-      summary: 'Change the sign-in email',
-      requestBody: { content: { 'application/json': { schema: changeEmailInput } } },
-      responses: {
-        204: { description: 'Email changed' },
-        400: problem('No password set or password incorrect'),
-        401: unauthorized,
-        403: problem('Email not owned by the user'),
-        409: problem('Email already in use'),
         422: problem('Validation failed'),
         429: rateLimited,
       },
@@ -344,6 +317,21 @@ export const paths: ZodOpenApiPathsObject = {
         409: problem('Email already in use'),
         422: problem('Validation failed'),
         429: rateLimited,
+      },
+    },
+  },
+  '/profile/credential-email': {
+    post: {
+      summary: 'Request a separate credential-login email (sends a confirmation link, or activates instantly when email verification is disabled)',
+      requestBody: { content: { 'application/json': { schema: requestCredentialEmailInput } } },
+      responses: {
+        204: { description: 'Confirmation link sent (enumeration-safe), or the login activated instantly when verification is disabled' },
+        400: problem('Current password required or incorrect (change path re-auth)'),
+        401: unauthorized,
+        409: problem('That email is already in use (instant-activation path only)'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+        503: problem('Could not send the confirmation email'),
       },
     },
   },
@@ -527,6 +515,7 @@ export const paths: ZodOpenApiPathsObject = {
           description: 'Where to navigate after registering',
           content: { 'application/json': { schema: authRedirectSchema } },
         },
+        409: problem('Email already in use (verification disabled)'),
         422: problem('Validation failed'),
         429: rateLimited,
       },
@@ -554,6 +543,19 @@ export const paths: ZodOpenApiPathsObject = {
         204: { description: 'Password reset' },
         400: problem('Reset link invalid or expired'),
         422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/auth/confirm-login-email': {
+    post: {
+      summary: 'Confirm a credential-login email (add password or re-point sign-in email)',
+      requestBody: { content: { 'application/json': { schema: confirmLoginEmailInput } } },
+      responses: {
+        204: { description: 'Credential-login email confirmed' },
+        400: problem('Confirmation link invalid or expired'),
+        409: problem('Email already in use — link spent; request a new one from Profile'),
+        422: problem('Validation failed or password required to finish adding sign-in'),
         429: rateLimited,
       },
     },

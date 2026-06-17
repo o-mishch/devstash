@@ -56,7 +56,7 @@ const {
   mockResolveAppUserIdForSubscription: vi.fn(),
 }))
 
-vi.mock('@/lib/stripe', () => ({
+vi.mock('@/lib/infra/stripe', () => ({
   constructStripeWebhookEvent: mockConstructStripeWebhookEvent,
   cancelAbandonedSubscription: mockCancelAbandonedSubscription,
   cancelSubscriptionImmediately: mockCancelSubscriptionImmediately,
@@ -187,7 +187,7 @@ beforeEach(() => {
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test'
   mockCancelAbandonedSubscription.mockResolvedValue(undefined)
   mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/session/recover' })
-  mockSendBillingPaymentFailedEmail.mockResolvedValue(true)
+  mockSendBillingPaymentFailedEmail.mockResolvedValue('sent')
   mockClaimStripeWebhookEvent.mockResolvedValue(true)
   mockMarkStripeWebhookEventProcessed.mockResolvedValue(undefined)
   mockReleaseStripeWebhookEvent.mockResolvedValue(undefined)
@@ -201,8 +201,8 @@ beforeEach(() => {
   mockStripeChargesRetrieve.mockResolvedValue({ invoice: null })
   mockStripeCustomersRetrieve.mockResolvedValue({ email: 'user@example.com' })
   mockSendBillingDisputeAdminEmail.mockResolvedValue(true)
-  mockSendBillingTrialEndingEmail.mockResolvedValue(true)
-  mockSendBillingCheckoutPaymentFailedEmail.mockResolvedValue(true)
+  mockSendBillingTrialEndingEmail.mockResolvedValue('sent')
+  mockSendBillingCheckoutPaymentFailedEmail.mockResolvedValue('sent')
   mockSubscriptionShouldClearLocalLink.mockImplementation((status: string | null | undefined) => (
     status === 'incomplete_expired' || status === 'canceled'
   ))

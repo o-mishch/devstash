@@ -7,7 +7,7 @@ import { cookies } from 'next/headers'
 import Credentials from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/infra/prisma'
 import { authConfig } from '@/auth.config'
-import { emailVerificationEnabled } from '@/lib/emails/verification'
+import { outboundEmailEnabled } from '@/lib/utils/auth'
 import {
   createPendingLink,
   getLinkIntent,
@@ -24,7 +24,8 @@ import {
 import { resolveSessionUserIsPro } from '@/lib/billing/access/pro-access-resolution'
 import { SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils/constants'
 import { validateUserPassword } from '@/lib/auth/auth-service'
-import { oauthEmailIsVerified } from '@/lib/auth/oauth-email'
+import { classifyPasswordFingerprint } from '@/lib/utils/auth'
+import { oauthEmailIsVerified } from '@/lib/utils/auth'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'auth' })
@@ -146,15 +147,17 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           if (user) {
             // Sign-in: snapshot the current fingerprint
             token.pwHash = pwFingerprint
-          } else if (token.pwHash !== undefined && token.pwHash !== pwFingerprint) {
-            const hadPassword = token.pwHash !== ''
-            const hasPassword = pwFingerprint !== ''
-            if (hadPassword && hasPassword) {
+          } else {
+            const transition = classifyPasswordFingerprint(token.pwHash as string | undefined, pwFingerprint)
+            if (transition === 'invalidate') {
               // Password was rotated — force re-login so the old session can't be reused
               return null
             }
-            // Password was added or removed — sync the fingerprint without invalidating
-            token.pwHash = pwFingerprint
+            if (transition === 'sync') {
+              // Password was added (e.g. credential-email confirm) or removed — sync the fingerprint
+              // without invalidating, so an OAuth-only user's live session survives.
+              token.pwHash = pwFingerprint
+            }
           }
         } catch (error) {
           if (!isTransientDatabaseError(error)) {
@@ -171,8 +174,8 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       }
 
       // Backfill Account.email for OAuth sign-ins handled by PrismaAdapter — but only when the
-      // provider asserts the email is verified, so the any-email-resolution paths (Cases 2/4) never
-      // trust an unverified OAuth email. Otherwise the identity falls back to User.email-only. (Case 6)
+      // provider asserts the email is verified, so the any-email-resolution paths never
+      // trust an unverified OAuth email. Otherwise the identity falls back to User.email-only.
       if (
         account &&
         account.provider !== 'credentials' &&
@@ -243,7 +246,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
         if (!user) return null
 
-        if (emailVerificationEnabled() && !user.emailVerified) return null
+        // Gate on the timestamp of the field the input matched: signing in with the OAuth identity
+        // `email` checks `emailVerified`; signing in with a `credentialEmail` checks
+        // `credentialEmailVerified`. (`getUserAuthInfoByEmail` only ever returns a verified
+        // credentialEmail match, so this is belt-and-suspenders for that branch.)
+        if (outboundEmailEnabled() && !user.matchedVerified) return null
 
         return { id: user.id, email: user.email, name: user.name, image: user.image }
       },

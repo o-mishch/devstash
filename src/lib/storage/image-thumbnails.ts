@@ -1,6 +1,6 @@
 import 'server-only'
 import { ALLOWED_IMAGE_EXTS } from '@/lib/utils/constants'
-import { getFileExtension } from '@/lib/utils/files'
+import { getFileExtension } from '@/lib/utils/format'
 import { deleteFromS3 } from '@/lib/storage/s3'
 
 export function getImageThumbnailKey(fileUrl: string): string {

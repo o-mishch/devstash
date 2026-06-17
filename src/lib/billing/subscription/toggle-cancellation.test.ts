@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/stripe', () => ({ setSubscriptionCancelAtPeriodEnd: vi.fn() }))
+vi.mock('@/lib/infra/stripe', () => ({ setSubscriptionCancelAtPeriodEnd: vi.fn() }))
 vi.mock('@/lib/billing/sync/user-billing-state', () => ({
   getCachedUserStripeInfo: vi.fn(),
   getCachedLiveSubscriptionState: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('@/lib/infra/pino', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
-import { setSubscriptionCancelAtPeriodEnd } from '@/lib/stripe'
+import { setSubscriptionCancelAtPeriodEnd } from '@/lib/infra/stripe'
 import { getCachedLiveSubscriptionState, getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 import { getFreshVerifiedProAccess, markFreshProAccessResolved } from '@/lib/billing/access/pro-access-resolution'
 import { applyLiveSubscriptionAccessFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'

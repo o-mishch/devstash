@@ -1,5 +1,5 @@
 import 'server-only'
-import { setSubscriptionCancelAtPeriodEnd } from '@/lib/stripe'
+import { setSubscriptionCancelAtPeriodEnd } from '@/lib/infra/stripe'
 import { getCachedLiveSubscriptionState, getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 import {
   getFreshVerifiedProAccess,

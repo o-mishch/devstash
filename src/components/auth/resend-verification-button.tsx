@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { api } from '@/lib/api/client'
@@ -11,17 +11,17 @@ interface ResendVerificationButtonProps {
 
 export function ResendVerificationButton({ email }: ResendVerificationButtonProps) {
   const router = useRouter()
-  const [isPending, setIsPending] = useState(false)
+  const [isPending, startTransition] = useTransition()
 
-  async function handleResend() {
-    setIsPending(true)
-    const { error } = await api.POST('/auth/resend-verification', { body: { email } })
-    setIsPending(false)
-    if (!error) {
-      router.push('/sign-in?resent=1')
-    } else {
-      toast.error(error.message || 'Failed to send verification email. Please try again later.')
-    }
+  function handleResend() {
+    startTransition(async () => {
+      const { error } = await api.POST('/auth/resend-verification', { body: { email } })
+      if (!error) {
+        router.push('/sign-in?resent=1')
+      } else {
+        toast.error(error.message || 'Failed to send verification email. Please try again later.')
+      }
+    })
   }
 
   return (

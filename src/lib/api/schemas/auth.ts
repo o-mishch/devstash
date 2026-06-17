@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { EmailSchema, NameSchema, passwordFieldSchema, passwordMatchRefine } from '@/lib/utils/validators'
+import { EmailSchema, NameSchema, passwordFieldSchema, passwordMatchRefine, optionalPasswordMatchRefine } from '@/lib/utils/validators'
 
 // Request/response schemas for the public auth endpoints (oRPC `oc.route()` wrappers stripped — bare
 // Zod). These run before a session exists, so the routes use `publicRoute` (no session gate) and
@@ -30,8 +30,21 @@ export const resetPasswordInput = z
   .superRefine(passwordMatchRefine('password'))
 
 export const resendVerificationInput = z.object({
-  email: z.string().trim().min(1, 'Email is required.'),
+  // EmailSchema trims + lowercases, matching how addresses are stored — a mixed-case input still resolves.
+  email: EmailSchema,
 })
+
+// Confirm a credential-login email: the token (from the emailed link) proves ownership. For an ADD
+// the password is chosen here (mirrors resetPasswordInput); for a CHANGE (re-pointing an existing
+// login) no password is submitted, so both fields are optional and matched only when present. The
+// server enforces password presence when the user's current account state is still an add path.
+export const confirmLoginEmailInput = z
+  .object({
+    token: z.string().min(1, 'This confirmation link is invalid or has expired.'),
+    password: passwordFieldSchema.optional(),
+    confirmPassword: passwordFieldSchema.optional(),
+  })
+  .superRefine(optionalPasswordMatchRefine('password'))
 
 // register / forgotPassword return a path the client navigates to after the flow.
 export const authRedirectSchema = z.object({ redirectTo: z.string() }).meta({ id: 'AuthRedirect' })

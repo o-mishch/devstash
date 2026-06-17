@@ -5,29 +5,30 @@ import {
   cancelSubscriptionImmediately,
   deleteStripeCustomer,
   updateStripeCustomerEmail,
-} from '@/lib/stripe'
+} from '@/lib/infra/stripe'
 import { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 
 const log = logger.child({ tag: 'billing-lifecycle' })
 
-/** Syncs the app account email to the linked Stripe customer record. */
-export async function syncStripeCustomerEmailForUser(userId: string, email: string): Promise<void> {
+// Syncs the app account email to the linked Stripe customer record. Throws on Stripe failure so the
+// resilient wrapper can decide how to handle it (the only caller). Logging lives in the wrapper to
+// avoid double-logging the same failure.
+async function syncStripeCustomerEmailForUser(userId: string, email: string): Promise<void> {
   const user = await getCachedUserStripeInfo(userId)
   if (!user?.stripeCustomerId) return
+  await updateStripeCustomerEmail(user.stripeCustomerId, email)
+  log.info({ userId, customerId: user.stripeCustomerId }, 'Synced Stripe customer email after app email change')
+}
 
+// Resilient variant for callers whose DB email change is ALREADY committed (and may have spent a
+// single-use token) before reaching Stripe: a Stripe outage must not throw out and 500 the request,
+// stranding a successful change with no way to retry. Logs and swallows. The drift it leaves behind
+// self-heals on the next checkout, which idempotently refreshes the Stripe customer email.
+export async function syncStripeCustomerEmailForUserSafe(userId: string, email: string): Promise<void> {
   try {
-    await updateStripeCustomerEmail(user.stripeCustomerId, email)
-    log.info({
-      userId,
-      customerId: user.stripeCustomerId,
-    }, 'Synced Stripe customer email after app email change')
+    await syncStripeCustomerEmailForUser(userId, email)
   } catch (error) {
-    log.error({
-      userId,
-      customerId: user.stripeCustomerId,
-      err: error,
-    }, 'Failed to sync Stripe customer email after app email change')
-    throw error
+    log.error({ userId, err: error }, 'Stripe customer email sync failed — change already committed, continuing')
   }
 }
 

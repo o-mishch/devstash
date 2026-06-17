@@ -2,14 +2,13 @@
 
 import { useRef, useState, useEffect, type DragEvent } from 'react'
 import { Upload, X, FileIcon } from 'lucide-react'
-import { cn } from '@/lib/utils/styles'
+import { cn } from '@/lib/utils/ui'
 import { api } from '@/lib/api/client'
 import { uploadToPresignedPost } from '@/lib/storage/s3-upload-client'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { FILE_UPLOAD_CONFIG, IMAGE_THUMBNAIL_MAX_WIDTH, IMAGE_THUMBNAIL_QUALITY } from '@/lib/utils/constants'
-import { formatBytes } from '@/lib/utils/format'
-import { getFileExtension } from '@/lib/utils/files'
+import { formatBytes, getFileExtension } from '@/lib/utils/format'
 import type { FileItemType } from '@/lib/utils/constants'
 
 export interface UploadedFile {

@@ -19,7 +19,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button, SubmitButton } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api/client'
 import { WarningBanner } from '@/components/shared/warning-banner'
@@ -28,9 +28,11 @@ interface MainEmailSelectorProps {
   currentEmail: string
   availableEmails: string[]
   hasPassword: boolean
+  // Notifies the parent (shared profile-emails store) on a successful change so siblings stay in sync.
+  onEmailChanged?: (email: string) => void
 }
 
-export function MainEmailSelector({ currentEmail, availableEmails, hasPassword }: MainEmailSelectorProps) {
+export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, onEmailChanged }: MainEmailSelectorProps) {
   const [email, setEmail] = useState(currentEmail)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
   const [password, setPassword] = useState('')
@@ -52,7 +54,12 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword }
       const { error } = await api.PATCH('/profile/main-email', { body: { email: target, password: currentPassword } })
       if (!error) {
         setEmail(target)
-        toast.success(hasPassword ? 'Sign-in email updated.' : 'Display email updated.')
+        onEmailChanged?.(target)
+        // Close the confirm dialog only on success — on failure it stays open so the user can retry
+        // without re-selecting the target email from the dropdown.
+        setPendingEmail(null)
+        setPassword('')
+        toast.success(hasPassword ? 'Default email updated.' : 'Display email updated.')
         router.refresh()
       } else {
         toast.error(error.message || 'Failed to update email.')
@@ -62,10 +69,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword }
 
   function confirmChange() {
     if (!pendingEmail) return
-    const target = pendingEmail
-    setPendingEmail(null)
-    applyChange(target, password)
-    setPassword('')
+    applyChange(pendingEmail, password)
   }
 
   return (
@@ -79,7 +83,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword }
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[popup-open]:rotate-180" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="!w-auto min-w-48">
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">{hasPassword ? 'Set sign-in email' : 'Set display email'}</p>
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">{hasPassword ? 'Set default email' : 'Set display email'}</p>
           <DropdownMenuSeparator />
           {availableEmails.map((e) => (
             <DropdownMenuItem key={e} onClick={() => requestChange(e)} className="gap-2">
@@ -93,23 +97,24 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword }
       <Dialog open={pendingEmail !== null} onOpenChange={(open) => { if (!open) { setPendingEmail(null); setPassword('') } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Change sign-in email?</DialogTitle>
+            <DialogTitle>Change default email?</DialogTitle>
             <DialogDescription>
-              Your credentials login email will change from{' '}
+              Your account&apos;s default email will change from{' '}
               <span className="font-medium text-foreground">{email}</span> to{' '}
               <span className="font-medium text-foreground">{pendingEmail}</span>.
             </DialogDescription>
           </DialogHeader>
 
           <WarningBanner>
-            After confirming, use <strong>{pendingEmail}</strong> to sign in next time.
+            This only changes your account&apos;s default email. Your email &amp; password sign-in stays the
+            same — to change the address you sign in with, use <strong>Change email</strong> on your
+            Email &amp; Password method.
           </WarningBanner>
 
           <div className="space-y-2">
             <Label htmlFor="confirm-email-password">Current password</Label>
-            <Input
+            <PasswordInput
               id="confirm-email-password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

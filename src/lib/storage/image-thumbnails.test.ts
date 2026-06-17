@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getFileExtension } from '@/lib/utils/files'
+import { getFileExtension } from '@/lib/utils/format'
 import { canGenerateImageThumbnail, getImageThumbnailKey } from './image-thumbnails'
 
 describe('getImageThumbnailKey', () => {

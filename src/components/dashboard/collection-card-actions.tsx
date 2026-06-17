@@ -6,7 +6,7 @@ import { Star, MoreHorizontal, Edit2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { api } from '@/lib/api/client'
-import { useCollectionDialogs } from './collection-dialog-provider'
+import { useCollectionDialogsStore } from '@/stores/collection-dialogs'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import type { CollectionWithTypes } from '@/types/collection'
 
@@ -16,7 +16,8 @@ interface CollectionCardActionsProps {
 
 export function CollectionCardActions({ collection }: CollectionCardActionsProps) {
   const router = useRouter()
-  const { openEdit, openDelete } = useCollectionDialogs()
+  const openEdit = useCollectionDialogsStore((s) => s.openEdit)
+  const openDelete = useCollectionDialogsStore((s) => s.openDelete)
   const { value: isFavorite, toggle: toggleFavorite } = useOptimisticToggle(
     collection.isFavorite,
     async (next) => {

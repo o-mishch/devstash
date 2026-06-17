@@ -41,7 +41,7 @@ export function ItemCard({ item }: ItemCardProps) {
       onKeyDown={handleCardKeyDown}
     >
       <CardContent className="flex h-full items-center p-4">
-        <div className="flex w-full min-w-0 items-start gap-3">
+        <div className="flex w-full min-w-0 items-center gap-3">
           <ItemIconWrapper itemType={itemType} wrapperClassName="size-8 shrink-0" iconClassName="size-4" />
           <div className="min-w-0 flex-1 overflow-hidden">
             <div className="flex items-center gap-1.5">

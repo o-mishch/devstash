@@ -30,11 +30,11 @@ export async function sendBillingDisputeAdminEmail({
     .replaceAll('{{REASON}}', reason)
   const html = buildEmailTemplate('Stripe dispute opened', bodyHtml)
 
-  return sendEmail({
+  return (await sendEmail({
     to,
     subject: `Stripe dispute opened — ${disputeId}`,
     html,
     idempotencyKey: `billing-dispute-admin/${disputeId}`,
     operation: 'billing-dispute-admin',
-  })
+  })) !== 'failed'
 }

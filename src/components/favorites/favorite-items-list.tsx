@@ -102,11 +102,11 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
       {isFetchingNextPage && (
         <div className="flex flex-col pl-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-3 py-1.5 touch:py-3">
-              <Skeleton className="size-3.5 touch:size-5 shrink-0 rounded-full" />
-              <Skeleton className="h-4 touch:h-6 flex-1" />
-              <Skeleton className="hidden sm:block h-4 w-14" />
-              <Skeleton className="hidden md:block h-4 w-12" />
+            <div key={i} className="app-row gap-3 rounded px-3 py-1.5 touch:py-3">
+              <Skeleton className="size-3.5 touch:size-5 shrink-0 rounded" />
+              <Skeleton className="h-4 touch:h-5 min-w-0 flex-1" />
+              <Skeleton className="hidden sm:block h-4 w-14 shrink-0 rounded" />
+              <Skeleton className="hidden md:block h-4 w-16 shrink-0 rounded" />
             </div>
           ))}
         </div>

@@ -4,7 +4,7 @@ import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit, deniedMessage, type RateLimitKey } from '@/lib/infra/rate-limit'
 import { logger } from '@/lib/infra/pino'
-import { isPrerenderInterrupt } from '@/lib/utils/prerender'
+import { isPrerenderInterrupt } from '@/lib/utils/url'
 import { ErrorMessage } from './error-messages'
 import { problem } from './http'
 

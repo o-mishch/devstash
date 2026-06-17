@@ -16,6 +16,8 @@ export type RateLimitKey =
   | 'updateSettings'
   | 'changePassword'
   | 'changeCredentials'
+  | 'credentialEmail'
+  | 'confirmLoginEmail'
   | 'aiTags'
   | 'aiDescription'
   | 'stripeCheckout'
@@ -43,6 +45,8 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   updateSettings:       { attempts: 60, window: '1 m'  }, // keyed by userId
   changePassword:       { attempts: 5,  window: '15 m' }, // keyed by userId
   changeCredentials:    { attempts: 5,  window: '15 m' }, // keyed by userId — email/password changes
+  credentialEmail:      { attempts: 5,  window: '15 m' }, // keyed by userId — credential-login email requests
+  confirmLoginEmail:    { attempts: 5,  window: '15 m' }, // keyed by IP — public credential-email confirm
   aiTags:               { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage
   aiDescription:        { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage
   stripeCheckout:       { attempts: 10, window: '1 h'  }, // keyed by userId — Stripe Checkout sessions

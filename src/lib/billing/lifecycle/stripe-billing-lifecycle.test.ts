@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/stripe', () => ({
+vi.mock('@/lib/infra/stripe', () => ({
   cancelSubscriptionImmediately: vi.fn(),
   deleteStripeCustomer: vi.fn(),
   updateStripeCustomerEmail: vi.fn(),
@@ -17,11 +17,12 @@ vi.mock('@/lib/infra/pino', () => ({
   logger: { child: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }) },
 }))
 
-import { cancelSubscriptionImmediately, deleteStripeCustomer } from '@/lib/stripe'
-import { teardownStripeBillingForUser } from './stripe-billing-lifecycle'
+import { cancelSubscriptionImmediately, deleteStripeCustomer, updateStripeCustomerEmail } from '@/lib/infra/stripe'
+import { teardownStripeBillingForUser, syncStripeCustomerEmailForUserSafe } from './stripe-billing-lifecycle'
 
 const mockCancelSubscriptionImmediately = cancelSubscriptionImmediately as ReturnType<typeof vi.fn>
 const mockDeleteStripeCustomer = deleteStripeCustomer as ReturnType<typeof vi.fn>
+const mockUpdateStripeCustomerEmail = updateStripeCustomerEmail as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -73,5 +74,22 @@ describe('teardownStripeBillingForUser', () => {
     mockDeleteStripeCustomer.mockRejectedValue(new Error('Stripe unavailable'))
 
     await expect(teardownStripeBillingForUser('user-1')).rejects.toThrow('Stripe unavailable')
+  })
+})
+
+describe('syncStripeCustomerEmailForUserSafe', () => {
+  it('swallows a Stripe failure so an already-committed email change is never 500ed', async () => {
+    mockGetCachedUserStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_123' })
+    mockUpdateStripeCustomerEmail.mockRejectedValue(new Error('stripe down'))
+
+    await expect(syncStripeCustomerEmailForUserSafe('user-1', 'new@example.com')).resolves.toBeUndefined()
+    expect(mockUpdateStripeCustomerEmail).toHaveBeenCalledWith('cus_123', 'new@example.com')
+  })
+
+  it('no-ops (and never throws) when the user has no Stripe customer', async () => {
+    mockGetCachedUserStripeInfo.mockResolvedValue({ stripeCustomerId: null })
+
+    await expect(syncStripeCustomerEmailForUserSafe('user-1', 'new@example.com')).resolves.toBeUndefined()
+    expect(mockUpdateStripeCustomerEmail).not.toHaveBeenCalled()
   })
 })

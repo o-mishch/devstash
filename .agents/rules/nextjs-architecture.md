@@ -20,12 +20,12 @@ description: Next.js architecture for DevStash — where each mutation/fetch goe
 
 ### Where each mutation / fetch goes
 
-| Situation | Use |
-|---|---|
-| Data read in a Server Component | `src/lib/db/` helper (not `prisma.*` inline) |
-| Mutation or data fetch from a client component | a **route handler** via `api` / `$api` (`@/lib/api/client`). **Never** a Server Action, **never** raw `fetch()`/`axios` |
-| Webhook, third-party callback, redirect with a specific HTTP status | exempt explicit route (`apiRoute` / `authenticatedRoute`) — see `api-contract.md` |
-| Redirect-terminating auth flow that can't be REST (OAuth sign-in, sign-out, account link) | Server Action — the **only** sanctioned use (still on the `ApiBody` envelope) |
+| Situation                                                                                 | Use                                                                                                                     |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Data read in a Server Component                                                           | `src/lib/db/` helper (not `prisma.*` inline)                                                                            |
+| Mutation or data fetch from a client component                                            | a **route handler** via `api` / `$api` (`@/lib/api/client`). **Never** a Server Action, **never** raw `fetch()`/`axios` |
+| Webhook, third-party callback, redirect with a specific HTTP status                       | exempt explicit route (`apiRoute` / `authenticatedRoute`) — see `api-contract.md`                                       |
+| Redirect-terminating auth flow that can't be REST (OAuth sign-in, sign-out, account link) | Server Action — the **only** sanctioned use (still on the `ApiBody` envelope)                                           |
 
 The typed route-handler client is the default for all client-driven mutations and reads (full contract in `api-contract.md`). New code must not add Server Actions for ordinary mutations. A new endpoint is a new `src/app/api/<domain>/.../route.ts` + a `paths.ts` declaration + schemas, then `npm run openapi:gen` — not a Server Action and not a hand-edited generated type.
 
@@ -45,17 +45,18 @@ Next.js runs code in two runtimes: the Node.js server and the browser. Server Co
 
 **Exception — build-time-reachable modules.** A module imported (transitively) by `next.config.ts` must **not** carry the guard, because the config loader evaluates the package's throwing browser export and `next build` fails before it starts. `src/env/validate-billing-env.ts` is exempt for this reason: it sits in the `next.config.ts` → `validate-billing-env.ts` chain. It holds no secrets (just `NODE_ENV` + `console.warn`), so leaving it unguarded is safe. Do not add `import 'server-only'` to it, and do not import the Pino `logger` into it — use `console.warn` directly. The logger itself (`src/lib/infra/pino.ts`) **is** `server-only`-guarded precisely because it is not in the build-time chain.
 
-| Folder / File | Why |
-|---|---|
-| `src/lib/db/` | Prisma queries + `'use cache'` — never safe in a browser bundle |
-| `src/lib/infra/` | Redis, Prisma client, rate-limit, resend, cache — Node.js / server env |
-| `src/lib/auth/` | bcrypt, crypto, DB user helpers — requires Node.js and secret env vars |
-| `src/lib/billing/` | Stripe SDK, webhooks, subscription logic — secret keys, Node.js only |
-| `src/lib/storage/` | S3 file uploads — secret keys, Node.js only |
-| `src/lib/stripe/` | Stripe SDK client — secret key |
-| `src/lib/app/` | App shell data fetchers (sidebar, action utils) — DB / session access |
-| `src/lib/session.ts` | Session helpers — reads cookies / auth, Node.js only |
-| `src/lib/api/index.ts` | Route wrappers — `NextRequest` / `NextResponse`, Node.js only |
+| Folder / File          | Why                                                                    |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `src/lib/db/`          | Prisma queries + `'use cache'` — never safe in a browser bundle        |
+| `src/lib/infra/`       | Redis, Prisma client, rate-limit, resend, cache, Stripe SDK adapter — Node.js / server env |
+| `src/lib/auth/`        | bcrypt, crypto, DB user helpers — requires Node.js and secret env vars |
+| `src/lib/billing/`     | Stripe webhooks, subscription logic — secret keys, Node.js only        |
+| `src/lib/storage/`     | S3 file uploads — secret keys, Node.js only                            |
+| `src/lib/ai/`          | OpenAI client + tag/description generation — secret key, Node.js only   |
+| `src/lib/emails/`      | Resend transactional senders (link / credential / verify / reset)       |
+| `src/lib/app/`         | App shell data fetchers (sidebar, action utils) — DB / session access  |
+| `src/lib/session.ts`   | Session helpers — reads cookies / auth, Node.js only                   |
+| `src/lib/api/index.ts` | Route wrappers — `NextRequest` / `NextResponse`, Node.js only          |
 
 ```typescript
 // ✅ correct — first line of any server-only module
@@ -71,12 +72,12 @@ import { prisma } from '@/lib/infra/prisma'
 
 These solve **opposite problems** and are frequently confused:
 
-| | `import 'server-only'` | `'use server'` |
-|---|---|---|
-| **Purpose** | Prevent module from reaching client bundle | Expose server function as callable from client |
-| **Enforcement** | Build error if a client file imports it | Next.js creates a network RPC endpoint |
-| **Functions inside** | Normal server functions — not callable from client | Server Actions — callable from client via POST |
-| **Use for** | DB helpers, secret env vars, Prisma, Node.js APIs | Redirect-terminating auth flows only (OAuth, sign-out, link) |
+|                      | `import 'server-only'`                             | `'use server'`                                               |
+| -------------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| **Purpose**          | Prevent module from reaching client bundle         | Expose server function as callable from client               |
+| **Enforcement**      | Build error if a client file imports it            | Next.js creates a network RPC endpoint                       |
+| **Functions inside** | Normal server functions — not callable from client | Server Actions — callable from client via POST               |
+| **Use for**          | DB helpers, secret env vars, Prisma, Node.js APIs  | Redirect-terminating auth flows only (OAuth, sign-out, link) |
 
 ```typescript
 // 'server-only' — bundler guard; function is NOT callable from client
@@ -94,23 +95,23 @@ export async function createItem(formData: FormData) { ... }
 
 ### Shared modules (no `'server-only'`)
 
-| Folder / File | Why safe |
-|---|---|
-| `src/lib/utils/` | Pure TypeScript — constants, formatters, validators, no secret env vars |
-| `src/lib/editor/` | Monaco config / themes — used in client editor components |
-| `src/lib/api/schemas/**` | Bare Zod request/response schemas — browser-safe (imported by `paths.ts` + route handlers) |
-| `src/lib/api/openapi/**` | `paths.ts` + `spec.ts` — pure schema declarations, no secrets |
-| `src/lib/api/http.ts` | `json` / `noContent` / `problem` / `parseOr422` — pure Response builders |
-| `src/lib/api/client.ts` | `api` + `$api` — browser route-handler client |
-| `src/lib/api/api-response.ts` | `ApiResponse` builders / `ApiBody` type — shared by Server Actions + exempt routes |
-| `src/types/` | Type definitions only |
-| `src/stores/` | Zustand stores — client state, no server imports |
-| `src/hooks/` | React hooks — client-only by design |
-| `src/components/` | React components — RSC or `'use client'` |
+| Folder / File                 | Why safe                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------ |
+| `src/lib/utils/`              | Pure TypeScript — constants, formatters, validators, no secret env vars                    |
+| `src/lib/editor/`             | Monaco config / themes — used in client editor components                                  |
+| `src/lib/api/schemas/**`      | Bare Zod request/response schemas — browser-safe (imported by `paths.ts` + route handlers) |
+| `src/lib/api/openapi/**`      | `paths.ts` + `spec.ts` — pure schema declarations, no secrets                              |
+| `src/lib/api/http.ts`         | `json` / `noContent` / `problem` / `parseOr422` — pure Response builders                   |
+| `src/lib/api/client.ts`       | `api` + `$api` — browser route-handler client                                              |
+| `src/lib/api/api-response.ts` | `ApiResponse` builders / `ApiBody` type — shared by Server Actions + exempt routes         |
+| `src/types/`                  | Type definitions only                                                                      |
+| `src/stores/`                 | Zustand stores — client state, no server imports                                           |
+| `src/hooks/`                  | React hooks — client-only by design                                                        |
+| `src/components/`             | React components — RSC or `'use client'`                                                   |
 
 ### Never import Node.js-only modules from client files
 
-A `'use client'` file must never import from `src/lib/db/`, `src/lib/infra/`, `src/lib/auth/`, `src/lib/billing/`, `src/lib/storage/`, `src/lib/stripe/`, `src/lib/session.ts`, or `src/lib/api/index.ts`.
+A `'use client'` file must never import from `src/lib/db/`, `src/lib/infra/`, `src/lib/auth/`, `src/lib/billing/`, `src/lib/storage/`, `src/lib/session.ts`, or `src/lib/api/index.ts`.
 
 ```typescript
 // ✅ correct — client component mutates via the typed route-handler client
@@ -131,11 +132,12 @@ import { getItems } from '@/lib/db/items'
 - Types: `src/types/[feature].ts`
 - Lib: domain and infrastructure under `src/lib/` — use the matching subfolder, not a flat root file. **S** = server-only (`'server-only'` required); **C** = shared (client + server safe):
   - `src/lib/db/` **[S]** — Prisma data access (all `prisma.*` calls except `auth.ts` adapter exception)
-  - `src/lib/infra/` **[S]** — logger, prisma client, redis, rate-limit, cache, resend
+  - `src/lib/infra/` **[S]** — logger, prisma client, redis, rate-limit, cache, resend, Stripe SDK adapter (`stripe.ts`)
   - `src/lib/auth/` **[S]** — auth service, tokens, pending OAuth link
-  - `src/lib/billing/` **[S]** — Stripe billing, subscriptions, webhooks, checkout
+  - `src/lib/billing/` **[S]** — Stripe billing, subscriptions, webhooks, checkout (domain logic; the raw SDK adapter lives in `infra/stripe.ts`)
   - `src/lib/storage/` **[S]** — file uploads (AWS S3)
-  - `src/lib/stripe/` **[S]** — Stripe SDK client wrappers
+  - `src/lib/ai/` **[S]** — OpenAI client + tag/description generation (secret key; pure response parsers are the shared exception)
+  - `src/lib/emails/` **[S]** — transactional email senders + templates (Resend via `infra`); all outbound sends go through `sendEmail()` which no-ops when `DISABLE_EMAIL_VERIFICATION=true` (see `security.md`)
   - `src/lib/app/` **[S]** — app shell helpers (sidebar data, action utils)
   - `src/lib/session.ts` **[S]** — session + action auth helpers (root exception)
   - `src/lib/api/index.ts` **[S]** — `apiRoute` route wrappers (exempt routes)
@@ -147,8 +149,45 @@ import { getItems } from '@/lib/db/items'
   - `src/lib/api/api-response.ts` **[C]** — `ApiResponse` builders (Server Actions + exempt routes)
   - `src/lib/editor/` **[C]** — editor themes and config
   - `src/lib/utils/` **[C]** — shared constants, formatters, validators (no DB/Stripe)
-- Context definitions (`createContext`, hooks, reducers, types — no JSX): `src/context/[name]-context.tsx`
-- Provider components (React components that render `<Context.Provider>`): `src/providers/[name]-provider.tsx`
+- Zustand stores (client UI state): `src/stores/[name]-store.ts` — **never** `createContext`
+
+## State Management
+
+**Never use `createContext` / `React.createContext`.** All client state lives in Zustand stores under `src/stores/`; there is no `src/context/` directory. `src/providers/` holds **only** composition wrappers for third-party providers (`QueryClientProvider`, `next-themes`) and store-connected mount points (item drawer, upgrade prompt) — never an app-authored React Context.
+
+| State type | Tool | Package |
+|---|---|---|
+| UI state (modals, drawers, flags, selections) | Zustand store in `src/stores/` | `zustand` |
+| Server / async data (items, collections, pages) | `$api` hooks; or `useQuery` / `useInfiniteQuery` for non-API data | `@tanstack/react-query` |
+| Long lists / grids | `TanStackVirtualGrid` (`src/components/items/tanstack-virtual-grid.tsx`) | `@tanstack/react-virtual` |
+
+```typescript
+// ✅ correct
+import { useItemStore } from '@/stores/item-store'
+const { selectedId, setSelectedId } = useItemStore()
+
+// ❌ wrong — never create context
+const ItemContext = createContext<ItemContextValue | null>(null)
+export function ItemProvider({ children }: { children: ReactNode }) {
+  return <ItemContext.Provider value={...}>{children}</ItemContext.Provider>
+}
+```
+
+### Virtualization (`@tanstack/react-virtual`)
+
+Use the existing `TanStackVirtualGrid` for any long item list or grid — do not build a new virtualized component from scratch.
+
+If a component must call `useVirtualizer` directly, it **must** add `'use no memo'` as the second directive (after `'use client'`). `useVirtualizer` returns unstable refs that the React Compiler must not memoize, and `// eslint-disable-next-line react-hooks/incompatible-library` is required on the call itself.
+
+```typescript
+'use client'
+'use no memo'
+
+import { useVirtualizer } from '@tanstack/react-virtual'
+
+// eslint-disable-next-line react-hooks/incompatible-library
+const virtualizer = useVirtualizer({ count, getScrollElement, estimateSize })
+```
 
 ## Data Fetching
 

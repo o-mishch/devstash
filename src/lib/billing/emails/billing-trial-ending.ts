@@ -1,4 +1,4 @@
-import { sendEmail } from '@/lib/infra/resend'
+import { sendEmail, type EmailSendResult } from '@/lib/infra/resend'
 import { buildEmailTemplate } from '@/lib/emails/template-builder'
 import { billingPortalCtaHtml } from './billing-portal-cta'
 import billingTrialEndingHtml from './billing-trial-ending.html'
@@ -13,7 +13,7 @@ export async function sendBillingTrialEndingEmail({
   subscriptionId,
   portalUrl,
   to,
-}: SendBillingTrialEndingEmailParams): Promise<boolean> {
+}: SendBillingTrialEndingEmailParams): Promise<EmailSendResult> {
   const bodyHtml = `${billingTrialEndingHtml}${billingPortalCtaHtml(portalUrl)}`
   const html = buildEmailTemplate('Your DevStash Pro trial is ending soon', bodyHtml)
 

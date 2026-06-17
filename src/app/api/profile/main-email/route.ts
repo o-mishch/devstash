@@ -19,7 +19,7 @@ export const PATCH = authedRoute({ rateLimit: 'changeCredentials' }, async ({ us
     const fail = await verifyPasswordFromBody(
       userId,
       parsed.data.password,
-      'Password is required to change your sign-in email.',
+      'Password is required to change your default email.',
     )
     if (fail) return problemFrom(fail)
   }
@@ -28,6 +28,7 @@ export const PATCH = authedRoute({ rateLimit: 'changeCredentials' }, async ({ us
     userId,
     newEmail: parsed.data.email,
     notOwnedMessage: 'You can only set an email from one of your linked accounts.',
+    profile: data,
   })
   if (efail) return problemFrom(efail)
 

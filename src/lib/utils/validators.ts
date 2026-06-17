@@ -39,6 +39,21 @@ export const passwordMatchRefine =
     if (error) ctx.addIssue({ code: 'custom', message: error, path: [passwordField] })
   }
 
+/**
+ * `superRefine` callback for an OPTIONAL password field — checks `passwordField` against
+ * `confirmPassword` only when it's present, attaching any mismatch to `confirmPassword`. Used by the
+ * credential-email add/confirm schemas, where the password is supplied only on the instant-activation
+ * (verification-off) path.
+ */
+export const optionalPasswordMatchRefine =
+  <K extends string>(passwordField: K) =>
+  (data: Partial<Record<K, string>> & { confirmPassword?: string }, ctx: z.RefinementCtx) => {
+    const password = data[passwordField]
+    if (password !== undefined && password !== data.confirmPassword) {
+      ctx.addIssue({ code: 'custom', message: 'Passwords do not match.', path: ['confirmPassword'] })
+    }
+  }
+
 export const EmailSchema = z.email('Please enter a valid email address.').trim().toLowerCase()
 
 export const collectionFormSchema = z.object({
@@ -100,17 +115,6 @@ export const changePasswordSchema = z.object({
   newPassword: passwordFieldSchema,
   confirmPassword: passwordFieldSchema,
 }).superRefine(passwordMatchRefine('newPassword'))
-
-export const setInitialPasswordSchema = z.object({
-  email: EmailSchema,
-  newPassword: passwordFieldSchema,
-  confirmPassword: passwordFieldSchema,
-}).superRefine(passwordMatchRefine('newPassword'))
-
-export const changeCredentialEmailSchema = z.object({
-  email: EmailSchema,
-  password: passwordFieldSchema,
-})
 
 export const editorPreferencesSchema = z.object({
   fontSize: z.number().min(8).max(100),

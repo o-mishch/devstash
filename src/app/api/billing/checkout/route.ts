@@ -3,7 +3,7 @@ import { json, problem, parseOr422 } from '@/lib/api/http'
 import { createCheckoutInput } from '@/lib/api/schemas/billing'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { getCachedSession } from '@/lib/session'
-import { createCheckoutSession, ensureStripeCustomerUserId } from '@/lib/stripe'
+import { createCheckoutSession, ensureStripeCustomerUserId, updateStripeCustomerEmail } from '@/lib/infra/stripe'
 import { cancelIncompleteSubscriptionsForCustomer, validateCheckoutEligibility } from '@/lib/billing/checkout/stripe-checkout'
 import { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 import { resolveProAccessBypassingCache } from '@/lib/billing/access/pro-access-resolution'
@@ -58,13 +58,27 @@ export const POST = authedRoute({ rateLimit: 'stripeCheckout' }, async ({ userId
 
   try {
     const existingStripeInfo = await getCachedUserStripeInfo(userId)
-    const customerId = eligibility.customerId ?? existingStripeInfo?.stripeCustomerId ?? undefined
+    let customerId = eligibility.customerId ?? existingStripeInfo?.stripeCustomerId ?? undefined
     if (customerId) {
-      const customerLinked = await ensureStripeCustomerUserId(customerId, userId)
-      if (!customerLinked) {
+      const link = await ensureStripeCustomerUserId(customerId, userId)
+      if (link === 'foreign') {
         return problem(409, 'This billing account is linked to another user. Please contact support.')
       }
-      await cancelIncompleteSubscriptionsForCustomer(customerId)
+      if (link === 'deleted') {
+        // The stored customer was deleted in Stripe — drop the dead id and let checkout recreate one
+        // from the email rather than failing with an opaque Stripe error.
+        checkoutLog.warn({ userId, customerId }, 'Stored Stripe customer deleted — falling back to customer_email')
+        customerId = undefined
+      } else {
+        // Self-heal any Stripe customer email drift left by a previously failed (swallowed) sync — the
+        // update is idempotent, so this keeps invoices/portal/recovery email on the current address.
+        if (userEmail) {
+          await updateStripeCustomerEmail(customerId, userEmail).catch((err) => {
+            checkoutLog.error({ userId, customerId, err }, 'Failed to refresh Stripe customer email at checkout')
+          })
+        }
+        await cancelIncompleteSubscriptionsForCustomer(customerId)
+      }
     }
     const stripeSession = await createCheckoutSession({
       priceId,

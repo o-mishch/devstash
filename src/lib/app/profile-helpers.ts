@@ -1,8 +1,9 @@
 import 'server-only'
-import { getProfileData, updateUserEmail } from '@/lib/db/profile'
-import { getUserAuthInfoByEmail, getUserAuthMethods } from '@/lib/db/users'
+import { Prisma } from '@/generated/prisma'
+import { buildOwnedEmails, getProfileData, updateUserEmail } from '@/lib/db/profile'
+import { getUserAuthMethods, isEmailTakenByAnotherUser } from '@/lib/db/users'
 import { verifyUserPasswordById } from '@/lib/auth/auth-service'
-import { syncStripeCustomerEmailForUser } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
+import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { parseOrFail, passwordFieldSchema } from '@/lib/utils/validators'
 import { ErrorMessage } from '@/lib/api/error-messages'
@@ -31,10 +32,10 @@ export async function verifyPasswordOrFail(
  */
 export async function verifyPasswordFromBody(
   userId: string,
-  password: unknown,
+  rawPassword: unknown,
   requiredMessage: string,
 ): Promise<FailureResult | null> {
-  const parsed = parseOrFail(passwordFieldSchema, password)
+  const parsed = parseOrFail(passwordFieldSchema, rawPassword)
   if (!parsed.success) return { status: 400, message: requiredMessage }
   return verifyPasswordOrFail(userId, parsed.data)
 }
@@ -56,6 +57,7 @@ interface ApplyOwnedEmailChangeParams {
   userId: string
   newEmail: string
   notOwnedMessage: string
+  profile?: NonNullable<Awaited<ReturnType<typeof getProfileData>>>
 }
 
 /**
@@ -68,23 +70,31 @@ export async function applyOwnedEmailChange({
   userId,
   newEmail,
   notOwnedMessage,
+  profile,
 }: ApplyOwnedEmailChangeParams): Promise<FailureResult | null> {
-  const data = await getProfileData(userId)
+  const data = profile ?? await getProfileData(userId)
   if (!data) return { status: 401, message: ErrorMessage.NOT_AUTHENTICATED }
 
-  const ownedEmails = new Set<string>([
-    data.user.email,
-    ...data.user.accounts.flatMap((account) => (account.email ? [account.email] : [])),
-  ])
+  const ownedEmails = new Set(buildOwnedEmails(data.user))
   if (!ownedEmails.has(newEmail)) return { status: 403, message: notOwnedMessage }
 
-  const existing = await getUserAuthInfoByEmail(newEmail)
-  if (existing && existing.id !== userId) return { status: 409, message: 'That email is already in use.' }
+  if (newEmail === data.user.email) return null
 
-  if (newEmail !== data.user.email) {
-    await updateUserEmail(userId, newEmail)
-    await syncStripeCustomerEmailForUser(userId, newEmail)
-    invalidateProfileCache(userId)
+  if (await isEmailTakenByAnotherUser(userId, newEmail)) {
+    return { status: 409, message: 'That email is already in use.' }
   }
+
+  try {
+    await updateUserEmail(userId, newEmail)
+  } catch (error) {
+    // TOCTOU backstop: a concurrent claim on User.email (@unique) surfaces as P2002.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { status: 409, message: 'That email is already in use.' }
+    }
+    throw error
+  }
+  // Resilient: the email change is committed; a Stripe outage must not 500 it.
+  await syncStripeCustomerEmailForUserSafe(userId, newEmail)
+  invalidateProfileCache(userId)
   return null
 }

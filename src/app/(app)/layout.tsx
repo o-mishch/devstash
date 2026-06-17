@@ -23,9 +23,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
 import { UpgradePromptProvider } from '@/providers/upgrade-prompt-provider'
 import { ItemDrawerProvider } from '@/providers/item-drawer-provider'
+import { EditorPreloader } from '@/components/shared/dynamic-editors'
 export default function DashboardLayout({ children }: WithChildren) {
   return (
     <ItemDrawerProvider>
+      {/* Outside Suspense so it hydrates with the initial HTML shell, before DashboardLayoutInner resolves */}
+      <EditorPreloader />
       <Suspense fallback={<DashboardLayoutSkeleton>{children}</DashboardLayoutSkeleton>}>
         <DashboardLayoutInner>{children}</DashboardLayoutInner>
       </Suspense>

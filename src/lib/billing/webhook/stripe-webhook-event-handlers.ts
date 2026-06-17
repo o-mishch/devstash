@@ -2,7 +2,7 @@ import 'server-only'
 
 import type Stripe from 'stripe'
 import { logger } from '@/lib/infra/pino'
-import { cancelAbandonedSubscription, cancelSubscriptionImmediately, isChargeFullyRefunded } from '@/lib/stripe'
+import { cancelAbandonedSubscription, cancelSubscriptionImmediately, isChargeFullyRefunded } from '@/lib/infra/stripe'
 import { fromStripeTs } from '@/lib/billing/stripe-utils'
 import {
   fetchSubscriptionDetails,
@@ -17,7 +17,8 @@ import { sendBillingCheckoutPaymentFailedEmail } from '@/lib/billing/emails/bill
 import { sendBillingPaymentFailedEmail } from '@/lib/billing/emails/billing-payment-failed'
 import { sendBillingTrialEndingEmail } from '@/lib/billing/emails/billing-trial-ending'
 import { sendBillingDisputeAdminEmail } from '@/lib/billing/emails/billing-dispute-admin'
-import { createPortalSession } from '@/lib/stripe'
+import { createPortalSession } from '@/lib/infra/stripe'
+import type { EmailSendResult } from '@/lib/infra/resend'
 import { resolveAppUserIdForSubscription } from '@/lib/billing/subscription/subscription-state'
 import {
   isSubscriptionUpsertEvent,
@@ -549,7 +550,7 @@ export interface BillingPortalRecoveryEmailParams {
   customerId: string | null
   email: string | null
   contextId: string
-  sendEmail: (args: BillingRecoveryEmailSendArgs) => Promise<boolean>
+  sendEmail: (args: BillingRecoveryEmailSendArgs) => Promise<EmailSendResult>
   missingFieldsMessage?: string
   missingPortalUrlMessage?: string
   successMessage?: string
@@ -598,11 +599,14 @@ export async function sendBillingPortalRecoveryEmail(
     return { emailSent: false }
   }
 
-  const emailSent = await sendEmail({ portalUrl: portalSession.url, to: email })
-  const logContext = { contextId, customerId, email, emailSent }
+  const result = await sendEmail({ portalUrl: portalSession.url, to: email })
+  const emailSent = result === 'sent'
+  const logContext = { contextId, customerId, email, emailResult: result }
 
-  if (emailSent) {
+  if (result === 'sent') {
     logRecovery.info(logContext, `${sourceEvent} — ${successMessage}`)
+  } else if (result === 'skipped') {
+    logRecovery.info(logContext, `${sourceEvent} — billing recovery email skipped (outbound email disabled)`)
   } else {
     logRecovery.warn(logContext, `${sourceEvent} — ${failureMessage}`)
   }

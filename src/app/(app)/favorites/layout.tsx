@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Star } from 'lucide-react'
-import { getCurrentUserId } from '@/lib/session'
+import { requireUserId } from '@/lib/session'
 import { getItemStats } from '@/lib/db/items'
 import { getCollectionStats } from '@/lib/db/collections'
 import { FavoritesTabNav } from '@/components/favorites/favorites-tab-nav'
@@ -11,10 +11,10 @@ interface FavoritesLayoutProps {
 }
 
 export default async function FavoritesLayout({ children }: FavoritesLayoutProps) {
-  const userId = await getCurrentUserId()
+  const userId = await requireUserId()
   const [itemStats, collectionStats] = await Promise.all([
-    userId ? getItemStats(userId) : Promise.resolve({ totalItems: 0, favoriteItems: 0 }),
-    userId ? getCollectionStats(userId) : Promise.resolve({ totalCollections: 0, favoriteCollections: 0 }),
+    getItemStats(userId),
+    getCollectionStats(userId),
   ])
   const total = itemStats.favoriteItems + collectionStats.favoriteCollections
 

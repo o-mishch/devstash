@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { Suspense, type CSSProperties } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight, Folder } from 'lucide-react'
@@ -9,6 +9,7 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { itemCountLabel } from '@/lib/utils/format'
 import { CollectionHeaderActions } from '@/components/collections/collection-header-actions'
 import { CollectionItemsGrid } from '@/components/collections/collection-items-grid'
+import { ItemsTypeSkeleton } from '@/components/shared/skeletons'
 
 interface CollectionPageProps {
   params: Promise<{ id: string }>
@@ -18,12 +19,11 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
   const { id } = await params
   const userId = await requireUserId()
 
-  const [collection, firstPage] = await Promise.all([
-    getCollectionById(userId, id),
-    getItemsByCollectionPage(userId, id),
-  ])
+  const collection = await getCollectionById(userId, id)
 
   if (!collection) notFound()
+
+  const mainTypeName = collection.types[0]?.name || 'mixed'
 
   return (
     <div className="app-page gap-6 p-6">
@@ -64,7 +64,14 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
         </div>
       </div>
 
-      <CollectionItemsGrid collectionId={id} firstPage={firstPage} />
+      <Suspense fallback={<ItemsTypeSkeleton typeName={mainTypeName} />}>
+        <CollectionItemsFetcher collectionId={id} userId={userId} />
+      </Suspense>
     </div>
   )
+}
+
+async function CollectionItemsFetcher({ collectionId, userId }: { collectionId: string, userId: string }) {
+  const firstPage = await getItemsByCollectionPage(userId, collectionId)
+  return <CollectionItemsGrid collectionId={collectionId} firstPage={firstPage} />
 }

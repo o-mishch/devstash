@@ -1,24 +1,21 @@
-import { sendEmail } from '@/lib/infra/resend'
-import { getBaseUrl } from '@/lib/utils/url'
+import 'server-only'
+
 import { createPasswordResetToken } from '@/lib/auth/tokens'
-import { buildEmailTemplate } from './template-builder'
-import resetHtml from './password-reset.html'
-
-async function sendPasswordResetEmail(to: string, token: string): Promise<boolean> {
-  const resetUrl = `${getBaseUrl()}/reset-password?token=${token}`
-  const bodyHtml = resetHtml.replace('{{RESET_URL}}', resetUrl)
-  const html = buildEmailTemplate('Reset your DevStash password', bodyHtml)
-
-  return sendEmail({
-    to,
-    subject: 'Reset your DevStash password',
-    html,
-    idempotencyKey: `password-reset/${token}`,
-    operation: 'password-reset',
-  })
-}
+import { sendTokenLinkEmail } from './link-email'
 
 export async function sendPasswordResetRequest(email: string): Promise<boolean> {
   const token = await createPasswordResetToken(email)
-  return sendPasswordResetEmail(email, token)
+  return sendTokenLinkEmail({
+    to: email,
+    token,
+    path: 'reset-password',
+    subject: 'Reset your DevStash password',
+    heading: 'Reset your password',
+    intro:
+      'Click the button below to reset your DevStash password. This link expires in <strong>1 hour</strong>.',
+    cta: 'Reset password',
+    disclaimer: "If you didn't request a password reset, you can safely ignore this email.",
+    keyPrefix: 'password-reset',
+    operation: 'password-reset',
+  })
 }

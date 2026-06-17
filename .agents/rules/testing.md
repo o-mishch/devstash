@@ -13,7 +13,7 @@ description: Vitest testing conventions for DevStash — what to test, mocking p
 
 # Testing
 
-We use **Vitest** for unit tests. Tests target server actions and utilities only — no component tests.
+We use **Vitest** for unit tests. Tests target route handlers, server/lib services, and utilities — no component tests.
 
 - Test files: `src/**/*.test.ts` (no `.tsx`)
 - Run: `npm run test:run` (single run) or `npm test` (watch)
@@ -21,9 +21,10 @@ We use **Vitest** for unit tests. Tests target server actions and utilities only
 
 ## What to test
 
-- `src/lib/*.ts` — pure utility functions always get tests
-- `src/actions/*.ts` — test validation logic and return values; mock heavy dependencies (`prisma`, `next-auth`, `resend`, etc.) with `vi.mock()`
-- `src/lib/db/*.ts` — skip (DB query helpers; integration-test territory)
+- `src/lib/**/*.ts` — utilities and service logic (auth, billing, ai, etc.) get tests; mock heavy dependencies (`prisma`, `next-auth`, `resend`, `stripe`, etc.) with `vi.mock()`
+- `src/app/api/**/route.ts` — route handlers: assert auth (401), validation (422), rate-limit (429), Pro gating, status codes, and that services are called scoped to the session `userId`
+- `src/lib/db/*.ts` — test logic-bearing helpers (usage limits, ordering, page shaping) with mocked `prisma`; skip pure where-building / login-resolution / sync glue (e.g. `users.ts`) — that's integration territory
+- `src/actions/*.ts` — the remaining redirect-terminating auth actions: test validation logic and return values
 
 ## Mocking patterns
 

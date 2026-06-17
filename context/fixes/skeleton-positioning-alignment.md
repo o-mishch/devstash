@@ -157,3 +157,88 @@ Now both:
 ## Files Modified
 
 - `src/components/shared/skeletons.tsx` (CardGridSkeleton only)
+
+---
+
+## Round 2: Skeleton content lower within card + grid-level top offset (Jun 2026)
+
+### Problem
+
+After the Round 1 fix (explicit height containers, correct row gaps), skeletons were still visually lower than loaded cards in two independent ways:
+
+1. **Within-card vertical offset**: the skeleton content block appeared lower (closer to the bottom) inside each card, even though both skeleton and loaded card were the same fixed height.
+2. **Grid-level top offset**: the first row of skeleton cards appeared ~8–10 px lower on the page than the first row of loaded cards.
+
+### Root cause A — within-card: guessed bar heights ≠ real line-heights
+
+The old skeleton used bare `<Skeleton className="h-5 ...">` bars with hand-picked heights. These heights didn't account for:
+
+- Root-font scaling: desktop = 125% root (1 rem = 20 px), touch = 110% root (1 rem = 17.6 px). The same `h-*` utility produces different pixel heights at each scale.
+- `line-clamp-2` subtitle: two text lines at `text-xs` line-height (1 rem each) = 2 rem total. The old skeleton only had one subtitle-height bar, so the text column was shorter than the loaded card's text column.
+- `items-center` on `CardContent` centers the flex row (icon + text column) within the fixed card height. A shorter text column shifts the centering point down — making the content appear lower.
+
+**Fix: structural mirroring.** Each skeleton text row is now a wrapper `<div>` with the **same Tailwind classes** as the corresponding loaded card element (`font-medium` for title, `text-xs` for each subtitle/date row). An invisible `&nbsp;` forces the div to assume its natural CSS line-height, matching the loaded element exactly. The skeleton bar is `absolute` inside, so it doesn't affect the wrapper's height. Because container heights are structurally identical, `items-center` lands at the same pixel offset in both states.
+
+```tsx
+// Before — guessed heights
+<Skeleton className="h-5 w-3/4 rounded-sm" />        // title
+<Skeleton className="h-3 mt-1 w-full rounded-sm" />   // subtitle
+
+// After — structural mirroring
+<div className="flex items-center gap-1.5">
+  <div className="relative min-w-0 flex-1 font-medium">          // same class as loaded <p>
+    <span className="invisible select-none">&nbsp;</span>         // holds natural line-height
+    <Skeleton className="absolute inset-y-[20%] left-0 w-3/4 rounded-sm" />
+  </div>
+</div>
+<div className="relative mt-0.5 text-xs">                        // mirrors subtitle line 1
+  <span className="invisible select-none">&nbsp;</span>
+  <Skeleton className="absolute inset-y-[15%] left-0 w-full rounded-sm" />
+</div>
+<div className="relative text-xs">                               // mirrors subtitle line 2
+  <span className="invisible select-none">&nbsp;</span>
+  <Skeleton className="absolute inset-y-[15%] left-0 w-2/3 rounded-sm" />
+</div>
+<div className="relative mt-1 text-xs">                          // mirrors date <p>
+  <span className="invisible select-none">&nbsp;</span>
+  <Skeleton className="absolute inset-y-[15%] left-0 w-1/3 rounded-sm" />
+</div>
+```
+
+Confirmed via Playwright DOM measurements: at both 110% and 125% root, skeleton and loaded card `iconTopRel` and `textColH` are pixel-identical.
+
+### Root cause B — grid level: `pt-2` / `paddingTop: 8px` on skeleton grids
+
+`CardGridSkeleton`, `ImageGridSkeleton`, and `FileListSkeleton` all had extra top padding (`pt-2` or `paddingTop: '8px'`) on their outer wrapper divs. The loaded state uses `TanStackVirtualGrid`, which positions each row with:
+
+```js
+transform: `translateY(${virtualRow.start - scrollMargin}px)`
+```
+
+For the first row, `virtualRow.start = scrollMargin`, so `translateY(0)` — the first card starts at y=0 of the container. No extra padding.
+
+The skeleton's `pt-2` (~8.8 px at 110% root, ~10 px at 125% root) pushed the entire first skeleton row down relative to where the first loaded row appears, creating the "skeleton lower on the page" effect.
+
+**Fix: remove all top padding from skeleton grid containers.**
+
+```tsx
+// Before
+<div className="grid ... gap-y-3.5 pt-2 ...">       // CardGridSkeleton
+<div className="grid ... gap-3 pt-2 ...">            // ImageGridSkeleton
+<div style={{ ..., paddingTop: '8px' }}>             // FileListSkeleton
+
+// After
+<div className="grid ... gap-y-3.5 ...">
+<div className="grid ... gap-3 ...">
+<div style={{ ... }}>                                // paddingTop removed
+```
+
+### Detection heuristic for future skeletons
+
+When building a skeleton for a component rendered inside `TanStackVirtualGrid`:
+
+1. **No extra `pt-*` / `paddingTop` on the outer skeleton wrapper.** The virtual grid's first row is at y=0; the skeleton must match.
+2. **Mirror every text element's CSS class exactly.** Use the same Tailwind utilities (`font-medium`, `text-xs`, `mt-0.5`, etc.) on wrapper divs. Put skeleton bars `absolute` inside so they don't affect the wrapper's layout height.
+3. **Use `invisible &nbsp;` (not `h-*` utilities) to hold line-height.** An explicit `h-*` can't track both root-font scales (110% and 125%) with a single value. The `&nbsp;` inherits the wrapper's natural line-height automatically.
+4. **Mirror multi-line text with multiple single-line wrappers.** `line-clamp-2` renders 2 × (line-height) px. Replicate this with two consecutive `text-xs` wrapper divs (no margin between them).
+5. **Verify with Playwright.** After writing the skeleton, inject it into the page alongside a real card clone and measure `iconTopRel` for both — they must match.

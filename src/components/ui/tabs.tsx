@@ -1,6 +1,6 @@
 "use client"
 
-import * as React from "react"
+import { useState } from "react"
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -14,7 +14,7 @@ function Tabs({
   onValueChange,
   ...props
 }: TabsPrimitive.Root.Props) {
-  const [tabValue, setTabValue] = React.useState(defaultValue || value)
+  const [tabValue, setTabValue] = useState(defaultValue || value)
 
   return (
     <TabsPrimitive.Root
