@@ -101,6 +101,17 @@ export async function consumePendingUpload(fileKey: string, userId: string): Pro
   }
 }
 
+/** Removes the pending upload token for a file key — best-effort cleanup on the cancel/delete path. */
+export async function deletePendingUpload(fileKey: string): Promise<void> {
+  try {
+    const redis = getRedis()
+    if (!redis) return
+    await redis.del(tokenKey(fileKey))
+  } catch (err) {
+    log.warn({ fileKey, err }, 'failed to delete pending upload')
+  }
+}
+
 /** Scans for expired pending upload entries and deletes their S3 objects + Redis keys. */
 export async function sweepExpiredUploads(): Promise<void> {
   try {

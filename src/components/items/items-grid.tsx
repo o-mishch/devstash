@@ -1,7 +1,7 @@
 'use client'
 
 import { useInfiniteItems } from '@/hooks/use-infinite-items'
-import { TanStackVirtualGrid } from '@/components/items/tanstack-virtual-grid'
+import { TanStackVirtualGrid, singleColumn } from '@/components/items/tanstack-virtual-grid'
 import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'
 import { FileRow } from '@/components/items/file-row'
@@ -17,9 +17,6 @@ interface ItemsGridProps {
   typeName: string
   typeLabel: string
 }
-
-// Stable reference so the grid's ResizeObserver effect doesn't re-subscribe each render.
-const singleColumn = () => 1
 
 export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
   const { items, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteItems({ type: 'type', typeName })
@@ -87,7 +84,7 @@ export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
           isLoading={isFetchingNextPage}
           onLoadMore={onLoadMore}
           getColumns={singleColumn}
-          itemHeight={40}
+          itemHeight={48}
           touchItemHeight={64}
           columnGap={0}
           rowGap={10}
@@ -105,7 +102,7 @@ export function ItemsGrid({ typeName, typeLabel }: ItemsGridProps) {
         isLoading={isFetchingNextPage}
         onLoadMore={onLoadMore}
         getColumns={getListGridColumns}
-        itemHeight={80}
+        itemHeight={100}
         touchItemHeight={96}
         columnGap={16}
         rowGap={14}

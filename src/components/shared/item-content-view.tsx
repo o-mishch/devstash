@@ -11,12 +11,13 @@ import { CodeEditor, MarkdownViewer } from './dynamic-editors'
 interface EditorChromeContainerProps {
   minHeight?: string
   headerRight: ReactNode
+  fullscreenLabel?: string
   children: ReactNode
 }
 
-function EditorChromeContainer({ minHeight = 'min-h-[120px]', headerRight, children }: EditorChromeContainerProps) {
+function EditorChromeContainer({ minHeight = 'min-h-[120px]', headerRight, fullscreenLabel, children }: EditorChromeContainerProps) {
   return (
-    <EditorChromeShell className={`bg-[#1E1E1E] ${minHeight}`} header={headerRight}>
+    <EditorChromeShell className={`bg-[#1E1E1E] ${minHeight}`} header={headerRight} fullscreenLabel={fullscreenLabel}>
       {children}
     </EditorChromeShell>
   )
@@ -29,6 +30,7 @@ interface PlainTextViewProps {
 function PlainTextView({ content }: PlainTextViewProps) {
   return (
     <EditorChromeContainer
+      fullscreenLabel="content"
       headerRight={
         <CopyButton
           value={content}
@@ -56,6 +58,7 @@ function MarkdownContentView({ content }: MarkdownContentViewProps) {
   return (
     <EditorChromeContainer
       minHeight="min-h-[120px]"
+      fullscreenLabel="markdown"
       headerRight={
         <div className="flex items-center gap-1">
           <span className="text-xs text-white/50 px-2 py-0 rounded bg-black/20 uppercase font-mono">
@@ -102,6 +105,7 @@ function CodeEditorView({ content, language }: CodeEditorViewProps) {
           language={resolvedLang}
           readOnly
           className="flex-1 min-h-0"
+          fullscreenLabel="code"
         />
       </Suspense>
     )

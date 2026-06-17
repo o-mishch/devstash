@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
+import { ImageLightbox } from '@/components/shared/image-lightbox'
 import { ItemTags } from '@/components/shared/item-tags'
 import { DrawerLayout, DrawerSection, DrawerCollectionsSection, DrawerDetailsSection, DrawerCollectionsSkeleton, DrawerDetailsSkeleton } from './drawer-shared'
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
@@ -29,9 +30,12 @@ function FileSectionContent({ item }: FileSectionProps) {
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const [imageError, setImageError] = useState(false)
   const [isImageReloading, setIsImageReloading] = useState(false)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
   const [freshImageSrc, setFreshImageSrc] = useState<string | null>(null)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
   const cachedImagePreviewSrc = useProDownloadSrc(item.id, true)
   const previewSrc = freshImageSrc || cachedImagePreviewSrc
+  const isImageLoaded = previewSrc !== null && loadedSrc === previewSrc
   const previewKnownFailed = !previewSrc && isPreviewFailed(item.id)
   const { handleDownload, showError } = useRestrictedDownload(
     item.id,
@@ -52,34 +56,55 @@ function FileSectionContent({ item }: FileSectionProps) {
     setFreshImageSrc(null)
     setIsImageReloading(true)
     setImageError(false)
+    setLoadedSrc(null)
 
     clearSignedDownloadUrlCache(item.id)
 
     const freshImageUrl = await fetchSignedDownloadUrl(item.id, true)
     if (freshImageUrl) {
+      // Keep isImageReloading true — the skeleton + spinning icon stay over the unchanged box until
+      // the <img> actually finishes downloading (onLoad clears it), so the placeholder never resizes
+      // or swaps to a different element mid-reload.
       setFreshImageSrc(freshImageUrl)
     } else {
       setImageError(true)
+      setIsImageReloading(false)
       showFileNotFoundToast()
     }
-    setIsImageReloading(false)
   }
 
   if (item.itemType.name === 'image') {
     return (
       <div className="flex justify-center">
         <div className="group relative w-full min-h-[160px] overflow-hidden rounded-md border border-border bg-muted/30">
-          {!previewSrc && !previewKnownFailed && !imageError && (
+          {/* Consistent placeholder: the skeleton (and the reload icon overlaid on it) keep the same
+              box height whether idle-loading, failed, or reloading — only the icon's spin changes. The
+              <img> stays absolute + invisible until it actually loads, so it never resizes the box
+              mid-download. */}
+          {(!isImageLoaded || imageError) && (
             <Skeleton className="h-64 w-full rounded-none" />
           )}
-          {previewSrc && !imageError && !isImageReloading && (
+          {previewSrc && !imageError && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={previewSrc}
               alt={item.fileName ?? item.title}
               crossOrigin="anonymous"
+              onLoad={() => {
+                setLoadedSrc(previewSrc)
+                setIsImageReloading(false)
+              }}
               onError={handleImageError}
-              className="w-full max-h-[50vh] object-contain"
+              onClick={() => isImageLoaded && setLightboxOpen(true)}
+              className={`w-full max-h-[50vh] object-contain ${isImageLoaded ? 'cursor-zoom-in' : 'absolute inset-0 opacity-0 pointer-events-none'}`}
+            />
+          )}
+          {previewSrc && !imageError && (
+            <ImageLightbox
+              open={lightboxOpen}
+              onOpenChange={setLightboxOpen}
+              src={previewSrc}
+              alt={item.fileName ?? item.title}
             />
           )}
           {(imageError || previewKnownFailed || isImageReloading) && (
@@ -87,7 +112,7 @@ function FileSectionContent({ item }: FileSectionProps) {
               <button
                 onClick={handleImageReload}
                 disabled={isImageReloading}
-                className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-50"
+                className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed"
                 title="Reload image"
               >
                 <RotateCcw className={`h-5 w-5 ${isImageReloading ? 'animate-spin-left' : ''}`} />
@@ -160,7 +185,9 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
       }
     >
       {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
-        <DrawerSection label="Content" labelClassName="max-sm:hidden" className="flex flex-col">
+        // No "Content" section label: the editor's own chrome header already identifies the block,
+        // so the redundant title is dropped to give the content more room.
+        <section className="flex shrink-0 flex-col">
           {isLight || contentLoading ? (
             <Skeleton className="w-full rounded-md h-[70vh] min-h-[120px]" />
           ) : (
@@ -176,7 +203,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
               />
             </div>
           )}
-        </DrawerSection>
+        </section>
       )}
 
       {ITEM_TYPES_WITH_FILE.has(itemType.name) && (

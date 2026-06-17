@@ -1,5 +1,7 @@
-import { Package, FolderOpen, Star, BookMarked } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import Link from 'next/link'
+import { FolderOpen, Star, BookMarked } from 'lucide-react'
+import { StatChipBody, STAT_CHIP_CLASS, STAT_COLORS } from './stat-chip'
+import { TotalItemsFanout } from './total-items-fanout'
 
 interface StatsCardsProps {
   totalItems: number
@@ -14,28 +16,18 @@ export function StatsCards({
   favoriteItems,
   favoriteCollections,
 }: StatsCardsProps) {
-  const stats = [
-    { label: 'Total Items', value: totalItems, icon: Package, color: '#3b82f6' },
-    { label: 'Collections', value: totalCollections, icon: FolderOpen, color: '#6366f1' },
-    { label: 'Favorite Items', value: favoriteItems, icon: Star, color: '#f97316' },
-    { label: 'Favorite Collections', value: favoriteCollections, icon: BookMarked, color: '#10b981' },
-  ]
-
   return (
-    <div className="app-grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-      {stats.map(({ label, value, icon: Icon, color }) => (
-        <Card key={label} className="min-w-0">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-              <Icon className="size-5 shrink-0 sm:size-7" style={{ color }} aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="text-lg font-semibold tabular-nums leading-none sm:text-2xl">{value}</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">{label}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+    <div className="grid grid-cols-2 items-stretch gap-2 sm:grid-cols-4 sm:gap-3">
+      <TotalItemsFanout totalItems={totalItems} />
+      <Link href="/collections" prefetch={false} className={STAT_CHIP_CLASS}>
+        <StatChipBody icon={FolderOpen} value={totalCollections} label="Collections" color={STAT_COLORS.collections} />
+      </Link>
+      <Link href="/favorites/items" prefetch={false} className={STAT_CHIP_CLASS}>
+        <StatChipBody icon={Star} value={favoriteItems} label="Favorite Items" color={STAT_COLORS.favoriteItems} />
+      </Link>
+      <Link href="/favorites/collections" prefetch={false} className={STAT_CHIP_CLASS}>
+        <StatChipBody icon={BookMarked} value={favoriteCollections} label="Favorite Collections" color={STAT_COLORS.favoriteCollections} />
+      </Link>
     </div>
   )
 }

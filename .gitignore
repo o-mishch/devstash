@@ -66,3 +66,4 @@ tmp
 .env
 .env.*
 !.env.example
+*.mov

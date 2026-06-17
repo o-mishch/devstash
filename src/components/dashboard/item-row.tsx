@@ -21,7 +21,7 @@ export function ItemRow({ item }: ItemRowProps) {
   return (
     <button
       type="button"
-      className="card-interactive app-row h-14 text-left gap-3 rounded-xl border-l-2 border-l-[var(--item-color)] px-2 ring-1 ring-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="card-interactive app-row h-14 text-left gap-3 rounded-xl border-l-2 border-l-[var(--item-color)] px-2 ring-1 ring-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
       onClick={() => openDrawer(item)}
     >
@@ -29,7 +29,7 @@ export function ItemRow({ item }: ItemRowProps) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <p className="truncate text-sm font-medium">{item.title}</p>
+          <p className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</p>
           <ItemStatusIcons isPinned={item.isPinned} isFavorite={item.isFavorite} className="size-3" />
         </div>
         {subtitle ? (

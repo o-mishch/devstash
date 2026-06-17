@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
-import { Archive, Home, Star, Zap } from 'lucide-react'
+import { Archive, Home, Search, Star, Zap } from 'lucide-react'
 import type { WithChildren } from '@/types/common'
 
 import { getCachedSession } from '@/lib/session'
@@ -51,9 +51,10 @@ function DashboardLayoutSkeleton({ children }: WithChildren) {
           <span className="text-base font-semibold tracking-tight text-muted-foreground/50">DevStash</span>
         </div>
 
-        {/* Search bar skeleton */}
+        {/* Search bar skeleton — mirrors GlobalSearch: leading Search icon + single-line placeholder */}
         <div className="relative mx-auto min-w-0 flex-1 max-w-sm opacity-50">
-          <div className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm items-center text-muted-foreground pl-8 select-none">
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex h-9 w-full select-none items-center overflow-hidden whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-1 pl-8 text-sm text-muted-foreground shadow-sm touch:h-11">
             Search items...
           </div>
         </div>
@@ -73,7 +74,7 @@ function DashboardLayoutSkeleton({ children }: WithChildren) {
 
       <div className="flex flex-1 overflow-hidden">
         <SidebarSkeleton collapsible />
-        <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
           {children}
         </main>
       </div>
@@ -173,7 +174,7 @@ async function DashboardLayoutInner({ children }: WithChildren) {
             <div className="flex flex-1 overflow-hidden">
               <SidebarContent sidebarData={sidebarData} collapsible />
 
-              <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+              <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
                 {children}
               </main>
             </div>

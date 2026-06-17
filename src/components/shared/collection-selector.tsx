@@ -44,13 +44,17 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
             nativeButton={false}
             variant="outline"
             role="combobox"
-            className="w-full min-h-9 h-auto justify-between font-normal hover:bg-transparent"
+            // touch:h-auto + touch:min-h-11 override the Button's default `touch:h-11` (a fixed
+            // 44px tap height): on mobile that fixed height clipped this multiselect so several
+            // wrapped collection badges overflowed the box and spilled over the label above. We
+            // keep the 44px floor as a min-height so an empty trigger stays an easy tap target.
+            className="w-full min-h-9 h-auto touch:h-auto touch:min-h-11 justify-between font-normal hover:bg-transparent"
           />
         }
       >
         <span className="flex flex-wrap gap-1.5 flex-1 min-w-0">
           {selectedCollections.length === 0 ? (
-            <span className="text-muted-foreground">Search and select collections...</span>
+            <span className="min-w-0 flex-1 truncate text-left text-muted-foreground">Search and select collections...</span>
           ) : (
             selectedCollections.map((col) => (
               <Badge
@@ -79,7 +83,17 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
         </span>
         <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
+      {/* Match the trigger width (Base UI's --anchor-width) so the dropdown lines up under the
+          field and never spills past the dialog's right edge when the field is in a right column.
+          On a mobile bottom sheet this field sits near the bottom, so the popup flips upward over
+          the form: bound it to Base UI's --available-height (the list scrolls within) and give it a
+          strong shadow + solid border so it reads as a distinct floating menu over the dark sheet
+          instead of a murky overlap. */}
+      <PopoverContent
+        className="w-(--anchor-width) min-w-48 max-h-(--available-height) overflow-hidden border border-border p-0 shadow-xl"
+        align="start"
+        sideOffset={6}
+      >
         <Command>
           <CommandInput placeholder="Search collections..." />
           <CommandList>

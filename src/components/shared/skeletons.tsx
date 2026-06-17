@@ -25,11 +25,13 @@ interface CardGridSkeletonProps {
 export function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
   return (
     // Columns mirror the loaded list grid (getListGridColumns): 1/2/3 at <640/<1024/>=1024px.
-    // Cell height matches TanStackVirtualGrid: 80px (h-20), 96px (h-24) on touch/narrow.
+    // Cell height uses the grid's ABSOLUTE px (itemHeight=100, touchItemHeight=96) — not
+    // rem utilities like h-20/h-24, which scale with the 125%/110% root font and would
+    // diverge from the loaded cards at one breakpoint.
     <div className="grid w-full min-w-0 grid-cols-1 gap-x-4 gap-y-3.5 pt-2 sm:grid-cols-2 lg:grid-cols-3">
       {[...Array(count)].map((_, i) => (
-        <div key={i} className="h-20 w-full touch:h-24">
-          <Card className="relative h-full min-h-20 w-full min-w-0 gap-0 overflow-visible py-0 border-l-2 border-l-border">
+        <div key={i} className="h-[100px] w-full touch:h-[96px]">
+          <Card className="relative h-full min-h-[96px] w-full min-w-0 gap-0 overflow-visible py-0 border-l-2 border-l-border">
             <CardContent className="flex h-full items-center p-4 gap-3">
               <Skeleton className="size-8 shrink-0 rounded-md" />
               <div className="min-w-0 flex-1 space-y-2">
@@ -46,9 +48,11 @@ export function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
 
 export function CollectionCardSkeleton() {
   return (
-    <Card className="relative h-20 overflow-visible py-0 border-l-2 border-l-muted/20">
-      <CardContent className="flex h-full flex-col justify-center p-3 sm:p-4 pr-20">
-        <div className="min-w-0 w-full">
+    // Mirrors the loaded CollectionCard: size-10 icon tile + text column (name, description, meta row).
+    <Card className="relative h-20 gap-0 overflow-visible py-0 border-l-2 border-l-muted/20">
+      <CardContent className="flex h-full items-center gap-3 p-3 sm:p-4 pr-20">
+        <Skeleton className="size-10 shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1">
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="mt-1.5 h-3 w-full" />
           <div className="mt-1.5 flex items-center gap-3">
@@ -95,7 +99,8 @@ export function ImageGridSkeleton({ count = 6, itemHeight = 240 }: ImageGridSkel
 
 export function FileRowSkeleton() {
   return (
-    <div className="w-full flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 h-10 touch:h-16">
+    // Absolute px (grid itemHeight=48, touchItemHeight=64) — not rem h-10/h-16 which font-scale.
+    <div className="w-full flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 h-[48px] touch:h-[64px]">
       <Skeleton className="size-5 shrink-0 rounded" />
       <div className="min-w-0 flex-1">
         <Skeleton className="h-4 w-2/3" />
@@ -119,7 +124,7 @@ export function FileListSkeleton({ count = 6, rowGap = 10 }: FileListSkeletonPro
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: `${rowGap}px`, width: '100%', minWidth: 0, paddingTop: '8px' }}>
       {[...Array(count)].map((_, i) => (
-        <div key={i} className="h-10 w-full touch:h-16">
+        <div key={i} className="h-[48px] w-full touch:h-[64px]">
           <FileRowSkeleton />
         </div>
       ))}

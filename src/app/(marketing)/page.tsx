@@ -2,11 +2,11 @@ import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { auth } from '@/auth';
-import { ChaosCanvas } from '@/components/marketing/ChaosCanvas';
-import { PricingSectionInteractive } from '@/components/marketing/PricingSectionInteractive';
+import { ChaosCanvas } from '@/components/marketing/chaos-canvas';
+import { PricingSectionInteractive } from '@/components/marketing/pricing-section-interactive';
 import { FreePricingFeatures, ProPricingFeatures } from '@/components/billing/pricing-feature-lists';
-import { FadeIn } from '@/components/marketing/FadeIn';
-import { GradientCta } from '@/components/marketing/GradientCta';
+import { FadeIn } from '@/components/marketing/fade-in';
+import { GradientCta } from '@/components/marketing/gradient-cta';
 import { SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants';
 import { ItemTypeIcon } from '@/components/shared/item-type-icon';
 

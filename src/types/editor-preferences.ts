@@ -16,7 +16,9 @@ export interface EditorPreferences {
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   fontSize: 14,
   tabSize: 2,
-  wordWrap: 'on',
+  // Code shouldn't wrap by default — long lines scroll horizontally instead. Users can
+  // re-enable wrap in Settings → Editor (the toggle still works).
+  wordWrap: 'off',
   minimap: false,
   theme: 'vs-dark',
   appTheme: 'vscode',

@@ -9,8 +9,8 @@ import { BillingToggle } from '@/components/billing/billing-toggle'
 import { PricingCardsDisplay, PricingProPrice } from '@/components/billing/pricing-cards-display'
 import { CURRENT_PLAN_CTA_CLASSNAME, CURRENT_PLAN_LABEL } from '@/lib/billing/messages/billing-messages.client'
 import type { BillingPeriod } from '@/lib/billing/config/billing-pricing.client'
-import { FadeIn } from './FadeIn'
-import { GradientCta } from './GradientCta'
+import { FadeIn } from './fade-in'
+import { GradientCta } from './gradient-cta'
 
 interface PricingSectionInteractiveProps {
   freeFeatures: ReactNode

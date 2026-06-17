@@ -12,6 +12,14 @@ export function formatDate(date: Date | string, includeYear = false): string {
   })
 }
 
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return count === 1 ? singular : plural
+}
+
+export function itemCountLabel(count: number): string {
+  return `${count} ${pluralize(count, 'item')}`
+}
+
 export function parseTagString(raw: string | undefined): string[] {
   return (raw || '')
     .split(',')

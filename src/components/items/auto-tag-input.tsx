@@ -85,7 +85,7 @@ export function AutoTagInput({
   }
 
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 gap-2">
       <label htmlFor="tags" className="flex items-center gap-2 text-sm font-medium leading-none">
         Tags
         <AiFieldBadgeIfPro />

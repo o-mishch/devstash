@@ -26,7 +26,14 @@ export function UserDropdownMenuContent({
   const { setTheme } = useTheme()
 
   return (
-    <DropdownMenuContent side={side} align={align} className="w-52">
+    <DropdownMenuContent
+      side={side}
+      align={align}
+      // Pronounced, mirrored vertical slide: opening from the bottom-left sidebar (side=top) glides
+      // up from below; closing glides back down. The -3 distance overrides the base's subtle -2, and
+      // the data-closed slide-out (missing from the base) makes the close mirror the open.
+      className="w-52 data-[side=top]:slide-in-from-bottom-3 data-[side=top]:data-closed:slide-out-to-bottom-3 data-[side=bottom]:slide-in-from-top-3 data-[side=bottom]:data-closed:slide-out-to-top-3"
+    >
       <DropdownMenuItem render={
         <Link href="/profile" onClick={() => onClose?.()} prefetch={false}>
           <User className="size-4" />

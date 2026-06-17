@@ -2,13 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
 import { Edit2, Trash2, Star } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { CollectionEditDialog } from '@/components/dashboard/collection-edit-dialog'
 import { CollectionDeleteDialog } from '@/components/dashboard/collection-delete-dialog'
 import { api } from '@/lib/api/client'
+import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionHeaderActionsProps {
@@ -19,29 +19,34 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-
-  async function handleFavoriteToggle() {
-    const { error } = await api.PATCH('/collections/{id}', {
-      params: { path: { id: collection.id } },
-      body: { isFavorite: !collection.isFavorite },
-    })
-    if (!error) {
-      router.refresh()
-    } else {
-      toast.error('Failed to toggle favorite')
-    }
-  }
+  // Optimistic so the star flips instantly and survives the refresh: the PATCH route invalidates via
+  // revalidateTag (stale-while-revalidate), so the immediate router.refresh() would otherwise re-read
+  // the still-stale getCollectionById cache and revert the icon.
+  const { value: isFavorite, toggle: toggleFavorite } = useOptimisticToggle(
+    collection.isFavorite,
+    async (next) => {
+      const { error } = await api.PATCH('/collections/{id}', {
+        params: { path: { id: collection.id } },
+        body: { isFavorite: next },
+      })
+      if (error) throw new Error(error.message)
+    },
+    {
+      onSuccess: () => router.refresh(),
+      errorLabel: 'Failed to toggle favorite',
+    },
+  )
 
   return (
     <div className="flex items-center gap-2">
       <Button
         variant="ghost"
         size="icon"
-        className="size-8 text-muted-foreground hover:text-foreground"
-        onClick={handleFavoriteToggle}
-        title={collection.isFavorite ? 'Remove favorite' : 'Add to favorites'}
+        className={`size-8 ${isFavorite ? 'text-yellow-500 hover:text-yellow-500' : 'text-muted-foreground hover:text-foreground'}`}
+        onClick={() => toggleFavorite()}
+        title={isFavorite ? 'Remove favorite' : 'Add to favorites'}
       >
-        <Star className={`size-4 ${collection.isFavorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+        <Star className={`size-4 ${isFavorite ? 'fill-yellow-500 text-yellow-500' : ''}`} />
       </Button>
 
       <CollectionEditDialog

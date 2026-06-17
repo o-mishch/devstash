@@ -43,7 +43,7 @@ export function CollectionCardActions({ collection }: CollectionCardActionsProps
       <Button
         variant="ghost"
         size="icon"
-        className={`size-8 rounded-full transition-all bg-background/50 backdrop-blur-sm hover:bg-background/80 ${isFavorite ? 'opacity-100 text-yellow-500 hover:text-yellow-500' : 'opacity-0 group-hover/card:opacity-100 touch:opacity-100 text-muted-foreground hover:text-foreground'}`}
+        className={`size-8 rounded-full transition-all ${isFavorite ? 'opacity-100 text-yellow-500 hover:text-yellow-500' : 'bg-background/50 backdrop-blur-sm hover:bg-background/80 opacity-0 group-hover/card:opacity-100 touch:opacity-100 text-muted-foreground hover:text-foreground'}`}
         onClick={handleFavoriteToggle}
         title={isFavorite ? 'Remove favorite' : 'Add to favorites'}
       >

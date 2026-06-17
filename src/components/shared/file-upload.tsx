@@ -151,8 +151,8 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
   }
 
   if (value) {
-    return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
+    const fileMeta = (
+      <>
         <FileIcon className="size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{value.fileName}</p>
@@ -169,6 +169,31 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
             <X className="size-3.5" />
           </Button>
         )}
+      </>
+    )
+
+    // Images get a real preview (the locally-generated WebP thumb / SVG blob) above the
+    // file meta so the upload is immediately recognizable; other file types keep the chip.
+    if (itemType === 'image' && value.localPreviewUrl) {
+      return (
+        <div className="overflow-hidden rounded-lg border border-border bg-muted/30">
+          {/* Local blob/object URL — next/image can't optimize it, so a plain <img> is correct here. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={value.localPreviewUrl}
+            alt={value.fileName}
+            className="max-h-[320px] w-full bg-[repeating-conic-gradient(#0000000d_0%_25%,transparent_0%_50%)] bg-[length:20px_20px] object-contain"
+          />
+          <div className="flex items-center gap-3 border-t border-border bg-muted/50 px-3 py-2.5">
+            {fileMeta}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
+        {fileMeta}
       </div>
     )
   }

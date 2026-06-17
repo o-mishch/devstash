@@ -56,12 +56,15 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
 
     const freshUrl = await fetchSignedDownloadUrl(item.id, true)
     if (freshUrl) {
+      // Keep isReloading true — the icon keeps spinning over the unchanged skeleton until the
+      // <Image> actually finishes downloading (onLoad clears it). Don't stop here, or the UI would
+      // flip to its loaded/idle state before the image is really ready.
       setFreshSrc(freshUrl)
     } else {
       setError(true)
+      setIsReloading(false)
       showFileNotFoundToast()
     }
-    setIsReloading(false)
   }
 
   return (
@@ -86,26 +89,25 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
             loading={priority ? 'eager' : 'lazy'}
             onLoad={() => {
               setLoadedSrc(previewSrc)
+              setIsReloading(false)
             }}
             onError={handleImageError}
             className={`object-cover transition-all duration-300 group-hover/card:scale-105 z-10 ${isLoaded && !error ? 'opacity-100' : 'opacity-0'}`}
           />
         ) : null}
-        {error && (
+        {/* One reload affordance for both the failed and the retrying states: the same button stays
+            in place over the skeleton and its icon just spins while reloading — it never disappears
+            or swaps to a different element until the image has actually downloaded. */}
+        {(error || isReloading) && (
           <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
             <button
               onClick={handleReload}
               disabled={isReloading}
-              className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-50"
+              className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed"
               title="Reload image"
             >
               <RotateCcw className={`h-5 w-5 ${isReloading ? 'animate-spin-left' : ''}`} />
             </button>
-          </div>
-        )}
-        {isReloading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-            <RotateCcw className="h-6 w-6 text-white animate-spin-left" />
           </div>
         )}
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-12 z-20">

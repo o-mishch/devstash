@@ -7,16 +7,9 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
-import { Button, SubmitButton } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { ResponsiveFormDialog } from '@/components/ui/responsive-form-dialog'
 import { CollectionFormFields } from '@/components/shared/collection-form-fields'
+import { FormDialogFooter } from '@/components/shared/form-dialog-footer'
 import { collectionFormSchema } from '@/lib/utils/validators'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
@@ -123,33 +116,47 @@ export function CollectionFormDialog({
     </span>
   ) : null
 
+  const fields = <CollectionFormFields form={form} idPrefix={idPrefix} />
+  // Mobile reuses the same fields but lets the Description grow to fill the (resizable) sheet.
+  const mobileFields = <CollectionFormFields form={form} idPrefix={idPrefix} growDescription />
+
   return (
     <>
       {triggerEl}
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-[440px]">
-          <form onSubmit={form.handleSubmit(onSubmit)}>
-            <DialogHeader>
-              <DialogTitle>{title}</DialogTitle>
-              <DialogDescription>{description}</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <CollectionFormFields
-                form={form}
-                idPrefix={idPrefix}
+      <ResponsiveFormDialog
+        open={open}
+        onOpenChange={handleOpenChange}
+        title={title}
+        description={description}
+        desktopClassName="sm:max-w-[440px]"
+        mobileResizable
+      >
+        {(isDesktop) =>
+          isDesktop ? (
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              <div className="grid gap-4 py-4">{fields}</div>
+              <FormDialogFooter
+                submitText={submitText}
+                onCancel={() => handleOpenChange(false)}
+                isPending={form.formState.isSubmitting}
               />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-                Cancel
-              </Button>
-              <SubmitButton isPending={form.formState.isSubmitting}>
-                {submitText}
-              </SubmitButton>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            </form>
+          ) : (
+            // flex-1 so the form fills the resizable sheet; the Description field inside flex-grows,
+            // so dragging the handle up enlarges it. Name + footer stay fixed (shrink-0).
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col gap-4 pt-4">
+              {mobileFields}
+              <FormDialogFooter
+                mobile
+                submitText={submitText}
+                onCancel={() => handleOpenChange(false)}
+                isPending={form.formState.isSubmitting}
+                className="shrink-0 pt-2"
+              />
+            </form>
+          )
+        }
+      </ResponsiveFormDialog>
     </>
   )
 }

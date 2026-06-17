@@ -17,9 +17,10 @@ interface MarkdownEditorProps {
   onChange?: (value: string) => void
   readOnly?: boolean
   className?: string
+  fullscreenLabel?: string
 }
 
-export function MarkdownEditor({ value, onChange, readOnly = false, className }: MarkdownEditorProps) {
+export function MarkdownEditor({ value, onChange, readOnly = false, className, fullscreenLabel }: MarkdownEditorProps) {
   const [activeTabState, setActiveTab] = useState<'write' | 'preview'>('write')
   const activeTab = readOnly ? 'preview' : activeTabState
   const { theme, fontSize, tabSize, wordWrap } = useEditorPreferencesStore()
@@ -31,6 +32,7 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className }:
     <EditorChromeShell
       className={className}
       style={bgStyle}
+      fullscreenLabel={fullscreenLabel}
       header={
         <div className="flex items-center gap-1">
           {!readOnly && (

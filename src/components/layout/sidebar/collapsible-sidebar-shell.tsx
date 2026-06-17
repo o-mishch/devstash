@@ -14,7 +14,7 @@ export function CollapsibleSidebarShell({ sidebarData }: CollapsibleSidebarShell
 
   return (
     <aside
-      className={`hidden flex-col border-r border-border bg-muted/30 transition-all duration-200 lg:flex ${collapsed ? 'w-14' : 'w-56'} overflow-hidden`}
+      className={`hidden flex-col border-r border-border bg-muted/30 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] lg:flex ${collapsed ? 'w-14' : 'w-56'} overflow-hidden`}
     >
       {collapsed ? (
         <CollapsedSidebar sidebarData={sidebarData} onToggle={() => setCollapsed(false)} />

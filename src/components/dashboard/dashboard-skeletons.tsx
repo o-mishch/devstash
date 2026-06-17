@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Pin } from 'lucide-react'
 import { CollectionCardSkeleton } from '@/components/shared/skeletons'
+import { STAT_CHIP_BASE } from './stat-chip'
 
 export function CollectionsGridSkeleton() {
   return (
@@ -11,7 +12,7 @@ export function CollectionsGridSkeleton() {
         <Skeleton className="h-4 w-12" />
       </CardHeader>
       <CardContent className="overflow-visible pt-0">
-        <div className="app-grid card-grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="app-grid card-grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {[...Array(6)].map((_, i) => (
             <CollectionCardSkeleton key={i} />
           ))}
@@ -25,7 +26,7 @@ function DashboardListSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="flex flex-col gap-3">
       {[...Array(count)].map((_, i) => (
-        <div key={i} className="app-row h-14 gap-3 rounded-xl border-l-2 border-l-muted/20 px-2 ring-1 ring-foreground/10">
+        <div key={i} className="app-row h-14 gap-3 rounded-xl border-l-2 border-l-muted/20 px-2 ring-1 ring-border">
           <Skeleton className="size-7 shrink-0 rounded-md" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton className="h-4 w-40" />
@@ -72,19 +73,18 @@ export function RecentItemsSkeleton() {
 
 export function StatsCardsSkeleton() {
   return (
-    <div className="app-grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 items-stretch gap-2 sm:grid-cols-4 sm:gap-3">
       {[...Array(4)].map((_, i) => (
-        <Card key={i} className="min-w-0">
-          <CardContent className="p-3 sm:p-4">
-            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-              <div className="size-5 shrink-0 sm:size-7 rounded bg-foreground/5 animate-pulse" />
-              <div className="min-w-0">
-                <div className="h-5 w-12 bg-foreground/10 rounded animate-pulse sm:h-7" />
-                <div className="mt-0.5 h-3 w-16 bg-foreground/5 rounded animate-pulse sm:mt-1 sm:w-20" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div key={i} className={STAT_CHIP_BASE}>
+          <Skeleton className="size-9 shrink-0 rounded-lg" />
+          {/* Bars kept shorter than the size-9 icon (h-4 + mt-1 + h-3 = 40px < 45px) so the icon
+           * governs the chip height — exactly as the loaded StatChipBody does. flex-1 + max-w
+           * so the label never overflows the half-width chip on mobile. */}
+          <div className="min-w-0 flex-1">
+            <Skeleton className="h-4 w-10 rounded" />
+            <Skeleton className="mt-1 h-3 w-full max-w-24 rounded" />
+          </div>
+        </div>
       ))}
     </div>
   )
