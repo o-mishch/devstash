@@ -1,9 +1,13 @@
+'use client'
+
 import { Mail, Unlink } from 'lucide-react'
 import { ProviderIcon } from '@/components/shared/provider-icon'
 import { PROVIDER_LABELS, SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils'
+import { primaryEmailMovesWithCredential } from '@/lib/utils/auth'
 import { linkWithProviderAction } from '@/actions/auth/login'
+import { useProfileEmailsStore } from '@/stores/profile-emails'
 import type { OAuthProvider } from '@/lib/utils/constants'
-import type { LinkedAccount } from '@/lib/db/profile'
+import type { LinkedAccount } from '@/types/profile'
 import { ProfileActionDialog } from './profile-action-dialog'
 import { ChangeCredentialEmailDialog } from './change-credential-email-dialog'
 import { ChangePasswordForm } from './change-password-form'
@@ -12,18 +16,20 @@ import { AddProviderSubmitButton } from './add-provider-submit-button'
 import { RemovePasswordDialog } from './remove-password-dialog'
 
 interface ConnectedAccountsProps {
-  hasPassword: boolean
   accounts: LinkedAccount[]
-  currentEmail: string
-  availableEmails: string[]
+  verificationDisabled: boolean
 }
 
 interface EmailRowProps {
   email: string
+  alsoMovesPrimaryEmail: boolean
   canUnlink: boolean
+  verificationDisabled: boolean
+  onChanged: (email: string) => void
+  onRemoved: () => void
 }
 
-function EmailRow({ email, canUnlink }: EmailRowProps) {
+function EmailRow({ email, alsoMovesPrimaryEmail, canUnlink, verificationDisabled, onChanged, onRemoved }: EmailRowProps) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-2.5 text-sm min-w-0">
@@ -35,9 +41,14 @@ function EmailRow({ email, canUnlink }: EmailRowProps) {
       </div>
       {/* Mobile: full-width stacked buttons under a divider; desktop: compact row on the right. */}
       <div className="flex flex-col gap-1 border-t border-border/60 pt-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-1 sm:border-t-0 sm:pt-0 sm:shrink-0">
-        <ChangeCredentialEmailDialog currentEmail={email} />
+        <ChangeCredentialEmailDialog
+          currentEmail={email}
+          alsoMovesPrimaryEmail={alsoMovesPrimaryEmail}
+          verificationDisabled={verificationDisabled}
+          onCredentialChanged={onChanged}
+        />
         <ChangePasswordForm />
-        {canUnlink && <RemovePasswordDialog />}
+        {canUnlink && <RemovePasswordDialog onCredentialRemoved={onRemoved} />}
       </div>
     </div>
   )
@@ -103,20 +114,46 @@ function AddProviderRow({ provider }: AddProviderRowProps) {
   )
 }
 
-export function ConnectedAccounts({ hasPassword, accounts, currentEmail, availableEmails }: ConnectedAccountsProps) {
-  const totalMethods = (hasPassword ? 1 : 0) + accounts.length
+export function ConnectedAccounts({ accounts, verificationDisabled }: ConnectedAccountsProps) {
+  // Credential-login presence + emails come from the shared profile-emails store so adding/deleting a
+  // login reflects instantly here AND in the primary-email dropdown (a sibling in another card) — the
+  // server re-render lags behind the route handler's stale-while-revalidate cache invalidation. The
+  // displayed login email is the dedicated `credentialEmail` when set, else the primary `email`
+  // (legacy owned-email password).
+  const hasCredentialLogin = useProfileEmailsStore((state) => state.hasCredentialLogin)
+  const credentialEmail = useProfileEmailsStore((state) => state.credentialEmail)
+  const currentEmail = useProfileEmailsStore((state) => state.currentEmail)
+  const availableEmails = useProfileEmailsStore((state) => state.availableEmails)
+  const addCredentialLogin = useProfileEmailsStore((state) => state.addCredentialLogin)
+  const changeCredentialLogin = useProfileEmailsStore((state) => state.changeCredentialLogin)
+  const removeCredentialLogin = useProfileEmailsStore((state) => state.removeCredentialLogin)
+
+  const loginEmail = credentialEmail ?? currentEmail
+  const alsoMovesPrimaryEmail = primaryEmailMovesWithCredential({ email: currentEmail, credentialEmail })
+  const totalMethods = (hasCredentialLogin ? 1 : 0) + accounts.length
 
   return (
     <div className="space-y-2">
-      {hasPassword ? (
-        <EmailRow email={currentEmail} canUnlink={accounts.length > 0} />
+      {hasCredentialLogin ? (
+        <EmailRow
+          email={loginEmail}
+          alsoMovesPrimaryEmail={alsoMovesPrimaryEmail}
+          canUnlink={accounts.length > 0}
+          verificationDisabled={verificationDisabled}
+          onChanged={changeCredentialLogin}
+          onRemoved={removeCredentialLogin}
+        />
       ) : (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2.5">
           <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
             <Mail className="size-4 shrink-0" />
             <span>Email &amp; Password</span>
           </div>
-          <SetPasswordDialog suggestedEmails={availableEmails} />
+          <SetPasswordDialog
+            suggestedEmails={availableEmails}
+            verificationDisabled={verificationDisabled}
+            onCredentialAdded={addCredentialLogin}
+          />
         </div>
       )}
       {accounts.map((account) => (
@@ -127,6 +164,7 @@ export function ConnectedAccounts({ hasPassword, accounts, currentEmail, availab
         />
       ))}
       {SUPPORTED_OAUTH_PROVIDERS
+        .filter((provider) => !accounts.some((account) => account.provider === provider))
         .map((provider) => (
           <AddProviderRow key={provider} provider={provider} />
         ))}

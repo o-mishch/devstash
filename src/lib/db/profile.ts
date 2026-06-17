@@ -6,20 +6,19 @@ import { CacheTags } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 import { compareBySystemTypeOrder, PROVIDER_LABELS } from '@/lib/utils/constants'
 import type { EditorPreferences } from '@/types/editor-preferences'
+import type { LinkedAccount } from '@/types/profile'
 import type { Prisma } from '@/generated/prisma/client'
 
-const log = logger.child({ tag: 'db:profile' })
+export type { LinkedAccount } from '@/types/profile'
 
-export interface LinkedAccount {
-  id: string
-  provider: string
-  email: string | null
-}
+const log = logger.child({ tag: 'db:profile' })
 
 interface ProfileUser {
   id: string
   name: string | null
   email: string
+  credentialEmail: string | null
+  credentialEmailVerified: Date | null
   image: string | null
   hasPassword: boolean
   editorPreferences: EditorPreferences | null
@@ -47,19 +46,36 @@ export interface ProfileAccountSummary {
   availableEmails: string[]
 }
 
-/** Derives sign-in method labels and deduped owned emails for profile UI. */
-export function getProfileAccountSummary(user: Pick<ProfileUser, 'email' | 'hasPassword' | 'accounts'>): ProfileAccountSummary {
-  const accountTypes: string[] = []
-  if (user.hasPassword) accountTypes.push('Email')
-  for (const { provider } of user.accounts) {
-    accountTypes.push(PROVIDER_LABELS[provider] ?? provider)
-  }
+interface OwnedEmailSources {
+  email: string
+  credentialEmail: string | null
+  credentialEmailVerified: Date | null
+  accounts: { email: string | null }[]
+}
 
-  const availableEmails = Array.from(
-    new Set([user.email, ...user.accounts.map((account) => account.email).filter(Boolean) as string[]]),
+/** Deduped owned addresses: primary, verified credential login, and linked OAuth emails. */
+export function buildOwnedEmails(user: OwnedEmailSources): string[] {
+  const credentialEmail =
+    user.credentialEmail && user.credentialEmailVerified ? [user.credentialEmail] : []
+  return Array.from(
+    new Set([
+      user.email,
+      ...credentialEmail,
+      ...user.accounts.map((account) => account.email).filter(Boolean) as string[],
+    ]),
   )
+}
 
-  return { accountTypes, availableEmails }
+/** Derives sign-in method labels and deduped owned emails for profile UI. */
+export function getProfileAccountSummary(
+  user: Pick<ProfileUser, 'email' | 'credentialEmail' | 'credentialEmailVerified' | 'hasPassword' | 'accounts'>,
+): ProfileAccountSummary {
+  const accountTypes = [
+    ...(user.hasPassword ? ['Email'] : []),
+    ...user.accounts.map(({ provider }) => PROVIDER_LABELS[provider] ?? provider),
+  ]
+
+  return { accountTypes, availableEmails: buildOwnedEmails(user) }
 }
 
 export async function getEditorPreferences(userId: string): Promise<EditorPreferences | null> {
@@ -87,6 +103,8 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
         id: true,
         name: true,
         email: true,
+        credentialEmail: true,
+        credentialEmailVerified: true,
         image: true,
         password: true,
         editorPreferences: true,
@@ -121,6 +139,8 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
       id: user.id,
       name: user.name,
       email: user.email,
+      credentialEmail: user.credentialEmail,
+      credentialEmailVerified: user.credentialEmailVerified,
       image: user.image,
       hasPassword: !!user.password,
       editorPreferences: user.editorPreferences as unknown as EditorPreferences | null,

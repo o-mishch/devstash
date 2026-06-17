@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type Stripe from 'stripe'
-import { cancelAbandonedSubscription } from '@/lib/stripe'
+import { cancelAbandonedSubscription } from '@/lib/infra/stripe'
 import { checkoutSubscriptionBlocksNewCheckout } from '@/lib/billing/subscription/subscription-access'
 import { fetchCheckoutSessionDetails, iterateCustomerSubscriptions, listStripeCustomersByEmail } from '@/lib/billing/stripe-api'
 import { isAllowedCheckoutPriceId } from '@/lib/billing/config/billing-pricing'

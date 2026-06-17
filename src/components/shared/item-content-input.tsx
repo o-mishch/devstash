@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { Textarea } from '@/components/ui/textarea'
-import { Skeleton } from '@/components/ui/skeleton'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
@@ -15,6 +14,20 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Button } from '@/components/ui/button'
 import { ChevronsUpDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+// Visible loading placeholder for code/markdown editors. Uses the Monaco dark background (#1E1E1E)
+// so it contrasts against the sheet's bg-popover in dark mode — bg-muted matches bg-popover in the
+// default dark theme and would be completely invisible.
+function EditorPlaceholder({ className }: { className?: string }) {
+  return (
+    <div className={cn(
+      'flex flex-col overflow-hidden rounded-lg border border-white/10 bg-[#1E1E1E] ring-1 ring-inset ring-white/10',
+      className,
+    )}>
+      <div className="h-7 shrink-0 border-b border-white/10 bg-[#2D2D2D]" />
+    </div>
+  )
+}
 
 function useMonacoLanguageList() {
   const [languages, setLanguages] = useState<string[]>([])
@@ -116,17 +129,17 @@ function CodeEditorInput({ value, onChange, language, contentEditorClassName, co
     onChange(val || '')
   }, [onChange])
 
-  if (isLoading) {
-    const fallback = <Skeleton className="h-40 w-full" />
-    if (contentEditorWrapperClassName) {
-      return <div className={contentEditorWrapperClassName}>{fallback}</div>
-    }
-    return fallback
-  }
+  // bg-muted == bg-popover in the default dark theme, so Skeleton is invisible against the sheet.
+  // Use EditorPlaceholder (Monaco dark bg) so the loading state is always visible.
+  const placeholderEl = contentEditorWrapperClassName
+    ? <div className={contentEditorWrapperClassName}><EditorPlaceholder className={cn('w-full', contentEditorClassName)} /></div>
+    : <EditorPlaceholder className={cn('w-full', contentEditorClassName || 'h-40')} />
+
+  if (isLoading) return placeholderEl
 
   if (resolvedLang !== null || !language) {
     const editor = (
-      <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+      <Suspense fallback={placeholderEl}>
         <CodeEditor
           value={value}
           onChange={handleChange}
@@ -172,8 +185,11 @@ export function ItemContentInput({
   enableFullscreen,
 }: ItemContentInputProps) {
   if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
+    const markdownFallback = contentEditorWrapperClassName
+      ? <div className={contentEditorWrapperClassName}><EditorPlaceholder className={cn('w-full', contentEditorClassName)} /></div>
+      : <EditorPlaceholder className={cn('w-full', contentEditorClassName || 'h-40')} />
     const editor = (
-      <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+      <Suspense fallback={markdownFallback}>
         <MarkdownEditor
           value={value}
           onChange={onChange}

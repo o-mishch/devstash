@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cleanup"
+  short_description: "Audit or clean up DevStash changes"
+  default_prompt: "Use $cleanup improve to audit the current DevStash changeset before shipping."

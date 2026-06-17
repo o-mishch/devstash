@@ -2,11 +2,8 @@
 
 import { useMemo } from 'react'
 import { useWatch, type UseFormReturn } from 'react-hook-form'
-import {
-  positiveOrUndefined,
-  type ItemAiContextInput,
-  type ItemFileContext,
-} from '@/lib/ai/item-context'
+import { positiveOrUndefined } from '@/lib/utils/format'
+import type { ItemAiContextInput, ItemFileContext } from '@/lib/ai/item-context'
 import type { ItemFormBaseValues } from '@/lib/utils/validators'
 
 interface UseItemAiContextParams {

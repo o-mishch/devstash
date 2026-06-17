@@ -186,7 +186,9 @@ async function fetchCollectionsWithTypes(
       userId,
       ...(options.favoritesOnly ? { isFavorite: true } : {}),
     },
-    orderBy: { updatedAt: 'desc' },
+    // Favorites pinned first, then most-recently-updated. Applied at the DB level so the dashboard
+    // preview's `take` selects favorites before the limit truncates (a JS sort after the limit can't).
+    orderBy: [{ isFavorite: 'desc' }, { updatedAt: 'desc' }],
     ...(options.limit ? { take: options.limit } : {}),
     select: COLLECTION_BASE_SELECT,
   })

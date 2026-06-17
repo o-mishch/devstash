@@ -37,7 +37,7 @@ export function DashboardPinnedList({ initialItems }: DashboardPinnedListProps) 
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-[12px]">
           {items.map((item) => <ItemRow key={item.id} item={item} />)}
         </div>
       </CardContent>

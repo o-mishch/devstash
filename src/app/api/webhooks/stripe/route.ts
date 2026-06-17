@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import type Stripe from 'stripe'
-import { constructStripeWebhookEvent } from '@/lib/stripe'
+import { constructStripeWebhookEvent } from '@/lib/infra/stripe'
 import { processStripeWebhookEvent } from '@/lib/billing/webhook/stripe-webhook-event-handlers'
 import {
   claimStripeWebhookEvent,

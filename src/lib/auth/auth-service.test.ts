@@ -12,14 +12,26 @@ vi.mock('bcryptjs', () => ({
 vi.mock('@/lib/db/users', () => ({
   getUserAuthInfoByEmail: vi.fn(),
   getUserAuthMethods: vi.fn(),
-  createUser: vi.fn(),
+  createCredentialUser: vi.fn(),
   updateUserPassword: vi.fn(),
   setPasswordAndVerifyEmail: vi.fn(),
+  bootstrapCredentialLogin: vi.fn(),
   findUserByAnyEmail: vi.fn(),
+  setCredentialEmailLogin: vi.fn(),
+  changeCredentialEmail: vi.fn(),
+  isEmailTakenByAnotherUser: vi.fn(),
+  checkProviderAccountExists: vi.fn(),
+  createAccount: vi.fn(),
 }))
 
 vi.mock('@/lib/infra/cache', () => ({
   invalidateProfileCache: vi.fn(),
+}))
+
+vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', () => ({
+  // auth-service uses the resilient variant — its own swallow-and-log is unit-tested in the billing
+  // module, so here it is a plain vi.fn (resolves) and never simulates a throw.
+  syncStripeCustomerEmailForUserSafe: vi.fn(),
 }))
 
 vi.mock('@/lib/emails/verification', () => ({
@@ -32,49 +44,73 @@ vi.mock('@/lib/emails/password-reset', () => ({
   sendPasswordResetRequest: vi.fn(),
 }))
 
+vi.mock('@/lib/emails/credential-email', () => ({
+  sendCredentialEmailLink: vi.fn(),
+}))
+
 vi.mock('@/lib/emails/security-notification', () => ({
   sendSecurityNotification: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/tokens', () => ({
   consumePasswordResetToken: vi.fn(),
+  consumeCredentialEmailToken: vi.fn(),
+  peekCredentialEmailPayload: vi.fn(),
+  createCredentialEmailToken: vi.fn(),
+  deleteCredentialEmailToken: vi.fn(),
+  restoreCredentialEmailToken: vi.fn(),
 }))
 
 import {
   validateUserPassword,
   verifyUserPasswordById,
   changeUserPassword,
-  setInitialUserPassword,
   registerUser,
   triggerPasswordReset,
   applyPasswordReset,
+  requestCredentialEmail,
+  confirmCredentialEmail,
 } from './auth-service'
 
 import {
   getUserAuthInfoByEmail,
   getUserAuthMethods,
-  createUser,
+  createCredentialUser,
   updateUserPassword,
   setPasswordAndVerifyEmail,
+  bootstrapCredentialLogin,
   findUserByAnyEmail,
+  setCredentialEmailLogin,
+  changeCredentialEmail,
+  isEmailTakenByAnotherUser,
 } from '@/lib/db/users'
 import { invalidateProfileCache } from '@/lib/infra/cache'
+import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 import { emailVerificationEnabled, sendRegistrationVerification, resendVerification } from '@/lib/emails/verification'
 import { sendPasswordResetRequest } from '@/lib/emails/password-reset'
+import { sendCredentialEmailLink } from '@/lib/emails/credential-email'
 import { sendSecurityNotification } from '@/lib/emails/security-notification'
-import { consumePasswordResetToken } from '@/lib/auth/tokens'
+import {
+  consumePasswordResetToken,
+  consumeCredentialEmailToken,
+  peekCredentialEmailPayload,
+  createCredentialEmailToken,
+  deleteCredentialEmailToken,
+} from '@/lib/auth/tokens'
 
 const mockBcryptHash = bcrypt.hash as unknown as ReturnType<typeof vi.fn>
 const mockBcryptCompare = bcrypt.compare as unknown as ReturnType<typeof vi.fn>
 
 const mockGetUserAuthInfoByEmail = getUserAuthInfoByEmail as ReturnType<typeof vi.fn>
 const mockGetUserAuthMethods = getUserAuthMethods as ReturnType<typeof vi.fn>
-const mockCreateUser = createUser as ReturnType<typeof vi.fn>
+const mockCreateCredentialUser = createCredentialUser as ReturnType<typeof vi.fn>
 const mockUpdateUserPassword = updateUserPassword as ReturnType<typeof vi.fn>
 const mockSetPasswordAndVerifyEmail = setPasswordAndVerifyEmail as ReturnType<typeof vi.fn>
+const mockBootstrapCredentialLogin = bootstrapCredentialLogin as ReturnType<typeof vi.fn>
 const mockFindUserByAnyEmail = findUserByAnyEmail as ReturnType<typeof vi.fn>
 
 const mockInvalidateProfileCache = invalidateProfileCache as ReturnType<typeof vi.fn>
+const mockSyncStripeCustomerEmail = syncStripeCustomerEmailForUserSafe as ReturnType<typeof vi.fn>
 
 const mockEmailVerificationEnabled = emailVerificationEnabled as ReturnType<typeof vi.fn>
 const mockSendRegistrationVerification = sendRegistrationVerification as ReturnType<typeof vi.fn>
@@ -82,12 +118,20 @@ const mockResendVerification = resendVerification as ReturnType<typeof vi.fn>
 const mockSendPasswordResetRequest = sendPasswordResetRequest as ReturnType<typeof vi.fn>
 const mockSendSecurityNotification = sendSecurityNotification as ReturnType<typeof vi.fn>
 const mockConsumePasswordResetToken = consumePasswordResetToken as ReturnType<typeof vi.fn>
+const mockConsumeCredentialEmailToken = consumeCredentialEmailToken as ReturnType<typeof vi.fn>
+const mockPeekCredentialEmailPayload = peekCredentialEmailPayload as ReturnType<typeof vi.fn>
+const mockCreateCredentialEmailToken = createCredentialEmailToken as ReturnType<typeof vi.fn>
+const mockDeleteCredentialEmailToken = deleteCredentialEmailToken as ReturnType<typeof vi.fn>
+const mockSetCredentialEmailLogin = setCredentialEmailLogin as ReturnType<typeof vi.fn>
+const mockChangeCredentialEmail = changeCredentialEmail as ReturnType<typeof vi.fn>
+const mockIsEmailTakenByAnotherUser = isEmailTakenByAnotherUser as ReturnType<typeof vi.fn>
+const mockSendCredentialEmailLink = sendCredentialEmailLink as ReturnType<typeof vi.fn>
 
 beforeEach(() => vi.clearAllMocks())
 
 describe('auth-service', () => {
   describe('validateUserPassword', () => {
-    it('returns null and runs a dummy compare when the user is absent (constant-time, Case 9)', async () => {
+    it('returns null and runs a dummy compare when the user is absent', async () => {
       mockGetUserAuthInfoByEmail.mockResolvedValue(null)
       expect(await validateUserPassword('test@example.com', 'pass')).toBeNull()
       expect(mockBcryptCompare).toHaveBeenCalledTimes(1) // dummy compare ran
@@ -127,7 +171,7 @@ describe('auth-service', () => {
   })
 
   describe('changeUserPassword', () => {
-    it('hashes password, updates db, invalidates cache, and notifies (Case 7)', async () => {
+    it('hashes password, updates db, invalidates cache, and notifies', async () => {
       mockBcryptHash.mockResolvedValue('new-hashed')
       await changeUserPassword('1', 'new-pass')
 
@@ -138,27 +182,15 @@ describe('auth-service', () => {
     })
   })
 
-  describe('setInitialUserPassword', () => {
-    it('sets password + emailVerified, invalidates cache, and notifies (Case 1 twin, Case 7)', async () => {
-      mockBcryptHash.mockResolvedValue('new-hashed')
-      await setInitialUserPassword('1', 'new-pass')
-
-      expect(mockBcryptHash).toHaveBeenCalledWith('new-pass', 12)
-      expect(mockSetPasswordAndVerifyEmail).toHaveBeenCalledWith('1', 'new-hashed')
-      expect(mockUpdateUserPassword).not.toHaveBeenCalled()
-      expect(mockInvalidateProfileCache).toHaveBeenCalledWith('1')
-      expect(mockSendSecurityNotification).toHaveBeenCalledWith('1', 'password-set')
-    })
-  })
-
   describe('registerUser', () => {
     it('mirrors success without sending when the existing email is verified with a password', async () => {
       mockEmailVerificationEnabled.mockReturnValue(true)
       mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'test@example.com', password: 'hash', emailVerified: new Date() })
 
       const result = await registerUser('Test', 'test@example.com', 'pass')
-      expect(result).toBe('sent') // Silently mirrors success — no enumeration leak
-      expect(mockCreateUser).not.toHaveBeenCalled()
+      expect(result.result).toBe('sent') // Silently mirrors success — no enumeration leak
+      expect(result.sendEmail).toBeUndefined()
+      expect(mockCreateCredentialUser).not.toHaveBeenCalled()
       expect(mockResendVerification).not.toHaveBeenCalled()
       expect(mockSendPasswordResetRequest).not.toHaveBeenCalled()
     })
@@ -168,62 +200,116 @@ describe('auth-service', () => {
       mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'test@example.com', password: 'hash', emailVerified: null })
 
       const result = await registerUser('Test', 'test@example.com', 'pass')
-      expect(result).toBe('sent')
-      expect(mockCreateUser).not.toHaveBeenCalled()
+      expect(result.result).toBe('sent')
+      expect(result.sendEmail).toBeDefined()
+      if (result.sendEmail) await result.sendEmail()
+      expect(mockCreateCredentialUser).not.toHaveBeenCalled()
       expect(mockResendVerification).toHaveBeenCalledWith('test@example.com')
       expect(mockSendPasswordResetRequest).not.toHaveBeenCalled()
     })
 
-    it('sends the set-password email for an existing OAuth-only account matched by primary (Case 3)', async () => {
+    it('sends the set-password email for an existing OAuth-only account matched by primary', async () => {
       mockEmailVerificationEnabled.mockReturnValue(true)
       mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'test@example.com', password: null, emailVerified: null })
 
       const result = await registerUser('Test', 'test@example.com', 'pass')
-      expect(result).toBe('sent')
-      expect(mockCreateUser).not.toHaveBeenCalled()
+      expect(result.result).toBe('sent')
+      expect(result.sendEmail).toBeDefined()
+      if (result.sendEmail) await result.sendEmail()
+      expect(mockCreateCredentialUser).not.toHaveBeenCalled()
       expect(mockSendPasswordResetRequest).toHaveBeenCalledWith('test@example.com')
       expect(mockResendVerification).not.toHaveBeenCalled()
     })
 
-    it('sends the set-password email to the PRIMARY when matched by a secondary email (Case 4)', async () => {
+    it('rejects with email-in-use (no link sent) for an OAuth-only account when verification is disabled', async () => {
+      mockEmailVerificationEnabled.mockReturnValue(false)
+      mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'foo@example.com', password: null, emailVerified: null })
+
+      const result = await registerUser('Test', 'foo@example.com', 'pass')
+      // Dev mode has no verification link to prove ownership → can't merge safely; report it as in use.
+      expect(result.result).toBe('email-in-use')
+      expect(mockSendPasswordResetRequest).not.toHaveBeenCalled()
+      expect(mockCreateCredentialUser).not.toHaveBeenCalled()
+    })
+
+    it('rejects with email-in-use for an existing Email & Password account when verification is disabled', async () => {
+      mockEmailVerificationEnabled.mockReturnValue(false)
+      mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'bar@example.com', password: 'hash', emailVerified: new Date() })
+
+      const result = await registerUser('Test', 'bar@example.com', 'pass')
+      // Same dev-mode rule for ANY existing account — no silent 'skipped'/redirect with a discarded password.
+      expect(result.result).toBe('email-in-use')
+      expect(mockCreateCredentialUser).not.toHaveBeenCalled()
+    })
+
+    it('sends the set-password email to the PRIMARY when matched by a secondary email', async () => {
       mockEmailVerificationEnabled.mockReturnValue(true)
       mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'primary@example.com', password: null, emailVerified: null })
 
       const result = await registerUser('Test', 'secondary@example.com', 'pass')
-      expect(result).toBe('sent')
-      expect(mockCreateUser).not.toHaveBeenCalled()
+      expect(result.result).toBe('sent')
+      expect(result.sendEmail).toBeDefined()
+      if (result.sendEmail) await result.sendEmail()
+      expect(mockCreateCredentialUser).not.toHaveBeenCalled()
       expect(mockSendPasswordResetRequest).toHaveBeenCalledWith('primary@example.com')
     })
 
     it('creates user and sends verification if enabled', async () => {
       mockEmailVerificationEnabled.mockReturnValue(true)
       mockFindUserByAnyEmail.mockResolvedValue(null)
+      mockCreateCredentialUser.mockResolvedValue('ok')
       mockBcryptHash.mockResolvedValue('hashed')
       mockSendRegistrationVerification.mockResolvedValue('sent')
 
       const result = await registerUser('Test', 'test@example.com', 'pass')
 
-      expect(mockCreateUser).toHaveBeenCalledWith({
+      expect(mockCreateCredentialUser).toHaveBeenCalledWith({
         name: 'Test',
         email: 'test@example.com',
         password: 'hashed',
         emailVerified: undefined,
+        // Registration writes the credential-login email and mirrors it into the primary email,
+        // verified in lockstep (both pending here, since verification is enabled).
+        credentialEmail: 'test@example.com',
+        credentialEmailVerified: undefined,
       })
+      expect(result.result).toBe('sent')
+      expect(result.sendEmail).toBeDefined()
+      if (result.sendEmail) await result.sendEmail()
       expect(mockSendRegistrationVerification).toHaveBeenCalledWith('test@example.com')
-      expect(result).toBe('sent')
     })
 
     it('creates user and skips verification if disabled', async () => {
       mockEmailVerificationEnabled.mockReturnValue(false)
       mockFindUserByAnyEmail.mockResolvedValue(null)
+      mockCreateCredentialUser.mockResolvedValue('ok')
       mockBcryptHash.mockResolvedValue('hashed')
 
       const result = await registerUser('Test', 'test@example.com', 'pass')
 
-      expect(mockCreateUser).toHaveBeenCalledWith(expect.objectContaining({
-        emailVerified: expect.any(Date)
+      expect(mockCreateCredentialUser).toHaveBeenCalledWith(expect.objectContaining({
+        emailVerified: expect.any(Date),
+        // Verification disabled → credential email mirrored and verified at the same instant.
+        credentialEmail: 'test@example.com',
+        credentialEmailVerified: expect.any(Date),
       }))
-      expect(result).toBe('skipped')
+      expect(result.result).toBe('skipped')
+    })
+
+    it('falls through to the enumeration-safe path when create loses a race (A-1)', async () => {
+      mockEmailVerificationEnabled.mockReturnValue(true)
+      // First resolve: no existing account. After create reports a collision, re-resolve finds the
+      // account that won the race (a verified Email & Password user) → mirror 'sent', no duplicate.
+      mockFindUserByAnyEmail
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: '1', email: 'race@example.com', password: 'hash', emailVerified: new Date() })
+      mockCreateCredentialUser.mockResolvedValue('in-use')
+      mockBcryptHash.mockResolvedValue('hashed')
+
+      const result = await registerUser('Test', 'race@example.com', 'pass')
+      expect(result.result).toBe('sent')
+      expect(mockSendRegistrationVerification).not.toHaveBeenCalled()
+      expect(mockResendVerification).not.toHaveBeenCalled()
     })
   })
 
@@ -234,13 +320,13 @@ describe('auth-service', () => {
       expect(mockSendPasswordResetRequest).not.toHaveBeenCalled()
     })
 
-    it('sends to the primary email for an OAuth-only account (no password, Case 1)', async () => {
+    it('sends to the primary email for an OAuth-only account without a password', async () => {
       mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'test@example.com', password: null, emailVerified: null })
       await triggerPasswordReset('test@example.com')
       expect(mockSendPasswordResetRequest).toHaveBeenCalledWith('test@example.com')
     })
 
-    it('resolves via a secondary email but sends to the primary (Case 2)', async () => {
+    it('resolves via a secondary email but sends to the primary', async () => {
       mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'primary@example.com', password: 'hash', emailVerified: new Date() })
       await triggerPasswordReset('secondary@example.com')
       expect(mockSendPasswordResetRequest).toHaveBeenCalledWith('primary@example.com')
@@ -259,16 +345,19 @@ describe('auth-service', () => {
       expect(await applyPasswordReset('token', 'pass')).toBe('invalid-token')
     })
 
-    it('sets password + emailVerified for an OAuth-only account and notifies password-set (Case 1)', async () => {
+    it('bootstraps the credential login (password + verified email == credentialEmail) for an OAuth-only account and notifies credential-email-added', async () => {
       mockConsumePasswordResetToken.mockResolvedValue({ email: 'test@example.com' })
-      mockGetUserAuthInfoByEmail.mockResolvedValue({ id: '1', password: null, emailVerified: null })
+      mockGetUserAuthInfoByEmail.mockResolvedValue({ id: '1', email: 'test@example.com', password: null, emailVerified: null })
       mockBcryptHash.mockResolvedValue('new-hashed')
 
       const result = await applyPasswordReset('token', 'new-pass')
 
-      expect(mockSetPasswordAndVerifyEmail).toHaveBeenCalledWith('1', 'new-hashed')
+      // Bootstrap writes credentialEmail = the proven primary email, merging E&P into the account.
+      expect(mockBootstrapCredentialLogin).toHaveBeenCalledWith('1', 'new-hashed', 'test@example.com')
+      expect(mockSetPasswordAndVerifyEmail).not.toHaveBeenCalled()
       expect(mockUpdateUserPassword).not.toHaveBeenCalled()
-      expect(mockSendSecurityNotification).toHaveBeenCalledWith('1', 'password-set')
+      // First credential login added → clearer "sign-in email added" copy, not generic "password set". (item 4)
+      expect(mockSendSecurityNotification).toHaveBeenCalledWith('1', 'credential-email-added')
       expect(result).toBe('ok')
     })
 
@@ -296,6 +385,381 @@ describe('auth-service', () => {
       expect(mockInvalidateProfileCache).toHaveBeenCalledWith('1')
       expect(mockSendSecurityNotification).toHaveBeenCalledWith('1', 'password-reset')
       expect(result).toBe('ok')
+    })
+  })
+
+  describe('requestCredentialEmail', () => {
+    // No existing password → this is a first-time ADD.
+    const asAdd = () => mockGetUserAuthMethods.mockResolvedValue({ password: null })
+    // Existing password → this is a CHANGE (re-point of the sign-in email).
+    const asChange = () => mockGetUserAuthMethods.mockResolvedValue({ password: 'existing-hash' })
+
+    describe('with email verification enabled (confirmation link)', () => {
+      beforeEach(() => {
+        mockEmailVerificationEnabled.mockReturnValue(true)
+        mockCreateCredentialEmailToken.mockResolvedValue('issued-token')
+        mockSendCredentialEmailLink.mockResolvedValue(true)
+      })
+
+      it('does not send when the address is already used as any email, credentialEmail, or linked OAuth email', async () => {
+        asAdd()
+        mockIsEmailTakenByAnotherUser.mockResolvedValue(true)
+        const result = await requestCredentialEmail('user-1', 'taken@example.com')
+        expect(result.result).toBe('sent')
+        expect(result.sendEmail).toBeUndefined()
+        expect(mockCreateCredentialEmailToken).not.toHaveBeenCalled()
+        expect(mockSendCredentialEmailLink).not.toHaveBeenCalled()
+      })
+
+      it('emails an ADD confirmation link when the user has no password yet', async () => {
+        asAdd()
+        mockIsEmailTakenByAnotherUser.mockResolvedValue(false)
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('sent')
+        expect(result.sendEmail).toBeDefined()
+        if (result.sendEmail) await result.sendEmail()
+        expect(mockCreateCredentialEmailToken).toHaveBeenCalledWith('user-1', 'new@example.com', 'add')
+        expect(mockSendCredentialEmailLink).toHaveBeenCalledWith('new@example.com', 'issued-token', 'add')
+      })
+
+      it('emails a CHANGE confirmation link when the user already has a password', async () => {
+        asChange()
+        mockIsEmailTakenByAnotherUser.mockResolvedValue(false)
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('sent')
+        expect(result.sendEmail).toBeDefined()
+        if (result.sendEmail) await result.sendEmail()
+        expect(mockCreateCredentialEmailToken).toHaveBeenCalledWith('user-1', 'new@example.com', 'change')
+        expect(mockSendCredentialEmailLink).toHaveBeenCalledWith('new@example.com', 'issued-token', 'change')
+      })
+
+      it('still sends when the address is owned by the caller (not taken by another user)', async () => {
+        asChange()
+        mockIsEmailTakenByAnotherUser.mockResolvedValue(false)
+        const result = await requestCredentialEmail('user-1', 'linked@oauth.com')
+        expect(result.result).toBe('sent')
+        expect(result.sendEmail).toBeDefined()
+        if (result.sendEmail) await result.sendEmail()
+        expect(mockIsEmailTakenByAnotherUser).toHaveBeenCalledWith('user-1', 'linked@oauth.com')
+        expect(mockCreateCredentialEmailToken).toHaveBeenCalledWith('user-1', 'linked@oauth.com', 'change')
+        expect(mockSendCredentialEmailLink).toHaveBeenCalledWith('linked@oauth.com', 'issued-token', 'change')
+      })
+
+      it('returns send-failed when token creation fails', async () => {
+        asAdd()
+        mockIsEmailTakenByAnotherUser.mockResolvedValue(false)
+        mockCreateCredentialEmailToken.mockRejectedValue(new Error('Redis unavailable'))
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('sent')
+        expect(result.sendEmail).toBeDefined()
+        if (result.sendEmail) await result.sendEmail()
+        expect(mockSendCredentialEmailLink).not.toHaveBeenCalled()
+      })
+
+      it('returns send-failed when Resend rejects the confirmation email', async () => {
+        asAdd()
+        mockIsEmailTakenByAnotherUser.mockResolvedValue(false)
+        mockSendCredentialEmailLink.mockResolvedValue(false)
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('sent')
+        expect(result.sendEmail).toBeDefined()
+        if (result.sendEmail) await result.sendEmail()
+        expect(mockCreateCredentialEmailToken).toHaveBeenCalledWith('user-1', 'new@example.com', 'add')
+        expect(mockDeleteCredentialEmailToken).toHaveBeenCalledWith('issued-token')
+      })
+
+      it('returns send-failed when the confirmation send throws unexpectedly', async () => {
+        asAdd()
+        mockIsEmailTakenByAnotherUser.mockResolvedValue(false)
+        mockSendCredentialEmailLink.mockRejectedValue(new Error('Resend unavailable'))
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('sent')
+        expect(result.sendEmail).toBeDefined()
+        if (result.sendEmail) await result.sendEmail()
+        expect(mockCreateCredentialEmailToken).toHaveBeenCalledWith('user-1', 'new@example.com', 'add')
+        expect(mockDeleteCredentialEmailToken).toHaveBeenCalledWith('issued-token')
+      })
+
+      it('does not send when the address is another user\'s linked OAuth email only', async () => {
+        asChange()
+        mockIsEmailTakenByAnotherUser.mockResolvedValue(true)
+        const result = await requestCredentialEmail('user-1', 'victim@gmail.com')
+        expect(result.result).toBe('sent')
+        expect(result.sendEmail).toBeUndefined()
+        expect(mockCreateCredentialEmailToken).not.toHaveBeenCalled()
+        expect(mockSendCredentialEmailLink).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('with email verification disabled (instant activation)', () => {
+      beforeEach(() => mockEmailVerificationEnabled.mockReturnValue(false))
+
+      it('returns password-required and writes nothing when an ADD has no password', async () => {
+        asAdd()
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('password-required')
+        expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled()
+        expect(mockCreateCredentialEmailToken).not.toHaveBeenCalled()
+        expect(mockSendCredentialEmailLink).not.toHaveBeenCalled()
+      })
+
+      it('activates the credential login instantly with the password and notifies the owner', async () => {
+        asAdd()
+        mockBcryptHash.mockResolvedValue('hashed-pw')
+        mockSetCredentialEmailLogin.mockResolvedValue('ok')
+        const result = await requestCredentialEmail('user-1', 'new@example.com', 'pass1234')
+        expect(result.result).toBe('activated')
+        expect(mockSetCredentialEmailLogin).toHaveBeenCalledWith('user-1', 'hashed-pw', 'new@example.com')
+        expect(mockInvalidateProfileCache).toHaveBeenCalledWith('user-1')
+        expect(mockSendSecurityNotification).toHaveBeenCalledWith('user-1', 'credential-email-added')
+      })
+
+      it('maps an ADD unique-constraint collision to email-in-use and does not notify', async () => {
+        asAdd()
+        mockBcryptHash.mockResolvedValue('hashed-pw')
+        mockSetCredentialEmailLogin.mockResolvedValue('in-use')
+        const result = await requestCredentialEmail('user-1', 'taken@example.com', 'pass1234')
+        expect(result.result).toBe('email-in-use')
+        expect(mockSendSecurityNotification).not.toHaveBeenCalled()
+      })
+
+      it('re-points the email instantly without a password when the user already has one (CHANGE)', async () => {
+        asChange()
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: false, previousLoginEmail: 'old@example.com' })
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('activated')
+        expect(mockChangeCredentialEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
+        // A change never sets a password, so no hashing happens.
+        expect(mockBcryptHash).not.toHaveBeenCalled()
+        expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled()
+        expect(mockInvalidateProfileCache).toHaveBeenCalledWith('user-1')
+        // Alert goes to the OLD sign-in address, never the moved-to primary.
+        expect(mockSendSecurityNotification).toHaveBeenCalledWith('user-1', 'credential-email-changed', { to: 'old@example.com' })
+        // Primary email didn't move (diverged account) → no Stripe re-sync.
+        expect(mockSyncStripeCustomerEmail).not.toHaveBeenCalled()
+      })
+
+      it('re-syncs the Stripe customer email when the change moved the primary email', async () => {
+        asChange()
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: true })
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('activated')
+        expect(mockSyncStripeCustomerEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
+      })
+
+      it('alerts the OLD sign-in address on an in-sync change, never the moved-to primary', async () => {
+        asChange()
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: true, previousLoginEmail: 'old@example.com' })
+        const result = await requestCredentialEmail('user-1', 'new@example.com')
+        expect(result.result).toBe('activated')
+        expect(mockSyncStripeCustomerEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
+        expect(mockSendSecurityNotification).toHaveBeenCalledWith('user-1', 'credential-email-changed', { to: 'old@example.com' })
+      })
+
+      it('maps a CHANGE collision to email-in-use and does not notify', async () => {
+        asChange()
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'in-use', emailMoved: false })
+        const result = await requestCredentialEmail('user-1', 'taken@example.com')
+        expect(result.result).toBe('email-in-use')
+        expect(mockSendSecurityNotification).not.toHaveBeenCalled()
+      })
+    })
+  })
+
+  describe('confirmCredentialEmail', () => {
+    it('returns invalid-token when the token is absent/expired/used', async () => {
+      mockPeekCredentialEmailPayload.mockResolvedValue(null)
+      expect(await confirmCredentialEmail('token', 'pass')).toBe('invalid-token')
+      expect(mockConsumeCredentialEmailToken).not.toHaveBeenCalled()
+      expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled()
+    })
+
+    describe('add mode', () => {
+      // Confirm derives the operation from current state: no password yet → add path. (item 3)
+      beforeEach(() => mockGetUserAuthMethods.mockResolvedValue({ password: null }))
+
+      it('writes password + credentialEmail and notifies the owner on success', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockBcryptHash.mockResolvedValue('new-hashed')
+        mockSetCredentialEmailLogin.mockResolvedValue('ok')
+
+        const result = await confirmCredentialEmail('token', 'new-pass')
+
+        expect(mockBcryptHash).toHaveBeenCalledWith('new-pass', 12)
+        expect(mockSetCredentialEmailLogin).toHaveBeenCalledWith('user-1', 'new-hashed', 'new@example.com')
+        expect(mockInvalidateProfileCache).toHaveBeenCalledWith('user-1')
+        // Notification goes to the account owner (primary email resolved by userId), never the new address.
+        expect(mockSendSecurityNotification).toHaveBeenCalledWith('user-1', 'credential-email-added')
+        expect(result).toBe('ok')
+      })
+
+      it('returns password-required when an add confirm carries no password', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        expect(await confirmCredentialEmail('token')).toBe('password-required')
+        expect(mockConsumeCredentialEmailToken).toHaveBeenCalledWith('token')
+        expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled()
+      })
+
+      it('defaults a mode-less (legacy) token to add', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com' }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockBcryptHash.mockResolvedValue('new-hashed')
+        mockSetCredentialEmailLogin.mockResolvedValue('ok')
+        expect(await confirmCredentialEmail('token', 'new-pass')).toBe('ok')
+        expect(mockSetCredentialEmailLogin).toHaveBeenCalledWith('user-1', 'new-hashed', 'new@example.com')
+      })
+
+      it('maps a unique-constraint collision to email-in-use (409) and does not notify', async () => {
+        const payload = { userId: 'user-1', email: 'taken@example.com', mode: 'add' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockBcryptHash.mockResolvedValue('new-hashed')
+        mockSetCredentialEmailLogin.mockResolvedValue('in-use')
+
+        const result = await confirmCredentialEmail('token', 'new-pass')
+
+        expect(result).toBe('email-in-use')
+        expect(mockSendSecurityNotification).not.toHaveBeenCalled()
+      })
+
+      it('maps a deleted user (token spent after account removal) to invalid-token and does not notify', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockBcryptHash.mockResolvedValue('new-hashed')
+        mockSetCredentialEmailLogin.mockResolvedValue('not-found')
+
+        const result = await confirmCredentialEmail('token', 'new-pass')
+
+        expect(result).toBe('invalid-token')
+        expect(mockInvalidateProfileCache).not.toHaveBeenCalled()
+        expect(mockSendSecurityNotification).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('change mode', () => {
+      // Confirm derives the operation from current state: has a password → change/re-point path. (item 3)
+      beforeEach(() => mockGetUserAuthMethods.mockResolvedValue({ password: 'existing-hash' }))
+
+      it('re-points credentialEmail without touching the password and notifies the owner', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: false, previousLoginEmail: 'old@example.com' })
+
+        const result = await confirmCredentialEmail('token')
+
+        expect(mockChangeCredentialEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
+        // No password is set on a change.
+        expect(mockBcryptHash).not.toHaveBeenCalled()
+        expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled()
+        expect(mockInvalidateProfileCache).toHaveBeenCalledWith('user-1')
+        // Alert goes to the OLD sign-in address, never the moved-to primary.
+        expect(mockSendSecurityNotification).toHaveBeenCalledWith('user-1', 'credential-email-changed', { to: 'old@example.com' })
+        expect(mockSyncStripeCustomerEmail).not.toHaveBeenCalled() // primary email didn't move
+        expect(result).toBe('ok')
+      })
+
+      it('re-syncs the Stripe customer email when the confirmed change moved the primary email', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: true })
+
+        const result = await confirmCredentialEmail('token')
+
+        expect(mockSyncStripeCustomerEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
+        expect(result).toBe('ok')
+      })
+
+      it('alerts the OLD sign-in address on an in-sync confirmed change, never the moved-to primary', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: true, previousLoginEmail: 'old@example.com' })
+
+        const result = await confirmCredentialEmail('token')
+
+        expect(result).toBe('ok')
+        expect(mockSyncStripeCustomerEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
+        expect(mockSendSecurityNotification).toHaveBeenCalledWith('user-1', 'credential-email-changed', { to: 'old@example.com' })
+      })
+
+      it('maps a change collision to email-in-use and does not notify', async () => {
+        const payload = { userId: 'user-1', email: 'taken@example.com', mode: 'change' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'in-use', emailMoved: false })
+
+        const result = await confirmCredentialEmail('token')
+
+        expect(result).toBe('email-in-use')
+        expect(mockSendSecurityNotification).not.toHaveBeenCalled()
+      })
+
+      it('maps a deleted user (token spent after account removal) to invalid-token and does not notify', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'not-found', emailMoved: false, previousLoginEmail: null })
+
+        const result = await confirmCredentialEmail('token')
+
+        expect(result).toBe('invalid-token')
+        expect(mockInvalidateProfileCache).not.toHaveBeenCalled()
+        expect(mockSendSecurityNotification).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('stale token (state changed between request and confirm)', () => {
+      it('re-points instead of clobbering when an ADD token is confirmed after the account gained a password', async () => {
+        // Token minted as 'add', but the user now HAS a password → derive 'change': re-point only, keep pw.
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockGetUserAuthMethods.mockResolvedValue({ password: 'existing-hash' })
+        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: false })
+
+        const result = await confirmCredentialEmail('token', 'typed-pw')
+
+        expect(mockChangeCredentialEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
+        expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled() // existing password never overwritten
+        expect(mockBcryptHash).not.toHaveBeenCalled()
+        expect(result).toBe('ok')
+      })
+
+      it('returns password-required when a CHANGE token is confirmed after the password was removed', async () => {
+        // Token minted as 'change' (no password collected), but the user now has NO password → an add is
+        // needed and none was provided → 422 without burning the single-use token.
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockGetUserAuthMethods.mockResolvedValue({ password: null })
+
+        const result = await confirmCredentialEmail('token')
+
+        expect(result).toBe('password-required')
+        expect(mockConsumeCredentialEmailToken).toHaveBeenCalled()
+        expect(mockChangeCredentialEmail).not.toHaveBeenCalled()
+        expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled()
+      })
+
+      it('returns invalid-token when the account was deleted after the token was issued', async () => {
+        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        mockPeekCredentialEmailPayload.mockResolvedValue(payload)
+        mockConsumeCredentialEmailToken.mockResolvedValue(payload)
+        mockGetUserAuthMethods.mockResolvedValue(null)
+
+        expect(await confirmCredentialEmail('token', 'pw')).toBe('invalid-token')
+        expect(mockConsumeCredentialEmailToken).toHaveBeenCalled()
+        expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled()
+        expect(mockChangeCredentialEmail).not.toHaveBeenCalled()
+      })
     })
   })
 })

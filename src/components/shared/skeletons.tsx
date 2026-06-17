@@ -28,15 +28,38 @@ export function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
     // Cell height uses the grid's ABSOLUTE px (itemHeight=100, touchItemHeight=96) — not
     // rem utilities like h-20/h-24, which scale with the 125%/110% root font and would
     // diverge from the loaded cards at one breakpoint.
-    <div className="grid w-full min-w-0 grid-cols-1 gap-x-4 gap-y-3.5 pt-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid w-full min-w-0 grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3">
       {[...Array(count)].map((_, i) => (
         <div key={i} className="h-[100px] w-full touch:h-[96px]">
           <Card className="relative h-full min-h-[96px] w-full min-w-0 gap-0 overflow-visible py-0 border-l-2 border-l-border">
-            <CardContent className="flex h-full items-center p-4 gap-3">
-              <Skeleton className="size-8 shrink-0 rounded-md" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-1/2" />
+            <CardContent className="flex h-full items-center p-4">
+              <div className="flex w-full min-w-0 items-center gap-3">
+                <Skeleton className="size-8 shrink-0 rounded-md" />
+                {/* Mirrors ItemCard's text column — same containers, same classes, so
+                    line-heights are identical and items-center lands at the same offset. */}
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  {/* <div className="flex items-center gap-1.5"><p className="font-medium"> */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="relative min-w-0 flex-1 font-medium">
+                      <span className="invisible select-none" aria-hidden="true">&nbsp;</span>
+                      <Skeleton className="absolute inset-y-[20%] left-0 w-3/4 rounded-sm" />
+                    </div>
+                  </div>
+                  {/* <p className="mt-0.5 line-clamp-2 text-xs"> — two lines */}
+                  <div className="relative mt-0.5 text-xs">
+                    <span className="invisible select-none" aria-hidden="true">&nbsp;</span>
+                    <Skeleton className="absolute inset-y-[15%] left-0 w-full rounded-sm" />
+                  </div>
+                  <div className="relative text-xs">
+                    <span className="invisible select-none" aria-hidden="true">&nbsp;</span>
+                    <Skeleton className="absolute inset-y-[15%] left-0 w-2/3 rounded-sm" />
+                  </div>
+                  {/* <p className="mt-1 text-xs"> — date */}
+                  <div className="relative mt-1 text-xs">
+                    <span className="invisible select-none" aria-hidden="true">&nbsp;</span>
+                    <Skeleton className="absolute inset-y-[15%] left-0 w-1/3 rounded-sm" />
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -87,7 +110,7 @@ interface ImageGridSkeletonProps {
 export function ImageGridSkeleton({ count = 6, itemHeight = 240 }: ImageGridSkeletonProps) {
   return (
     // Columns mirror the loaded image grid (getImageGridColumns): 2/3 at <1024/>=1024px.
-    <div className="grid w-full min-w-0 grid-cols-2 gap-3 pt-2 lg:grid-cols-3">
+    <div className="grid w-full min-w-0 grid-cols-2 gap-3 lg:grid-cols-3">
       {[...Array(count)].map((_, i) => (
         <div key={i} style={{ height: `${itemHeight}px`, width: '100%', minWidth: 0 }}>
           <ImageCardSkeleton />
@@ -122,7 +145,7 @@ interface FileListSkeletonProps {
 
 export function FileListSkeleton({ count = 6, rowGap = 10 }: FileListSkeletonProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: `${rowGap}px`, width: '100%', minWidth: 0, paddingTop: '8px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: `${rowGap}px`, width: '100%', minWidth: 0 }}>
       {[...Array(count)].map((_, i) => (
         <div key={i} className="h-[48px] w-full touch:h-[64px]">
           <FileRowSkeleton />

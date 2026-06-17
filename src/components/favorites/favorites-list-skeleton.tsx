@@ -14,7 +14,7 @@ export function FavoritesListSkeleton({ count = 6 }: FavoritesListSkeletonProps)
           <Skeleton className="size-3.5 shrink-0 rounded touch:size-5" />
           <Skeleton className="h-4 min-w-0 flex-1 touch:h-5" />
           <Skeleton className="h-4 w-16 shrink-0 rounded" />
-          <Skeleton className="h-4 w-12 shrink-0 rounded" />
+          <Skeleton className="h-4 w-16 shrink-0 rounded" />
         </div>
       ))}
     </div>
@@ -45,7 +45,7 @@ export function FavoriteItemsSkeleton({ groups = 3, rowsPerGroup = 3 }: Favorite
                 <Skeleton className="size-3.5 shrink-0 rounded touch:size-5" />
                 <Skeleton className="h-4 min-w-0 flex-1 touch:h-5" />
                 <Skeleton className="hidden h-4 w-14 shrink-0 rounded sm:block" />
-                <Skeleton className="hidden h-4 w-12 shrink-0 rounded md:block" />
+                <Skeleton className="hidden h-4 w-16 shrink-0 rounded md:block" />
               </div>
             ))}
           </div>

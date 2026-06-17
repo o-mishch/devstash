@@ -1,6 +1,6 @@
 import { authedRoute } from '@/lib/api/route'
 import { json, problem } from '@/lib/api/http'
-import { createPortalSession } from '@/lib/stripe'
+import { createPortalSession } from '@/lib/infra/stripe'
 import { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 import { logger } from '@/lib/infra/pino'
 import { getBaseUrl } from '@/lib/utils/url'

@@ -8,7 +8,7 @@ vi.mock('@/lib/infra/pino', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
-vi.mock('@/lib/stripe', () => ({
+vi.mock('@/lib/infra/stripe', () => ({
   cancelAbandonedSubscription: vi.fn(),
   createPortalSession: vi.fn(),
   stripe: { charges: { retrieve: vi.fn() } },

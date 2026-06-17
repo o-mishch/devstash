@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import { Prisma } from '@/generated/prisma'
 
 // Route handlers are tested by invoking the exported handler with a mocked NextRequest and asserting
 // res.status. The real profile-helpers run through the handlers (db/auth/billing mocked beneath).
@@ -14,22 +15,27 @@ vi.mock('@/auth', () => ({ signOut: vi.fn() }))
 vi.mock('@/lib/db/users', () => ({
   getUserAuthMethods: vi.fn(),
   deleteUserById: vi.fn(),
-  removeUserPassword: vi.fn(),
+  removeCredentialLogin: vi.fn(),
   checkAccountExists: vi.fn(),
   unlinkUserAccount: vi.fn(),
-  getUserAuthInfoByEmail: vi.fn(),
+  isEmailTakenByAnotherUser: vi.fn(),
 }))
-vi.mock('@/lib/db/profile', () => ({
-  updateUserName: vi.fn(),
-  updateEditorPreferences: vi.fn(),
-  getProfileData: vi.fn(),
-  updateUserEmail: vi.fn(),
-}))
-vi.mock('@/lib/auth/auth-service', () => ({ changeUserPassword: vi.fn(), setInitialUserPassword: vi.fn(), verifyUserPasswordById: vi.fn() }))
+vi.mock('@/lib/db/profile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/db/profile')>()
+  return {
+    updateUserName: vi.fn(),
+    updateEditorPreferences: vi.fn(),
+    getProfileData: vi.fn(),
+    updateUserEmail: vi.fn(),
+    buildOwnedEmails: actual.buildOwnedEmails,
+    getProfileAccountSummary: actual.getProfileAccountSummary,
+  }
+})
+vi.mock('@/lib/auth/auth-service', () => ({ changeUserPassword: vi.fn(), verifyUserPasswordById: vi.fn(), requestCredentialEmail: vi.fn() }))
 vi.mock('@/lib/emails/security-notification', () => ({ sendSecurityNotification: vi.fn() }))
 vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', () => ({
   teardownStripeBillingForUser: vi.fn(),
-  syncStripeCustomerEmailForUser: vi.fn(),
+  syncStripeCustomerEmailForUserSafe: vi.fn(),
 }))
 
 import { getCachedSession } from '@/lib/session'
@@ -38,22 +44,22 @@ import { checkRateLimit } from '@/lib/infra/rate-limit'
 import {
   getUserAuthMethods,
   deleteUserById,
-  removeUserPassword,
+  removeCredentialLogin,
   checkAccountExists,
   unlinkUserAccount,
-  getUserAuthInfoByEmail,
+  isEmailTakenByAnotherUser,
 } from '@/lib/db/users'
 import { updateUserName, getProfileData, updateUserEmail } from '@/lib/db/profile'
-import { changeUserPassword, setInitialUserPassword, verifyUserPasswordById } from '@/lib/auth/auth-service'
+import { changeUserPassword, verifyUserPasswordById, requestCredentialEmail } from '@/lib/auth/auth-service'
 import { sendSecurityNotification } from '@/lib/emails/security-notification'
-import { teardownStripeBillingForUser } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
+import { teardownStripeBillingForUser, syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 
 import { DELETE as DELETE_ACCOUNT } from './route'
 import { PATCH as PATCH_NAME } from './name/route'
 import { PATCH as PATCH_PREFS } from './editor-preferences/route'
-import { PATCH as CHANGE_PASSWORD, POST as SET_PASSWORD } from './password/route'
+import { PATCH as CHANGE_PASSWORD } from './password/route'
 import { DELETE as REMOVE_CREDENTIALS } from './credentials/route'
-import { PATCH as CHANGE_EMAIL } from './email/route'
+import { POST as REQUEST_CREDENTIAL_EMAIL } from './credential-email/route'
 import { PATCH as UPDATE_MAIN_EMAIL } from './main-email/route'
 import { DELETE as UNLINK_ACCOUNT } from './accounts/[id]/route'
 
@@ -62,18 +68,19 @@ const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
 const mockAuthMethods = getUserAuthMethods as ReturnType<typeof vi.fn>
 const mockDeleteUser = deleteUserById as ReturnType<typeof vi.fn>
-const mockRemovePassword = removeUserPassword as ReturnType<typeof vi.fn>
+const mockRemoveCredentialLogin = removeCredentialLogin as ReturnType<typeof vi.fn>
 const mockCheckAccount = checkAccountExists as ReturnType<typeof vi.fn>
 const mockUnlink = unlinkUserAccount as ReturnType<typeof vi.fn>
-const mockAuthInfoByEmail = getUserAuthInfoByEmail as ReturnType<typeof vi.fn>
+const mockIsEmailTaken = isEmailTakenByAnotherUser as ReturnType<typeof vi.fn>
 const mockUpdateName = updateUserName as ReturnType<typeof vi.fn>
 const mockGetProfile = getProfileData as ReturnType<typeof vi.fn>
 const mockUpdateEmail = updateUserEmail as ReturnType<typeof vi.fn>
 const mockChangePassword = changeUserPassword as ReturnType<typeof vi.fn>
-const mockSetInitialPassword = setInitialUserPassword as ReturnType<typeof vi.fn>
+const mockRequestCredentialEmail = requestCredentialEmail as ReturnType<typeof vi.fn>
 const mockVerifyPassword = verifyUserPasswordById as ReturnType<typeof vi.fn>
 const mockNotify = sendSecurityNotification as ReturnType<typeof vi.fn>
 const mockTeardown = teardownStripeBillingForUser as ReturnType<typeof vi.fn>
+const mockSyncStripeEmail = syncStripeCustomerEmailForUserSafe as ReturnType<typeof vi.fn>
 
 const OWNED_EMAIL = 'owned@google.com'
 
@@ -92,11 +99,17 @@ beforeEach(() => {
   mockIsPro.mockResolvedValue(false)
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
   mockVerifyPassword.mockResolvedValue(true)
-  mockAuthMethods.mockResolvedValue({ password: 'hash', accounts: [{ id: 'acc-1', provider: 'google' }] })
-  mockAuthInfoByEmail.mockResolvedValue(null)
+  mockAuthMethods.mockResolvedValue({ email: 'me@example.com', credentialEmail: null, password: 'hash', accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }] })
+  mockIsEmailTaken.mockResolvedValue(false)
   mockCheckAccount.mockResolvedValue({ id: 'acc-1' })
   mockGetProfile.mockResolvedValue({
-    user: { email: 'me@example.com', hasPassword: true, accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }] },
+    user: {
+      email: 'me@example.com',
+      credentialEmail: null,
+      credentialEmailVerified: null,
+      hasPassword: true,
+      accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }],
+    },
   })
 })
 
@@ -181,27 +194,6 @@ describe('PATCH /profile/password (change)', () => {
   })
 })
 
-describe('POST /profile/password (set initial)', () => {
-  it('returns 409 when a password is already set', async () => {
-    const res = await SET_PASSWORD(req('POST', { email: OWNED_EMAIL, newPassword: 'new12345', confirmPassword: 'new12345' }))
-    expect(res.status).toBe(409)
-  })
-
-  it('returns 403 when the email is not owned by the user', async () => {
-    mockAuthMethods.mockResolvedValue({ password: null, accounts: [{ id: 'acc-1', provider: 'google' }] })
-    const res = await SET_PASSWORD(req('POST', { email: 'stranger@evil.com', newPassword: 'new12345', confirmPassword: 'new12345' }))
-    expect(res.status).toBe(403)
-  })
-
-  it('sets password + emailVerified via setInitialUserPassword when no password and email owned (Case 1 twin)', async () => {
-    mockAuthMethods.mockResolvedValue({ password: null, accounts: [{ id: 'acc-1', provider: 'google' }] })
-    const res = await SET_PASSWORD(req('POST', { email: OWNED_EMAIL, newPassword: 'new12345', confirmPassword: 'new12345' }))
-    expect(res.status).toBe(204)
-    expect(mockSetInitialPassword).toHaveBeenCalledWith('user-1', 'new12345')
-    expect(mockChangePassword).not.toHaveBeenCalled()
-  })
-})
-
 describe('DELETE /profile/credentials', () => {
   it('returns 400 when no password is set', async () => {
     mockAuthMethods.mockResolvedValue({ password: null, accounts: [{ id: 'acc-1', provider: 'google' }] })
@@ -215,31 +207,118 @@ describe('DELETE /profile/credentials', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 204 on success and notifies the owner (Case 7)', async () => {
+  it('clears the credential login, keeps a normal primary email, and notifies the owner', async () => {
+    // Primary email is not the credential email, so it is left untouched even though it isn't a linked
+    // address (credentialEmail null here).
     const res = await REMOVE_CREDENTIALS(req('DELETE', { password: 'password123' }))
     expect(res.status).toBe(204)
-    expect(mockRemovePassword).toHaveBeenCalledWith('user-1')
+    expect(mockRemoveCredentialLogin).toHaveBeenCalledWith('user-1', 'me@example.com')
+    expect(mockSyncStripeEmail).not.toHaveBeenCalled()
     expect(mockNotify).toHaveBeenCalledWith('user-1', 'password-removed')
+  })
+
+  it('moves the primary email to a linked account when the primary IS the credential email', async () => {
+    const credEmail = 'login@custom.com'
+    mockAuthMethods.mockResolvedValue({
+      email: credEmail,
+      credentialEmail: credEmail,
+      password: 'hash',
+      accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }],
+    })
+    const res = await REMOVE_CREDENTIALS(req('DELETE', { password: 'password123' }))
+    expect(res.status).toBe(204)
+    expect(mockRemoveCredentialLogin).toHaveBeenCalledWith('user-1', OWNED_EMAIL)
+    expect(mockSyncStripeEmail).toHaveBeenCalledWith('user-1', OWNED_EMAIL)
+  })
+
+  it('returns 400 when the primary is the credential email but no linked OAuth email can replace it', async () => {
+    const credEmail = 'login@custom.com'
+    mockAuthMethods.mockResolvedValue({
+      email: credEmail,
+      credentialEmail: credEmail,
+      password: 'hash',
+      accounts: [{ id: 'acc-1', provider: 'google', email: null }],
+    })
+    const res = await REMOVE_CREDENTIALS(req('DELETE', { password: 'password123' }))
+    expect(res.status).toBe(400)
+    expect(mockRemoveCredentialLogin).not.toHaveBeenCalled()
   })
 })
 
-describe('PATCH /profile/email', () => {
-  it('returns 400 when no password is set', async () => {
-    mockAuthMethods.mockResolvedValue({ password: null, accounts: [{ id: 'acc-1', provider: 'google' }] })
-    const res = await CHANGE_EMAIL(req('PATCH', { email: OWNED_EMAIL, password: 'password123' }))
-    expect(res.status).toBe(400)
-  })
+describe('POST /profile/credential-email', () => {
+  // No existing password → first-time ADD (no re-auth possible/needed). The beforeEach default has a
+  // password, i.e. a CHANGE, which requires re-auth.
+  const asAdd = () => mockAuthMethods.mockResolvedValue({ email: 'me@example.com', credentialEmail: null, password: null, accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }] })
+  const CURRENT_PW = 'current-pw-123'
 
-  it('returns 400 when the password is wrong', async () => {
-    mockVerifyPassword.mockResolvedValue(false)
-    const res = await CHANGE_EMAIL(req('PATCH', { email: OWNED_EMAIL, password: 'wrong123' }))
-    expect(res.status).toBe(400)
-  })
-
-  it('returns 204 on success', async () => {
-    const res = await CHANGE_EMAIL(req('PATCH', { email: OWNED_EMAIL, password: 'password123' }))
+  it('CHANGE: returns 204 when a confirmation link is sent (re-auth ok)', async () => {
+    mockRequestCredentialEmail.mockResolvedValue({ result: 'sent' })
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com', password: CURRENT_PW }))
     expect(res.status).toBe(204)
-    expect(mockUpdateEmail).toHaveBeenCalledWith('user-1', OWNED_EMAIL)
+    expect(mockRequestCredentialEmail).toHaveBeenCalledWith('user-1', 'new@example.com', undefined)
+  })
+
+  it('ADD: returns 204 when a confirmation link is sent (no re-auth)', async () => {
+    asAdd()
+    mockRequestCredentialEmail.mockResolvedValue({ result: 'sent' })
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com' }))
+    expect(res.status).toBe(204)
+    expect(mockRequestCredentialEmail).toHaveBeenCalledWith('user-1', 'new@example.com', undefined)
+  })
+
+  it('returns 503 when the confirmation email cannot be sent', async () => {
+    mockRequestCredentialEmail.mockResolvedValue({ result: 'send-failed' })
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com', password: CURRENT_PW }))
+    expect(res.status).toBe(503)
+  })
+
+  it('CHANGE: returns 400 without the current password', async () => {
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com' }))
+    expect(res.status).toBe(400)
+    expect(mockRequestCredentialEmail).not.toHaveBeenCalled()
+  })
+
+  it('CHANGE: returns 400 when the current password is incorrect', async () => {
+    mockVerifyPassword.mockResolvedValue(false)
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com', password: 'wrong-pw-123' }))
+    expect(res.status).toBe(400)
+    expect(mockRequestCredentialEmail).not.toHaveBeenCalled()
+  })
+
+  it('ADD: returns 204 and passes the new password through when activating instantly', async () => {
+    asAdd()
+    mockRequestCredentialEmail.mockResolvedValue({ result: 'activated' })
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com', newPassword: 'pass1234', confirmPassword: 'pass1234' }))
+    expect(res.status).toBe(204)
+    expect(mockRequestCredentialEmail).toHaveBeenCalledWith('user-1', 'new@example.com', 'pass1234')
+  })
+
+  it('ADD: returns 422 when the instant path needs a password', async () => {
+    asAdd()
+    mockRequestCredentialEmail.mockResolvedValue({ result: 'password-required' })
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com' }))
+    expect(res.status).toBe(422)
+  })
+
+  it('ADD: returns 409 when the address is already in use (instant path)', async () => {
+    asAdd()
+    mockRequestCredentialEmail.mockResolvedValue({ result: 'email-in-use' })
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'taken@example.com', newPassword: 'pass1234', confirmPassword: 'pass1234' }))
+    expect(res.status).toBe(409)
+  })
+
+  it('CHANGE: returns 409 when the address is already in use (instant path)', async () => {
+    mockRequestCredentialEmail.mockResolvedValue({ result: 'email-in-use' })
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'taken@example.com', password: CURRENT_PW }))
+    expect(res.status).toBe(409)
+    expect(mockRequestCredentialEmail).toHaveBeenCalledWith('user-1', 'taken@example.com', undefined)
+  })
+
+  it('returns 422 when the new passwords do not match (parse fails before re-auth)', async () => {
+    asAdd()
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com', newPassword: 'pass1234', confirmPassword: 'nope5678' }))
+    expect(res.status).toBe(422)
+    expect(mockRequestCredentialEmail).not.toHaveBeenCalled()
   })
 })
 
@@ -258,11 +337,36 @@ describe('PATCH /profile/main-email', () => {
 
   it('returns 204 for a no-password account', async () => {
     mockGetProfile.mockResolvedValue({
-      user: { email: 'me@example.com', hasPassword: false, accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }] },
+      user: {
+        email: 'me@example.com',
+        credentialEmail: null,
+        credentialEmailVerified: null,
+        hasPassword: false,
+        accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }],
+      },
     })
     const res = await UPDATE_MAIN_EMAIL(req('PATCH', { email: OWNED_EMAIL }))
     expect(res.status).toBe(204)
     expect(mockUpdateEmail).toHaveBeenCalledWith('user-1', OWNED_EMAIL)
+  })
+
+  it('returns 409 when another user holds the address', async () => {
+    mockIsEmailTaken.mockResolvedValue(true)
+    const res = await UPDATE_MAIN_EMAIL(req('PATCH', { email: OWNED_EMAIL, password: 'password123' }))
+    expect(res.status).toBe(409)
+    expect(mockUpdateEmail).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 when a concurrent write hits the primary-email unique constraint', async () => {
+    mockUpdateEmail.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    )
+    const res = await UPDATE_MAIN_EMAIL(req('PATCH', { email: OWNED_EMAIL, password: 'password123' }))
+    expect(res.status).toBe(409)
+    expect(mockSyncStripeEmail).not.toHaveBeenCalled()
   })
 })
 
@@ -279,7 +383,7 @@ describe('DELETE /profile/accounts/{id}', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 204, unlinks scoped to the session userId, and notifies the owner (Case 7)', async () => {
+  it('returns 204, unlinks scoped to the session userId, and notifies the owner', async () => {
     const res = await UNLINK_ACCOUNT(req('DELETE'), params('acc-1'))
     expect(res.status).toBe(204)
     expect(mockUnlink).toHaveBeenCalledWith('user-1', 'acc-1')

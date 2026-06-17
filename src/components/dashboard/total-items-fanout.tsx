@@ -9,7 +9,7 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { StatChipBody, STAT_CHIP_CLASS, STAT_COLORS } from './stat-chip'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { SYSTEM_TYPE_ORDER, SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants'
-import { getTypeLabel } from '@/lib/utils/items'
+import { getTypeLabel } from '@/lib/utils/format'
 import { getTypeHref } from '@/components/layout/sidebar/utils'
 
 interface TotalItemsFanoutProps {

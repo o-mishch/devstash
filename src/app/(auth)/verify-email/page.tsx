@@ -1,8 +1,6 @@
-import type { ReactNode } from 'react'
-import { getVerificationToken, deleteVerificationToken, verifyUserEmailAndToken } from '@/lib/db/users'
-import { hashToken } from '@/lib/auth/tokens'
-import { AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
-import { ResendVerificationButton } from '@/components/auth/resend-verification-button'
+import { markEmailVerifiedByEmail } from '@/lib/db/users'
+import { consumeVerificationToken } from '@/lib/auth/tokens'
+import { AuthStatusPage, MissingTokenPage } from '@/components/auth/auth-page-header'
 
 interface VerifyEmailPageProps {
   searchParams: Promise<{ token?: string }>
@@ -15,30 +13,23 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     return <MissingTokenPage noun="verification token" />
   }
 
-  // Tokens are stored hashed at rest (Case 8); the URL carries the raw token, so hash it to look up.
-  const hashed = hashToken(token)
-  const record = await getVerificationToken(hashed)
+  // Redis-backed single-use token: GETDEL returns the payload and deletes it atomically. An absent
+  // key (expired via TTL, already used, or never valid) yields null — collapsed into one error
+  // state. The resend affordance lives on the sign-in flow (unverified login offers a resend).
+  const consumed = await consumeVerificationToken(token)
 
-  if (!record || record.identifier.startsWith('password-reset:')) {
+  if (!consumed) {
     return (
-      <ErrorCard
-        title="Link invalid"
-        description="This verification link is invalid or has already been used."
+      <AuthStatusPage
+        variant="error"
+        title="Link invalid or expired"
+        description="This verification link is invalid, has expired, or was already used. Sign in to request a new one."
+        action={{ label: 'Sign in', href: '/sign-in' }}
       />
     )
   }
 
-  if (record.expires < new Date()) {
-    await deleteVerificationToken(hashed)
-    return (
-      <ExpiredTokenPage
-        noun="verification link"
-        footer={<ResendVerificationButton email={record.identifier} />}
-      />
-    )
-  }
-
-  await verifyUserEmailAndToken(record.identifier, hashed)
+  await markEmailVerifiedByEmail(consumed.email)
 
   return (
     <AuthStatusPage
@@ -49,21 +40,3 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
     />
   )
 }
-
-interface ErrorCardProps {
-  title: string
-  description: string
-  footer?: ReactNode
-}
-
-function ErrorCard({ title, description, footer }: ErrorCardProps) {
-  return (
-    <AuthStatusPage
-      variant="error"
-      title={title}
-      description={description}
-      footer={footer}
-    />
-  )
-}
-

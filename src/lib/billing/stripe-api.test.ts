@@ -6,7 +6,7 @@ const { mockSubscriptionsRetrieve, mockCheckoutSessionsRetrieve } = vi.hoisted((
   mockCheckoutSessionsRetrieve: vi.fn(),
 }))
 
-vi.mock('@/lib/stripe', () => ({
+vi.mock('@/lib/infra/stripe', () => ({
   stripe: {
     subscriptions: { retrieve: mockSubscriptionsRetrieve },
     checkout: { sessions: { retrieve: mockCheckoutSessionsRetrieve } },

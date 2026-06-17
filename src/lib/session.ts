@@ -2,7 +2,7 @@ import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { auth } from '@/auth'
 import { logger } from '@/lib/infra/pino'
-import { isPrerenderInterrupt } from '@/lib/utils/prerender'
+import { isPrerenderInterrupt } from '@/lib/utils/url'
 
 const log = logger.child({ tag: 'session' })
 

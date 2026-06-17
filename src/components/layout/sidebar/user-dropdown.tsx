@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { signOut } from 'next-auth/react'
 import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
+import { useProfileEmailsStore } from '@/stores/profile-emails'
 
 interface UserDropdownMenuContentProps {
   side: 'top' | 'right' | 'bottom' | 'left'
@@ -49,6 +50,9 @@ export function UserDropdownMenuContent({
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => {
         setTheme(DEFAULT_EDITOR_PREFERENCES.appTheme)
+        // Clear user-scoped client state so the next account on this device never sees the prior
+        // user's emails (PII) from the module-global store.
+        useProfileEmailsStore.getState().reset()
         signOut({ redirectTo: '/' })
         onClose?.()
       }} className="text-red-500 focus:text-red-500">

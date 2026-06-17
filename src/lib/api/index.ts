@@ -4,7 +4,7 @@ import { logger } from '@/lib/infra/pino'
 import { ApiResponse } from '@/lib/api/api-response'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
-import { isPrerenderInterrupt } from '@/lib/utils/prerender'
+import { isPrerenderInterrupt } from '@/lib/utils/url'
 import type { ApiStatus, ApiBody } from '@/types/api'
 
 export { ApiResponse } from '@/lib/api/api-response'

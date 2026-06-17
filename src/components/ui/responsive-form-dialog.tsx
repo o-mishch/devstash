@@ -21,6 +21,10 @@ interface ResponsiveFormDialogProps {
   // Makes the mobile bottom sheet resizable by dragging its grab handle (see BottomSheet). Use for
   // flows whose body has a flex-filling field (e.g. a description box) that should grow with it.
   mobileResizable?: boolean
+  // Extra className forwarded to the mobile BottomSheet's SheetContent. Use to override the
+  // default h-auto sizing — e.g. pin the sheet to a fixed height so content-height changes (lazy
+  // loads, type switches) don't cause the sheet to jump.
+  mobileClassName?: string
   // Receives the resolved breakpoint plus a `scrolled` flag (true once the mobile sheet body has
   // scrolled off the top) so the caller can render the matching form body AND react to scroll —
   // e.g. shrink the footer to free up space, mirroring the sheet header's collapse. `scrolled` is
@@ -39,6 +43,7 @@ export function ResponsiveFormDialog({
   desktopClassName,
   headerClassName,
   mobileResizable,
+  mobileClassName,
   children,
 }: ResponsiveFormDialogProps) {
   const isDesktop = useMediaQuery('(min-width: 768px)')
@@ -58,7 +63,7 @@ export function ResponsiveFormDialog({
   }
 
   return (
-    <BottomSheet open={open} onOpenChange={onOpenChange} title={title} description={description} resizable={mobileResizable}>
+    <BottomSheet open={open} onOpenChange={onOpenChange} title={title} description={description} resizable={mobileResizable} className={mobileClassName}>
       {(scrolled) => children(false, scrolled)}
     </BottomSheet>
   )

@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { formatBytes } from '@/lib/utils/format'
-import { getFileExtension } from '@/lib/utils/files'
+import { formatBytes, getFileExtension } from '@/lib/utils/format'
 import { SYSTEM_TYPE_ORDER } from '@/lib/utils/constants'
 
 export const itemTypeSchema = z.enum(SYSTEM_TYPE_ORDER as [string, ...string[]])
@@ -35,10 +34,6 @@ export function trimOptionalAiField(
   const trimmed = value?.trim()
   if (!trimmed) return undefined
   return trimmed.slice(0, maxChars)
-}
-
-export function positiveOrUndefined(value: number | null | undefined): number | undefined {
-  return value != null && value > 0 ? value : undefined
 }
 
 export function buildItemAiUserMessage(input: ItemAiContextInput): string {

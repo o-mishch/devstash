@@ -1,5 +1,8 @@
+import 'server-only'
+
 import { Resend } from 'resend'
 import { logger } from '@/lib/infra/pino'
+import { outboundEmailEnabled } from '@/lib/utils/auth'
 
 const log = logger.child({ tag: 'email' })
 
@@ -30,7 +33,16 @@ interface SendEmailOptions {
   operation: string
 }
 
-export async function sendEmail({ to, subject, html, idempotencyKey, operation }: SendEmailOptions): Promise<boolean> {
+// Distinguishes a real send from an intentional dev no-op so telemetry never reports a skipped email
+// as "sent". Callers that only care "did it not fail" treat `!== 'failed'` as success.
+export type EmailSendResult = 'sent' | 'skipped' | 'failed'
+
+export async function sendEmail({ to, subject, html, idempotencyKey, operation }: SendEmailOptions): Promise<EmailSendResult> {
+  if (!outboundEmailEnabled()) {
+    log.info({ operation, to }, 'Email skipped — outbound email disabled')
+    return 'skipped'
+  }
+
   const { error } = await resend.emails.send(
     { from: EMAIL_FROM, to: [to], subject, html },
     { idempotencyKey }
@@ -38,7 +50,7 @@ export async function sendEmail({ to, subject, html, idempotencyKey, operation }
 
   if (error) {
     log.error({ operation, to, err: error }, 'Email send failed')
-    return false
+    return 'failed'
   }
-  return true
+  return 'sent'
 }

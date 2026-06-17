@@ -10,10 +10,11 @@ vi.mock('@/lib/infra/rate-limit', () => ({
   checkRateLimit: vi.fn(),
   deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
 }))
-vi.mock('@/lib/stripe', () => ({
+vi.mock('@/lib/infra/stripe', () => ({
   createCheckoutSession: vi.fn(),
   createPortalSession: vi.fn(),
   ensureStripeCustomerUserId: vi.fn(),
+  updateStripeCustomerEmail: vi.fn(),
 }))
 vi.mock('@/lib/billing/checkout/stripe-checkout', () => ({
   cancelIncompleteSubscriptionsForCustomer: vi.fn(),
@@ -31,8 +32,8 @@ vi.mock('@/lib/billing/subscription/toggle-cancellation', () => ({ toggleSubscri
 import { getCachedSession } from '@/lib/session'
 import { resolveProAccessBypassingCache } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit } from '@/lib/infra/rate-limit'
-import { createCheckoutSession, createPortalSession } from '@/lib/stripe'
-import { validateCheckoutEligibility } from '@/lib/billing/checkout/stripe-checkout'
+import { createCheckoutSession, createPortalSession, ensureStripeCustomerUserId, updateStripeCustomerEmail } from '@/lib/infra/stripe'
+import { validateCheckoutEligibility, cancelIncompleteSubscriptionsForCustomer } from '@/lib/billing/checkout/stripe-checkout'
 import { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 import { isAllowedCheckoutPriceId, isStripeCheckoutConfigured } from '@/lib/billing/config/billing-pricing'
 import { toggleSubscriptionCancellation } from '@/lib/billing/subscription/toggle-cancellation'
@@ -52,6 +53,9 @@ const mockStripeInfo = getCachedUserStripeInfo as ReturnType<typeof vi.fn>
 const mockAllowedPrice = isAllowedCheckoutPriceId as ReturnType<typeof vi.fn>
 const mockConfigured = isStripeCheckoutConfigured as ReturnType<typeof vi.fn>
 const mockToggle = toggleSubscriptionCancellation as ReturnType<typeof vi.fn>
+const mockEnsureCustomer = ensureStripeCustomerUserId as ReturnType<typeof vi.fn>
+const mockUpdateCustomerEmail = updateStripeCustomerEmail as ReturnType<typeof vi.fn>
+const mockCancelIncomplete = cancelIncompleteSubscriptionsForCustomer as ReturnType<typeof vi.fn>
 
 function post(path: string, payload?: unknown): NextRequest {
   return new NextRequest(`http://localhost/api/billing/${path}`, {
@@ -106,6 +110,36 @@ describe('POST /billing/checkout', () => {
     mockCreateCheckout.mockRejectedValue(new Error('stripe down'))
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(500)
+  })
+
+  it('returns 409 when the stored Stripe customer belongs to another user', async () => {
+    mockStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_foreign' })
+    mockEnsureCustomer.mockResolvedValue('foreign')
+    const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
+    expect(res.status).toBe(409)
+    expect(mockCreateCheckout).not.toHaveBeenCalled()
+  })
+
+  it('drops a deleted Stripe customer and recreates checkout from the email', async () => {
+    mockStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_dead' })
+    mockEnsureCustomer.mockResolvedValue('deleted')
+    mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_2' })
+    const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
+    expect(res.status).toBe(200)
+    // Falls back to customer_email: the dead customerId is not passed through.
+    expect(mockCreateCheckout).toHaveBeenCalledWith(expect.objectContaining({ customerId: undefined }))
+    expect(mockCancelIncomplete).not.toHaveBeenCalled()
+  })
+
+  it('refreshes the Stripe customer email when reusing a linked customer', async () => {
+    mockStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_linked' })
+    mockEnsureCustomer.mockResolvedValue('linked')
+    mockUpdateCustomerEmail.mockResolvedValue(undefined)
+    mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_3' })
+    const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
+    expect(res.status).toBe(200)
+    expect(mockUpdateCustomerEmail).toHaveBeenCalledWith('cus_linked', 'me@example.com')
+    expect(mockCancelIncomplete).toHaveBeenCalledWith('cus_linked')
   })
 })
 

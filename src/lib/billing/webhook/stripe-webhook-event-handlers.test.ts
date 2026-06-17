@@ -53,7 +53,7 @@ vi.mock('@/lib/billing/stripe-api', async (importOriginal) => {
   }
 })
 
-vi.mock('@/lib/stripe', () => ({
+vi.mock('@/lib/infra/stripe', () => ({
   cancelAbandonedSubscription: vi.fn(),
   cancelSubscriptionImmediately: mockCancelSubscriptionImmediately,
   createPortalSession: mockCreatePortalSession,
@@ -443,7 +443,7 @@ describe('handleInvoiceBillingRecovery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
-    mockSendBillingPaymentFailedEmail.mockResolvedValue(true)
+    mockSendBillingPaymentFailedEmail.mockResolvedValue('sent')
   })
 
   it('reconciles subscription state and sends recovery email', async () => {
@@ -476,7 +476,7 @@ describe('handleSubscriptionTrialWillEnd', () => {
     mockReconcileSubscriptionById.mockResolvedValue(undefined)
     mockStripeCustomersRetrieve.mockResolvedValue({ email: 'user@example.com' })
     mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
-    mockSendBillingTrialEndingEmail.mockResolvedValue(true)
+    mockSendBillingTrialEndingEmail.mockResolvedValue('sent')
   })
 
   it('sends trial ending email only while subscription is still trialing', async () => {

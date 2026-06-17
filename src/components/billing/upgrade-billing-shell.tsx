@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, type ComponentProps, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api/client'
 import { BillingAlert } from '@/components/billing/billing-alert'
@@ -10,22 +10,7 @@ import { PricingProPrice } from '@/components/billing/pricing-cards-display'
 import { CHECKOUT_DISABLED_RECOVERY_MESSAGE } from '@/lib/billing/messages/billing-messages.client'
 import type { BillingPeriod } from '@/lib/billing/config/billing-pricing.client'
 import { useApiFormAction } from '@/hooks/use-api-form-action'
-
-interface UpgradeBillingContextValue {
-  isYearly: boolean
-  checkoutFormAction: NonNullable<ComponentProps<'form'>['action']>
-  selectedPriceId: string | undefined
-  checkoutDisabled: boolean
-  checkoutDisabledMessage?: string | null
-}
-
-const UpgradeBillingContext = createContext<UpgradeBillingContextValue | null>(null)
-
-function useUpgradeBilling(): UpgradeBillingContextValue {
-  const value = useContext(UpgradeBillingContext)
-  if (!value) throw new Error('Upgrade billing components must render inside UpgradeBillingShell')
-  return value
-}
+import { useUpgradeBillingStore } from '@/stores/upgrade-billing'
 
 interface UpgradeBillingShellProps {
   defaultBilling?: BillingPeriod
@@ -44,9 +29,42 @@ export function UpgradeBillingShell({
   priceIdYearly,
   children,
 }: UpgradeBillingShellProps) {
-  const [billing, setBilling] = useState<BillingPeriod>(defaultBilling)
-  const isYearly = billing === 'yearly'
-  const selectedPriceId = isYearly ? priceIdYearly : priceIdMonthly
+  const billing = useUpgradeBillingStore((s) => s.billing)
+  const setBilling = useUpgradeBillingStore((s) => s.setBilling)
+
+  const seedKey = [defaultBilling, priceIdMonthly ?? '', priceIdYearly ?? '', checkoutDisabled, checkoutDisabledMessage ?? ''].join('|')
+
+  // Seed synchronously during render (not in an effect) so the first paint already reflects the
+  // server-provided pricing/config — an effect-time init flashes default state (missing CTA, wrong
+  // period) for one frame. "Adjust state when props change" pattern: re-seed only on a value change.
+  const [seededKey, setSeededKey] = useState<string | null>(null)
+  if (seededKey !== seedKey) {
+    setSeededKey(seedKey)
+    useUpgradeBillingStore.getState().init({ defaultBilling, priceIdMonthly, priceIdYearly, checkoutDisabled, checkoutDisabledMessage })
+  }
+
+  return (
+    <div className="mx-auto my-auto w-full max-w-3xl px-4 py-6">
+      <div className="mb-4 flex justify-center">
+        <BillingToggle billing={billing} onChange={setBilling} />
+      </div>
+      {children}
+    </div>
+  )
+}
+
+export function UpgradeProPrice() {
+  const billing = useUpgradeBillingStore((s) => s.billing)
+  return <PricingProPrice isYearly={billing === 'yearly'} />
+}
+
+export function UpgradeProCheckout() {
+  const selectedPriceId = useUpgradeBillingStore((s) =>
+    s.billing === 'yearly' ? s.priceIdYearly : s.priceIdMonthly
+  )
+  const checkoutDisabled = useUpgradeBillingStore((s) => s.checkoutDisabled)
+  const checkoutDisabledMessage = useUpgradeBillingStore((s) => s.checkoutDisabledMessage)
+
   const { formAction: checkoutFormAction } = useApiFormAction(
     async (body) => {
       const { data, error } = await api.POST('/billing/checkout', { body: { priceId: body.priceId } })
@@ -59,34 +77,6 @@ export function UpgradeBillingShell({
       onSuccess: (data) => { window.location.href = data.url },
     },
   )
-
-  return (
-    <UpgradeBillingContext
-      value={{
-        isYearly,
-        checkoutFormAction,
-        selectedPriceId,
-        checkoutDisabled,
-        checkoutDisabledMessage,
-      }}
-    >
-      <div className="mx-auto my-auto w-full max-w-3xl px-4 py-6">
-        <div className="mb-4 flex justify-center">
-          <BillingToggle billing={billing} onChange={setBilling} />
-        </div>
-        {children}
-      </div>
-    </UpgradeBillingContext>
-  )
-}
-
-export function UpgradeProPrice() {
-  const { isYearly } = useUpgradeBilling()
-  return <PricingProPrice isYearly={isYearly} />
-}
-
-export function UpgradeProCheckout() {
-  const { checkoutFormAction, selectedPriceId, checkoutDisabled, checkoutDisabledMessage } = useUpgradeBilling()
 
   if (checkoutDisabled) {
     return (

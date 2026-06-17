@@ -15,7 +15,7 @@ const { mockWebhookEndpointsList } = vi.hoisted(() => ({
   mockWebhookEndpointsList: vi.fn(),
 }))
 
-vi.mock('@/lib/stripe', () => ({
+vi.mock('@/lib/infra/stripe', () => ({
   stripe: {
     webhookEndpoints: {
       list: mockWebhookEndpointsList,

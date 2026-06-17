@@ -1,14 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildItemAiUserMessage, positiveOrUndefined } from './item-context'
-
-describe('positiveOrUndefined', () => {
-  it('returns positive numbers and drops null, zero, and undefined', () => {
-    expect(positiveOrUndefined(2048)).toBe(2048)
-    expect(positiveOrUndefined(0)).toBeUndefined()
-    expect(positiveOrUndefined(null)).toBeUndefined()
-    expect(positiveOrUndefined(undefined)).toBeUndefined()
-  })
-})
+import { buildItemAiUserMessage } from './item-context'
 
 describe('buildItemAiUserMessage', () => {
   it('includes file metadata for file items', () => {

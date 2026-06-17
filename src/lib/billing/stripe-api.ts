@@ -4,7 +4,7 @@ import Stripe from 'stripe'
 import type { SubscriptionInterval } from '@/generated/prisma'
 import { getAllowedCheckoutPriceIds } from '@/lib/billing/config/billing-pricing'
 import { isSubscriptionCanceling } from '@/lib/billing/subscription/subscription-access'
-import { stripe } from '@/lib/stripe'
+import { stripe } from '@/lib/infra/stripe'
 import { fromStripeTs, stripeIntervalToEnum } from '@/lib/billing/stripe-utils'
 import { logger } from '@/lib/infra/pino'
 

@@ -161,6 +161,54 @@ export function useInvalidateItems() {
     void queryClient.invalidateQueries({ queryKey: ['items'], ...(refetchType && { refetchType }) })
 }
 
+/**
+ * Syncs collection membership in the TanStack Query cache after an item's collections change.
+ * Removes the item from queries for collections it left, and prepends it to queries for
+ * collections it joined. Call this alongside patchItem whenever collectionIds may have changed.
+ */
+export function useSyncItemCollections() {
+  const queryClient = useQueryClient()
+  return (itemId: string, item: LightItem, removedCollectionIds: string[], addedCollectionIds: string[]) => {
+    if (removedCollectionIds.length > 0) {
+      queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+        {
+          queryKey: ['items'],
+          predicate: (query: Query) => {
+            const raw = query.queryKey[1]
+            if (typeof raw !== 'string') return false
+            const params = JSON.parse(raw) as FetchItemsQuery
+            return params.type === 'collection' && removedCollectionIds.includes(params.collectionId)
+          },
+        },
+        (old) => {
+          if (!old) return old
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              items: page.items.filter((i) => i.id !== itemId),
+            })),
+          }
+        }
+      )
+    }
+    if (addedCollectionIds.length > 0) {
+      queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+        {
+          queryKey: ['items'],
+          predicate: (query: Query) => {
+            const raw = query.queryKey[1]
+            if (typeof raw !== 'string') return false
+            const params = JSON.parse(raw) as FetchItemsQuery
+            return params.type === 'collection' && addedCollectionIds.includes(params.collectionId)
+          },
+        },
+        (old) => prependToPage(old, item)
+      )
+    }
+  }
+}
+
 export function useInfiniteItems(
   fetchParams: FetchItemsQuery,
   initialData?: ItemsPage

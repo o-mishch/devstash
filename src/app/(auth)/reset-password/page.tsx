@@ -1,6 +1,6 @@
-import { AuthFormLayout, AuthStatusPage, MissingTokenPage, ExpiredTokenPage } from '@/components/auth/auth-page-header'
+import { TokenGatedPage } from '@/components/auth/token-gated-page'
 import { peekPasswordResetToken } from '@/lib/auth/tokens'
-import { ResetPasswordForm } from '@/components/auth/reset-password-form'
+import { TokenPasswordForm } from '@/components/auth/token-password-form'
 
 interface ResetPasswordPageProps {
   searchParams: Promise<{ token?: string }>
@@ -9,34 +9,24 @@ interface ResetPasswordPageProps {
 export default async function ResetPasswordPage({ searchParams }: ResetPasswordPageProps) {
   const { token } = await searchParams
 
-  if (!token) {
-    return <MissingTokenPage />
-  }
-
-  const status = await peekPasswordResetToken(token)
-
-  if (status === 'expired') {
-    return (
-      <ExpiredTokenPage
-        noun="password reset link"
-        action={{ label: 'Request new link', href: '/forgot-password' }}
-      />
-    )
-  }
-
-  if (status === 'invalid') {
-    return (
-      <AuthStatusPage
-        variant="error"
-        title="Link invalid"
-        description="This password reset link is invalid or has already been used."
-      />
-    )
-  }
-
   return (
-    <AuthFormLayout title="Reset password" description="Enter your new password below.">
-      <ResetPasswordForm token={token} />
-    </AuthFormLayout>
+    <TokenGatedPage
+      token={token}
+      peek={peekPasswordResetToken}
+      invalidDescription="This password reset link is invalid, has expired, or was already used."
+      invalidAction={{ label: 'Request new link', href: '/forgot-password' }}
+      title="Reset password"
+      description="Enter your new password below."
+    >
+      {(t) => (
+        <TokenPasswordForm
+          token={t}
+          path="/auth/reset-password"
+          successMessage="Password updated! You can now sign in."
+          passwordLabel="New password"
+          submitLabel="Reset password"
+        />
+      )}
+    </TokenGatedPage>
   )
 }

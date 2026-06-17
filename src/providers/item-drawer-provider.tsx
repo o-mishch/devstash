@@ -4,7 +4,6 @@ import { useCallback, useRef } from 'react'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useItemsStore } from '@/stores/items'
 import { ItemDetailDrawer } from '@/components/items/drawer/item-detail-drawer'
-import { EditorPreloader } from '@/components/shared/editor-preloader'
 import type { WithChildren } from '@/types/common'
 import type { FullItem } from '@/types/item'
 
@@ -40,7 +39,6 @@ export function ItemDrawerProvider({ children }: WithChildren) {
         onItemSaved={handleItemSaved}
         onItemDeleted={handleItemDeleted}
       />
-      <EditorPreloader />
     </>
   )
 }

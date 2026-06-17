@@ -13,12 +13,17 @@ datasource db {
 // USER
 // ============================================
 model User {
-  id                   String    @id @default(cuid())
-  email                String    @unique
-  emailVerified        DateTime?
-  name                 String?
-  image                String?
-  password             String?
+  id                         String                @id @default(cuid())
+  email                      String                @unique
+  emailVerified              DateTime?
+  // Separate email used for credential (email+password) login, distinct from the OAuth identity
+  // `email` above (the default/identity email). When in sync with credentialEmail, both move together
+  // on a credential-email change. Verified independently via a confirmation link.
+  credentialEmail            String?               @unique
+  credentialEmailVerified    DateTime?
+  name                       String?
+  image                      String?
+  password                   String?
   isPro                      Boolean               @default(false)
   proExpiredAt               DateTime?
   stripeCustomerId           String?               @unique
@@ -29,9 +34,9 @@ model User {
   stripeLastSyncAt           DateTime?
   stripeSubscriptionInterval SubscriptionInterval?
   stripeCancelAtPeriodEnd    Boolean               @default(false)
-  editorPreferences    Json?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  editorPreferences          Json?
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
 
   items       Item[]
   collections Collection[]
@@ -98,6 +103,10 @@ model Session {
   @@map("sessions")
 }
 
+/// @deprecated Auth tokens were migrated to Redis (see `src/lib/auth/tokens.ts`). This table is
+/// retained ONLY to satisfy the NextAuth PrismaAdapter contract and is never read or written by
+/// application code. Do not use it — any access is logged as a warning by the Prisma client
+/// extension in `src/lib/infra/prisma.ts`.
 model VerificationToken {
   identifier String
   token      String   @unique

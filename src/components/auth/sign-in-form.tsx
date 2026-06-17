@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useActionState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -39,35 +39,34 @@ export function SignInForm({ successMessage }: SignInFormProps) {
   const router = useRouter()
   // Set when login is blocked on an unverified email — renders the resend banner below.
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
-  const [isPending, setIsPending] = useState(false)
 
-  async function formAction(formData: FormData) {
-    setIsPending(true)
+  // React tracks the form's pending state through the action passed to `<form action>`.
+  const [, formAction, isPending] = useActionState(async (_prev: null, formData: FormData) => {
     const { error } = await api.POST('/auth/login', {
       body: {
         email: String(formData.get('email') ?? ''),
         password: String(formData.get('password') ?? ''),
       },
     })
-    setIsPending(false)
 
     if (!error) {
       setUnverifiedEmail(null)
       toast.success('You successfully logged in.')
       router.push('/dashboard')
-      return
+      return null
     }
 
     // Only the 403 "email not verified" error carries a structured `data.email`; `'data' in error`
     // narrows the error union to that member. Renders the resend banner below — no toast needed.
     if ('data' in error && error.data) {
       setUnverifiedEmail(error.data.email)
-      return
+      return null
     }
 
     setUnverifiedEmail(null)
     toast.error(error.message || 'Something went wrong. Please try again.')
-  }
+    return null
+  }, null)
 
   useEffect(() => {
     if (successMessage) toast.success(successMessage)

@@ -1,7 +1,14 @@
+import { SYSTEM_TYPE_ORDER } from './constants'
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Returns the number only when it is strictly positive, else `undefined`. */
+export function positiveOrUndefined(value: number | null | undefined): number | undefined {
+  return value != null && value > 0 ? value : undefined
 }
 
 export function formatDate(date: Date | string, includeYear = false): string {
@@ -25,4 +32,31 @@ export function parseTagString(raw: string | undefined): string[] {
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean)
+}
+
+export function getFileExtension(fileName: string): string {
+  const base = fileName.trim()
+  const dot = base.lastIndexOf('.')
+  if (dot <= 0 || dot === base.length - 1) return ''
+  return base.slice(dot + 1).toLowerCase()
+}
+
+function internalPluralize(name: string): string {
+  if (name.endsWith('y') && !/[aeiou]y$/i.test(name)) return name.slice(0, -1) + 'ies'
+  if (name.endsWith('s') || name.endsWith('ch') || name.endsWith('sh') || name.endsWith('x') || name.endsWith('z')) return name + 'es'
+  return name + 's'
+}
+
+export function getTypeLabel(name: string): string {
+  if (!name) return ''
+  const plural = internalPluralize(name)
+  return plural.charAt(0).toUpperCase() + plural.slice(1)
+}
+
+export function getTypePlural(name: string): string {
+  return name ? internalPluralize(name) : ''
+}
+
+export function slugToTypeName(slug: string): string {
+  return SYSTEM_TYPE_ORDER.find(t => getTypePlural(t) === slug) ?? slug
 }

@@ -1,17 +1,17 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Mail, CalendarDays, Package, FolderOpen } from 'lucide-react'
+import { ArrowLeft, Package, FolderOpen } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
-import { formatDate } from '@/lib/utils'
 import { getCurrentUserId } from '@/lib/session'
 import { getProfileData, getProfileAccountSummary } from '@/lib/db/profile'
+import { outboundEmailEnabled } from '@/lib/utils/auth'
 import { DeleteAccountDialog } from '@/components/profile/delete-account-dialog'
 import { ConnectedAccounts } from '@/components/profile/connected-accounts'
 import { ProfileToast, type ToastCode } from '@/components/profile/profile-toast'
-import { MainEmailSelector } from '@/components/profile/main-email-selector'
+import { ProfileEmailSection } from '@/components/profile/profile-email-section'
 import { EditableName } from '@/components/profile/editable-name'
 
 interface ProfilePageProps {
@@ -29,7 +29,9 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
   const { user, stats } = data
   const { accountTypes, availableEmails } = getProfileAccountSummary(user)
 
-  const showEmailSelector = availableEmails.length > 1
+  // When email verification is disabled, adding an Email & Password login for an unowned address skips
+  // the confirmation link and activates instantly — the dialog collects the password up front.
+  const verificationDisabled = !outboundEmailEnabled()
 
   return (
     <div className="app-page gap-5 p-6">
@@ -57,25 +59,16 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2 min-w-0">
-              <Mail className="size-4 shrink-0" />
-              {showEmailSelector ? (
-                <MainEmailSelector currentEmail={user.email} availableEmails={availableEmails} hasPassword={user.hasPassword} />
-              ) : (
-                <span className="truncate">{user.email}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <CalendarDays className="size-4 shrink-0" />
-              <span>Member since {formatDate(user.createdAt)}</span>
-            </div>
-          </div>
-          {showEmailSelector && (
-            <p className="-mt-2 pl-6 text-xs text-muted-foreground/70">
-              {user.hasPassword ? 'Sign-in email · click to change' : 'Display email · click to change'}
-            </p>
-          )}
+          <ProfileEmailSection
+            initialState={{
+              currentEmail: user.email,
+              availableEmails,
+              hasCredentialLogin: user.hasPassword,
+              credentialEmail: user.credentialEmail,
+              linkedAccounts: user.accounts,
+            }}
+            createdAt={user.createdAt}
+          />
         </CardContent>
       </Card>
 
@@ -86,10 +79,8 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <ConnectedAccounts
-            hasPassword={user.hasPassword}
             accounts={user.accounts}
-            currentEmail={user.email}
-            availableEmails={availableEmails}
+            verificationDisabled={verificationDisabled}
           />
         </CardContent>
       </Card>

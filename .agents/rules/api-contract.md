@@ -10,7 +10,7 @@ paths:
   - "src/actions/**/*"
   - "src/types/api.ts"
   - "src/lib/api/**/*"
----
+description: Client↔server contract for DevStash — Next.js Route Handlers with Zod schemas as the source of truth, generated OpenAPI 3.1 doc and typed client (`api`/`$api`), the route wrappers, and the legacy `ApiBody` envelope retained only for Server Actions and exempt routes. Loads when editing API routes, server actions, or `src/lib/api/`.
 
 # API Contract
 

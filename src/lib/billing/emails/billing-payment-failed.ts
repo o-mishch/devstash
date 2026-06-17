@@ -1,4 +1,4 @@
-import { sendEmail } from '@/lib/infra/resend'
+import { sendEmail, type EmailSendResult } from '@/lib/infra/resend'
 import { buildEmailTemplate } from '@/lib/emails/template-builder'
 import { billingPortalCtaHtml } from './billing-portal-cta'
 import billingPaymentFailedHtml from './billing-payment-failed.html'
@@ -13,7 +13,7 @@ export async function sendBillingPaymentFailedEmail({
   invoiceId,
   portalUrl,
   to,
-}: SendBillingPaymentFailedEmailParams): Promise<boolean> {
+}: SendBillingPaymentFailedEmailParams): Promise<EmailSendResult> {
   const bodyHtml = `${billingPaymentFailedHtml}${billingPortalCtaHtml(portalUrl)}`
   const html = buildEmailTemplate('Update your DevStash billing details', bodyHtml)
 
