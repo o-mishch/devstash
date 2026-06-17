@@ -121,7 +121,7 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
   const duration = Date.now() - start
 
   if (!user) {
-    log.info({ userId, cacheKey, found: false, duration }, 'DB: getProfileData')
+    log.info({ userId, cacheKey, found: false, duration }, 'DB: getProfileData - user not found')
     return null
   }
 
@@ -150,7 +150,7 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
     stats: { totalItems: user._count.items, totalCollections: user._count.collections, itemTypeCounts },
   }
 
-  log.info({ userId, cacheKey, found: true, itemCount: user._count.items, collectionCount: user._count.collections, duration }, 'DB: getProfileData')
+  log.info({ userId, cacheKey, found: true, itemCount: user._count.items, collectionCount: user._count.collections, duration }, 'DB: getProfileData - success')
   return result
 }
 

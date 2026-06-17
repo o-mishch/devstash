@@ -213,7 +213,7 @@ export async function getSidebarCollections(userId: string): Promise<SidebarColl
   const duration = Date.now() - start
 
   if (collections.length === 0) {
-    log.info({ userId, cacheKey, count: 0, duration }, 'DB: getSidebarCollections')
+    log.info({ userId, cacheKey, count: 0, duration }, 'DB: getSidebarCollections - empty')
     return []
   }
 
@@ -221,7 +221,7 @@ export async function getSidebarCollections(userId: string): Promise<SidebarColl
   const countsByCollection = groupTypeCountsByCollection(typeCounts)
   const result = collections.map((col) => mapSidebarCollection(col, countsByCollection.get(col.id)?.[0]?.color ?? null))
 
-  log.info({ userId, cacheKey, count: result.length, duration }, 'DB: getSidebarCollections')
+  log.info({ userId, cacheKey, count: result.length, duration }, 'DB: getSidebarCollections - success')
   return result
 }
 
