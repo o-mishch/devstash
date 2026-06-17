@@ -70,10 +70,12 @@ export function buildOwnedEmails(user: OwnedEmailSources): string[] {
 export function getProfileAccountSummary(
   user: Pick<ProfileUser, 'email' | 'credentialEmail' | 'credentialEmailVerified' | 'hasPassword' | 'accounts'>,
 ): ProfileAccountSummary {
-  const accountTypes = [
-    ...(user.hasPassword ? ['Email'] : []),
-    ...user.accounts.map(({ provider }) => PROVIDER_LABELS[provider] ?? provider),
-  ]
+  const accountTypes = Array.from(
+    new Set([
+      ...(user.hasPassword ? ['Email'] : []),
+      ...user.accounts.map(({ provider }) => PROVIDER_LABELS[provider] ?? provider),
+    ])
+  )
 
   return { accountTypes, availableEmails: buildOwnedEmails(user) }
 }

@@ -48,12 +48,15 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
   // `bottom-0` panel, so without this its footer and any low fields sit *behind* the keyboard.
   const viewport = useVisualViewport()
   const keyboardOpen = (viewport?.keyboardHeight ?? 0) > 0
+
   // Lift the sheet to rest directly on top of the keyboard and cap its height to the visible area,
   // so the footer and the focused field stay above the keyboard instead of hidden behind it.
-  const keyboardStyle: CSSProperties =
-    viewport && viewport.keyboardHeight > 0
-      ? { bottom: viewport.keyboardHeight, maxHeight: viewport.height }
-      : {}
+  const keyboardStyle: CSSProperties = viewport
+    ? {
+        bottom: viewport.keyboardHeight > 0 ? viewport.keyboardHeight : undefined,
+        maxHeight: viewport.height,
+      }
+    : {}
 
   // Scroll the sheet's form body to reveal the focused field above the keyboard. iOS doesn't
   // scroll inputs into view correctly inside a fixed sheet, so we do it ourselves.

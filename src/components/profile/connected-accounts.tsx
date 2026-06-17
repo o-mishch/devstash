@@ -163,11 +163,9 @@ export function ConnectedAccounts({ accounts, verificationDisabled }: ConnectedA
           canUnlink={totalMethods > 1}
         />
       ))}
-      {SUPPORTED_OAUTH_PROVIDERS
-        .filter((provider) => !accounts.some((account) => account.provider === provider))
-        .map((provider) => (
-          <AddProviderRow key={provider} provider={provider} />
-        ))}
+      {SUPPORTED_OAUTH_PROVIDERS.map((provider) => (
+        <AddProviderRow key={provider} provider={provider} />
+      ))}
     </div>
   )
 }
