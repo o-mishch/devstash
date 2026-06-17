@@ -24,7 +24,7 @@ export function DestructiveDialogFooter({
       <Button variant="ghost" onClick={onCancel} disabled={isPending}>
         Cancel
       </Button>
-      <Button variant="destructive" onClick={onConfirm} disabled={isPending || confirmDisabled}>
+      <Button variant="destructiveSolid" onClick={onConfirm} disabled={isPending || confirmDisabled}>
         {isPending && <Loader2 className="mr-1 size-4 animate-spin" />}
         {confirmText}
       </Button>

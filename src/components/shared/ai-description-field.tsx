@@ -12,6 +12,7 @@ import {
 } from '@/components/shared/ai-field-chrome'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
+import { cn } from '@/lib/utils'
 
 interface AiDescriptionResult {
   description: string
@@ -23,6 +24,9 @@ interface AiDescriptionFieldProps {
   onGenerate: () => Promise<AiDescriptionResult>
   onApply: (description: string) => void
   actionClassName: string
+  // When true the field and its frame become a flex column that fills the available height, so a
+  // flex-1 textarea child grows with its container (used by the resizable collection sheet).
+  fill?: boolean
   children: ReactNode
 }
 
@@ -32,6 +36,7 @@ export function AiDescriptionField({
   onGenerate,
   onApply,
   actionClassName,
+  fill = false,
   children,
 }: AiDescriptionFieldProps) {
   const { isPro } = useAppUserFlagsStore()
@@ -60,8 +65,8 @@ export function AiDescriptionField({
   }
 
   return (
-    <div className="space-y-2 w-full">
-      <AiFieldFrame>
+    <div className={cn('w-full space-y-2', fill && 'flex min-h-0 flex-1 flex-col')}>
+      <AiFieldFrame className={cn(fill && 'flex min-h-0 flex-1 flex-col')}>
         {children}
         {isPro && (
           <AiFieldAction

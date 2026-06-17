@@ -44,15 +44,15 @@ export function ItemCard({ item }: ItemCardProps) {
         <div className="flex w-full min-w-0 items-start gap-3">
           <ItemIconWrapper itemType={itemType} wrapperClassName="size-8 shrink-0" iconClassName="size-4" />
           <div className="min-w-0 flex-1 overflow-hidden">
-            <div className="flex items-center gap-2">
-              <p className="truncate font-medium">{item.title}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="min-w-0 flex-1 truncate font-medium">{item.title}</p>
               <ItemStatusIcons isPinned={item.isPinned} isFavorite={item.isFavorite} />
             </div>
             {subtitle ? (
               <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{subtitle}</p>
             ) : null}
+            <p className="mt-1 text-xs text-muted-foreground">{formatDate(item.createdAt)}</p>
           </div>
-          <span className="ml-2 hidden shrink-0 text-xs text-muted-foreground sm:inline">{formatDate(item.createdAt)}</span>
         </div>
       </CardContent>
       <CopyButton

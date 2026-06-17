@@ -1,30 +1,34 @@
-'use client';
+'use client'
 
-import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import { Menu, X, Hexagon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { useState, useEffect, useRef } from 'react'
+import Link from 'next/link'
+import { Menu, X, Hexagon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
-export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement>(null);
+interface HomepageNavProps {
+  isAuthenticated?: boolean
+}
+
+export function HomepageNav({ isAuthenticated = false }: HomepageNavProps) {
+  const [scrolled, setScrolled] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
+    const el = sentinelRef.current
+    if (!el) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        setScrolled(!entry.isIntersecting);
+        setScrolled(!entry.isIntersecting)
       },
       { rootMargin: '-1px 0px 0px 0px' }
-    );
+    )
 
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <>
@@ -57,19 +61,20 @@ export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boo
               {isAuthenticated ? (
                 <Link
                   href="/dashboard"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 h-9 sm:h-8 text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
+                  className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 h-9 sm:h-8 text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
                 >
                   <span className="hidden sm:inline">Go to Dashboard</span>
                   <span className="sm:hidden">Dashboard</span>
                 </Link>
               ) : (
                 <>
-                  <Link href="/sign-in" className="text-sm font-medium text-muted-foreground hover:text-foreground px-2 py-2">
+                  {/* Hidden on the smallest screens to avoid a cramped bar — surfaced in the mobile menu instead */}
+                  <Link href="/sign-in" className="hidden whitespace-nowrap px-2 py-2 text-sm font-medium text-muted-foreground hover:text-foreground sm:inline-block">
                     Sign In
                   </Link>
                   <Link
                     href="/register"
-                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 h-9 sm:h-8 text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
+                    className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 h-9 sm:h-8 text-sm font-semibold text-white shadow-sm shadow-cyan-500/20 transition-all hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95"
                   >
                     Sign Up
                   </Link>
@@ -121,10 +126,19 @@ export function HomepageNav({ isAuthenticated = false }: { isAuthenticated?: boo
               >
                 Pricing
               </a>
+              {!isAuthenticated && (
+                <Link
+                  href="/sign-in"
+                  className="rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground sm:hidden"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  Sign In
+                </Link>
+              )}
             </div>
           </div>
         </div>
       </nav>
     </>
-  );
+  )
 }

@@ -18,9 +18,10 @@ interface CodeEditorProps {
   language?: string | null
   readOnly?: boolean
   className?: string
+  fullscreenLabel?: string
 }
 
-export function CodeEditor({ value, onChange, language, readOnly = false, className }: CodeEditorProps) {
+export function CodeEditor({ value, onChange, language, readOnly = false, className, fullscreenLabel }: CodeEditorProps) {
   const monacoLanguage = language || 'plaintext'
   const isTouch = useIsTouch()
   const { fontSize, minimap, wordWrap, tabSize, theme } = useEditorPreferencesStore()
@@ -42,8 +43,11 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
     automaticLayout: true,
     scrollbar: {
       vertical: 'visible',
-      horizontal: 'hidden',
+      // 'auto': when word wrap is off, long lines overflow and need a horizontal scrollbar.
+      // Previously 'hidden' trapped the overflow with no way to scroll to it.
+      horizontal: 'auto',
       verticalScrollbarSize: 8,
+      horizontalScrollbarSize: 8,
       useShadows: false,
     },
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
@@ -62,6 +66,7 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
   return (
     <EditorChromeShell
       className={cn('bg-[#1E1E1E]', className)}
+      fullscreenLabel={fullscreenLabel}
       header={
         <div className="flex items-center gap-2">
           {language && (

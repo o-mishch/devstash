@@ -17,13 +17,17 @@ vi.mock('@/lib/storage/image-thumbnails', () => ({
   canGenerateImageThumbnail: vi.fn(() => true),
   deleteStoredFile: vi.fn(),
 }))
-vi.mock('@/lib/storage/upload-tokens', () => ({ writePendingUpload: vi.fn(), sweepExpiredUploads: vi.fn() }))
+vi.mock('@/lib/storage/upload-tokens', () => ({
+  writePendingUpload: vi.fn(),
+  deletePendingUpload: vi.fn(),
+  sweepExpiredUploads: vi.fn(),
+}))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit } from '@/lib/infra/rate-limit'
 import { getPresignedPostCredential } from '@/lib/storage/s3'
-import { writePendingUpload } from '@/lib/storage/upload-tokens'
+import { writePendingUpload, deletePendingUpload } from '@/lib/storage/upload-tokens'
 import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 
 import { POST } from './url/route'
@@ -35,6 +39,7 @@ const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
 const mockPresigned = getPresignedPostCredential as ReturnType<typeof vi.fn>
 const mockWritePending = writePendingUpload as ReturnType<typeof vi.fn>
 const mockDeleteStored = deleteStoredFile as ReturnType<typeof vi.fn>
+const mockDeletePending = deletePendingUpload as ReturnType<typeof vi.fn>
 
 function postBody(payload: unknown): NextRequest {
   return new NextRequest('http://localhost/api/upload/url', { method: 'POST', body: JSON.stringify(payload) })
@@ -127,9 +132,16 @@ describe('DELETE /upload', () => {
     expect(mockDeleteStored).not.toHaveBeenCalled()
   })
 
-  it('returns 204 and deletes a key owned by the user', async () => {
+  it('returns 204 and deletes the S3 object + pending_upload token for a key owned by the user', async () => {
     const res = await DELETE(del('?key=user-1/abc.png'))
     expect(res.status).toBe(204)
     expect(mockDeleteStored).toHaveBeenCalledWith('user-1/abc.png')
+    expect(mockDeletePending).toHaveBeenCalledWith('user-1/abc.png')
+  })
+
+  it('does not delete the pending_upload token when the key fails the IDOR check', async () => {
+    const res = await DELETE(del('?key=attacker/secret.png'))
+    expect(res.status).toBe(403)
+    expect(mockDeletePending).not.toHaveBeenCalled()
   })
 })

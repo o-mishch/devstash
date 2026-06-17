@@ -146,7 +146,9 @@
     --accent:              var(--color-zinc-800);
     --accent-foreground:   var(--color-zinc-50);
     --destructive:         var(--color-red-900);
-    --border:              var(--color-zinc-700);
+    /* Cards delineate with a solid `ring-border`; zinc-600 reads clearly above the
+     * zinc-800 card surface where zinc-700 was only one step off. */
+    --border:              var(--color-zinc-600);
     --input:               var(--color-zinc-700);
     --ring:                var(--color-blue-500);
 
@@ -187,7 +189,8 @@
     --accent:              oklch(0.22 0.008 250);
     --accent-foreground:   var(--color-slate-50);
     --destructive:         var(--color-red-900);
-    --border:              oklch(0.25 0.008 250);
+    /* Lifted edge (L 0.30) so the solid `ring-border` reads above the L 0.17 card. */
+    --border:              oklch(0.30 0.008 250);
     --input:               oklch(0.25 0.008 250);
     --ring:                var(--color-blue-500);
 
@@ -221,8 +224,10 @@
     --accent:              var(--color-zinc-600);
     --accent-foreground:   var(--color-zinc-100);
     --destructive:         var(--color-red-800);
-    --border:              var(--color-zinc-600);
-    --input:               var(--color-zinc-600);
+    /* Brighter edge (zinc-500 ≈ #71717a) so card/input borders read against the
+     * zinc-700 surface on the zinc-800 background — zinc-600 was too close to the card. */
+    --border:              var(--color-zinc-500);
+    --input:               var(--color-zinc-500);
     --ring:                var(--color-amber-500);
 
     --sidebar:                    var(--color-zinc-700);
@@ -231,7 +236,7 @@
     --sidebar-primary-foreground: var(--color-zinc-950);
     --sidebar-accent:             var(--color-zinc-600);
     --sidebar-accent-foreground:  var(--color-zinc-100);
-    --sidebar-border:             var(--color-zinc-600);
+    --sidebar-border:             var(--color-zinc-500);
     --sidebar-ring:               var(--color-amber-500);
 }
 
@@ -242,30 +247,35 @@
 .dark[data-theme="vercel"], .dark [data-theme="vercel"] {
     --background:          var(--color-black);
     --foreground:          var(--color-white);
-    --card:                var(--color-neutral-950);
+    /* Card lifted one step off pure black (was neutral-950 ≈ background) so cards,
+     * stat chips and section panels read as distinct surfaces on the OLED theme. */
+    --card:                var(--color-neutral-900);
     --card-foreground:     var(--color-white);
-    --popover:             var(--color-neutral-950);
+    --popover:             var(--color-neutral-900);
     --popover-foreground:  var(--color-white);
     --primary:             var(--color-white);
     --primary-foreground:  var(--color-black);
-    --secondary:           var(--color-neutral-900);
+    --secondary:           var(--color-neutral-800);
     --secondary-foreground:var(--color-white);
-    --muted:               var(--color-neutral-900);
+    --muted:               var(--color-neutral-800);
     --muted-foreground:    var(--color-neutral-400);
-    --accent:              var(--color-neutral-900);
+    --accent:              var(--color-neutral-800);
     --accent-foreground:   var(--color-white);
     --destructive:         var(--color-red-900);
-    --border:              var(--color-neutral-900);
-    --input:               var(--color-neutral-900);
+    /* Geist-style visible border (~#404040) — on pure black the card edge has to be
+     * clearly brighter than the surface to read; neutral-800 was still too faint. */
+    --border:              var(--color-neutral-700);
+    --input:               var(--color-neutral-700);
     --ring:                var(--color-neutral-300);
 
+    /* Sidebar stays a step below the cards (neutral-950) so it recedes behind content. */
     --sidebar:                    var(--color-neutral-950);
     --sidebar-foreground:         var(--color-white);
     --sidebar-primary:            var(--color-white);
     --sidebar-primary-foreground: var(--color-black);
-    --sidebar-accent:             var(--color-neutral-900);
+    --sidebar-accent:             var(--color-neutral-800);
     --sidebar-accent-foreground:  var(--color-white);
-    --sidebar-border:             var(--color-neutral-900);
+    --sidebar-border:             var(--color-neutral-700);
     --sidebar-ring:               var(--color-neutral-300);
 }
 
@@ -289,8 +299,10 @@
     --accent:              var(--color-purple-900);
     --accent-foreground:   var(--color-purple-100);
     --destructive:         var(--color-red-900);
-    --border:              oklch(0.32 0.018 285);
-    --input:               oklch(0.32 0.018 285);
+    /* Lifted edge (L 0.40) so borders read above the L 0.27 card on the L 0.22
+     * background — the old L 0.32 was too close to the card surface. */
+    --border:              oklch(0.40 0.018 285);
+    --input:               oklch(0.40 0.018 285);
     --ring:                var(--color-purple-500);
 
     --sidebar:                    oklch(0.27 0.018 285);
@@ -299,7 +311,7 @@
     --sidebar-primary-foreground: var(--color-white);
     --sidebar-accent:             oklch(0.30 0.018 285);
     --sidebar-accent-foreground:  oklch(0.95 0 0);
-    --sidebar-border:             oklch(0.32 0.018 285);
+    --sidebar-border:             oklch(0.40 0.018 285);
     --sidebar-ring:               var(--color-purple-500);
 }
 
@@ -323,8 +335,10 @@
     --accent:              var(--color-pink-950);
     --accent-foreground:   var(--color-pink-100);
     --destructive:         var(--color-red-900);
-    --border:              var(--color-stone-600);
-    --input:               var(--color-stone-600);
+    /* Brighter edge (stone-500) so card/input borders read against the stone-700
+     * surface on the stone-800 background — stone-600 was too close to the card. */
+    --border:              var(--color-stone-500);
+    --input:               var(--color-stone-500);
     --ring:                var(--color-pink-500);
 
     --sidebar:                    var(--color-stone-700);
@@ -333,7 +347,7 @@
     --sidebar-primary-foreground: var(--color-white);
     --sidebar-accent:             var(--color-stone-600);
     --sidebar-accent-foreground:  var(--color-stone-50);
-    --sidebar-border:             var(--color-stone-600);
+    --sidebar-border:             var(--color-stone-500);
     --sidebar-ring:               var(--color-pink-500);
 }
 
@@ -353,6 +367,27 @@
     @variant touch {
         :root {
             font-size: 110%;
+        }
+    }
+    /* Ultra-small widths: step the global rem base back down so the rem-based UI stops
+     * overflowing the viewport (WCAG 1.4.10 Reflow — no horizontal scroll at 320px). These
+     * are rem/percentage steps (WCAG technique C12), not `vw` (which fails 1.4.4) or
+     * transform/zoom; user zoom still multiplies on top. Floored at 85% so text stays legible
+     * and tap targets stay above the 24px minimum (WCAG 2.5.8). Ordered after the `touch`
+     * rule so the narrower matching step wins. */
+    @media (width < 24rem) {
+        :root {
+            font-size: 100%;
+        }
+    }
+    @media (width < 21rem) {
+        :root {
+            font-size: 92%;
+        }
+    }
+    @media (width < 18rem) {
+        :root {
+            font-size: 85%;
         }
     }
     /* Desktop global scale: bump the rem base to 125% on real desktop (fine pointer
@@ -385,8 +420,12 @@
 
 /* App shell layout — prevents horizontal overflow inside sidebar + main flex layout */
 @layer utilities {
+    /* Cap content width and center it so ultrawide displays get symmetric margins instead of
+       cards stretching edge-to-edge (long eye-travel + dead whitespace). w-full keeps it fluid
+       below the cap; mx-auto centers within the flex-column <main>. */
     .app-page {
-        @apply flex w-full min-w-0 max-w-full flex-col [&>*]:min-w-0;
+        @apply mx-auto flex w-full min-w-0 flex-col [&>*]:min-w-0;
+        max-width: 1600px;
     }
     .app-grid {
         @apply grid min-w-0;
@@ -396,7 +435,7 @@
         @apply flex w-full min-w-0 items-center overflow-hidden;
     }
     .card-interactive {
-        @apply relative z-0 cursor-pointer transition-all duration-200 hover:z-10 hover:-translate-y-1 hover:bg-foreground/5 hover:shadow-md;
+        @apply relative z-0 cursor-pointer shadow-sm transition-all duration-200 hover:z-10 hover:-translate-y-1 hover:bg-foreground/5 hover:shadow-md;
     }
     /* Reserve space above/below cards so hover lift + shadow aren't clipped */
     .card-grid {

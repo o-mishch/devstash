@@ -106,9 +106,10 @@ interface CodeEditorInputProps {
   language?: string | null
   contentEditorClassName?: string
   contentEditorWrapperClassName?: string
+  fullscreenLabel?: string
 }
 
-function CodeEditorInput({ value, onChange, language, contentEditorClassName, contentEditorWrapperClassName }: CodeEditorInputProps) {
+function CodeEditorInput({ value, onChange, language, contentEditorClassName, contentEditorWrapperClassName, fullscreenLabel }: CodeEditorInputProps) {
   const { resolvedLang, isLoading } = useMonacoLanguage(language)
 
   const handleChange = useCallback((val: string | undefined) => {
@@ -131,6 +132,7 @@ function CodeEditorInput({ value, onChange, language, contentEditorClassName, co
           onChange={handleChange}
           language={resolvedLang}
           className={contentEditorClassName}
+          fullscreenLabel={fullscreenLabel}
         />
       </Suspense>
     )
@@ -153,6 +155,8 @@ interface ItemContentInputProps {
   contentEditorClassName?: string
   contentEditorWrapperClassName?: string
   textareaClassName?: string
+  // When true the code/markdown editors expose a fullscreen toggle in their chrome header.
+  enableFullscreen?: boolean
 }
 
 export function ItemContentInput({
@@ -164,12 +168,18 @@ export function ItemContentInput({
   placeholder,
   contentEditorClassName,
   contentEditorWrapperClassName,
-  textareaClassName
+  textareaClassName,
+  enableFullscreen,
 }: ItemContentInputProps) {
   if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
     const editor = (
       <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-        <MarkdownEditor value={value} onChange={onChange} className={contentEditorClassName} />
+        <MarkdownEditor
+          value={value}
+          onChange={onChange}
+          className={contentEditorClassName}
+          fullscreenLabel={enableFullscreen ? 'markdown editor' : undefined}
+        />
       </Suspense>
     )
     if (contentEditorWrapperClassName) {
@@ -186,6 +196,7 @@ export function ItemContentInput({
         language={language}
         contentEditorClassName={contentEditorClassName}
         contentEditorWrapperClassName={contentEditorWrapperClassName}
+        fullscreenLabel={enableFullscreen ? 'code editor' : undefined}
       />
     )
   }

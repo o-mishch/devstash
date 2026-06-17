@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import type { WithChildren } from '@/types/common'
-import { Archive, CircleCheck, CircleX, type LucideIcon } from 'lucide-react'
+import { Archive, ArrowLeft, CircleCheck, CircleX, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -23,8 +23,17 @@ export function AuthPageBase({ children }: WithChildren) {
         <div className="absolute right-1/4 top-[10%] h-[300px] w-[400px] rounded-full bg-cyan-500/10 blur-3xl" />
       </div>
 
-      <div className="w-full max-w-sm space-y-6">
-        <div className="flex justify-center">
+      <div className="w-full max-w-sm space-y-4 sm:space-y-6">
+        {/* Back arrow sits inline with the brand on one row (mobile only); being part of
+         * this column it stays above the page content and is reliably tappable. */}
+        <div className="relative flex items-center justify-center">
+          <Link
+            href="/"
+            className="absolute left-0 flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground md:hidden"
+            aria-label="Back to home"
+          >
+            <ArrowLeft className="size-5" />
+          </Link>
           <div className="flex items-center gap-2">
             <Archive className="size-5 text-blue-400" aria-hidden="true" />
             <span className="text-2xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">DevStash</span>
@@ -50,7 +59,7 @@ export function AuthFormLayout({ title, description, children }: AuthFormLayoutP
   return (
     <AuthPageBase>
       <Card className="border-white/10 bg-card/50 backdrop-blur-sm shadow-xl">
-        <CardContent className="space-y-6 p-6">
+        <CardContent className="space-y-5 p-5 sm:space-y-6 sm:p-6">
           <div className="flex flex-col items-center gap-2 text-center">
             <h1 className="text-2xl font-bold">{title}</h1>
             <p className="text-sm text-muted-foreground">{description}</p>

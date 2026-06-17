@@ -2,7 +2,6 @@
 
 import { useCallback } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api/client'
 import {
@@ -59,10 +58,6 @@ export function AutoDescriptionInput({
   }, [payload])
 
   const inputProps = form.register('description')
-  const actionClassName =
-    variant === 'drawer'
-      ? 'right-1.5 top-1.5'
-      : 'right-1.5 top-1/2 -translate-y-1/2'
 
   return (
     <AiDescriptionField
@@ -72,22 +67,19 @@ export function AutoDescriptionInput({
       onApply={(description) =>
         form.setValue('description', description, { shouldDirty: true, shouldValidate: true })
       }
-      actionClassName={actionClassName}
+      // Top-align the AI action since the field is a multi-line textarea in both variants.
+      actionClassName="right-1.5 top-1.5"
     >
-      {variant === 'drawer' ? (
-        <Textarea
-          {...inputProps}
-          placeholder="Optional description"
-          className={`min-h-[3rem] resize-none ${AI_DESCRIPTION_INPUT_CLASS}`}
-        />
-      ) : (
-        <Input
-          id="description"
-          placeholder="Optional description"
-          {...inputProps}
-          className={AI_DESCRIPTION_INPUT_CLASS}
-        />
-      )}
+      {/* Textarea (not Input) so Enter / Ctrl+Enter inserts a newline instead of submitting the
+          form. id is set only for the dialog variant, whose label uses htmlFor="description". */}
+      <Textarea
+        id={variant === 'dialog' ? 'description' : undefined}
+        {...inputProps}
+        placeholder="Optional description"
+        // max-h caps the field-sizing-content auto-grow so a long description scrolls instead of
+        // ballooning the dialog layout.
+        className={`min-h-[3rem] max-h-44 resize-none ${AI_DESCRIPTION_INPUT_CLASS}`}
+      />
     </AiDescriptionField>
   )
 }

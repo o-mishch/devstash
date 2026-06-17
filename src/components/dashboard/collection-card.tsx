@@ -7,6 +7,7 @@ import { Folder } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { CollectionCardActions } from './collection-card-actions'
+import { itemCountLabel } from '@/lib/utils/format'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionCardProps {
@@ -35,7 +36,7 @@ export function CollectionCard({ collection }: CollectionCardProps) {
             </p>
           )}
           <div className="mt-1.5 flex items-center gap-3">
-            <span className="text-[11px] font-medium text-muted-foreground shrink-0">{collection.itemCount} items</span>
+            <span className="text-[11px] font-medium text-muted-foreground shrink-0">{itemCountLabel(collection.itemCount)}</span>
             {collection.types.length > 0 && (
               <div className="flex gap-1.5">
                 {collection.types.slice(0, 5).map((type) => (

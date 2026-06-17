@@ -36,24 +36,23 @@ export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuPro
 
   return (
     <>
-      {itemOpen && (
-        <CreateItemDialog
-          itemTypes={itemTypes}
-          collections={collections}
-          open={itemOpen}
-          onOpenChange={setItemOpen}
-          initialType={initialType}
-          initialCollectionId={initialCollectionId}
-          trigger={<></>}
-        />
-      )}
-      {collectionOpen && (
-        <CollectionCreateDialog
-          open={collectionOpen}
-          onOpenChange={setCollectionOpen}
-          trigger={<></>}
-        />
-      )}
+      {/* Kept always mounted (not `{itemOpen && …}`) so the sheet exists in the closed state
+          first and `open` flips false→true on tap — that closed→open transition is what lets
+          Base UI play the slide-up enter animation. Mounting already-open skips it (pops in). */}
+      <CreateItemDialog
+        itemTypes={itemTypes}
+        collections={collections}
+        open={itemOpen}
+        onOpenChange={setItemOpen}
+        initialType={initialType}
+        initialCollectionId={initialCollectionId}
+        trigger={<></>}
+      />
+      <CollectionCreateDialog
+        open={collectionOpen}
+        onOpenChange={setCollectionOpen}
+        trigger={<></>}
+      />
 
       <DropdownMenu>
         <DropdownMenuTrigger render={

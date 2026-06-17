@@ -2,8 +2,12 @@
 'use no memo'
 
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { useVirtualContainer } from '@/hooks/use-virtual-container'
+
+// Stable reference for single-column list callers so the grid's ResizeObserver effect doesn't
+// re-subscribe each render. Shared by the dashboard recent list and the file list.
+export const singleColumn = () => 1
 
 interface TanStackVirtualGridProps<T> {
   items: T[]
@@ -37,8 +41,8 @@ export function TanStackVirtualGrid<T>({
   touchItemHeight,
 }: TanStackVirtualGridProps<T>) {
   // Measures the scroll container width and resolves it to a responsive column
-  // count (1 full-width row per item on mobile, more columns as width grows).
-  const { containerRef, cols, isTouch } = useVirtualContainer(getColumns)
+  // count, and the list's offset within the shared <main> scroller (scrollMargin).
+  const { containerRef, cols, isTouch, scrollMargin, getScrollElement } = useVirtualContainer(getColumns)
 
   // On touch/narrow screens the upsized cards are taller — keep the virtualizer's
   // row height in sync so rows don't overlap.
@@ -56,70 +60,75 @@ export function TanStackVirtualGrid<T>({
     return result
   }, [items, cols, hasMore])
 
-  // Virtualize rows, not individual items
+  // Virtualize rows, not individual items. The scroll element is the page's single
+  // <main>; scrollMargin tells the virtualizer how far this list sits below the top
+  // of that shared scroller so its coordinates line up.
   const rowHeight = effectiveItemHeight + rowGap
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => containerRef.current,
+    getScrollElement,
     estimateSize: () => rowHeight,
     overscan: 2,
+    scrollMargin,
   })
 
   const virtualRows = virtualizer.getVirtualItems()
   const totalSize = virtualizer.getTotalSize()
 
+  // Infinite scroll: when the trailing `load-more` row is windowed into view, fetch the
+  // next page. Guarded by isLoading so it fires once per page; the React Query fetch flips
+  // isLoading true immediately, blocking re-entry until the new page lands.
+  const lastRowIndex = virtualRows.length > 0 ? virtualRows[virtualRows.length - 1].index : -1
+  useEffect(() => {
+    if (hasMore && !isLoading && lastRowIndex >= rows.length - 1) {
+      onLoadMore()
+    }
+  }, [hasMore, isLoading, lastRowIndex, rows.length, onLoadMore])
+
   return (
-    <div ref={containerRef} className="h-full w-full overflow-y-auto overflow-x-hidden" style={{ paddingTop: '8px' }}>
-      <div
-        style={{
-          height: `${totalSize}px`,
-          position: 'relative',
-          overflow: 'visible',
-        }}
-      >
-        {virtualRows.map((virtualRow) => {
-          const row = rows[virtualRow.index]
-          return (
-            <div
-              key={virtualRow.key}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                columnGap: `${columnGap}px`,
-                rowGap: `${rowGap}px`,
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                transform: `translateY(${virtualRow.start}px)`,
-                overflow: 'visible',
-              }}
-            >
-              {row.map((item, colIndex) => {
-                const itemIndex = virtualRow.index * cols + colIndex
-                if (item === 'load-more') {
-                  return (
-                    <button
-                      key="load-more"
-                      onClick={onLoadMore}
-                      disabled={isLoading}
-                      className="w-full py-4 col-span-full"
-                    >
-                      {isLoading ? 'Loading...' : 'Load more'}
-                    </button>
-                  )
-                }
+    <div ref={containerRef} className="relative w-full" style={{ height: `${totalSize}px` }}>
+      {virtualRows.map((virtualRow) => {
+        const row = rows[virtualRow.index]
+        return (
+          <div
+            key={virtualRow.key}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+              columnGap: `${columnGap}px`,
+              rowGap: `${rowGap}px`,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              transform: `translateY(${virtualRow.start - scrollMargin}px)`,
+              overflow: 'visible',
+            }}
+          >
+            {row.map((item, colIndex) => {
+              const itemIndex = virtualRow.index * cols + colIndex
+              if (item === 'load-more') {
+                // Trailing sentinel row: its windowing into view drives the infinite-scroll effect
+                // above. Non-interactive (just a loading hint) so it can't double-fire the fetch.
                 return (
-                  <div key={itemIndex} style={{ height: `${effectiveItemHeight}px` }}>
-                    {renderItem(item, itemIndex)}
+                  <div
+                    key="load-more"
+                    className="col-span-full flex justify-center py-4 text-sm text-muted-foreground"
+                  >
+                    {isLoading ? 'Loading...' : null}
                   </div>
                 )
-              })}
-            </div>
-          )
-        })}
-      </div>
+              }
+              return (
+                <div key={itemIndex} style={{ height: `${effectiveItemHeight}px` }}>
+                  {renderItem(item, itemIndex)}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
     </div>
   )
 }

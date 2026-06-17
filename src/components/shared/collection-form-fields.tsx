@@ -13,15 +13,19 @@ import {
 } from '@/components/shared/ai-description-field'
 import { AiFieldBadgeIfPro } from '@/components/shared/ai-field-chrome'
 import { collectionFormSchema } from '@/lib/utils/validators'
+import { cn } from '@/lib/utils'
 
 type CollectionFormValues = z.input<typeof collectionFormSchema>
 
 interface CollectionFormFieldsProps {
   form: UseFormReturn<CollectionFormValues>
   idPrefix?: string
+  // When true the Description block fills the remaining height and its textarea grows with it —
+  // used by the resizable mobile sheet so dragging the handle up enlarges the description area.
+  growDescription?: boolean
 }
 
-export function CollectionFormFields({ form, idPrefix }: CollectionFormFieldsProps) {
+export function CollectionFormFields({ form, idPrefix, growDescription = false }: CollectionFormFieldsProps) {
   const generatedId = useId()
   const prefix = idPrefix ?? generatedId
   const nameId = `${prefix}-name`
@@ -42,7 +46,7 @@ export function CollectionFormFields({ form, idPrefix }: CollectionFormFieldsPro
 
   return (
     <>
-      <div className="grid gap-2">
+      <div className="grid shrink-0 gap-2">
         <Label htmlFor={nameId}>
           Name <span className="text-red-500">*</span>
         </Label>
@@ -55,8 +59,8 @@ export function CollectionFormFields({ form, idPrefix }: CollectionFormFieldsPro
           <p className="text-xs text-red-500">{errors.name.message}</p>
         )}
       </div>
-      <div className="grid gap-2">
-        <Label htmlFor={descId} className="inline-flex items-center gap-2">
+      <div className={cn('grid gap-2', growDescription && 'flex min-h-0 flex-1 flex-col')}>
+        <Label htmlFor={descId} className="inline-flex shrink-0 items-center gap-2">
           Description
           <AiFieldBadgeIfPro />
         </Label>
@@ -68,17 +72,24 @@ export function CollectionFormFields({ form, idPrefix }: CollectionFormFieldsPro
             form.setValue('description', description, { shouldDirty: true, shouldValidate: true })
           }
           actionClassName="right-1.5 top-1.5"
+          fill={growDescription}
         >
           <Textarea
             id={descId}
             placeholder="Optional description"
             rows={3}
             {...inputProps}
-            className={`min-h-[5rem] resize-none ${AI_DESCRIPTION_INPUT_CLASS}`}
+            className={cn(
+              'resize-none',
+              AI_DESCRIPTION_INPUT_CLASS,
+              // growDescription: a low min so the sheet can shrink to a ~one-line Description; it
+              // flex-fills to use whatever height the (resizable) sheet currently has.
+              growDescription ? 'h-full min-h-10' : 'min-h-[5rem]',
+            )}
           />
         </AiDescriptionField>
         {errors.description && (
-          <p className="text-xs text-red-500">{errors.description.message}</p>
+          <p className="shrink-0 text-xs text-red-500">{errors.description.message}</p>
         )}
       </div>
     </>

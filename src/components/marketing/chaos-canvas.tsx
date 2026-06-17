@@ -131,18 +131,29 @@ export function ChaosCanvas() {
       mouse.y = (e.clientY - rect.top) * (canvas.height / rect.height);
     };
     const onMouseLeave = () => { mouse.x = -9999; mouse.y = -9999; };
-    const onTouchMove = (e: TouchEvent) => {
+    const trackTouch = (t: Touch) => {
       const rect = canvas.getBoundingClientRect();
-      const t = e.touches[0];
       mouse.x = (t.clientX - rect.left) * (canvas.width / rect.width);
       mouse.y = (t.clientY - rect.top) * (canvas.height / rect.height);
     };
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (t) trackTouch(t);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (t) trackTouch(t);
+    };
+    const onTouchEnd = () => { mouse.x = -9999; mouse.y = -9999; };
 
     const resizeObserver = new ResizeObserver(() => resize());
     if (canvas.parentElement) resizeObserver.observe(canvas.parentElement);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseleave', onMouseLeave);
+    canvas.addEventListener('touchstart', onTouchStart, { passive: true });
     canvas.addEventListener('touchmove', onTouchMove, { passive: true });
+    canvas.addEventListener('touchend', onTouchEnd);
+    canvas.addEventListener('touchcancel', onTouchEnd);
 
     loadCanvasIcons().then(images => {
       if (cancelled) return;
@@ -157,7 +168,10 @@ export function ChaosCanvas() {
       resizeObserver.disconnect();
       canvas.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('mouseleave', onMouseLeave);
+      canvas.removeEventListener('touchstart', onTouchStart);
       canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+      canvas.removeEventListener('touchcancel', onTouchEnd);
     };
   }, []);
 

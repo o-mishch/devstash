@@ -17,6 +17,7 @@ import { useItemDrawerStore } from '@/stores/item-drawer'
 import type { SidebarCollection } from '@/types/collection'
 import { searchResultToLightItem, isSearchResultItem } from '@/types/item'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
+import { itemCountLabel } from '@/lib/utils/format'
 
 import { useGlobalSearch } from '@/hooks/use-global-search'
 import { useGlobalSearchShortcuts } from '@/hooks/use-global-search-shortcuts'
@@ -142,7 +143,7 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
                     </div>
                     <span className="flex-1 truncate">{col.name}</span>
                     <span className="text-xs text-muted-foreground ml-2">
-                      {col.itemCount} item{col.itemCount !== 1 ? 's' : ''}
+                      {itemCountLabel(col.itemCount)}
                     </span>
                   </CommandItem>
                 ))}
