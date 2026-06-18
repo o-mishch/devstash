@@ -3,28 +3,51 @@
 import { type ReactNode } from 'react'
 import { api } from '@/lib/api/client'
 import { CollectionFormDialog } from './collection-form-dialog'
+import { useLastNonNull } from '@/hooks/use-last-non-null'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionEditDialogProps {
-  collection: CollectionWithTypes
+  collection: CollectionWithTypes | null
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }
 
-export function CollectionEditDialog({ collection, trigger, open, onOpenChange }: CollectionEditDialogProps) {
+const DUMMY_COLLECTION: CollectionWithTypes = {
+  id: '',
+  name: '',
+  description: '',
+  isFavorite: false,
+  createdAt: new Date(),
+  itemCount: 0,
+  dominantColor: null,
+  types: [],
+}
+
+export function CollectionEditDialog({ collection: activeCollection, trigger, open, onOpenChange }: CollectionEditDialogProps) {
+  const lastNonNullCollection = useLastNonNull(activeCollection)
+  const displayCollection = lastNonNullCollection || DUMMY_COLLECTION
+
+
   return (
     <CollectionFormDialog
       title="Edit Collection"
       description="Update the name and description of this collection."
       submitText="Save Changes"
       successMessage="Collection updated"
-      defaultValues={{ name: collection.name, description: collection.description || '' }}
-      onSubmitAction={(data) => api.PATCH('/collections/{id}', { params: { path: { id: collection.id } }, body: { name: data.name, description: data.description ?? null } })}
+      defaultValues={{ name: displayCollection.name, description: displayCollection.description || '' }}
+      onSubmitAction={(data) =>
+        api.PATCH('/collections/{id}', {
+          params: { path: { id: displayCollection.id } },
+          body: { name: data.name, description: data.description ?? null },
+        })
+      }
       trigger={trigger}
       open={open}
       onOpenChange={onOpenChange}
-      idPrefix={`edit-${collection.id}`}
+      idPrefix={`edit-${displayCollection.id}`}
     />
   )
 }
+
+

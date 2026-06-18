@@ -22,20 +22,17 @@ export function CollectionDialogMount() {
 
   return (
     <>
-      {editCollection && (
-        <CollectionEditDialog
-          collection={editCollection}
-          open={!!editCollection}
-          onOpenChange={(open) => !open && closeEdit()}
-        />
-      )}
-      {deleteCollection && (
-        <CollectionDeleteDialog
-          collection={deleteCollection}
-          open={!!deleteCollection}
-          onOpenChange={(open) => !open && closeDelete()}
-        />
-      )}
+      <CollectionEditDialog
+        collection={editCollection}
+        open={!!editCollection}
+        onOpenChange={(open) => !open && closeEdit()}
+      />
+      <CollectionDeleteDialog
+        collection={deleteCollection}
+        open={!!deleteCollection}
+        onOpenChange={(open) => !open && closeDelete()}
+      />
     </>
   )
 }
+

@@ -14,45 +14,64 @@ import {
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { api } from '@/lib/api/client'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
+import { useLastNonNull } from '@/hooks/use-last-non-null'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionDeleteDialogProps {
-  collection: CollectionWithTypes
+  collection: CollectionWithTypes | null
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
   onSuccess?: () => void
 }
 
-export function CollectionDeleteDialog({ collection, trigger, open: controlledOpen, onOpenChange, onSuccess }: CollectionDeleteDialogProps) {
+const DUMMY_COLLECTION: CollectionWithTypes = {
+  id: '',
+  name: '',
+  description: '',
+  isFavorite: false,
+  createdAt: new Date(),
+  itemCount: 0,
+  dominantColor: null,
+  types: [],
+}
+
+export function CollectionDeleteDialog({ collection: activeCollection, trigger, open: controlledOpen, onOpenChange, onSuccess }: CollectionDeleteDialogProps) {
   const router = useRouter()
   const [isDeleting, setIsDeleting] = useState(false)
-  
+  const lastNonNullCollection = useLastNonNull(activeCollection)
+  const displayCollection = lastNonNullCollection || DUMMY_COLLECTION
+
   const { open, handleOpenChange } = useControllableOpen({
     open: controlledOpen,
     onOpenChange,
   })
 
   async function handleDelete() {
+    if (!displayCollection.id) return
     setIsDeleting(true)
-    const { error } = await api.DELETE('/collections/{id}', { params: { path: { id: collection.id } } })
-    setIsDeleting(false)
-
-    if (!error) {
-      toast.success('Collection deleted')
-      handleOpenChange(false)
-      if (onSuccess) {
-        onSuccess()
+    try {
+      const { error } = await api.DELETE('/collections/{id}', { params: { path: { id: displayCollection.id } } })
+      if (!error) {
+        toast.success('Collection deleted')
+        handleOpenChange(false)
+        if (onSuccess) {
+          onSuccess()
+        } else {
+          router.refresh()
+        }
       } else {
-        router.refresh()
+        toast.error(error.message || 'Failed to delete collection')
       }
-    } else {
-      toast.error(error.message || 'Failed to delete collection')
+    } catch {
+      toast.error('Failed to delete collection')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
   const triggerEl = trigger ? (
-    <span onClick={() => handleOpenChange(true)} style={{ display: 'contents' }}>
+    <span onClick={() => handleOpenChange(true)} className="contents">
       {trigger}
     </span>
   ) : null
@@ -65,7 +84,7 @@ export function CollectionDeleteDialog({ collection, trigger, open: controlledOp
           <DialogHeader>
             <DialogTitle>Delete Collection</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the collection &quot;{collection.name}&quot;? 
+              Are you sure you want to delete the collection &quot;{displayCollection.name}&quot;? 
               Your items will <strong>not</strong> be deleted, but they will be removed from this collection.
             </DialogDescription>
           </DialogHeader>
@@ -80,3 +99,5 @@ export function CollectionDeleteDialog({ collection, trigger, open: controlledOp
     </>
   )
 }
+
+
