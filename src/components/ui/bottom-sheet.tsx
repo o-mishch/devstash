@@ -60,22 +60,23 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
 
   // Scroll the sheet's form body to reveal the focused field above the keyboard. iOS doesn't
   // scroll inputs into view correctly inside a fixed sheet, so we do it ourselves.
-  // For deeply nested inputs (e.g. Monaco editor's textarea) scrollIntoView targets the tiny
-  // cursor element rather than the full editor block, so we walk up to the first overflow-y:auto
-  // ancestor and scroll it explicitly — placing the active element ~80px from the top so the
-  // field label above it stays visible.
+  // Walk up to the OUTERMOST overflow-y:auto/scroll ancestor inside the sheet (not the first):
+  // Monaco and other rich editors have their own internal overflow-y:auto containers that appear
+  // first when walking upward from the focused element. The outermost container is always the
+  // form body, which is what needs to scroll to bring the editor block into view.
   const centerFocusedField = useCallback(() => {
     const active = document.activeElement
     if (!(active instanceof HTMLElement)) return
     if (!active.closest('[data-slot=sheet-content]')) return
 
-    // Find the sheet's scrollable body (first overflow-y:auto/scroll ancestor inside the sheet).
+    // Find the sheet's scrollable body — walk up without breaking so we capture the outermost
+    // overflow-y:auto/scroll ancestor rather than an editor's internal scroll container.
     let scrollEl: HTMLElement | null = null
     let el: HTMLElement | null = active.parentElement
     while (el) {
       if (el.dataset.slot === 'sheet-content') break
       const oy = getComputedStyle(el).overflowY
-      if (oy === 'auto' || oy === 'scroll') { scrollEl = el; break }
+      if (oy === 'auto' || oy === 'scroll') { scrollEl = el }
       el = el.parentElement
     }
 

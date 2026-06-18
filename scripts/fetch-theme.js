@@ -34,7 +34,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 
 const TWEAKCN_REGISTRY_URL =
   'https://raw.githubusercontent.com/jnsahaj/tweakcn/main/public/r/registry.json';
@@ -324,6 +323,4 @@ if (added === 0) {
 fs.writeFileSync(rawPresetsPath, JSON.stringify(presets, null, 2) + '\n', 'utf8');
 console.log(`\nSaved presets-raw.json (${presets.length} themes total)`);
 
-console.log('Regenerating CSS and TypeScript...');
-execSync('node scripts/generate-themes.js', { stdio: 'inherit' });
-console.log('Done.');
+console.log(`\nDone. Run "npm run themes:gen" to regenerate CSS and OpenAPI types.`);

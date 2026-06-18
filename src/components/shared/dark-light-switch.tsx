@@ -15,7 +15,20 @@ export function DarkLightSwitch({ colorMode, onColorModeChange, className }: Dar
   const isLight = colorMode === 'light'
 
   const handleClick = (e: MouseEvent<HTMLButtonElement>, mode: 'light' | 'dark') => {
-    startThemeTransition(e, () => onColorModeChange(mode))
+    startThemeTransition(e, () => {
+      // Update the DOM synchronously so startViewTransition captures the new theme in its
+      // "new" snapshot. ThemeInitializer's useEffect runs asynchronously after the React
+      // render cycle, too late for the view-transition snapshot.
+      const root = document.documentElement
+      if (mode === 'dark') {
+        root.classList.add('dark')
+        root.classList.remove('light')
+      } else {
+        root.classList.add('light')
+        root.classList.remove('dark')
+      }
+      onColorModeChange(mode)
+    })
   }
 
   return (
