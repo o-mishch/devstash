@@ -88,11 +88,10 @@ function SelectContent({
         <SelectPrimitive.Popup
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
-          // Open/close is a quick opacity fade only — no zoom/slide transforms. A scale/translate on
-          // the popup animated over a slow 500ms and (inside an animating bottom sheet on touch) could
-          // be caught mid-settle, so the dropdown visibly janked from full-width to its anchor width.
-          // A transform-free fade leaves base-ui's positioner fully in charge of size/placement.
-          className={cn("relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-150 ease-out data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0", className )}
+          className={cn(
+            "relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-top overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 data-open:animate-select-open data-closed:animate-select-close",
+            className
+          )}
           {...props}
         >
           <SelectScrollUpButton />
