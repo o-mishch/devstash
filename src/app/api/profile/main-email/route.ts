@@ -19,7 +19,7 @@ export const PATCH = authedRoute({ rateLimit: 'changeCredentials' }, async ({ us
     const fail = await verifyPasswordFromBody(
       userId,
       parsed.data.password,
-      'Password is required to change your default email.',
+      'Password is required to change your primary email.',
     )
     if (fail) return problemFrom(fail)
   }

@@ -967,7 +967,7 @@ describe('Stripe webhook route', () => {
     expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_123', expect.any(Date))
   })
 
-  it('ignores customer.updated because app email is the source of truth', async () => {
+  it('handles customer.updated by logging the change and ignoring DB writes because app email is the source of truth', async () => {
     const response = await postEvent({
       type: 'customer.updated',
       data: {

@@ -19,6 +19,7 @@ const {
   mockUpsertSubscriptionStateFromObject,
   mockClearStripeCustomerByCustomerId,
   mockGetUserIdByStripeCustomerId,
+  mockGetUserById,
 } = vi.hoisted(() => ({
   mockFetchSubscriptionDetails: vi.fn(),
   mockPersistSubscriptionFromStripe: vi.fn(),
@@ -37,6 +38,11 @@ const {
   mockUpsertSubscriptionStateFromObject: vi.fn(),
   mockClearStripeCustomerByCustomerId: vi.fn(),
   mockGetUserIdByStripeCustomerId: vi.fn(),
+  mockGetUserById: vi.fn(),
+}))
+
+vi.mock('@/lib/db/users', () => ({
+  getUserById: mockGetUserById,
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
@@ -189,6 +195,11 @@ function makeSubscription(overrides: Partial<Stripe.Subscription> = {}): Stripe.
     ...overrides,
   } as Stripe.Subscription
 }
+
+beforeEach(() => {
+  mockGetUserById.mockResolvedValue(null)
+  mockGetUserIdByStripeCustomerId.mockResolvedValue(null)
+})
 
 describe('getSubscriptionIdFromInvoice', () => {
   it('reads the subscription from the invoice parent field', () => {
@@ -492,6 +503,19 @@ describe('handleSubscriptionTrialWillEnd', () => {
     expect(mockCreatePortalSession).not.toHaveBeenCalled()
     expect(mockSendBillingTrialEndingEmail).not.toHaveBeenCalled()
   })
+
+  it('resolves primary email from DB instead of retrieving from Stripe customer', async () => {
+    mockGetUserIdByStripeCustomerId.mockResolvedValue('user-1')
+    mockGetUserById.mockResolvedValue({ email: 'db-primary@example.com' })
+
+    await handleSubscriptionTrialWillEnd(makeSubscription({ status: 'trialing' }))
+
+    expect(mockGetUserById).toHaveBeenCalledWith('user-1')
+    expect(mockStripeCustomersRetrieve).not.toHaveBeenCalled()
+    expect(mockSendBillingTrialEndingEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'db-primary@example.com' })
+    )
+  })
 })
 
 describe('handleCustomerDeleted', () => {
@@ -526,6 +550,72 @@ describe('sendBillingPortalRecoveryEmail', () => {
         sendEmail: vi.fn(),
       }),
     ).rejects.toThrow('billing recovery portal session failed')
+  })
+
+  it('resolves and uses the user\'s primary email from DB when customer links exist', async () => {
+    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
+    mockGetUserIdByStripeCustomerId.mockResolvedValue('user-1')
+    mockGetUserById.mockResolvedValue({ email: 'primary@example.com' })
+    const mockSend = vi.fn().mockResolvedValue('sent')
+
+    const { sendBillingPortalRecoveryEmail } = await import('./stripe-webhook-event-handlers')
+
+    await sendBillingPortalRecoveryEmail({
+      sourceEvent: 'invoice.payment_failed',
+      customerId: 'cus_123',
+      email: 'stripe-email@example.com',
+      contextId: 'inv_123',
+      sendEmail: mockSend,
+    })
+
+    expect(mockGetUserIdByStripeCustomerId).toHaveBeenCalledWith('cus_123')
+    expect(mockGetUserById).toHaveBeenCalledWith('user-1')
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'primary@example.com' })
+    )
+  })
+
+  it('resolves DB email even if the Stripe email parameter is null', async () => {
+    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
+    mockGetUserIdByStripeCustomerId.mockResolvedValue('user-1')
+    mockGetUserById.mockResolvedValue({ email: 'db-resolved@example.com' })
+    const mockSend = vi.fn().mockResolvedValue('sent')
+
+    const { sendBillingPortalRecoveryEmail } = await import('./stripe-webhook-event-handlers')
+
+    await sendBillingPortalRecoveryEmail({
+      sourceEvent: 'invoice.payment_failed',
+      customerId: 'cus_123',
+      email: null,
+      contextId: 'inv_123',
+      sendEmail: mockSend,
+    })
+
+    expect(mockGetUserIdByStripeCustomerId).toHaveBeenCalledWith('cus_123')
+    expect(mockGetUserById).toHaveBeenCalledWith('user-1')
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'db-resolved@example.com' })
+    )
+  })
+
+  it('falls back to the stripe email when no database user is found', async () => {
+    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
+    mockGetUserIdByStripeCustomerId.mockResolvedValue(null)
+    const mockSend = vi.fn().mockResolvedValue('sent')
+
+    const { sendBillingPortalRecoveryEmail } = await import('./stripe-webhook-event-handlers')
+
+    await sendBillingPortalRecoveryEmail({
+      sourceEvent: 'invoice.payment_failed',
+      customerId: 'cus_123',
+      email: 'stripe-email@example.com',
+      contextId: 'inv_123',
+      sendEmail: mockSend,
+    })
+
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'stripe-email@example.com' })
+    )
   })
 })
 

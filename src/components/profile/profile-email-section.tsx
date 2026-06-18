@@ -9,16 +9,18 @@ import { MainEmailSelector } from './main-email-selector'
 interface ProfileEmailSectionProps {
   initialState: ProfileEmailsState
   createdAt: Date
+  isPro: boolean
 }
 
 // Seeds the profile email store from server data and renders the primary-email row. Re-seeds when the
 // server snapshot changes (e.g. soft navigation back to /profile) but skips re-runs when only the
 // object reference changes with the same values, so optimistic updates are not clobbered mid-mutation.
-export function ProfileEmailSection({ initialState, createdAt }: ProfileEmailSectionProps) {
+export function ProfileEmailSection({ initialState, createdAt, isPro }: ProfileEmailSectionProps) {
   const currentEmail = useProfileEmailsStore((state) => state.currentEmail)
   const availableEmails = useProfileEmailsStore((state) => state.availableEmails)
   const hasCredentialLogin = useProfileEmailsStore((state) => state.hasCredentialLogin)
   const setCurrentEmail = useProfileEmailsStore((state) => state.setCurrentEmail)
+
 
   const seedKey = [
     initialState.currentEmail,
@@ -55,6 +57,7 @@ export function ProfileEmailSection({ initialState, createdAt }: ProfileEmailSec
               currentEmail={currentEmail}
               availableEmails={availableEmails}
               hasPassword={hasCredentialLogin}
+              isPro={isPro}
               onEmailChanged={setCurrentEmail}
             />
           ) : (
@@ -68,7 +71,7 @@ export function ProfileEmailSection({ initialState, createdAt }: ProfileEmailSec
       </div>
       {showSelector && (
         <p className="-mt-2 pl-6 text-xs text-muted-foreground/70">
-          {hasCredentialLogin ? 'Default email · click to change' : 'Display email · click to change'}
+          {hasCredentialLogin ? 'Primary email · click to change' : 'Display email · click to change'}
         </p>
       )}
     </>

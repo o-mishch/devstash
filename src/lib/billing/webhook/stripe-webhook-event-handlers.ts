@@ -37,6 +37,7 @@ import {
   clearStripeSubscriptionBySubId,
 } from '@/lib/billing/subscription/subscription-state'
 import { getUserIdByStripeCustomerId } from '@/lib/db/stripe'
+import { getUserById } from '@/lib/db/users'
 
 const logCheckout = logger.child({ tag: 'stripe-webhook-checkout' })
 const logCharge = logger.child({ tag: 'stripe-webhook-charge' })
@@ -494,8 +495,10 @@ export async function handleSubscriptionTrialWillEnd(subscription: Stripe.Subscr
   await reconcileSubscriptionById(subscription.id)
 
   const customerId = getStripeCustomerId(subscription.customer)
-  let customerEmail: string | null = null
-  if (customerId) {
+  const dbUserId = customerId ? await getUserIdByStripeCustomerId(customerId) : null
+  const dbUser = dbUserId ? await getUserById(dbUserId) : null
+  let customerEmail = dbUser?.email
+  if (!customerEmail && customerId) {
     const customer = await retrieveStripeCustomer(customerId)
     if (customer) customerEmail = customer.email ?? null
   }
@@ -577,9 +580,13 @@ export async function sendBillingPortalRecoveryEmail(
     sendEmail,
   } = params
 
-  if (!customerId || !email) {
+  const dbUserId = customerId ? await getUserIdByStripeCustomerId(customerId) : null
+  const dbUser = dbUserId ? await getUserById(dbUserId) : null
+  const recipientEmail = dbUser?.email ?? email
+
+  if (!customerId || !recipientEmail) {
     logRecovery.warn(
-      { contextId, customerId, hasCustomerEmail: Boolean(email) },
+      { contextId, customerId, hasCustomerEmail: Boolean(recipientEmail) },
       `${sourceEvent} — ${missingFieldsMessage}`,
     )
     return { emailSent: false }
@@ -599,9 +606,15 @@ export async function sendBillingPortalRecoveryEmail(
     return { emailSent: false }
   }
 
-  const result = await sendEmail({ portalUrl: portalSession.url, to: email })
+  const result = await sendEmail({ portalUrl: portalSession.url, to: recipientEmail })
   const emailSent = result === 'sent'
-  const logContext = { contextId, customerId, email, emailResult: result }
+  const logContext = {
+    contextId,
+    customerId,
+    email: recipientEmail,
+    ...(recipientEmail !== email ? { originalStripeEmail: email } : {}),
+    emailResult: result,
+  }
 
   if (result === 'sent') {
     logRecovery.info(logContext, `${sourceEvent} — ${successMessage}`)
@@ -663,6 +676,17 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
       return
     case 'customer.deleted':
       await handleCustomerDeleted(event.data.object as Stripe.Customer | Stripe.DeletedCustomer)
+      return
+    case 'customer.updated':
+      const customer = event.data.object as Stripe.Customer
+      logCustomer.info(
+        {
+          customerId: customer.id,
+          email: customer.email,
+          previousEmail: (event.data.previous_attributes as { email?: string } | undefined)?.email,
+        },
+        'customer.updated — Stripe customer email changed or customer updated',
+      )
       return
     case 'charge.refunded':
       await handleChargeRefunded(event.data.object as Stripe.Charge)

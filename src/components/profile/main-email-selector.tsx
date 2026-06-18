@@ -28,16 +28,18 @@ interface MainEmailSelectorProps {
   currentEmail: string
   availableEmails: string[]
   hasPassword: boolean
+  isPro: boolean
   // Notifies the parent (shared profile-emails store) on a successful change so siblings stay in sync.
   onEmailChanged?: (email: string) => void
 }
 
-export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, onEmailChanged }: MainEmailSelectorProps) {
+export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, isPro, onEmailChanged }: MainEmailSelectorProps) {
   const [email, setEmail] = useState(currentEmail)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
   const [password, setPassword] = useState('')
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+
 
   function requestChange(newEmail: string) {
     if (newEmail === email) return
@@ -59,7 +61,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
         // without re-selecting the target email from the dropdown.
         setPendingEmail(null)
         setPassword('')
-        toast.success(hasPassword ? 'Default email updated.' : 'Display email updated.')
+        toast.success(hasPassword ? 'Primary email updated.' : 'Display email updated.')
         router.refresh()
       } else {
         toast.error(error.message || 'Failed to update email.')
@@ -83,7 +85,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[popup-open]:rotate-180" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="!w-auto min-w-48">
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">{hasPassword ? 'Set default email' : 'Set display email'}</p>
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">{hasPassword ? 'Set primary email' : 'Set display email'}</p>
           <DropdownMenuSeparator />
           {availableEmails.map((e) => (
             <DropdownMenuItem key={e} onClick={() => requestChange(e)} className="gap-2">
@@ -97,18 +99,16 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
       <Dialog open={pendingEmail !== null} onOpenChange={(open) => { if (!open) { setPendingEmail(null); setPassword('') } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Change default email?</DialogTitle>
+            <DialogTitle>Change primary email?</DialogTitle>
             <DialogDescription>
-              Your account&apos;s default email will change from{' '}
-              <span className="font-medium text-foreground">{email}</span> to{' '}
-              <span className="font-medium text-foreground">{pendingEmail}</span>.
+              {isPro
+                ? 'The email of your subscription will be updated in the payment provider.'
+                : 'Confirm your password to update your primary email.'}
             </DialogDescription>
           </DialogHeader>
 
           <WarningBanner>
-            This only changes your account&apos;s default email. Your email &amp; password sign-in stays the
-            same — to change the address you sign in with, use <strong>Change email</strong> on your
-            Email &amp; Password method.
+            You are switching your primary email. All email notifications will be sent to the new primary email (changing from <span className="font-medium text-foreground">{email}</span> to <span className="font-medium text-foreground">{pendingEmail}</span>).
           </WarningBanner>
 
           <div className="space-y-2">

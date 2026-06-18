@@ -24,7 +24,9 @@ interface ProfileUser {
   editorPreferences: EditorPreferences | null
   accounts: LinkedAccount[]
   createdAt: Date
+  isPro: boolean
 }
+
 
 interface ProfileStats {
   totalItems: number
@@ -113,6 +115,7 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
         createdAt: true,
         accounts: { select: { id: true, provider: true, email: true } },
         _count: { select: { items: true, collections: true } },
+        isPro: true,
       },
     }),
     prisma.itemType.findMany({
@@ -148,7 +151,9 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
       editorPreferences: user.editorPreferences as unknown as EditorPreferences | null,
       accounts: user.accounts.map((a) => ({ id: a.id, provider: a.provider, email: a.email })),
       createdAt: user.createdAt,
+      isPro: user.isPro,
     },
+
     stats: { totalItems: user._count.items, totalCollections: user._count.collections, itemTypeCounts },
   }
 

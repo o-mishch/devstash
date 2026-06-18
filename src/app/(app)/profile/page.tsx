@@ -68,6 +68,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
               linkedAccounts: user.accounts,
             }}
             createdAt={user.createdAt}
+            isPro={user.isPro}
           />
         </CardContent>
       </Card>
