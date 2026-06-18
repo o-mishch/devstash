@@ -30,7 +30,7 @@ export const useEditorPreferencesStore = create<EditorPreferencesStore>((set, ge
       minimap: prev.minimap,
       appTheme: prev.appTheme,
       colorMode: prev.colorMode,
-      useDefaultEditorTheme: prev.useDefaultEditorTheme,
+      editorThemeMode: prev.editorThemeMode,
       ...prefs,
     }
     set(newPrefs as Partial<EditorPreferencesStore>)

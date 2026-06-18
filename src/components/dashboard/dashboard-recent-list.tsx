@@ -1,8 +1,10 @@
 'use client'
 
+import { History } from 'lucide-react'
 import { ItemRow } from '@/components/dashboard/item-row'
 import { TanStackVirtualGrid, singleColumn } from '@/components/items/tanstack-virtual-grid'
 import { useInfiniteItems } from '@/hooks/use-infinite-items'
+import { DashboardCollapsibleCard } from '@/components/dashboard/dashboard-collapsible-card'
 import type { ItemsPage, LightItem } from '@/types/item'
 
 interface DashboardRecentListProps {
@@ -13,16 +15,18 @@ export function DashboardRecentList({ firstPage }: DashboardRecentListProps) {
   const { items, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteItems({ type: 'recent' }, firstPage)
 
   return (
-    <TanStackVirtualGrid<LightItem>
-      items={items}
-      hasMore={hasNextPage ?? false}
-      isLoading={isFetchingNextPage}
-      onLoadMore={() => void fetchNextPage()}
-      getColumns={singleColumn}
-      itemHeight={56}
-      columnGap={0}
-      rowGap={12}
-      renderItem={(item) => <ItemRow item={item} />}
-    />
+    <DashboardCollapsibleCard icon={History} title="Recent Items" section="recent">
+      <TanStackVirtualGrid<LightItem>
+        items={items}
+        hasMore={hasNextPage ?? false}
+        isLoading={isFetchingNextPage}
+        onLoadMore={() => void fetchNextPage()}
+        getColumns={singleColumn}
+        itemHeight={56}
+        columnGap={0}
+        rowGap={12}
+        renderItem={(item) => <ItemRow item={item} />}
+      />
+    </DashboardCollapsibleCard>
   )
 }

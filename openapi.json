@@ -1211,8 +1211,13 @@
                       "dark"
                     ]
                   },
-                  "useDefaultEditorTheme": {
-                    "type": "boolean"
+                  "editorThemeMode": {
+                    "type": "string",
+                    "enum": [
+                      "app",
+                      "auto",
+                      "dark"
+                    ]
                   }
                 },
                 "required": [
@@ -1222,7 +1227,7 @@
                   "minimap",
                   "appTheme",
                   "colorMode",
-                  "useDefaultEditorTheme"
+                  "editorThemeMode"
                 ]
               }
             }

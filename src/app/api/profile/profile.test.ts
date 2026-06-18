@@ -176,7 +176,7 @@ describe('PATCH /profile/editor-preferences', () => {
       minimap: false,
       appTheme: 'modern-minimal',
       colorMode: 'dark',
-      useDefaultEditorTheme: false,
+      editorThemeMode: 'auto',
     }))
     expect(res.status).toBe(422)
   })
@@ -189,7 +189,7 @@ describe('PATCH /profile/editor-preferences', () => {
       minimap: false,
       appTheme: 'vscode',
       colorMode: 'dark',
-      useDefaultEditorTheme: true,
+      editorThemeMode: 'auto',
     }))
     expect(res.status).toBe(422)
   })
@@ -202,7 +202,20 @@ describe('PATCH /profile/editor-preferences', () => {
       minimap: false,
       appTheme: 'modern-minimal',
       colorMode: 'auto',
-      useDefaultEditorTheme: true,
+      editorThemeMode: 'auto',
+    }))
+    expect(res.status).toBe(422)
+  })
+
+  it('returns 422 for an invalid editorThemeMode value', async () => {
+    const res = await PATCH_PREFS(req('PATCH', {
+      fontSize: 14,
+      tabSize: 2,
+      wordWrap: 'off',
+      minimap: false,
+      appTheme: 'modern-minimal',
+      colorMode: 'dark',
+      editorThemeMode: 'invalid',
     }))
     expect(res.status).toBe(422)
   })
@@ -215,7 +228,7 @@ describe('PATCH /profile/editor-preferences', () => {
       minimap: false,
       appTheme: 'modern-minimal',
       colorMode: 'dark',
-      useDefaultEditorTheme: false,
+      editorThemeMode: 'app',
     }))
     expect(res.status).toBe(204)
   })

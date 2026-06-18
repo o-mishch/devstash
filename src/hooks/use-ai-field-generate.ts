@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { toast } from 'sonner'
+import { toastError } from '@/lib/utils/toast-error'
 
 interface UseAiFieldGenerateParams<T> {
   canGenerate: boolean
@@ -34,7 +34,7 @@ export function useAiFieldGenerate<T>({
     try {
       onSuccess(await onGenerate())
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : failureMessage)
+      toastError(error, failureMessage)
     } finally {
       setIsLoading(false)
     }

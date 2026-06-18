@@ -2,8 +2,8 @@
 
 import { useMemo } from 'react'
 import { Pin } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ItemRow } from '@/components/dashboard/item-row'
+import { DashboardCollapsibleCard } from '@/components/dashboard/dashboard-collapsible-card'
 import { usePinnedItemsStore } from '@/stores/pinned-items'
 import type { LightItem } from '@/types/item'
 
@@ -29,18 +29,10 @@ export function DashboardPinnedList({ initialItems }: DashboardPinnedListProps) 
   if (items.length === 0) return null
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-          <Pin className="size-3.5 text-muted-foreground" />
-          Pinned
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-[12px]">
-          {items.map((item) => <ItemRow key={item.id} item={item} />)}
-        </div>
-      </CardContent>
-    </Card>
+    <DashboardCollapsibleCard icon={Pin} title="Pinned" section="pinned">
+      <div className="flex flex-col gap-[12px]">
+        {items.map((item) => <ItemRow key={item.id} item={item} />)}
+      </div>
+    </DashboardCollapsibleCard>
   )
 }

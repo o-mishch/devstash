@@ -10,8 +10,9 @@ import { z } from 'zod'
 import { ResponsiveFormDialog } from '@/components/ui/responsive-form-dialog'
 import { CollectionFormFields } from '@/components/shared/collection-form-fields'
 import { FormDialogFooter } from '@/components/shared/form-dialog-footer'
+import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog'
 import { collectionFormSchema } from '@/lib/utils/validators'
-import { useControllableOpen } from '@/hooks/use-controllable-open'
+import { useDirtyGuard } from '@/hooks/use-dirty-guard'
 import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 
@@ -74,10 +75,11 @@ export function CollectionFormDialog({
     form.reset(defaultValuesRef.current)
   }, [form])
 
-  const { open, handleOpenChange } = useControllableOpen({
+  const { open, handleOpenChange, confirmOpen, handleConfirmOpenChange, handleDiscard } = useDirtyGuard({
     open: controlledOpen,
     onOpenChange: controlledOnOpenChange,
     onClose,
+    isDirty: form.formState.isDirty,
   })
 
   useEffect(() => {
@@ -91,7 +93,7 @@ export function CollectionFormDialog({
 
     if (!error) {
       toast.success(successMessage)
-      handleOpenChange(false)
+      handleOpenChange(false, true)
       router.refresh()
       return
     }
@@ -157,6 +159,11 @@ export function CollectionFormDialog({
           )
         }
       </ResponsiveFormDialog>
+      <UnsavedChangesDialog
+        open={confirmOpen}
+        onOpenChange={handleConfirmOpenChange}
+        onDiscard={handleDiscard}
+      />
     </>
   )
 }

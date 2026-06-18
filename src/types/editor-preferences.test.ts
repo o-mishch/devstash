@@ -17,22 +17,22 @@ describe('normalizeEditorPreferences', () => {
       minimap: true,
       appTheme: 'claude' as const,
       colorMode: 'light' as const,
-      useDefaultEditorTheme: true,
+      editorThemeMode: 'app' as const,
     }
     expect(normalizeEditorPreferences(valid)).toEqual(valid)
   })
 
-  it('preserves useDefaultEditorTheme: false (opt-in preset colours)', () => {
-    const withPresetTheme = {
+  it('preserves editorThemeMode: dark (pinned dark regardless of color mode)', () => {
+    const withDarkTheme = {
       fontSize: 14,
       tabSize: 2,
       wordWrap: 'off' as const,
       minimap: false,
       appTheme: 'catppuccin' as const,
-      colorMode: 'dark' as const,
-      useDefaultEditorTheme: false,
+      colorMode: 'light' as const,
+      editorThemeMode: 'dark' as const,
     }
-    expect(normalizeEditorPreferences(withPresetTheme)).toEqual(withPresetTheme)
+    expect(normalizeEditorPreferences(withDarkTheme)).toEqual(withDarkTheme)
   })
 
   it('corrects invalid or out of range fields', () => {
@@ -43,7 +43,7 @@ describe('normalizeEditorPreferences', () => {
       minimap: 'not-a-bool',
       appTheme: 'invalid-theme',
       colorMode: 'invalid-mode',
-      useDefaultEditorTheme: 123,
+      editorThemeMode: 'invalid-mode',
     } as unknown
     expect(normalizeEditorPreferences(invalid)).toEqual(DEFAULT_EDITOR_PREFERENCES)
   })

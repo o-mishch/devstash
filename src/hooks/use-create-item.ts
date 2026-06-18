@@ -3,7 +3,7 @@
 import { toast } from 'sonner'
 import { api } from '@/lib/api/client'
 import { useItemsStore } from '@/stores/items'
-import { seedPreviewCache, clearSignedDownloadUrlCache } from '@/hooks/use-pro-download-src'
+import { seedPreviewCache, clearSignedDownloadUrlCache } from '@/lib/utils/signed-download-cache'
 import { usePrependItem, useReplaceItem, useRemoveItem, useInvalidateItems } from '@/hooks/use-infinite-items'
 import type { CreateItemInput } from '@/lib/utils/validators'
 import type { LightItem } from '@/types/item'

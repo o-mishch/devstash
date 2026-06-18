@@ -123,7 +123,7 @@ export function ImageGridSkeleton({ count = 6, itemHeight = 240 }: ImageGridSkel
 export function FileRowSkeleton() {
   return (
     // Absolute px (grid itemHeight=48, touchItemHeight=64) — not rem h-10/h-16 which font-scale.
-    <div className="w-full flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 h-[48px] touch:h-[64px]">
+    <div className="w-full flex items-center gap-3 rounded-lg border border-border bg-muted px-4 py-2.5 h-[48px] touch:h-[64px]">
       <Skeleton className="size-5 shrink-0 rounded" />
       <div className="min-w-0 flex-1">
         <Skeleton className="h-4 w-2/3" />

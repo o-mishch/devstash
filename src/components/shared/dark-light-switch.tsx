@@ -1,6 +1,7 @@
 'use client'
 
 import type { MouseEvent } from 'react'
+import { useRef } from 'react'
 import { Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { startThemeTransition } from '@/lib/utils/theme-transition'
@@ -13,6 +14,7 @@ interface DarkLightSwitchProps {
 
 export function DarkLightSwitch({ colorMode, onColorModeChange, className }: DarkLightSwitchProps) {
   const isLight = colorMode === 'light'
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const handleClick = (e: MouseEvent<HTMLButtonElement>, mode: 'light' | 'dark') => {
     startThemeTransition(e, () => {
@@ -27,18 +29,21 @@ export function DarkLightSwitch({ colorMode, onColorModeChange, className }: Dar
         root.classList.add('light')
         root.classList.remove('dark')
       }
+      // Also update the container attribute synchronously so the thumb CSS transition
+      // reflects the new position in the view-transition "new" snapshot, before React
+      // re-renders and applies the new className.
+      containerRef.current?.setAttribute('data-mode', mode)
       onColorModeChange(mode)
     })
   }
 
   return (
-    <div className={cn('relative inline-grid grid-cols-2 rounded-lg border border-border bg-card p-1', className)}>
-      <div
-        className={cn(
-          'absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-md bg-primary transition-transform duration-500 ease-in-out',
-          !isLight && 'translate-x-[calc(100%+0.25rem)]',
-        )}
-      />
+    <div
+      ref={containerRef}
+      data-mode={colorMode}
+      className={cn('relative inline-grid grid-cols-2 rounded-lg border border-border bg-card p-1', className)}
+    >
+      <div className="dark-light-switch-thumb absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-md bg-primary transition-transform duration-500 ease-in-out" />
       <button
         type="button"
         className={cn(

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
@@ -41,7 +41,8 @@ function ItemDetailDrawerInner({
   onFullItemFetched,
   onItemSaved,
   onItemDeleted,
-}: Omit<ItemDetailDrawerProps, 'open'>) {
+  sheetCloseRef,
+}: Omit<ItemDetailDrawerProps, 'open'> & { sheetCloseRef: { current: (() => void) | null } }) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [savedItem, setSavedItem] = useState<FullItem | null>(null)
 
@@ -119,6 +120,7 @@ function ItemDetailDrawerInner({
             onItemSaved(updated)
           }}
           onCancel={() => setEditingItemId(null)}
+          sheetCloseRef={sheetCloseRef}
         />
       ) : (
         <ItemDrawerViewContent
@@ -151,10 +153,23 @@ export function ItemDetailDrawer({
     maxBoundaryGapVw: 0.1,
   })
 
-  const swipe = useSwipeToDismiss({ onDismiss: () => onOpenChange(false) })
+  // When the edit form is open and dirty, Esc/backdrop must go through the
+  // dirty guard instead of closing immediately. The edit content writes its
+  // guarded-close handler here; the Sheet's onOpenChange reads it.
+  const sheetCloseRef = useRef<(() => void) | null>(null)
+
+  function handleSheetOpenChange(nextOpen: boolean) {
+    if (!nextOpen && sheetCloseRef.current) {
+      sheetCloseRef.current()
+    } else {
+      onOpenChange(nextOpen)
+    }
+  }
+
+  const swipe = useSwipeToDismiss({ onDismiss: () => handleSheetOpenChange(false) })
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleSheetOpenChange}>
       <SheetContent
         side="right"
         // Mobile: full-width so the content area is maximised and nothing is cut off.
@@ -187,6 +202,7 @@ export function ItemDetailDrawer({
             onFullItemFetched={onFullItemFetched}
             onItemSaved={onItemSaved}
             onItemDeleted={onItemDeleted}
+            sheetCloseRef={sheetCloseRef}
           />
         ) : (
           <>

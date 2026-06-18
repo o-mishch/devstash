@@ -123,5 +123,5 @@ export const editorPreferencesSchema = z.object({
   minimap: z.boolean(),
   appTheme: z.enum(APP_THEMES),
   colorMode: z.enum(['light', 'dark']),
-  useDefaultEditorTheme: z.boolean(),
+  editorThemeMode: z.enum(['app', 'auto', 'dark']),
 })

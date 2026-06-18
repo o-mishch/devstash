@@ -86,7 +86,7 @@ function BillingProPlanCard({
   const showAccessEnds = shouldShowAccessEnds(stripeCancelAtPeriodEnd, stripeSubscriptionStatus)
 
   return (
-    <div className={`rounded-lg border divide-y ${accent.borderClassName}`}>
+    <div className={`rounded-lg border divide-y bg-muted ${accent.borderClassName}`}>
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <HeaderIcon className={`size-4 ${accent.iconClassName}`} />
