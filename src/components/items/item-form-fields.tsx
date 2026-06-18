@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { type ItemFormBaseValues } from '@/lib/utils/validators'
 import type { CollectionPickerItem } from '@/types/collection'
-import { AutoDescriptionInput } from '@/components/items/auto-description-input'
+import { AutoDescriptionInput, useAutoDescriptionField } from '@/components/items/auto-description-input'
 import { AutoTagInput } from '@/components/items/auto-tag-input'
 import { AiFieldBadgeIfPro } from '@/components/shared/ai-field-chrome'
 import type { ItemFileContext } from '@/lib/ai/item-context'
@@ -81,6 +81,7 @@ export function ItemFormFields({
 }: ItemFormFieldsProps) {
   const { itemType } = itemContext
   const Field = variant === 'drawer' ? DrawerField : DialogField
+  const descAiField = useAutoDescriptionField(form, itemContext)
   const showContent = ITEM_TYPES_WITH_CONTENT.has(itemType)
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(itemType)
   const showUrl = ITEM_TYPES_WITH_URL.has(itemType)
@@ -187,13 +188,17 @@ export function ItemFormFields({
       label={
         <span className="inline-flex items-center gap-2">
           Description
-          <AiFieldBadgeIfPro />
+          <AiFieldBadgeIfPro
+            onClick={descAiField.run}
+            disabled={descAiField.disabled}
+            tooltip={descAiField.tooltip}
+          />
         </span>
       }
       error={form.formState.errors.description?.message}
       className={variant === 'drawer' ? 'space-y-1.5' : undefined}
     >
-      <AutoDescriptionInput form={form} itemContext={itemContext} variant={variant} />
+      <AutoDescriptionInput form={form} itemContext={itemContext} variant={variant} aiField={descAiField} />
     </Field>
   )
 

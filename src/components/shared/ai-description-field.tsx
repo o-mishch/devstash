@@ -18,28 +18,26 @@ interface AiDescriptionResult {
   description: string
 }
 
-interface AiDescriptionFieldProps {
+interface UseAiDescriptionFieldParams {
   canGenerate: boolean
   disabledReason: string | null
   onGenerate: () => Promise<AiDescriptionResult>
-  onApply: (description: string) => void
-  actionClassName: string
-  // When true the field and its frame become a flex column that fills the available height, so a
-  // flex-1 textarea child grows with its container (used by the resizable collection sheet).
-  fill?: boolean
-  children: ReactNode
 }
 
-export function AiDescriptionField({
+export interface UseAiDescriptionFieldResult {
+  isLoading: boolean
+  suggestedDescription: string | null
+  setSuggestedDescription: (v: string | null) => void
+  run: () => void
+  disabled: boolean
+  tooltip: string
+}
+
+export function useAiDescriptionField({
   canGenerate,
   disabledReason,
   onGenerate,
-  onApply,
-  actionClassName,
-  fill = false,
-  children,
-}: AiDescriptionFieldProps) {
-  const { isPro } = useAppUserFlagsStore()
+}: UseAiDescriptionFieldParams): UseAiDescriptionFieldResult {
   const [suggestedDescription, setSuggestedDescription] = useState<string | null>(null)
 
   const handleSuccess = useCallback((data: AiDescriptionResult) => {
@@ -50,13 +48,37 @@ export function AiDescriptionField({
     }
   }, [])
 
-  const { isLoading, run: handleGenerate } = useAiFieldGenerate({
+  const { isLoading, run } = useAiFieldGenerate({
     canGenerate,
     onGenerate,
     onStart: () => setSuggestedDescription(null),
     onSuccess: handleSuccess,
     failureMessage: 'Failed to generate description.',
   })
+
+  const disabled = !canGenerate || isLoading
+  const tooltip = disabled ? (disabledReason ?? '') : 'Generate description with AI'
+
+  return { isLoading, suggestedDescription, setSuggestedDescription, run, disabled, tooltip }
+}
+
+interface AiDescriptionFieldProps {
+  field: UseAiDescriptionFieldResult
+  onApply: (description: string) => void
+  actionClassName: string
+  fill?: boolean
+  children: ReactNode
+}
+
+export function AiDescriptionField({
+  field,
+  onApply,
+  actionClassName,
+  fill = false,
+  children,
+}: AiDescriptionFieldProps) {
+  const { isPro } = useAppUserFlagsStore()
+  const { isLoading, suggestedDescription, setSuggestedDescription, run, disabled } = field
 
   const handleUse = () => {
     if (!suggestedDescription) return
@@ -70,11 +92,11 @@ export function AiDescriptionField({
         {children}
         {isPro && (
           <AiFieldAction
-            onClick={handleGenerate}
-            disabled={!canGenerate || isLoading}
+            onClick={run}
+            disabled={disabled}
             isLoading={isLoading}
             tooltipEnabled="Generate description with AI"
-            tooltipDisabled={disabledReason ?? ''}
+            tooltipDisabled={field.tooltip}
             ariaLabel={isLoading ? 'Generating description' : 'Generate description with AI'}
             className={actionClassName}
           />

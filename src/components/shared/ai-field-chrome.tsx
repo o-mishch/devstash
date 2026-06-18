@@ -71,7 +71,7 @@ export function AiFieldAction({
           disabled={disabled}
           aria-label={ariaLabel}
           className={cn(
-            'h-8 gap-1.5 border-primary/40 bg-primary/15 px-2.5 text-primary shadow-sm',
+            'h-7 gap-1.5 border-primary/40 bg-primary/15 px-2.5 text-primary shadow-sm',
             'hover:bg-primary/25 hover:text-primary disabled:pointer-events-none disabled:opacity-50'
           )}
         >
@@ -130,17 +130,46 @@ export function AiProHint({ children }: AiProHintProps) {
   )
 }
 
-export function AiFieldBadge() {
-  return (
-    <span className="inline-flex h-5 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 text-[10px] font-bold uppercase tracking-wider text-primary">
+interface AiFieldBadgeProps {
+  onClick?: () => void
+  disabled?: boolean
+  tooltip?: string
+}
+
+export function AiFieldBadge({ onClick, disabled, tooltip }: AiFieldBadgeProps) {
+  const badge = (
+    <span
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick && !disabled ? onClick : undefined}
+      onKeyDown={onClick && !disabled ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick() } : undefined}
+      className={cn(
+        'inline-flex h-5 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 text-[10px] font-bold uppercase tracking-wider text-primary',
+        onClick && !disabled && 'cursor-pointer hover:bg-primary/20',
+        onClick && disabled && 'cursor-not-allowed opacity-50',
+      )}
+    >
       <Sparkles className="size-3" />
       AI
     </span>
   )
+
+  if (!onClick) return badge
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className={cn(disabled && 'cursor-not-allowed')} />}>
+        {badge}
+      </TooltipTrigger>
+      {tooltip && (
+        <TooltipContent side="top">{tooltip}</TooltipContent>
+      )}
+    </Tooltip>
+  )
 }
 
-export function AiFieldBadgeIfPro() {
+export function AiFieldBadgeIfPro({ onClick, disabled, tooltip }: AiFieldBadgeProps) {
   const { isPro } = useAppUserFlagsStore()
   if (!isPro) return null
-  return <AiFieldBadge />
+  return <AiFieldBadge onClick={onClick} disabled={disabled} tooltip={tooltip} />
 }

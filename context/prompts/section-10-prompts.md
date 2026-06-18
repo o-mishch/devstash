@@ -85,3 +85,5 @@ The goal is to implement the solution 100% complient with recommendations and be
 get recomendation and best practices from contes7
 
 write short enough consolidated prompt for ai agent
+
+get recomendations and best practices from context7 and adjust @context/current-feature.md accordinly 
