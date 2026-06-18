@@ -38,7 +38,7 @@ export function TokenPasswordForm({ token, path, successMessage, passwordLabel, 
   )
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="space-y-4" suppressHydrationWarning>
       <PasswordFields passwordLabel={passwordLabel} />
 
       <SubmitButton className="w-full" isPending={isPending}>

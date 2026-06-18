@@ -1,16 +1,16 @@
 'use client'
 
 import { type CSSProperties } from 'react'
-import { useTheme } from 'next-themes'
+import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from 'lucide-react'
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = 'system' } = useTheme()
+  const colorMode = useEditorPreferencesStore((state) => state.colorMode)
 
   return (
     <Sonner
-      theme={theme as ToasterProps['theme']}
+      theme={colorMode as ToasterProps['theme']}
       position="top-center"
       richColors
       className="toaster group"

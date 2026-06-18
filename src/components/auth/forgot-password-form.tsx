@@ -21,7 +21,7 @@ export function ForgotPasswordForm() {
   )
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="space-y-4" suppressHydrationWarning>
       <AuthFormField id="email" name="email" label="Email" type="email" placeholder="you@example.com" autoComplete="email" required />
 
       <div className="grid grid-cols-2 gap-2">

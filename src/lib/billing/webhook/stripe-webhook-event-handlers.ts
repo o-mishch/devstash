@@ -500,7 +500,7 @@ export async function handleSubscriptionTrialWillEnd(subscription: Stripe.Subscr
   let customerEmail = dbUser?.email
   if (!customerEmail && customerId) {
     const customer = await retrieveStripeCustomer(customerId)
-    if (customer) customerEmail = customer.email ?? null
+    if (customer) customerEmail = customer.email ?? undefined
   }
 
   let emailSent = false
@@ -677,7 +677,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
     case 'customer.deleted':
       await handleCustomerDeleted(event.data.object as Stripe.Customer | Stripe.DeletedCustomer)
       return
-    case 'customer.updated':
+    case 'customer.updated': {
       const customer = event.data.object as Stripe.Customer
       logCustomer.info(
         {
@@ -688,6 +688,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
         'customer.updated — Stripe customer email changed or customer updated',
       )
       return
+    }
     case 'charge.refunded':
       await handleChargeRefunded(event.data.object as Stripe.Charge)
       return

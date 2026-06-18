@@ -10,7 +10,7 @@ interface AuthFormFieldProps extends ComponentProps<typeof Input> {
 
 export function AuthFormField({ id, label, type, ...inputProps }: AuthFormFieldProps) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" suppressHydrationWarning>
       <Label htmlFor={id}>{label}</Label>
       {type === 'password' ? (
         <PasswordInput id={id} {...inputProps} />

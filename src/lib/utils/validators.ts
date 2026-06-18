@@ -1,6 +1,6 @@
 import { z, ZodType } from 'zod'
 import type { ApiBody } from '@/types/api'
-import { EDITOR_THEMES, APP_THEMES } from '@/types/editor-preferences'
+import { APP_THEMES } from '@/types/editor-preferences'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 
 export type ParseResult<T> =
@@ -121,6 +121,7 @@ export const editorPreferencesSchema = z.object({
   tabSize: z.number().min(1).max(16),
   wordWrap: z.enum(['on', 'off']),
   minimap: z.boolean(),
-  theme: z.enum(EDITOR_THEMES),
   appTheme: z.enum(APP_THEMES),
+  colorMode: z.enum(['light', 'dark']),
+  useDefaultEditorTheme: z.boolean(),
 })

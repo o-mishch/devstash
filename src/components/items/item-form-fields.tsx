@@ -93,7 +93,7 @@ export function ItemFormFields({
   let contentEditorWrapperClassName: string | undefined
   let contentTextareaClassName: string
   if (variant === 'drawer') {
-    contentFieldClassName = 'flex flex-col space-y-1.5 h-[70vh]'
+    contentFieldClassName = 'flex flex-col h-[70vh]'
     contentEditorClassName = 'flex-1 min-h-0'
     contentEditorWrapperClassName = 'flex flex-col w-full flex-1 h-0 min-h-[120px]'
     contentTextareaClassName = 'resize-none font-mono text-xs w-full flex-1 h-0 min-h-[120px]'
@@ -155,7 +155,7 @@ export function ItemFormFields({
       // Drawer: mirror the read drawer — hide the Content label on mobile and make
       // the editor a content-dominant 70vh block (all viewports) right under the
       // action bar, so it's the main area and the drawer scrolls to the rest.
-      labelClassName={variant === 'drawer' ? 'max-sm:hidden' : undefined}
+      labelClassName={variant === 'drawer' ? 'hidden' : undefined}
       className={contentFieldClassName}
     >
       {contentEditorNode}

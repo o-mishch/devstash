@@ -7,7 +7,7 @@ import { linkAccountAction, autoLinkAccountAction } from '@/actions/auth/link'
 import { auth } from '@/auth'
 import { PROVIDER_LABELS } from '@/lib/utils'
 import { SubmitButton, buttonVariants } from '@/components/ui/button'
-import { LinkAccountForm } from '@/components/auth/link-account-form'
+import { LinkAccountForm } from '@/components/auth/dynamic-forms'
 import { getUserAuthInfoByEmail, getUserAuthMethods } from '@/lib/db/users'
 import Link from 'next/link'
 

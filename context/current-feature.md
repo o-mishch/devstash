@@ -4,7 +4,7 @@
 Not Started
 
 ## Goals
-<!-- Bullet points of what success looks like -->
+<!-- bullet points of what success looks like -->
 
 ## Notes
-<!-- Additional context, constraints, or details from spec -->
+<!-- additional context, constraints, or details -->

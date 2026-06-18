@@ -1,14 +1,23 @@
 import type { WithChildren } from '@/types/common';
 import { HomepageNav } from '@/components/marketing/homepage-nav';
 import { auth } from '@/auth';
+import { RootProviderShell } from '@/components/shared/root-provider-shell';
+import { Suspense } from 'react';
 
-export default async function MarketingLayout({ children }: WithChildren) {
-  const session = await auth();
-
+export default function MarketingLayout({ children }: WithChildren) {
   return (
-    <>
-      <HomepageNav isAuthenticated={!!session} />
-      {children}
-    </>
+    <RootProviderShell theme="modern-minimal" colorMode="dark">
+      <Suspense fallback={<HomepageNav isAuthenticated={false} />}>
+        <MarketingHeader />
+      </Suspense>
+      <Suspense fallback={null}>
+        {children}
+      </Suspense>
+    </RootProviderShell>
   );
+}
+
+async function MarketingHeader() {
+  const session = await auth();
+  return <HomepageNav isAuthenticated={!!session} />;
 }

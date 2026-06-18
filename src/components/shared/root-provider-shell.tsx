@@ -1,14 +1,13 @@
-import { Suspense } from "react";
-import type { Metadata } from "next";
 import type { WithChildren } from "@/types/common";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { Analytics } from "@vercel/analytics/next";
-import { ThemeProvider } from "@/providers/theme-provider";
 import { AppQueryClientProvider } from "@/providers/query-client-provider";
 import { ServiceWorkerRegistration } from "@/components/shared/service-worker-registration";
-import { ThemeInitializer } from "@/components/shared/theme-initializer";
-import "./globals.css";
+import { MonacoConsoleSuppressor } from "@/components/shared/monaco-console-suppressor";
+import { ThemeScript } from "@/components/shared/theme-script";
+import "@/app/globals.css";
+import "@/app/themes.generated.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,28 +19,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "DevStash",
-  description: "Developer knowledge hub",
-};
+interface RootProviderShellProps extends WithChildren {
+  theme: string;
+  colorMode: string;
+  themeScript?: boolean;
+}
 
-export default function RootLayout({ children }: Readonly<WithChildren>) {
+export function RootProviderShell({ children, theme, colorMode, themeScript }: RootProviderShellProps) {
   return (
     <html
       lang="en"
       suppressHydrationWarning
       data-scroll-behavior="smooth"
-      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased scroll-smooth`}
+      data-theme={theme}
+      className={`${geistSans.variable} ${geistMono.variable} ${colorMode} h-full antialiased scroll-smooth`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col bg-background text-foreground">
+        {themeScript && <ThemeScript />}
+        <MonacoConsoleSuppressor />
         <AppQueryClientProvider>
-          <Suspense>
-            <ThemeProvider attribute="data-theme" defaultTheme="vscode" enableSystem={false}>
-              <ThemeInitializer />
-              {children}
-              <Toaster />
-            </ThemeProvider>
-          </Suspense>
+          {children}
+          <Toaster />
         </AppQueryClientProvider>
         <Analytics />
         <ServiceWorkerRegistration />

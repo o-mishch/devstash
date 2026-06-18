@@ -103,9 +103,9 @@ export function SignInForm({ successMessage }: SignInFormProps) {
         </WarningBanner>
       )}
 
-      <form action={formAction} className="flex flex-col gap-4">
+      <form action={formAction} className="flex flex-col gap-4" suppressHydrationWarning>
         <AuthFormField id="email" name="email" label="Email" type="email" placeholder="you@example.com" autoComplete="email" required />
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5" suppressHydrationWarning>
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Password</Label>
             <Link

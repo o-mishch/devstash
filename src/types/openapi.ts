@@ -1001,9 +1001,10 @@ export interface paths {
                         wordWrap: "on" | "off";
                         minimap: boolean;
                         /** @enum {string} */
-                        theme: "vs-dark" | "monokai" | "github-dark";
+                        appTheme: "modern-minimal" | "claude" | "graphite" | "amethyst-haze" | "cosmic-night" | "t3-chat" | "supabase" | "twitter" | "mocha-mousse" | "catppuccin" | "vercel" | "bubblegum" | "caffeine" | "vintage-paper" | "violet-bloom" | "doom-64" | "kodama-grove" | "quantum-rose" | "bold-tech" | "elegant-luxury" | "amber-minimal" | "neo-brutalism" | "solar-dusk" | "pastel-dreams" | "clean-slate" | "ocean-breeze" | "retro-arcade" | "midnight-bloom" | "northern-lights" | "sunset-horizon" | "starry-night" | "soft-pop" | "sage-garden";
                         /** @enum {string} */
-                        appTheme: "vscode" | "github" | "jetbrains" | "vercel" | "dracula" | "monokai";
+                        colorMode: "light" | "dark";
+                        useDefaultEditorTheme: boolean;
                     };
                 };
             };

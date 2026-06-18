@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { AuthFormLayout } from '@/components/auth/auth-page-header'
 import { getCachedSession } from '@/lib/session'
 import { buttonVariants } from '@/components/ui/button'
-import { RegisterForm } from '@/components/auth/register-form'
+import { RegisterForm } from '@/components/auth/dynamic-forms'
 import { ResendVerificationButton } from '@/components/auth/resend-verification-button'
 
 interface RegisterPageProps {

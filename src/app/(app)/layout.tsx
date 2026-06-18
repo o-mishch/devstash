@@ -24,19 +24,29 @@ import { CollectionCreateDialog } from '@/components/dashboard/collection-create
 import { UpgradePromptProvider } from '@/providers/upgrade-prompt-provider'
 import { ItemDrawerProvider } from '@/providers/item-drawer-provider'
 import { EditorPreloader } from '@/components/shared/dynamic-editors'
-export default function DashboardLayout({ children }: WithChildren) {
+import { RootProviderShell } from '@/components/shared/root-provider-shell'
+import { ThemeInitializer } from '@/components/shared/theme-initializer'
+import { normalizeEditorPreferences } from '@/types/editor-preferences'
+
+export default async function DashboardLayout({ children }: WithChildren) {
+  const { appTheme, colorMode } = normalizeEditorPreferences(null)
+
   return (
-    <ItemDrawerProvider>
-      {/* Outside Suspense so it hydrates with the initial HTML shell, before DashboardLayoutInner resolves */}
-      <EditorPreloader />
-      <Suspense fallback={<DashboardLayoutSkeleton>{children}</DashboardLayoutSkeleton>}>
-        <DashboardLayoutInner>{children}</DashboardLayoutInner>
-      </Suspense>
-    </ItemDrawerProvider>
+    <RootProviderShell theme={appTheme} colorMode={colorMode} themeScript>
+      <ThemeInitializer />
+      <ItemDrawerProvider>
+        <EditorPreloader />
+        <Suspense fallback={<DashboardLayoutSkeleton />}>
+          <DashboardLayoutInner>
+            {children}
+          </DashboardLayoutInner>
+        </Suspense>
+      </ItemDrawerProvider>
+    </RootProviderShell>
   )
 }
 
-function DashboardLayoutSkeleton({ children }: WithChildren) {
+function DashboardLayoutSkeleton({ children }: Partial<WithChildren>) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
       <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">
@@ -90,16 +100,18 @@ async function DashboardLayoutInner({ children }: WithChildren) {
   const userId = session?.user?.id
   if (!userId) redirect('/sign-in')
 
+  const preferences = await getEditorPreferences(userId).catch(() => null)
+  const initialPreferences = normalizeEditorPreferences(preferences)
+
   // Resolve isPro first from the Redis Pro cache (~1ms on hit) so the usage
   // checks can run in parallel with the billing sync inside loadAppSidebarData.
   // getCachedVerifiedProAccess is deduplicated by cache(), so loadAppSidebarData
   // reuses the result — no double fetch.
   const isPro = await getCachedVerifiedProAccess(userId)
 
-  // All four fetches in one parallel round-trip
-  const [sidebarData, preferences, userCanCreateItem, userCanCreateCollection] = await Promise.all([
+  // All three fetches in one parallel round-trip
+  const [sidebarData, userCanCreateItem, userCanCreateCollection] = await Promise.all([
     loadAppSidebarData(session),
-    getEditorPreferences(userId).catch(() => null),
     canCreateItem(userId, isPro),
     canCreateCollection(userId, isPro),
   ])
@@ -111,7 +123,7 @@ async function DashboardLayoutInner({ children }: WithChildren) {
         canCreateItem={userCanCreateItem}
         canCreateCollection={userCanCreateCollection}
       />
-      <EditorPreferencesInitializer preferences={preferences} />
+      <EditorPreferencesInitializer preferences={initialPreferences} />
       <UpgradePromptProvider>
           <div className="flex h-screen flex-col overflow-hidden bg-background">
             <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">

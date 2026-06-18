@@ -1,6 +1,6 @@
 import { TokenGatedPage } from '@/components/auth/token-gated-page'
 import { peekPasswordResetToken } from '@/lib/auth/tokens'
-import { TokenPasswordForm } from '@/components/auth/token-password-form'
+import { TokenPasswordForm } from '@/components/auth/dynamic-forms'
 
 interface ResetPasswordPageProps {
   searchParams: Promise<{ token?: string }>

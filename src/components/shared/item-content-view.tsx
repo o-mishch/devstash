@@ -6,6 +6,7 @@ import { CopyButton } from '@/components/shared/copy-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
+import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
 import { CodeEditor, MarkdownViewer } from './dynamic-editors'
 
 interface EditorChromeContainerProps {
@@ -16,8 +17,10 @@ interface EditorChromeContainerProps {
 }
 
 function EditorChromeContainer({ minHeight = 'min-h-[120px]', headerRight, fullscreenLabel, children }: EditorChromeContainerProps) {
+  const bgStyle = useEditorBgStyle()
+
   return (
-    <EditorChromeShell className={`bg-[#1E1E1E] ${minHeight}`} header={headerRight} fullscreenLabel={fullscreenLabel}>
+    <EditorChromeShell style={bgStyle} className={minHeight} header={headerRight} fullscreenLabel={fullscreenLabel}>
       {children}
     </EditorChromeShell>
   )
@@ -41,7 +44,7 @@ function PlainTextView({ content }: PlainTextViewProps) {
     >
       <div className="flex-1 min-h-0 relative">
         <div className="absolute inset-0 overflow-auto">
-          <pre className="p-3 text-xs leading-relaxed whitespace-pre text-white/90 font-mono min-h-full">
+          <pre className="p-3 text-xs leading-relaxed whitespace-pre font-mono min-h-full">
             {content}
           </pre>
         </div>
@@ -75,7 +78,7 @@ function MarkdownContentView({ content }: MarkdownContentViewProps) {
       <div className="flex-1 min-h-0 relative">
         <div className="absolute inset-0 overflow-auto">
           <Suspense fallback={
-            <pre className="p-4 text-sm font-mono text-white/90 whitespace-pre-wrap leading-relaxed h-full">
+            <pre className="p-4 text-sm font-mono whitespace-pre-wrap leading-relaxed h-full">
               {content}
             </pre>
           }>

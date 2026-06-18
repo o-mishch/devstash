@@ -70,7 +70,9 @@ function scheduleTagInvalidation(tag: string): void {
   } catch { /* not a Server Action — fall through to revalidateTag */ }
 
   try {
-    revalidateTag(tag, 'max')
+    // expire:0 sets expired=now in the tags manifest → cache miss on next request (immediate).
+    // 'max' profile sets expired=now+MAX → stale-while-revalidate → stale data served once (bug).
+    revalidateTag(tag, { expire: 0 })
     log.info({ tag }, 'cache tag revalidated')
   } catch (err) {
     log.warn({ err }, 'Cache invalidation skipped')

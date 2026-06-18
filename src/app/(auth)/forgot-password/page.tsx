@@ -3,7 +3,7 @@ import { CircleCheck } from 'lucide-react'
 import { AuthFormLayout, AuthPageBase } from '@/components/auth/auth-page-header'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { ForgotPasswordForm } from '@/components/auth/forgot-password-form'
+import { ForgotPasswordForm } from '@/components/auth/dynamic-forms'
 
 interface ForgotPasswordPageProps {
   searchParams: Promise<{ sent?: string; email?: string }>

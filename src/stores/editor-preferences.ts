@@ -7,6 +7,7 @@ import { api } from '@/lib/api/client'
 interface EditorPreferencesStore extends EditorPreferences {
   isInitialized: boolean
   updatePreference: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => Promise<void>
+  updatePreferences: (prefs: Partial<EditorPreferences>) => Promise<void>
   setPreferences: (prefs: EditorPreferences) => void
 }
 
@@ -17,13 +18,26 @@ export const useEditorPreferencesStore = create<EditorPreferencesStore>((set, ge
     key: K,
     value: EditorPreferences[K]
   ) => {
+    return get().updatePreferences({ [key]: value })
+  },
+  updatePreferences: async (prefs: Partial<EditorPreferences>) => {
     const prev = get()
-    set({ [key]: value } as Partial<EditorPreferencesStore>)
+    // Extract only EditorPreferences fields from state to prevent extra store fields leaking
+    const newPrefs = {
+      fontSize: prev.fontSize,
+      tabSize: prev.tabSize,
+      wordWrap: prev.wordWrap,
+      minimap: prev.minimap,
+      appTheme: prev.appTheme,
+      colorMode: prev.colorMode,
+      useDefaultEditorTheme: prev.useDefaultEditorTheme,
+      ...prefs,
+    }
+    set(newPrefs as Partial<EditorPreferencesStore>)
 
     try {
-      const { fontSize, tabSize, wordWrap, minimap, theme, appTheme } = get()
       const { error } = await api.PATCH('/profile/editor-preferences', {
-        body: { fontSize, tabSize, wordWrap, minimap, theme, appTheme },
+        body: newPrefs,
       })
       if (error) throw new Error(error.message)
     } catch {

@@ -14,6 +14,7 @@ const nextConfig: NextConfig = {
       dynamic: 300,
     },
   },
+  cacheComponents: true,
   serverExternalPackages: ['@prisma/client', '@prisma/adapter-neon', '@neondatabase/serverless', '@aws-sdk/client-s3'],
   turbopack: {
     rules: {
@@ -21,7 +22,6 @@ const nextConfig: NextConfig = {
       '*.svg': { loaders: ['raw-loader'], as: '*.js' },
     },
   },
-  cacheComponents: true,
 };
 
 export default nextConfig;

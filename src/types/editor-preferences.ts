@@ -1,59 +1,62 @@
-export const EDITOR_THEMES = ['vs-dark', 'monokai', 'github-dark'] as const;
-export type EditorTheme = typeof EDITOR_THEMES[number];
+import { APP_THEMES, type AppTheme } from './theme-presets.generated';
 
-export const APP_THEMES = ['vscode', 'github', 'jetbrains', 'vercel', 'dracula', 'monokai'] as const;
-export type AppTheme = typeof APP_THEMES[number];
+export { APP_THEMES, APP_THEME_OPTIONS } from './theme-presets.generated';
+export type { AppTheme, ThemePresetOption } from './theme-presets.generated';
 
 export interface EditorPreferences {
   fontSize: number;
   tabSize: number;
   wordWrap: 'on' | 'off';
   minimap: boolean;
-  theme: EditorTheme;
   appTheme: AppTheme;
+  colorMode: 'light' | 'dark';
+  useDefaultEditorTheme: boolean;
 }
 
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   fontSize: 14,
   tabSize: 2,
-  // Code shouldn't wrap by default — long lines scroll horizontally instead. Users can
-  // re-enable wrap in Settings → Editor (the toggle still works).
   wordWrap: 'off',
   minimap: false,
-  theme: 'vs-dark',
-  appTheme: 'vscode',
+  appTheme: 'modern-minimal',
+  colorMode: 'dark',
+  useDefaultEditorTheme: true,
 };
 
-export const EDITOR_THEME_OPTIONS: { value: EditorTheme; label: string }[] = [
-  { value: 'vs-dark', label: 'VS Dark' },
-  { value: 'monokai', label: 'Monokai' },
-  { value: 'github-dark', label: 'GitHub Dark' },
-];
+export function normalizeEditorPreferences(input: unknown): EditorPreferences {
+  if (!input || typeof input !== 'object') {
+    return DEFAULT_EDITOR_PREFERENCES;
+  }
+  const typed = input as Partial<EditorPreferences>;
+  
+  const appTheme = (typed.appTheme && (APP_THEMES as readonly string[]).includes(typed.appTheme))
+    ? typed.appTheme
+    : DEFAULT_EDITOR_PREFERENCES.appTheme;
 
-export const EDITOR_THEME_COLORS: Record<EditorTheme, { bg: string; text: string }> = {
-  'vs-dark':     { bg: '#1E1E1E', text: 'rgba(255, 255, 255, 0.9)' },
-  'monokai':     { bg: '#272822', text: '#F8F8F2' },
-  'github-dark': { bg: '#24292e', text: '#e1e4e8' },
-};
+  const colorMode = (typed.colorMode === 'light' || typed.colorMode === 'dark')
+    ? typed.colorMode
+    : DEFAULT_EDITOR_PREFERENCES.colorMode;
 
-export const APP_THEME_OPTIONS: { value: AppTheme; label: string; description: string }[] = [
-  { value: 'vscode', label: 'VS Code', description: 'Dark+ (Default)' },
-  { value: 'github', label: 'GitHub', description: 'Cool Blue Dark Mode' },
-  { value: 'jetbrains', label: 'JetBrains', description: 'Darcula Warm Dark' },
-  { value: 'vercel', label: 'Vercel', description: 'OLED Pitch Black' },
-  { value: 'dracula', label: 'Dracula', description: 'Vibrant Purples' },
-  { value: 'monokai', label: 'Monokai', description: 'Classic Warm Accents' },
-];
-
-/** Tailwind classes for theme picker swatches (avoids inline styles in settings UI). */
-export const APP_THEME_SWATCH_CLASSES: Record<AppTheme, { bg: string; accent: string }> = {
-  vscode:    { bg: 'bg-zinc-950', accent: 'bg-blue-500' },
-  github:    { bg: 'bg-[oklch(0.13_0.012_250)]', accent: 'bg-blue-500' },
-  jetbrains: { bg: 'bg-zinc-800', accent: 'bg-amber-500' },
-  vercel:    { bg: 'bg-black', accent: 'bg-white' },
-  dracula:   { bg: 'bg-[oklch(0.22_0.018_285)]', accent: 'bg-purple-500' },
-  monokai:   { bg: 'bg-stone-800', accent: 'bg-pink-500' },
-};
+  return {
+    fontSize: typeof typed.fontSize === 'number' && typed.fontSize >= 8 && typed.fontSize <= 100
+      ? typed.fontSize
+      : DEFAULT_EDITOR_PREFERENCES.fontSize,
+    tabSize: typeof typed.tabSize === 'number' && typed.tabSize >= 1 && typed.tabSize <= 16
+      ? typed.tabSize
+      : DEFAULT_EDITOR_PREFERENCES.tabSize,
+    wordWrap: typed.wordWrap === 'on' || typed.wordWrap === 'off'
+      ? typed.wordWrap
+      : DEFAULT_EDITOR_PREFERENCES.wordWrap,
+    minimap: typeof typed.minimap === 'boolean'
+      ? typed.minimap
+      : DEFAULT_EDITOR_PREFERENCES.minimap,
+    appTheme,
+    colorMode,
+    useDefaultEditorTheme: typeof typed.useDefaultEditorTheme === 'boolean'
+      ? typed.useDefaultEditorTheme
+      : DEFAULT_EDITOR_PREFERENCES.useDefaultEditorTheme,
+  };
+}
 
 export const EDITOR_FONT_SIZE_OPTIONS = [12, 14, 16, 18, 20];
 

@@ -31,7 +31,7 @@ export function RegisterForm() {
 
   return (
     <>
-      <form action={formAction} className="flex flex-col gap-4">
+      <form action={formAction} className="flex flex-col gap-4" suppressHydrationWarning>
         <AuthFormField id="name" name="name" label="Name" type="text" placeholder="User Display Name" autoComplete="name" required />
         <AuthFormField id="email" name="email" label="Email" type="email" placeholder="you@example.com" autoComplete="email" required />
         <PasswordFields />

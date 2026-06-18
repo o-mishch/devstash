@@ -1157,24 +1157,53 @@
                   "minimap": {
                     "type": "boolean"
                   },
-                  "theme": {
-                    "type": "string",
-                    "enum": [
-                      "vs-dark",
-                      "monokai",
-                      "github-dark"
-                    ]
-                  },
                   "appTheme": {
                     "type": "string",
                     "enum": [
-                      "vscode",
-                      "github",
-                      "jetbrains",
+                      "modern-minimal",
+                      "claude",
+                      "graphite",
+                      "amethyst-haze",
+                      "cosmic-night",
+                      "t3-chat",
+                      "supabase",
+                      "twitter",
+                      "mocha-mousse",
+                      "catppuccin",
                       "vercel",
-                      "dracula",
-                      "monokai"
+                      "bubblegum",
+                      "caffeine",
+                      "vintage-paper",
+                      "violet-bloom",
+                      "doom-64",
+                      "kodama-grove",
+                      "quantum-rose",
+                      "bold-tech",
+                      "elegant-luxury",
+                      "amber-minimal",
+                      "neo-brutalism",
+                      "solar-dusk",
+                      "pastel-dreams",
+                      "clean-slate",
+                      "ocean-breeze",
+                      "retro-arcade",
+                      "midnight-bloom",
+                      "northern-lights",
+                      "sunset-horizon",
+                      "starry-night",
+                      "soft-pop",
+                      "sage-garden"
                     ]
+                  },
+                  "colorMode": {
+                    "type": "string",
+                    "enum": [
+                      "light",
+                      "dark"
+                    ]
+                  },
+                  "useDefaultEditorTheme": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -1182,8 +1211,9 @@
                   "tabSize",
                   "wordWrap",
                   "minimap",
-                  "theme",
-                  "appTheme"
+                  "appTheme",
+                  "colorMode",
+                  "useDefaultEditorTheme"
                 ]
               }
             }

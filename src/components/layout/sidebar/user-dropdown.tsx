@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { Settings, User, LogOut } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { Settings, User, LogOut, Sun, Moon } from 'lucide-react'
+import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { startThemeTransition } from '@/lib/utils/theme-transition'
 
 import {
   DropdownMenuContent,
@@ -10,7 +11,6 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { signOut } from 'next-auth/react'
-import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
 import { useProfileEmailsStore } from '@/stores/profile-emails'
 
 interface UserDropdownMenuContentProps {
@@ -24,7 +24,8 @@ export function UserDropdownMenuContent({
   align,
   onClose
 }: UserDropdownMenuContentProps) {
-  const { setTheme } = useTheme()
+  const colorMode = useEditorPreferencesStore((state) => state.colorMode)
+  const updatePreference = useEditorPreferencesStore((state) => state.updatePreference)
 
   return (
     <DropdownMenuContent
@@ -47,9 +48,25 @@ export function UserDropdownMenuContent({
           Settings
         </Link>
       } />
+      <DropdownMenuItem onClick={(e) => {
+        startThemeTransition(e, () => {
+          void updatePreference('colorMode', colorMode === 'dark' ? 'light' : 'dark')
+        })
+      }}>
+        {colorMode === 'dark' ? (
+          <>
+            <Sun className="size-4" />
+            Light Mode
+          </>
+        ) : (
+          <>
+            <Moon className="size-4" />
+            Dark Mode
+          </>
+        )}
+      </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => {
-        setTheme(DEFAULT_EDITOR_PREFERENCES.appTheme)
         // Clear user-scoped client state so the next account on this device never sees the prior
         // user's emails (PII) from the module-global store.
         useProfileEmailsStore.getState().reset()

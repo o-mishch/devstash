@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { SignInForm } from '@/components/auth/sign-in-form'
+import { SignInForm } from '@/components/auth/dynamic-forms'
 import { AuthFormLayout } from '@/components/auth/auth-page-header'
 import { getCachedSession } from '@/lib/session'
 

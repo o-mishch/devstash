@@ -169,8 +169,55 @@ describe('PATCH /profile/name', () => {
 
 describe('PATCH /profile/editor-preferences', () => {
   it('returns 422 for out-of-range values', async () => {
-    const res = await PATCH_PREFS(req('PATCH', { fontSize: 999, tabSize: 2, wordWrap: 'on', minimap: false, theme: 'vs-dark', appTheme: 'dark' }))
+    const res = await PATCH_PREFS(req('PATCH', {
+      fontSize: 999,
+      tabSize: 2,
+      wordWrap: 'on',
+      minimap: false,
+      appTheme: 'modern-minimal',
+      colorMode: 'dark',
+      useDefaultEditorTheme: false,
+    }))
     expect(res.status).toBe(422)
+  })
+
+  it('returns 422 for an unknown appTheme slug (e.g. old removed theme)', async () => {
+    const res = await PATCH_PREFS(req('PATCH', {
+      fontSize: 14,
+      tabSize: 2,
+      wordWrap: 'off',
+      minimap: false,
+      appTheme: 'vscode',
+      colorMode: 'dark',
+      useDefaultEditorTheme: true,
+    }))
+    expect(res.status).toBe(422)
+  })
+
+  it('returns 422 for an invalid colorMode value', async () => {
+    const res = await PATCH_PREFS(req('PATCH', {
+      fontSize: 14,
+      tabSize: 2,
+      wordWrap: 'off',
+      minimap: false,
+      appTheme: 'modern-minimal',
+      colorMode: 'auto',
+      useDefaultEditorTheme: true,
+    }))
+    expect(res.status).toBe(422)
+  })
+
+  it('returns 204 on success with valid values', async () => {
+    const res = await PATCH_PREFS(req('PATCH', {
+      fontSize: 14,
+      tabSize: 2,
+      wordWrap: 'off',
+      minimap: false,
+      appTheme: 'modern-minimal',
+      colorMode: 'dark',
+      useDefaultEditorTheme: false,
+    }))
+    expect(res.status).toBe(204)
   })
 })
 
