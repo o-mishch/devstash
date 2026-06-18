@@ -7,7 +7,8 @@ import {
   EDITOR_TAB_SIZE_OPTIONS,
   APP_THEME_OPTIONS,
   DEFAULT_EDITOR_PREFERENCES,
-  type AppTheme
+  type AppTheme,
+  type EditorThemeMode,
 } from '@/types/editor-preferences'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -18,6 +19,19 @@ import { cn } from '@/lib/utils'
 import { startThemeTransition, type TransitionEventCoords } from '@/lib/utils/theme-transition'
 import { RotateCcw } from 'lucide-react'
 import { DarkLightSwitch } from '@/components/shared/dark-light-switch'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+
+interface EditorThemeModeOption {
+  value: EditorThemeMode
+  label: string
+  description: string
+}
+
+const EDITOR_THEME_MODE_OPTIONS: EditorThemeModeOption[] = [
+  { value: 'app', label: 'App', description: 'Follows your color palette' },
+  { value: 'auto', label: 'Auto', description: 'Monaco native, tracks dark/light' },
+  { value: 'dark', label: 'Dark', description: 'Monaco native, always dark' },
+]
 
 interface PreferenceRowProps {
   title: string
@@ -76,7 +90,7 @@ export function EditorPreferencesForm() {
                   key={theme.value}
                   onClick={(e) => handleAppThemeChange(e, theme.value)}
                   className={cn(
-                    "flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-all hover:bg-foreground/5 cursor-pointer",
+                    "flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-all hover:bg-foreground/5",
                     isActive ? "border-primary bg-foreground/5" : "border-border"
                   )}
                 >
@@ -129,11 +143,31 @@ export function EditorPreferencesForm() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <PreferenceRow title="Use Default Editor Theme" description="Use native light/dark styles for code and markdown editors, ignoring the app theme">
-            <Switch
-              checked={store.useDefaultEditorTheme}
-              onCheckedChange={(checked) => updatePreference('useDefaultEditorTheme', checked)}
-            />
+          <PreferenceRow title="Editor Theme" description="Controls syntax highlighting and the editor background">
+            <TooltipProvider>
+              <div className="flex rounded-md border border-border overflow-hidden">
+                {EDITOR_THEME_MODE_OPTIONS.map((option) => {
+                  const isActive = store.editorThemeMode === option.value
+                  return (
+                    <Tooltip key={option.value}>
+                      <TooltipTrigger
+                        onClick={() => void updatePreference('editorThemeMode', option.value)}
+                        className={cn(
+                          "px-3 py-1.5 text-sm font-medium transition-colors",
+                          "border-r border-border last:border-r-0",
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-background text-foreground hover:bg-muted"
+                        )}
+                      >
+                        {option.label}
+                      </TooltipTrigger>
+                      <TooltipContent>{option.description}</TooltipContent>
+                    </Tooltip>
+                  )
+                })}
+              </div>
+            </TooltipProvider>
           </PreferenceRow>
 
           <PreferenceRow title="Font Size" description="Font size in pixels — code and markdown editors">

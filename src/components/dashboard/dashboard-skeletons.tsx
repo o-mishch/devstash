@@ -6,7 +6,7 @@ import { STAT_CHIP_BASE } from './stat-chip'
 
 export function CollectionsGridSkeleton() {
   return (
-    <Card className="overflow-visible">
+    <Card className="overflow-visible bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <CardTitle className="text-sm font-semibold">Collections</CardTitle>
         <Skeleton className="h-4 w-12" />
@@ -26,7 +26,7 @@ function DashboardListSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="flex flex-col gap-3">
       {[...Array(count)].map((_, i) => (
-        <div key={i} className="app-row h-14 gap-3 rounded-xl border-l-2 border-l-muted/20 px-2 ring-1 ring-border">
+        <div key={i} className="app-row h-[56px] gap-3 rounded-xl border-l-2 border-l-muted/20 bg-card px-2 ring-1 ring-border">
           <Skeleton className="size-7 shrink-0 rounded-md" />
           <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton className="h-4 w-40" />
@@ -44,7 +44,7 @@ function DashboardListSkeleton({ count = 3 }: { count?: number }) {
 
 export function PinnedSkeleton() {
   return (
-    <Card>
+    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
           <Pin className="size-3.5 text-muted-foreground" />
@@ -60,7 +60,7 @@ export function PinnedSkeleton() {
 
 export function RecentItemsSkeleton() {
   return (
-    <Card>
+    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold">Recent Items</CardTitle>
       </CardHeader>

@@ -1,16 +1,12 @@
 'use client'
 
 import { useState, Suspense } from 'react'
-import dynamic from 'next/dynamic'
 import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
 import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
-
-const MarkdownViewer = dynamic(
-  () => import('./markdown-viewer').then(m => m.MarkdownViewer)
-)
+import { MarkdownViewer } from '@/components/shared/dynamic-editors'
 
 interface MarkdownEditorProps {
   value: string

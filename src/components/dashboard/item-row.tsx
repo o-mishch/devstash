@@ -21,7 +21,7 @@ export function ItemRow({ item }: ItemRowProps) {
   return (
     <button
       type="button"
-      className="card-interactive app-row h-[56px] text-left gap-3 rounded-xl border-l-2 border-l-[var(--item-color)] px-2 ring-1 ring-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="card-interactive app-row h-[56px] text-left gap-3 rounded-xl border-l-2 border-l-[var(--item-color)] bg-card px-2 ring-1 ring-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
       onClick={() => openDrawer(item)}
     >

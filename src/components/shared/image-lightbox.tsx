@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { X, Loader2 } from 'lucide-react'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
-import { getSignedDownloadUrl } from '@/hooks/use-pro-download-src'
+import { getSignedDownloadUrl } from '@/lib/utils/signed-download-cache'
 
 interface ImageLightboxProps {
   open: boolean
@@ -12,6 +12,8 @@ interface ImageLightboxProps {
   itemId: string
   previewSrc: string
   alt: string
+  /** SVGs are resolution-independent — skip the full-size fetch and render the existing preview at full viewport size. */
+  isSvg?: boolean
 }
 
 // Full-screen image preview (lightbox) following the established pattern: a dimmed full-viewport
@@ -20,10 +22,10 @@ interface ImageLightboxProps {
 // trapping, scroll lock, and focus restoration come for free — and so opening it from inside the
 // item drawer (itself a dialog) nests correctly: Esc closes only the lightbox.
 //
-// When opened, if the user is Pro, it fetches the full-size image URL on demand.
-// Progressive loading: displays the thumbnail immediately as a base layer, overlays the
-// high-res image once fully downloaded, and displays a spinner while fetching/loading.
-export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt }: ImageLightboxProps) {
+// For raster images: if the user is Pro, fetches the full-size image URL on demand with progressive
+// loading (thumbnail as base layer, high-res overlay once downloaded).
+// For SVGs: renders the existing preview src at full viewport size — no fetch needed.
+export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isSvg = false }: ImageLightboxProps) {
   const { isPro } = useAppUserFlagsStore()
   const [fullsizeUrl, setFullsizeUrl] = useState<string | null>(null)
   const [isFetchingUrl, setIsFetchingUrl] = useState(false)
@@ -34,13 +36,13 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt }: I
   if (open !== prevOpen) {
     setPrevOpen(open)
     setFullsizeUrl(null)
-    setIsFetchingUrl(open && isPro)
+    setIsFetchingUrl(open && isPro && !isSvg)
     setIsImageLoading(false)
     setHasError(false)
   }
 
   useEffect(() => {
-    if (!open || !isPro) return
+    if (!open || !isPro || isSvg) return
 
     let active = true
 
@@ -64,7 +66,7 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt }: I
     return () => {
       active = false
     }
-  }, [open, itemId, isPro])
+  }, [open, itemId, isPro, isSvg])
 
   const showFullsize = !!fullsizeUrl && !hasError
   const showLoading = isFetchingUrl || (showFullsize && isImageLoading)
@@ -78,7 +80,6 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt }: I
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 outline-none backdrop-blur-sm duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 sm:p-8"
         >
           <div className="relative h-full w-full flex items-center justify-center">
-            {/* Low-res thumbnail placeholder (always rendered as background/base) */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewSrc}
@@ -87,7 +88,7 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt }: I
               className="h-full w-full object-contain drop-shadow-2xl duration-150 data-open:animate-in data-open:zoom-in-95"
             />
 
-            {/* High-res fullsize image overlay */}
+            {/* High-res fullsize overlay — raster images only */}
             {showFullsize && (
               // eslint-disable-next-line @next/next/no-img-element
               <img

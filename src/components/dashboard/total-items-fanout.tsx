@@ -3,7 +3,7 @@
 import type { CSSProperties, MouseEvent, TouchEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { Package } from 'lucide-react'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { StatChipBody, STAT_CHIP_CLASS, STAT_COLORS } from './stat-chip'
@@ -19,8 +19,6 @@ interface TotalItemsFanoutProps {
 const TILE_HALF = 28
 const CLOSE_MS = 500
 const STAGGER_MS = 32
-// Slow, deliberate "dive-in" before the route changes so the redirect reads as an animation.
-const NAV_MS = 600
 const VIEWPORT_MARGIN = 12
 // Floor for the auto-shrunk radius so circles stay legible on very narrow screens (below this the
 // arc would mush together); above ~300px the radius is the full per-breakpoint value below.
@@ -55,11 +53,19 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
   const [viewportWidth, setViewportWidth] = useState(0)
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const router = useRouter()
+  const pathname = usePathname()
+  const [prevPathname, setPrevPathname] = useState(pathname)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const launcherRef = useRef<HTMLButtonElement>(null)
   const firstTileRef = useRef<HTMLAnchorElement>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname)
+    setOpen(false)
+    setRevealed(false)
+    setMounted(false)
+  }
 
   // Fan the tiles across the down-and-right arc, then clamp the whole group to the viewport (measure).
   const { tiles, minTileX, maxTileX } = useMemo(() => {
@@ -103,21 +109,11 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
     closeTimer.current = setTimeout(() => setMounted(false), CLOSE_MS)
   }, [])
 
-  // Launch a tile: collapse the whole fan (all circles retract to the launcher) AND unmount it via
-  // closeFan, then change the route once that close animation has played — a slow, deliberate
-  // redirect that leaves no circles behind when the user returns to the dashboard.
   const launchTile = useCallback(
     (href: string) => {
-      if (navTimer.current) return
-      closeFan()
-      navTimer.current = setTimeout(() => {
-        // Clear the guard so a later open → click still navigates if this component
-        // instance is reused (App Router keeps the dashboard in its client cache).
-        navTimer.current = null
-        router.push(href)
-      }, NAV_MS)
+      router.push(href)
     },
-    [router, closeFan],
+    [router],
   )
 
   const handleTileClick = useCallback(
@@ -140,7 +136,9 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
   const handleTouchTrack = (e: TouchEvent<HTMLDivElement>) => {
     if (!revealed) return
     const touch = e.touches[0]
-    if (touch) updateActiveFromPoint(touch.clientX, touch.clientY)
+    if (touch) {
+      updateActiveFromPoint(touch.clientX, touch.clientY)
+    }
   }
 
   const handleTouchEnd = () => {
@@ -194,10 +192,13 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
   useEffect(() => {
     if (revealed) firstTileRef.current?.focus()
   }, [revealed])
-
+  useEffect(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current)
+    }
+  }, [pathname])
   useEffect(() => () => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
-    if (navTimer.current) clearTimeout(navTimer.current)
   }, [])
 
   const lastIndex = tiles.length - 1
@@ -270,7 +271,9 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
                 {/* Inner circle handles the macOS-dock magnification (grows upward from its base),
                     kept on a separate element so it composes with the position/scale transform on
                     the Link above. Magnifies on hover (desktop) and on data-active (touch swipe). */}
-                <span className="flex size-14 origin-bottom items-center justify-center rounded-full border bg-card shadow-md ring-1 ring-foreground/10 transition-transform duration-200 ease-out group-hover/tile:scale-[1.5] group-hover/tile:shadow-xl group-data-[active=true]/tile:scale-[1.5] group-data-[active=true]/tile:shadow-xl group-focus-visible/tile:scale-[1.5] group-focus-visible/tile:ring-2 group-focus-visible/tile:ring-ring">
+                <span
+                  className="flex size-14 origin-bottom items-center justify-center rounded-full border bg-card shadow-md ring-1 ring-foreground/10 transition-transform duration-200 ease-out group-hover/tile:scale-[1.5] group-hover/tile:shadow-xl group-data-[active=true]/tile:scale-[1.5] group-data-[active=true]/tile:shadow-xl group-focus-visible/tile:scale-[1.5] group-focus-visible/tile:ring-2 group-focus-visible/tile:ring-ring"
+                >
                   <span
                     className="flex size-11 items-center justify-center rounded-full"
                     style={{ backgroundColor: `${tile.color}24` }}

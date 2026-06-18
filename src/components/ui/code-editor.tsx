@@ -25,19 +25,21 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
   const isTouch = useIsTouch()
   const monaco = useMonaco()
 
-  const { fontSize, minimap, wordWrap, tabSize, colorMode, appTheme, useDefaultEditorTheme } = useEditorPreferencesStore()
+  const { fontSize, minimap, wordWrap, tabSize, colorMode, appTheme, editorThemeMode } = useEditorPreferencesStore()
 
-  const editorTheme = useDefaultEditorTheme
-    ? (colorMode === 'dark' ? 'vs-dark' : 'vs')
+  const useMonacoNativeTheme = editorThemeMode !== 'app'
+  const monacoNativeColorMode = editorThemeMode === 'dark' ? 'dark' : colorMode
+  const editorTheme = useMonacoNativeTheme
+    ? (monacoNativeColorMode === 'dark' ? 'vs-dark' : 'vs')
     : 'custom-dynamic'
 
   // Define and apply dynamic theme when Monaco loads or theme/mode changes
   useEffect(() => {
-    if (monaco && !useDefaultEditorTheme) {
+    if (monaco && !useMonacoNativeTheme) {
       monaco.editor.defineTheme('custom-dynamic', getDynamicMonacoTheme(colorMode))
       monaco.editor.setTheme('custom-dynamic')
     }
-  }, [monaco, colorMode, appTheme, useDefaultEditorTheme])
+  }, [monaco, colorMode, appTheme, useMonacoNativeTheme])
 
   const editorOptions = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     readOnly,

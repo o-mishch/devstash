@@ -1,9 +1,12 @@
 'use client'
 
-import { useRef, useState, startTransition, type SyntheticEvent, type ReactNode } from 'react'
-import { Plus } from 'lucide-react'
+import { useRef, useState, startTransition, useMemo, type SyntheticEvent, type ReactNode } from 'react'
+import { Plus, FolderPlus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button, SubmitButton } from '@/components/ui/button'
@@ -12,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { ItemFormFields } from '@/components/items/item-form-fields'
 import { ResizableSplit } from '@/components/items/resizable-split'
 import { FileUpload, type UploadedFile } from '@/components/shared/file-upload'
+import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog'
 import { DialogFooter } from '@/components/ui/dialog'
 import { FormDialogFooter } from '@/components/shared/form-dialog-footer'
 import { ResponsiveFormDialog } from '@/components/ui/responsive-form-dialog'
@@ -19,23 +23,29 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
 } from '@/components/ui/select'
+import { CollectionFormFields } from '@/components/shared/collection-form-fields'
 
 import { useCreateItem } from '@/hooks/use-create-item'
 import { api } from '@/lib/api/client'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
-import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEM_TYPES_WITH_CONTENT, PRO_ITEM_TYPE_NAMES, FREE_TIER_ITEM_LIMIT, type FileItemType } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEM_TYPES_WITH_CONTENT, PRO_ITEM_TYPE_NAMES, FREE_TIER_COLLECTION_LIMIT, type FileItemType } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 
-import { itemFormBaseSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
+import { itemFormBaseSchema, collectionFormSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
-import { useControllableOpen } from '@/hooks/use-controllable-open'
+import { useDirtyGuard } from '@/hooks/use-dirty-guard'
 import { useSelectTouchSwipe } from '@/hooks/use-select-touch-swipe'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionPickerItem } from '@/types/collection'
+
+const COLLECTION_TYPE_VALUE = '__collection__'
+
+type CollectionFormValues = z.input<typeof collectionFormSchema>
 
 async function deleteOrphanedFile(file: UploadedFile): Promise<void> {
   await api.DELETE('/upload', { params: { query: { key: file.key } } })
@@ -53,10 +63,17 @@ interface CreateItemDialogProps {
 
 export function CreateItemDialog({ itemTypes, collections, initialType, initialCollectionId, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
   const createItem = useCreateItem()
-  const { isPro, canCreateItem } = useAppUserFlagsStore()
+  const router = useRouter()
+  const { isPro, canCreateItem, canCreateCollection } = useAppUserFlagsStore()
   const { openPrompt } = useUpgradePromptStore()
   const validInitialType = (initialType && PRO_ITEM_TYPE_NAMES.has(initialType) && !isPro) ? itemTypes[0]?.name : initialType
-  const defaultItemType = validInitialType || itemTypes[0]?.name || ''
+  // Captured once at mount so mid-session flag changes (canCreateItem/canCreateCollection)
+  // don't shift defaultItemType and spuriously trigger the dirty guard.
+  const defaultItemType = useMemo(
+    () => (!canCreateItem && canCreateCollection) ? COLLECTION_TYPE_VALUE : (validInitialType || itemTypes[0]?.name || ''),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   const [itemType, setItemType] = useState(defaultItemType)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
@@ -76,12 +93,23 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     }
   })
 
+  const collectionForm = useForm<CollectionFormValues>({
+    resolver: zodResolver(collectionFormSchema),
+    defaultValues: { name: '', description: '' },
+  })
+
   const watchedLanguage = useWatch({ control: form.control, name: 'language' })
   const showFile = ITEM_TYPES_WITH_FILE.has(itemType)
   const showContentEditor = ITEM_TYPES_WITH_CONTENT.has(itemType)
   const selectedType = itemTypes.find(t => t.name === itemType)
 
-  const { open, handleOpenChange } = useControllableOpen({
+  const isDirty =
+    form.formState.isDirty ||
+    uploadedFile !== null ||
+    itemType !== defaultItemType ||
+    collectionForm.formState.isDirty
+
+  const { open, handleOpenChange, confirmOpen, handleConfirmOpenChange, handleDiscard } = useDirtyGuard({
     open: controlledOpen,
     onOpenChange: (isOpen) => {
       controlledOnOpenChange?.(isOpen)
@@ -95,17 +123,24 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
       setUploadedFile(null)
       setFileError(null)
       form.reset({ title: '', description: '', content: '', url: '', language: '', tags: '', collectionIds: initialCollectionId ? [initialCollectionId] : [] })
-    }
+      collectionForm.reset({ name: '', description: '' })
+    },
+    isDirty,
   })
 
   function handleTypeChange(val: string | null) {
     if (!val) return
+    if (val === COLLECTION_TYPE_VALUE && !canCreateCollection) {
+      openPrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
+      return
+    }
     if (PRO_ITEM_TYPE_NAMES.has(val) && !isPro) {
       openPrompt({ title: 'Pro feature', description: 'File and image uploads are only available on the Pro plan.', onUpgrade: () => handleOpenChange(false) })
       return
     }
     setFileError(null)
     form.clearErrors()
+    collectionForm.clearErrors()
     // startTransition: if the target editor chunk isn't cached yet, React keeps the
     // current editor mounted until the new one is ready — no flash. If the chunk is
     // already in memory (preloaded on dialog open), the transition commits in the
@@ -115,12 +150,39 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     })
   }
 
+  const handleCollectionSubmit = (e: SyntheticEvent) => {
+    e.preventDefault()
+    void collectionForm.handleSubmit(async (data: CollectionFormValues) => {
+      const { error, response } = await api.POST('/collections', {
+        body: { name: data.name, description: data.description ?? null },
+      })
+      if (!error) {
+        toast.success('Collection created')
+        handleOpenChange(false, true)
+        router.refresh()
+        return
+      }
+      if (response.status === 403) {
+        toast.warning(error.message || 'Upgrade to Pro to continue.')
+      } else {
+        toast.error(error.message || 'Failed to create collection')
+      }
+    })(e)
+  }
+
   const handleFormSubmit = (e: SyntheticEvent) => {
     e.preventDefault()
     void form.handleSubmit(async (data: ItemFormBaseValues) => {
-      if (ITEM_TYPES_WITH_URL.has(itemType) && !data.url) {
-        form.setError('url', { message: 'URL is required for this item type' })
-        return
+      if (ITEM_TYPES_WITH_URL.has(itemType)) {
+        if (!data.url) {
+          form.setError('url', { message: 'URL is required for this item type' })
+          return
+        }
+        const urlParsed = z.string().url().safeParse(data.url)
+        if (!urlParsed.success) {
+          form.setError('url', { message: 'Must be a valid URL' })
+          return
+        }
       }
       if (ITEM_TYPES_WITH_FILE.has(itemType) && !uploadedFile) {
         setFileError('File is required for this item type')
@@ -131,7 +193,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
       const capturedFile = uploadedFile
 
       savedRef.current = true
-      handleOpenChange(false)
+      handleOpenChange(false, true)
 
       await createItem(
         {
@@ -164,9 +226,13 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     </Button>
   )
 
-  const descriptionNode = (
-    <>Add a new item to your stash. <span className="text-red-500/80">*</span> Indicates a required field.</>
-  )
+  const isCollectionMode = itemType === COLLECTION_TYPE_VALUE
+
+  const descriptionNode = isCollectionMode
+    ? 'Organize your items into a new collection.'
+    : (
+      <>Add a new item to your stash. <span className="text-red-500/80">*</span> Indicates a required field.</>
+    )
 
   const itemContext = {
     itemType,
@@ -181,7 +247,12 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
       <Label htmlFor="type">Type</Label>
       <Select value={itemType} onValueChange={handleTypeChange}>
         <SelectTrigger id="type" className="w-full">
-          {itemType ? (
+          {isCollectionMode ? (
+            <div className="flex items-center gap-2">
+              <FolderPlus className="size-4 text-primary" />
+              <span>Collection</span>
+            </div>
+          ) : itemType ? (
             <div className="flex items-center gap-2">
               <ItemTypeIcon
                 iconName={selectedType?.icon || ''}
@@ -202,8 +273,15 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
             bottom sheet that align math drives the viewport scroll + horizontal reflow seen when
             reopening the select. A plain dropdown-below-trigger avoids it. */}
         <SelectContent alignItemWithTrigger={false} {...typeSwipe}>
+          <SelectItem value={COLLECTION_TYPE_VALUE} disabled={!canCreateCollection}>
+            <div className="flex items-center gap-2">
+              <FolderPlus className="size-4 text-primary" />
+              <span>Collection</span>
+            </div>
+          </SelectItem>
+          <SelectSeparator />
           {itemTypes.map((type) => (
-            <SelectItem key={type.id} value={type.name}>
+            <SelectItem key={type.id} value={type.name} disabled={!canCreateItem}>
               <div className="flex items-center gap-2">
                 <ItemTypeIcon iconName={type.icon} color={type.color} className="size-4" />
                 <span className="capitalize">{type.name}</span>
@@ -350,7 +428,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     // Dense mobile form: tighter gaps + one consistent, compact 40px height for the single-line
     // controls (Type select, Title/URL/Tags inputs) — scoped here so it overrides each control's
     // own touch height without touching the shared components. Keeps the sheet area efficient.
-    <div className="flex-1 min-h-0 overflow-y-auto grid gap-3 py-3 px-0.5 scrollbar-thin [&_[data-slot=input]]:h-10 [&_[data-slot=select-trigger]]:h-10">
+    <div className="flex-1 min-h-0 overflow-y-auto grid gap-3 py-3 px-1 scrollbar-thin [&_[data-slot=input]]:h-10 [&_[data-slot=select-trigger]]:h-10">
       {typeField}
       {titleField}
       <ItemFormFields {...fieldProps} />
@@ -358,11 +436,14 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     </div>
   )
 
+  const submitText = isCollectionMode ? 'Create Collection' : 'Create Item'
+  const isPending = isCollectionMode ? collectionForm.formState.isSubmitting : form.formState.isSubmitting
+
   const footer = (
     <FormDialogFooter
-      submitText="Create Item"
+      submitText={submitText}
       onCancel={() => handleOpenChange(false)}
-      isPending={form.formState.isSubmitting}
+      isPending={isPending}
       className="shrink-0 pt-2"
     />
   )
@@ -384,19 +465,33 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
       </Button>
       <SubmitButton
         className={cn('flex-1 transition-all duration-200', scrolled ? 'h-8 touch:h-8' : 'h-10 touch:h-10')}
-        isPending={form.formState.isSubmitting}
+        isPending={isPending}
       >
-        Create Item
+        {submitText}
       </SubmitButton>
     </DialogFooter>
+  )
+
+  const collectionDesktopBody = (
+    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden grid gap-6 py-5 px-1 scrollbar-thin">
+      {typeField}
+      <CollectionFormFields form={collectionForm} idPrefix="unified-create" />
+    </div>
+  )
+
+  const collectionMobileBody = (
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto gap-3 py-3 px-1 scrollbar-thin [&_[data-slot=input]]:h-10 [&_[data-slot=select-trigger]]:h-10">
+      {typeField}
+      <CollectionFormFields form={collectionForm} idPrefix="unified-create-mobile" growDescription />
+    </div>
   )
 
   return (
     <>
       <span onClick={(e) => {
-        if (!canCreateItem) {
+        if (!canCreateItem && !canCreateCollection) {
           e.preventDefault()
-          openPrompt({ title: 'Item limit reached', description: `You've used all ${FREE_TIER_ITEM_LIMIT} free items.` })
+          openPrompt({ title: 'Limits reached', description: `You've used all free items and collections. Please upgrade to Pro.` })
           return
         }
         handleOpenChange(true)
@@ -404,19 +499,30 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
       <ResponsiveFormDialog
         open={open}
         onOpenChange={handleOpenChange}
-        title="Create New Item"
+        title={isCollectionMode ? 'Create Collection' : 'Create New Item'}
         description={descriptionNode}
         desktopClassName="flex flex-col gap-2 max-h-[90dvh] sm:max-w-[860px]"
         headerClassName="shrink-0 pb-2 border-b border-border/50"
         mobileClassName="data-[side=bottom]:h-[calc(100dvh-3.5rem)]"
       >
         {(isDesktop, scrolled) => (
-          <form onSubmit={handleFormSubmit} className="flex flex-col flex-1 min-h-0">
-            {isDesktop ? desktopBody : mobileBody}
+          <form
+            onSubmit={isCollectionMode ? handleCollectionSubmit : handleFormSubmit}
+            className="flex flex-col flex-1 min-h-0"
+          >
+            {isCollectionMode
+              ? (isDesktop ? collectionDesktopBody : collectionMobileBody)
+              : (isDesktop ? desktopBody : mobileBody)
+            }
             {isDesktop ? footer : renderMobileFooter(scrolled)}
           </form>
         )}
       </ResponsiveFormDialog>
+      <UnsavedChangesDialog
+        open={confirmOpen}
+        onOpenChange={handleConfirmOpenChange}
+        onDiscard={handleDiscard}
+      />
     </>
   )
 }

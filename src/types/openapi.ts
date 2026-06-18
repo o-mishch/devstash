@@ -1004,7 +1004,8 @@ export interface paths {
                         appTheme: "modern-minimal" | "t3-chat" | "twitter" | "mocha-mousse" | "bubblegum" | "doom-64" | "catppuccin" | "graphite" | "perpetuity" | "kodama-grove" | "cosmic-night" | "tangerine" | "quantum-rose" | "nature" | "bold-tech" | "elegant-luxury" | "amber-minimal" | "supabase" | "neo-brutalism" | "solar-dusk" | "claymorphism" | "cyberpunk" | "pastel-dreams" | "clean-slate" | "caffeine" | "ocean-breeze" | "retro-arcade" | "midnight-bloom" | "candyland" | "northern-lights" | "vintage-paper" | "sunset-horizon" | "starry-night" | "claude" | "vercel" | "mono" | "violet-bloom" | "amethyst-haze" | "soft-pop" | "sage-garden" | "notebook" | "darkmatter";
                         /** @enum {string} */
                         colorMode: "light" | "dark";
-                        useDefaultEditorTheme: boolean;
+                        /** @enum {string} */
+                        editorThemeMode: "app" | "auto" | "dark";
                     };
                 };
             };

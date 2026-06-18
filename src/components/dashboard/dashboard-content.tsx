@@ -1,7 +1,5 @@
 import { Suspense } from 'react'
-import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { CollectionsGrid } from '@/components/dashboard/collections-grid'
+import { DashboardCollectionsCard } from '@/components/dashboard/dashboard-collections-card'
 import { DashboardRecentList } from '@/components/dashboard/dashboard-recent-list'
 import { DashboardPinnedList } from '@/components/dashboard/dashboard-pinned-list'
 import type { ItemsPage, LightItem } from '@/types/item'
@@ -46,19 +44,7 @@ async function DashboardCollections({
   collectionsPromise: Promise<CollectionWithTypes[]>
 }) {
   const collections = await collectionsPromise
-  return (
-    <Card className="overflow-visible">
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-sm font-semibold">Collections</CardTitle>
-        <Link href="/collections" prefetch={false} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-          View all
-        </Link>
-      </CardHeader>
-      <CardContent className="overflow-visible pt-0">
-        <CollectionsGrid collections={collections} />
-      </CardContent>
-    </Card>
-  )
+  return <DashboardCollectionsCard collections={collections} />
 }
 
 async function DashboardPinnedSection({
@@ -78,14 +64,6 @@ async function DashboardRecentSection({
   const firstPage = await recentItemsPromise
   if (firstPage.items.length === 0) return null
 
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold">Recent Items</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <DashboardRecentList firstPage={firstPage} />
-      </CardContent>
-    </Card>
-  )
+  return <DashboardRecentList firstPage={firstPage} />
 }
+

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { toast } from 'sonner'
+import { toastError } from '@/lib/utils/toast-error'
 
 type SubmitFn<T> = (body: Record<string, string>) => Promise<T>
 
@@ -28,7 +28,7 @@ export function useApiFormAction<T>(submit: SubmitFn<T>, options: Options<T> = {
       const data = await submit(body)
       onSuccess?.(data)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : fallbackError)
+      toastError(error, fallbackError)
     } finally {
       setIsPending(false)
     }

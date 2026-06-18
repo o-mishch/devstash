@@ -3,6 +3,8 @@ import { APP_THEMES, type AppTheme } from './theme-presets.generated';
 export { APP_THEMES, APP_THEME_OPTIONS } from './theme-presets.generated';
 export type { AppTheme, ThemePresetOption } from './theme-presets.generated';
 
+export type EditorThemeMode = 'app' | 'auto' | 'dark'
+
 export interface EditorPreferences {
   fontSize: number;
   tabSize: number;
@@ -10,7 +12,7 @@ export interface EditorPreferences {
   minimap: boolean;
   appTheme: AppTheme;
   colorMode: 'light' | 'dark';
-  useDefaultEditorTheme: boolean;
+  editorThemeMode: EditorThemeMode;
 }
 
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
@@ -20,7 +22,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   minimap: false,
   appTheme: 'modern-minimal',
   colorMode: 'dark',
-  useDefaultEditorTheme: true,
+  editorThemeMode: 'auto',
 };
 
 export function normalizeEditorPreferences(input: unknown): EditorPreferences {
@@ -52,9 +54,9 @@ export function normalizeEditorPreferences(input: unknown): EditorPreferences {
       : DEFAULT_EDITOR_PREFERENCES.minimap,
     appTheme,
     colorMode,
-    useDefaultEditorTheme: typeof typed.useDefaultEditorTheme === 'boolean'
-      ? typed.useDefaultEditorTheme
-      : DEFAULT_EDITOR_PREFERENCES.useDefaultEditorTheme,
+    editorThemeMode: (typed.editorThemeMode === 'app' || typed.editorThemeMode === 'auto' || typed.editorThemeMode === 'dark')
+      ? typed.editorThemeMode
+      : DEFAULT_EDITOR_PREFERENCES.editorThemeMode,
   };
 }
 

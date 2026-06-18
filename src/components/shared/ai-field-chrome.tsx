@@ -19,7 +19,7 @@ export function AiFieldFrame({ children, className }: AiFieldFrameProps) {
     <div
       className={cn(
         'relative rounded-md transition-colors',
-        isPro && 'ring-1 ring-primary/30 bg-primary/[0.04] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]',
+        isPro && 'border border-primary/30 bg-primary/[0.04] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]',
         className
       )}
     >

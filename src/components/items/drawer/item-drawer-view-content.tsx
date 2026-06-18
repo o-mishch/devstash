@@ -13,7 +13,8 @@ import { DrawerLayout, DrawerSection, DrawerCollectionsSection, DrawerDetailsSec
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
-import { useProDownloadSrc, clearSignedDownloadUrlCache, markPreviewFailed, isPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/hooks/use-pro-download-src'
+import { useProDownloadSrc } from '@/hooks/use-pro-download-src'
+import { clearSignedDownloadUrlCache, markPreviewFailed, isPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/lib/utils/signed-download-cache'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useRestrictedDownload } from '@/hooks/use-restricted-download'
@@ -106,6 +107,7 @@ function FileSectionContent({ item }: FileSectionProps) {
               itemId={item.id}
               previewSrc={previewSrc}
               alt={item.fileName ?? item.title}
+              isSvg={item.fileName?.toLowerCase().endsWith('.svg') ?? false}
             />
           )}
           {(imageError || previewKnownFailed || isImageReloading) && (
@@ -133,7 +135,7 @@ function FileSectionContent({ item }: FileSectionProps) {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
       <FileIcon className="size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{item.fileName ?? '—'}</p>

@@ -1,7 +1,6 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Folder } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -15,17 +14,16 @@ interface CollectionCardProps {
 }
 
 export function CollectionCard({ collection }: CollectionCardProps) {
-  const router = useRouter()
   const href = `/collections/${collection.id}`
 
   return (
     <Card
-      className="card-interactive group/card relative h-20 gap-0 overflow-visible py-0 border-l-2 border-l-[var(--item-color)] transition-colors hover:border-l-[var(--item-color)]"
+      className="card-interactive group/collection-card relative h-20 gap-0 overflow-visible py-0 border-l-2 border-l-[var(--item-color)] transition-colors hover:border-l-[var(--item-color)]"
       style={{ '--item-color': collection.dominantColor ?? undefined } as CSSProperties}
     >
-      <Link href={href} prefetch={false} onMouseEnter={() => router.prefetch(href)} className="absolute inset-0 z-10 rounded-xl" aria-label={`View ${collection.name}`} />
+      <Link href={href} className="absolute inset-0 z-10 rounded-xl" aria-label={`View ${collection.name}`} />
       <CardContent className="flex h-full items-center gap-3 p-3 sm:p-4 pr-20">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--item-color)]/12 text-[var(--item-color)] transition-colors group-hover/card:bg-[var(--item-color)]/20">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--item-color)]/12 text-[var(--item-color)] transition-colors group-hover/collection-card:bg-[var(--item-color)]/20">
           <Folder className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -51,4 +49,3 @@ export function CollectionCard({ collection }: CollectionCardProps) {
     </Card>
   )
 }
-
