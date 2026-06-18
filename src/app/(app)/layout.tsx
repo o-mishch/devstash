@@ -26,7 +26,7 @@ import { ItemDrawerProvider } from '@/providers/item-drawer-provider'
 import { EditorPreloader } from '@/components/shared/dynamic-editors'
 import { RootProviderShell } from '@/components/shared/root-provider-shell'
 import { ThemeInitializer } from '@/components/shared/theme-initializer'
-import { normalizeEditorPreferences } from '@/types/editor-preferences'
+import { normalizeEditorPreferences } from '@/lib/utils/editor-preferences'
 
 export default async function DashboardLayout({ children }: WithChildren) {
   const { appTheme, colorMode } = normalizeEditorPreferences(null)

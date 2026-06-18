@@ -3,9 +3,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
-import type { SearchResult } from '@/types/search'
 import type { LightItem, SearchResultItem, ItemsPage } from '@/types/item'
 import type { SidebarCollection } from '@/types/collection'
+
+interface SearchResult {
+  items: SearchResultItem[]
+  collections: SidebarCollection[]
+}
 
 export type DisplaySearchItem = LightItem | SearchResultItem
 

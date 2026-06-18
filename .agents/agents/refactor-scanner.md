@@ -20,7 +20,7 @@ description: |
   </example>
 tools: Glob, Grep, Read
 disallowedTools: Write, Edit, Bash
-maxTurns: 40
+maxTurns: 150
 color: yellow
 ---
 
@@ -41,7 +41,7 @@ The user provides a folder path as an argument. Scan **every file** in that fold
 7. **Collapse by Default**: When a unit is used in only one place and adds no meaningful logic, **always** suggest collapsing it into the caller. The bar for keeping a separate file is high: it must serve ≥2 call sites, exist for testability, or enforce a real architectural boundary. A wrapper with no logic, a pass-through component, or a one-liner helper used once are always collapse candidates — do not hedge.
 8. **Strict Front-end / Back-end Boundary**: This is the highest-priority concern. Enforce hard separation across all layers:
    - **P1 — Client/server code mixing**: Server-only code (Prisma, `next/headers`, `server-only`, raw SQL) must never appear in client component files (`'use client'`). Client-only code (browser APIs, React state, DOM access) must never appear in `src/lib/`, `src/actions/`, or API routes. Any violation is a critical bug risk, not a style issue.
-   - **P2 — Next.js layer conventions**: DB queries belong in `src/lib/db/`; server actions in `src/actions/`; API route handlers in `src/app/api/`; shared types in `src/types/`; utilities in `src/lib/`; context definitions in `src/context/`; provider components in `src/providers/`. Code that bypasses these layers (e.g. a server action calling Prisma directly instead of going through `src/lib/db/`) is a boundary violation.
+   - **P2 — Next.js layer conventions**: DB queries belong in `src/lib/db/`; redirect-terminating auth Server Actions in `src/actions/`; API route handlers in `src/app/api/`; shared types in `src/types/`; utilities in `src/lib/`; UI state in `src/stores/` (Zustand); provider composition wrappers in `src/providers/`. Code that bypasses these layers (e.g. a server action calling Prisma directly instead of going through `src/lib/db/`) is a boundary violation. **Note:** ordinary client-driven mutations must use route handlers via `api`/`$api` — not Server Actions. Flagging a mutation Server Action in `src/actions/` as a P2 violation is correct.
    - **P3 — Responsibility/usage grouping**: Within a layer, files should be grouped by feature or domain (e.g. `src/lib/db/items.ts`), not scattered as top-level files or mixed into unrelated feature folders.
 
 ## Folder-Specific Instructions
@@ -69,10 +69,10 @@ Look for:
 - **Repeated dialog/modal patterns**: Similar dialog structures with title/content/actions
 - **Repeated icon + label combos**: Same icon mapping or icon-with-text patterns
 - **Repeated className strings**: Long Tailwind class strings that appear in multiple places
-- **Repeated prop drilling**: Same props passed through multiple layers that could use context
+- **Repeated prop drilling**: Same props passed through multiple layers — use a Zustand store in `src/stores/` (never React Context)
 - **Server-side code in client components**: Any `'use client'` file importing Prisma, `next/headers`, or `server-only` is a P1 violation
 
-Suggest: Shared UI components, compound components, render-prop utilities, context providers, className utility constants.
+Suggest: Shared UI components, compound components, render-prop utilities, Zustand stores (`src/stores/`), className utility constants.
 
 ### `src/lib/` — Utilities & Libraries
 
@@ -129,11 +129,11 @@ Apply general analysis:
 
 ## Scanning Process
 
-1. **list_dir** or **grep_search** to find all relevant files in the target folder recursively
-2. **view_file** for every file to understand the full codebase within that folder
-3. **Cross-reference** patterns across files for duplication, over-decomposition, and boundary violations
-4. **Check existing utils** in `src/lib/`, `src/hooks/`, `src/components/shared/` to avoid suggesting what already exists
-5. **Compile findings** grouped into the three categories below
+1. Use **Glob** to list all files in the target folder recursively (e.g. `src/components/**/*.{ts,tsx}`)
+2. Use **Read** on every file to understand the full codebase within that folder
+3. Cross-reference patterns across files for duplication, over-decomposition, and boundary violations
+4. Use **Grep** and **Read** to check existing utilities in `src/lib/`, `src/hooks/`, `src/components/shared/`, and `src/components/ui/` (skipping the target folder itself) before suggesting extractions
+5. Compile findings grouped into the three categories below
 
 ## Output Format
 
@@ -152,7 +152,7 @@ Apply general analysis:
 
 For each duplicate pattern found:
 
-```
+````
 ### A[N]. [Brief description]
 
 **Occurrences** ([count] files):
@@ -172,7 +172,7 @@ For each duplicate pattern found:
 **Where to put it:** `src/lib/action-utils.ts`
 
 **Impact:** Removes ~[N] duplicate lines across [N] files
-```
+````
 
 ---
 

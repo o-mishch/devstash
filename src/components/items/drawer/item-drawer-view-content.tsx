@@ -135,7 +135,7 @@ function FileSectionContent({ item }: FileSectionProps) {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted px-3 py-2.5">
       <FileIcon className="size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{item.fileName ?? '—'}</p>

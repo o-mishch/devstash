@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { toast } from 'sonner'
 import type { EditorPreferences } from '@/types/editor-preferences'
-import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
+import { DEFAULT_EDITOR_PREFERENCES } from '@/lib/utils/editor-preferences'
 import { api } from '@/lib/api/client'
 
 interface EditorPreferencesStore extends EditorPreferences {
@@ -31,6 +31,7 @@ export const useEditorPreferencesStore = create<EditorPreferencesStore>((set, ge
       appTheme: prev.appTheme,
       colorMode: prev.colorMode,
       editorThemeMode: prev.editorThemeMode,
+      dashboardSections: prev.dashboardSections,
       ...prefs,
     }
     set(newPrefs as Partial<EditorPreferencesStore>)

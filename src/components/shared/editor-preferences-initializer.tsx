@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useDashboardSectionsStore } from '@/stores/dashboard-sections'
 import type { EditorPreferences } from '@/types/editor-preferences'
 
 interface EditorPreferencesInitializerProps {
@@ -14,6 +15,7 @@ export function EditorPreferencesInitializer({
   useEffect(() => {
     if (preferences) {
       useEditorPreferencesStore.getState().setPreferences(preferences)
+      useDashboardSectionsStore.getState().setSections(preferences.dashboardSections)
     } else {
       useEditorPreferencesStore.setState({ isInitialized: true })
     }

@@ -1006,6 +1006,11 @@ export interface paths {
                         colorMode: "light" | "dark";
                         /** @enum {string} */
                         editorThemeMode: "app" | "auto" | "dark";
+                        dashboardSections: {
+                            collections: boolean;
+                            pinned: boolean;
+                            recent: boolean;
+                        };
                     };
                 };
             };

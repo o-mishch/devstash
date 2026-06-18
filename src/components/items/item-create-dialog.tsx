@@ -103,10 +103,12 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
   const showContentEditor = ITEM_TYPES_WITH_CONTENT.has(itemType)
   const selectedType = itemTypes.find(t => t.name === itemType)
 
+  const effectiveDefaultType = validInitialType || defaultItemType
+
   const isDirty =
     form.formState.isDirty ||
     uploadedFile !== null ||
-    itemType !== defaultItemType ||
+    itemType !== effectiveDefaultType ||
     collectionForm.formState.isDirty
 
   const { open, handleOpenChange, confirmOpen, handleConfirmOpenChange, handleDiscard } = useDirtyGuard({
@@ -114,7 +116,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     onOpenChange: (isOpen) => {
       controlledOnOpenChange?.(isOpen)
       if (isOpen) {
-        setItemType(defaultItemType)
+        setItemType(validInitialType || defaultItemType)
       }
     },
     onClose: () => {

@@ -1218,6 +1218,25 @@
                       "auto",
                       "dark"
                     ]
+                  },
+                  "dashboardSections": {
+                    "type": "object",
+                    "properties": {
+                      "collections": {
+                        "type": "boolean"
+                      },
+                      "pinned": {
+                        "type": "boolean"
+                      },
+                      "recent": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "collections",
+                      "pinned",
+                      "recent"
+                    ]
                   }
                 },
                 "required": [
@@ -1227,7 +1246,8 @@
                   "minimap",
                   "appTheme",
                   "colorMode",
-                  "editorThemeMode"
+                  "editorThemeMode",
+                  "dashboardSections"
                 ]
               }
             }

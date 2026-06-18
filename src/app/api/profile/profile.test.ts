@@ -229,6 +229,7 @@ describe('PATCH /profile/editor-preferences', () => {
       appTheme: 'modern-minimal',
       colorMode: 'dark',
       editorThemeMode: 'app',
+      dashboardSections: { collections: true, pinned: true, recent: true },
     }))
     expect(res.status).toBe(204)
   })

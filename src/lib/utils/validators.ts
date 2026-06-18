@@ -116,6 +116,12 @@ export const changePasswordSchema = z.object({
   confirmPassword: passwordFieldSchema,
 }).superRefine(passwordMatchRefine('newPassword'))
 
+const dashboardSectionsSchema = z.object({
+  collections: z.boolean(),
+  pinned: z.boolean(),
+  recent: z.boolean(),
+})
+
 export const editorPreferencesSchema = z.object({
   fontSize: z.number().min(8).max(100),
   tabSize: z.number().min(1).max(16),
@@ -124,4 +130,5 @@ export const editorPreferencesSchema = z.object({
   appTheme: z.enum(APP_THEMES),
   colorMode: z.enum(['light', 'dark']),
   editorThemeMode: z.enum(['app', 'auto', 'dark']),
+  dashboardSections: dashboardSectionsSchema,
 })

@@ -5,8 +5,10 @@ import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import {
   EDITOR_FONT_SIZE_OPTIONS,
   EDITOR_TAB_SIZE_OPTIONS,
-  APP_THEME_OPTIONS,
   DEFAULT_EDITOR_PREFERENCES,
+} from '@/lib/utils/editor-preferences'
+import {
+  APP_THEME_OPTIONS,
   type AppTheme,
   type EditorThemeMode,
 } from '@/types/editor-preferences'

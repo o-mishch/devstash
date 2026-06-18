@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { api } from '@/lib/api/client'
-import { DEFAULT_EDITOR_PREFERENCES } from '@/types/editor-preferences'
+import { DEFAULT_EDITOR_PREFERENCES } from '@/lib/utils/editor-preferences'
 import { useProfileEmailsStore } from '@/stores/profile-emails'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
