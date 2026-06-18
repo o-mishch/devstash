@@ -5,42 +5,47 @@
 
 export const APP_THEMES = [
   'modern-minimal',
-  'claude',
-  'graphite',
-  'perpetuity',
-  'amethyst-haze',
-  'notebook',
-  'cosmic-night',
-  'tangerine',
   't3-chat',
-  'supabase',
   'twitter',
   'mocha-mousse',
-  'catppuccin',
   'bubblegum',
-  'caffeine',
-  'vintage-paper',
-  'violet-bloom',
   'doom-64',
+  'catppuccin',
+  'graphite',
+  'perpetuity',
   'kodama-grove',
+  'cosmic-night',
+  'tangerine',
   'quantum-rose',
   'nature',
   'bold-tech',
   'elegant-luxury',
   'amber-minimal',
+  'supabase',
   'neo-brutalism',
   'solar-dusk',
   'claymorphism',
   'cyberpunk',
   'pastel-dreams',
   'clean-slate',
+  'caffeine',
   'ocean-breeze',
   'retro-arcade',
   'midnight-bloom',
   'candyland',
   'northern-lights',
+  'vintage-paper',
   'sunset-horizon',
   'starry-night',
+  'claude',
+  'vercel',
+  'mono',
+  'violet-bloom',
+  'amethyst-haze',
+  'soft-pop',
+  'sage-garden',
+  'notebook',
+  'darkmatter',
 ] as const;
 
 export type AppTheme = typeof APP_THEMES[number];
@@ -63,215 +68,475 @@ export const APP_THEME_OPTIONS: ThemePresetOption[] = [
   {
     value: 'modern-minimal',
     label: 'Modern Minimal',
-    description: 'Clean, high-contrast minimal theme',
+    description: 'A theme based on the Modern Minimal color palette.',
     light: {
-      bg: 'oklch(1.0000 0 0)',
-      primary: 'oklch(0.6231 0.1880 259.8145)',
+      bg: 'oklch(1.00 0 0)',
+      primary: 'oklch(0.62 0.19 259.81)',
     },
     dark: {
-      bg: 'oklch(0.2046 0 0)',
-      primary: 'oklch(0.6231 0.1880 259.8145)',
-    },
-  },
-  {
-    value: 'claude',
-    label: 'Claude',
-    description: 'Inspired by Anthropic Claude peach-grey aesthetics',
-    light: {
-      bg: 'oklch(0.9818 0.0054 95.0986)',
-      primary: 'oklch(0.6171 0.1375 39.0427)',
-    },
-    dark: {
-      bg: 'oklch(0.2679 0.0036 106.6427)',
-      primary: 'oklch(0.6724 0.1308 38.7559)',
-    },
-  },
-  {
-    value: 'graphite',
-    label: 'Graphite',
-    description: 'Rich graphite grey tones with modern aesthetics',
-    light: {
-      bg: 'oklch(0.9551 0 0)',
-      primary: 'oklch(0.4891 0 0)',
-    },
-    dark: {
-      bg: 'oklch(0.2178 0 0)',
-      primary: 'oklch(0.7058 0 0)',
-    },
-  },
-  {
-    value: 'perpetuity',
-    label: 'Perpetuity',
-    description: 'Serene teal and cyan tones with modern precision',
-    light: {
-      bg: 'oklch(0.9491 0.0085 197.0126)',
-      primary: 'oklch(0.5624 0.0947 203.2755)',
-    },
-    dark: {
-      bg: 'oklch(0.2068 0.0247 224.4533)',
-      primary: 'oklch(0.8520 0.1269 195.0354)',
-    },
-  },
-  {
-    value: 'amethyst-haze',
-    label: 'Amethyst Haze',
-    description: 'Soothing light purple and violet tones',
-    light: {
-      bg: 'oklch(0.9777 0.0041 301.4256)',
-      primary: 'oklch(0.6104 0.0767 299.7335)',
-    },
-    dark: {
-      bg: 'oklch(0.2166 0.0215 292.8474)',
-      primary: 'oklch(0.7058 0.0777 302.0489)',
-    },
-  },
-  {
-    value: 'notebook',
-    label: 'Notebook',
-    description: 'Monochromatic handwritten aesthetic with paper-like tones',
-    light: {
-      bg: 'oklch(0.9821 0 0)',
-      primary: 'oklch(0.4891 0 0)',
-    },
-    dark: {
-      bg: 'oklch(0.2891 0 0)',
-      primary: 'oklch(0.7572 0 0)',
-    },
-  },
-  {
-    value: 'cosmic-night',
-    label: 'Cosmic Night',
-    description: 'Deep space cosmic blue and indigo gradients',
-    light: {
-      bg: 'oklch(0.9730 0.0133 286.1503)',
-      primary: 'oklch(0.5417 0.1790 288.0332)',
-    },
-    dark: {
-      bg: 'oklch(0.1743 0.0227 283.7998)',
-      primary: 'oklch(0.7162 0.1597 290.3962)',
-    },
-  },
-  {
-    value: 'tangerine',
-    label: 'Tangerine',
-    description: 'Warm orange-citrus accent on cool slate backgrounds',
-    light: {
-      bg: 'oklch(0.9383 0.0042 236.4993)',
-      primary: 'oklch(0.6397 0.1720 36.4421)',
-    },
-    dark: {
-      bg: 'oklch(0.2598 0.0306 262.6666)',
-      primary: 'oklch(0.6397 0.1720 36.4421)',
+      bg: 'oklch(0.20 0 0)',
+      primary: 'oklch(0.62 0.19 259.81)',
     },
   },
   {
     value: 't3-chat',
     label: 'T3 Chat',
-    description: 'Vibrant warm pink and violet accents',
+    description: 'A theme based on the T3 Chat color palette.',
     light: {
-      bg: 'oklch(0.9754 0.0084 325.6414)',
-      primary: 'oklch(0.5316 0.1409 355.1999)',
+      bg: 'oklch(0.98 0.01 325.64)',
+      primary: 'oklch(0.53 0.14 355.20)',
     },
     dark: {
-      bg: 'oklch(0.2409 0.0201 307.5346)',
-      primary: 'oklch(0.4607 0.1853 4.0994)',
-    },
-  },
-  {
-    value: 'supabase',
-    label: 'Supabase',
-    description: 'Supabase emerald green and dark grey',
-    light: {
-      bg: 'oklch(0.9911 0 0)',
-      primary: 'oklch(0.8348 0.1302 160.9080)',
-    },
-    dark: {
-      bg: 'oklch(0.1822 0 0)',
-      primary: 'oklch(0.4365 0.1044 156.7556)',
+      bg: 'oklch(0.24 0.02 307.53)',
+      primary: 'oklch(0.46 0.19 4.10)',
     },
   },
   {
     value: 'twitter',
-    label: 'Twitter / X',
-    description: 'Twitter blue accent with dark/light background',
+    label: 'Twitter',
+    description: 'A theme based on the Twitter color palette.',
     light: {
-      bg: 'oklch(1.0000 0 0)',
-      primary: 'oklch(0.6723 0.1606 244.9955)',
+      bg: 'oklch(1.00 0 0)',
+      primary: 'oklch(0.67 0.16 245.00)',
     },
     dark: {
       bg: 'oklch(0 0 0)',
-      primary: 'oklch(0.6692 0.1607 245.0110)',
+      primary: 'oklch(0.67 0.16 245.01)',
     },
   },
   {
     value: 'mocha-mousse',
     label: 'Mocha Mousse',
-    description: 'Warm, cozy chocolate and coffee brown palette',
+    description: 'A theme based on the Mocha Mousse color palette.',
     light: {
-      bg: 'oklch(0.9529 0.0146 102.4597)',
-      primary: 'oklch(0.6083 0.0623 44.3588)',
+      bg: 'oklch(0.95 0.01 102.46)',
+      primary: 'oklch(0.61 0.06 44.36)',
     },
     dark: {
-      bg: 'oklch(0.2721 0.0141 48.1783)',
-      primary: 'oklch(0.7272 0.0539 52.3320)',
-    },
-  },
-  {
-    value: 'catppuccin',
-    label: 'Catppuccin',
-    description: 'Soothing pastel tones for the high-contrast developer',
-    light: {
-      bg: 'oklch(0.9578 0.0058 264.5321)',
-      primary: 'oklch(0.5547 0.2503 297.0156)',
-    },
-    dark: {
-      bg: 'oklch(0.2155 0.0254 284.0647)',
-      primary: 'oklch(0.7871 0.1187 304.7693)',
+      bg: 'oklch(0.27 0.01 48.18)',
+      primary: 'oklch(0.73 0.05 52.33)',
     },
   },
   {
     value: 'bubblegum',
     label: 'Bubblegum',
-    description: 'Vibrant candy bubblegum pink and cyan tones',
+    description: 'A theme based on the Bubblegum color palette.',
     light: {
-      bg: 'oklch(0.9399 0.0203 345.6985)',
-      primary: 'oklch(0.6209 0.1801 348.1385)',
+      bg: 'oklch(0.94 0.02 345.70)',
+      primary: 'oklch(0.62 0.18 348.14)',
     },
     dark: {
-      bg: 'oklch(0.2497 0.0305 234.1628)',
-      primary: 'oklch(0.9195 0.0801 87.6670)',
+      bg: 'oklch(0.25 0.03 234.16)',
+      primary: 'oklch(0.92 0.08 87.67)',
+    },
+  },
+  {
+    value: 'doom-64',
+    label: 'Doom 64',
+    description: 'A theme based on the Doom 64 color palette.',
+    light: {
+      bg: 'oklch(0.85 0 0)',
+      primary: 'oklch(0.50 0.19 27.48)',
+    },
+    dark: {
+      bg: 'oklch(0.22 0 0)',
+      primary: 'oklch(0.61 0.21 27.03)',
+    },
+  },
+  {
+    value: 'catppuccin',
+    label: 'Catppuccin',
+    description: 'A theme based on the Catppuccin color palette.',
+    light: {
+      bg: 'oklch(0.96 0.01 264.53)',
+      primary: 'oklch(0.55 0.25 297.02)',
+    },
+    dark: {
+      bg: 'oklch(0.22 0.03 284.06)',
+      primary: 'oklch(0.79 0.12 304.77)',
+    },
+  },
+  {
+    value: 'graphite',
+    label: 'Graphite',
+    description: 'A theme based on the Graphite color palette.',
+    light: {
+      bg: 'oklch(0.96 0 0)',
+      primary: 'oklch(0.49 0 0)',
+    },
+    dark: {
+      bg: 'oklch(0.22 0 0)',
+      primary: 'oklch(0.71 0 0)',
+    },
+  },
+  {
+    value: 'perpetuity',
+    label: 'Perpetuity',
+    description: 'A theme based on the Perpetuity color palette.',
+    light: {
+      bg: 'oklch(0.95 0.01 197.01)',
+      primary: 'oklch(0.56 0.09 203.28)',
+    },
+    dark: {
+      bg: 'oklch(0.21 0.02 224.45)',
+      primary: 'oklch(0.85 0.13 195.04)',
+    },
+  },
+  {
+    value: 'kodama-grove',
+    label: 'Kodama Grove',
+    description: 'A theme based on the Kodama Grove color palette.',
+    light: {
+      bg: 'oklch(0.88 0.05 91.79)',
+      primary: 'oklch(0.67 0.11 118.91)',
+    },
+    dark: {
+      bg: 'oklch(0.33 0.02 88.07)',
+      primary: 'oklch(0.68 0.06 132.45)',
+    },
+  },
+  {
+    value: 'cosmic-night',
+    label: 'Cosmic Night',
+    description: 'A theme based on the Cosmic Night color palette.',
+    light: {
+      bg: 'oklch(0.97 0.01 286.15)',
+      primary: 'oklch(0.54 0.18 288.03)',
+    },
+    dark: {
+      bg: 'oklch(0.17 0.02 283.80)',
+      primary: 'oklch(0.72 0.16 290.40)',
+    },
+  },
+  {
+    value: 'tangerine',
+    label: 'Tangerine',
+    description: 'A theme based on the Tangerine color palette.',
+    light: {
+      bg: 'oklch(0.94 0.00 236.50)',
+      primary: 'oklch(0.64 0.17 36.44)',
+    },
+    dark: {
+      bg: 'oklch(0.26 0.03 262.67)',
+      primary: 'oklch(0.64 0.17 36.44)',
+    },
+  },
+  {
+    value: 'quantum-rose',
+    label: 'Quantum Rose',
+    description: 'A theme based on the Quantum Rose color palette.',
+    light: {
+      bg: 'oklch(0.97 0.02 343.93)',
+      primary: 'oklch(0.60 0.24 0.13)',
+    },
+    dark: {
+      bg: 'oklch(0.18 0.05 313.72)',
+      primary: 'oklch(0.75 0.23 332.02)',
+    },
+  },
+  {
+    value: 'nature',
+    label: 'Nature',
+    description: 'A theme based on the Nature color palette.',
+    light: {
+      bg: 'oklch(0.97 0.01 80.72)',
+      primary: 'oklch(0.52 0.13 144.17)',
+    },
+    dark: {
+      bg: 'oklch(0.27 0.03 150.77)',
+      primary: 'oklch(0.67 0.16 144.21)',
+    },
+  },
+  {
+    value: 'bold-tech',
+    label: 'Bold Tech',
+    description: 'A theme based on the Bold Tech color palette.',
+    light: {
+      bg: 'oklch(1.00 0 0)',
+      primary: 'oklch(0.61 0.22 292.72)',
+    },
+    dark: {
+      bg: 'oklch(0.21 0.04 265.75)',
+      primary: 'oklch(0.61 0.22 292.72)',
+    },
+  },
+  {
+    value: 'elegant-luxury',
+    label: 'Elegant Luxury',
+    description: 'A theme based on the Elegant Luxury color palette.',
+    light: {
+      bg: 'oklch(0.98 0.00 56.38)',
+      primary: 'oklch(0.47 0.15 24.94)',
+    },
+    dark: {
+      bg: 'oklch(0.22 0.01 56.04)',
+      primary: 'oklch(0.51 0.19 27.52)',
+    },
+  },
+  {
+    value: 'amber-minimal',
+    label: 'Amber Minimal',
+    description: 'A theme based on the Amber Minimal color palette.',
+    light: {
+      bg: 'oklch(1.00 0 0)',
+      primary: 'oklch(0.77 0.16 70.08)',
+    },
+    dark: {
+      bg: 'oklch(0.20 0 0)',
+      primary: 'oklch(0.77 0.16 70.08)',
+    },
+  },
+  {
+    value: 'supabase',
+    label: 'Supabase',
+    description: 'A theme based on the Supabase color palette.',
+    light: {
+      bg: 'oklch(0.99 0 0)',
+      primary: 'oklch(0.83 0.13 160.91)',
+    },
+    dark: {
+      bg: 'oklch(0.18 0 0)',
+      primary: 'oklch(0.44 0.10 156.76)',
+    },
+  },
+  {
+    value: 'neo-brutalism',
+    label: 'Neo Brutalism',
+    description: 'A theme based on the Neo Brutalism color palette.',
+    light: {
+      bg: 'oklch(1.00 0 0)',
+      primary: 'oklch(0.65 0.24 26.97)',
+    },
+    dark: {
+      bg: 'oklch(0 0 0)',
+      primary: 'oklch(0.70 0.19 23.19)',
+    },
+  },
+  {
+    value: 'solar-dusk',
+    label: 'Solar Dusk',
+    description: 'A theme based on the Solar Dusk color palette.',
+    light: {
+      bg: 'oklch(0.99 0.01 84.57)',
+      primary: 'oklch(0.56 0.15 49.00)',
+    },
+    dark: {
+      bg: 'oklch(0.22 0.01 56.04)',
+      primary: 'oklch(0.70 0.19 47.60)',
+    },
+  },
+  {
+    value: 'claymorphism',
+    label: 'Claymorphism',
+    description: 'A theme based on the Claymorphism color palette.',
+    light: {
+      bg: 'oklch(0.92 0.00 48.72)',
+      primary: 'oklch(0.59 0.20 277.12)',
+    },
+    dark: {
+      bg: 'oklch(0.22 0.01 67.44)',
+      primary: 'oklch(0.68 0.16 276.93)',
+    },
+  },
+  {
+    value: 'cyberpunk',
+    label: 'Cyberpunk',
+    description: 'A theme based on the Cyberpunk color palette.',
+    light: {
+      bg: 'oklch(0.98 0.00 247.84)',
+      primary: 'oklch(0.67 0.29 341.41)',
+    },
+    dark: {
+      bg: 'oklch(0.16 0.04 281.83)',
+      primary: 'oklch(0.67 0.29 341.41)',
+    },
+  },
+  {
+    value: 'pastel-dreams',
+    label: 'Pastel Dreams',
+    description: 'A theme based on the Pastel Dreams color palette.',
+    light: {
+      bg: 'oklch(0.97 0.01 314.78)',
+      primary: 'oklch(0.71 0.16 293.54)',
+    },
+    dark: {
+      bg: 'oklch(0.22 0.01 56.04)',
+      primary: 'oklch(0.79 0.12 295.75)',
+    },
+  },
+  {
+    value: 'clean-slate',
+    label: 'Clean Slate',
+    description: 'A theme based on the Clean Slate color palette.',
+    light: {
+      bg: 'oklch(0.98 0.00 247.86)',
+      primary: 'oklch(0.59 0.20 277.12)',
+    },
+    dark: {
+      bg: 'oklch(0.21 0.04 265.75)',
+      primary: 'oklch(0.68 0.16 276.93)',
     },
   },
   {
     value: 'caffeine',
     label: 'Caffeine',
-    description: 'Rich espresso dark brown and golden milk light accents',
+    description: 'A theme based on the Caffeine color palette.',
     light: {
-      bg: 'oklch(0.9821 0 0)',
-      primary: 'oklch(0.4341 0.0392 41.9938)',
+      bg: 'oklch(0.98 0 0)',
+      primary: 'oklch(0.43 0.04 41.99)',
     },
     dark: {
-      bg: 'oklch(0.1776 0 0)',
-      primary: 'oklch(0.9247 0.0524 66.1732)',
+      bg: 'oklch(0.18 0 0)',
+      primary: 'oklch(0.92 0.05 66.17)',
+    },
+  },
+  {
+    value: 'ocean-breeze',
+    label: 'Ocean Breeze',
+    description: 'A theme based on the Ocean Breeze color palette.',
+    light: {
+      bg: 'oklch(0.98 0.01 244.25)',
+      primary: 'oklch(0.72 0.19 149.58)',
+    },
+    dark: {
+      bg: 'oklch(0.21 0.04 265.75)',
+      primary: 'oklch(0.77 0.15 163.22)',
+    },
+  },
+  {
+    value: 'retro-arcade',
+    label: 'Retro Arcade',
+    description: 'A theme based on the Retro Arcade color palette.',
+    light: {
+      bg: 'oklch(0.97 0.03 90.10)',
+      primary: 'oklch(0.59 0.20 355.89)',
+    },
+    dark: {
+      bg: 'oklch(0.27 0.05 219.82)',
+      primary: 'oklch(0.59 0.20 355.89)',
+    },
+  },
+  {
+    value: 'midnight-bloom',
+    label: 'Midnight Bloom',
+    description: 'A theme based on the Midnight Bloom color palette.',
+    light: {
+      bg: 'oklch(0.98 0 0)',
+      primary: 'oklch(0.57 0.20 283.08)',
+    },
+    dark: {
+      bg: 'oklch(0.23 0.01 264.29)',
+      primary: 'oklch(0.57 0.20 283.08)',
+    },
+  },
+  {
+    value: 'candyland',
+    label: 'Candyland',
+    description: 'A theme based on the Candyland color palette.',
+    light: {
+      bg: 'oklch(0.98 0.00 228.78)',
+      primary: 'oklch(0.87 0.07 7.09)',
+    },
+    dark: {
+      bg: 'oklch(0.23 0.01 264.29)',
+      primary: 'oklch(0.80 0.14 349.23)',
+    },
+  },
+  {
+    value: 'northern-lights',
+    label: 'Northern Lights',
+    description: 'A theme based on the Northern Lights color palette.',
+    light: {
+      bg: 'oklch(0.98 0.00 286.38)',
+      primary: 'oklch(0.65 0.15 150.31)',
+    },
+    dark: {
+      bg: 'oklch(0.23 0.01 264.29)',
+      primary: 'oklch(0.65 0.15 150.31)',
     },
   },
   {
     value: 'vintage-paper',
     label: 'Vintage Paper',
-    description: 'Nostalgic cream-yellow paper with soft brown print',
+    description: 'A theme based on the Vintage Paper color palette.',
     light: {
-      bg: 'oklch(0.9582 0.0152 90.2357)',
-      primary: 'oklch(0.6180 0.0778 65.5444)',
+      bg: 'oklch(0.96 0.02 90.24)',
+      primary: 'oklch(0.62 0.08 65.54)',
     },
     dark: {
-      bg: 'oklch(0.2747 0.0139 57.6523)',
-      primary: 'oklch(0.7264 0.0581 66.6967)',
+      bg: 'oklch(0.27 0.01 57.65)',
+      primary: 'oklch(0.73 0.06 66.70)',
+    },
+  },
+  {
+    value: 'sunset-horizon',
+    label: 'Sunset Horizon',
+    description: 'A theme based on the Sunset Horizon color palette.',
+    light: {
+      bg: 'oklch(0.99 0.01 56.32)',
+      primary: 'oklch(0.74 0.16 34.71)',
+    },
+    dark: {
+      bg: 'oklch(0.26 0.02 352.40)',
+      primary: 'oklch(0.74 0.16 34.71)',
+    },
+  },
+  {
+    value: 'starry-night',
+    label: 'Starry Night',
+    description: 'A theme based on the Starry Night color palette.',
+    light: {
+      bg: 'oklch(0.98 0.00 258.32)',
+      primary: 'oklch(0.48 0.12 263.38)',
+    },
+    dark: {
+      bg: 'oklch(0.22 0.02 275.84)',
+      primary: 'oklch(0.48 0.12 263.38)',
+    },
+  },
+  {
+    value: 'claude',
+    label: 'Claude',
+    description: 'A theme based on the Claude color palette.',
+    light: {
+      bg: 'oklch(0.98 0.01 95.10)',
+      primary: 'oklch(0.62 0.14 39.04)',
+    },
+    dark: {
+      bg: 'oklch(0.27 0.00 106.64)',
+      primary: 'oklch(0.67 0.13 38.76)',
+    },
+  },
+  {
+    value: 'vercel',
+    label: 'Vercel',
+    description: 'A theme based on the Vercel color palette.',
+    light: {
+      bg: 'oklch(0.99 0 0)',
+      primary: 'oklch(0 0 0)',
+    },
+    dark: {
+      bg: 'oklch(0 0 0)',
+      primary: 'oklch(1 0 0)',
+    },
+  },
+  {
+    value: 'mono',
+    label: 'Mono',
+    description: 'A theme based on the Mono color palette.',
+    light: {
+      bg: 'oklch(1.00 0 0)',
+      primary: 'oklch(0.56 0 0)',
+    },
+    dark: {
+      bg: 'oklch(0.14 0 0)',
+      primary: 'oklch(0.56 0 0)',
     },
   },
   {
     value: 'violet-bloom',
     label: 'Violet Bloom',
-    description: 'Deep violet and purple accent with clean neutral base',
+    description: '',
     light: {
       bg: 'oklch(0.9940 0 0)',
       primary: 'oklch(0.5393 0.2713 286.7462)',
@@ -282,263 +547,68 @@ export const APP_THEME_OPTIONS: ThemePresetOption[] = [
     },
   },
   {
-    value: 'doom-64',
-    label: 'Doom 64',
-    description: 'Dark retro gaming theme with bold red and grey tones',
+    value: 'amethyst-haze',
+    label: 'Amethyst Haze',
+    description: '',
     light: {
-      bg: 'oklch(0.8452 0 0)',
-      primary: 'oklch(0.5016 0.1887 27.4816)',
+      bg: 'oklch(0.9777 0.0041 301.4256)',
+      primary: 'oklch(0.6104 0.0767 299.7335)',
     },
     dark: {
-      bg: 'oklch(0.2178 0 0)',
-      primary: 'oklch(0.6083 0.2090 27.0276)',
+      bg: 'oklch(0.2166 0.0215 292.8474)',
+      primary: 'oklch(0.7058 0.0777 302.0489)',
     },
   },
   {
-    value: 'kodama-grove',
-    label: 'Kodama Grove',
-    description: 'Soft forest green and earthy natural tones',
+    value: 'soft-pop',
+    label: 'Soft Pop',
+    description: '',
     light: {
-      bg: 'oklch(0.8798 0.0534 91.7893)',
-      primary: 'oklch(0.6657 0.1050 118.9078)',
-    },
-    dark: {
-      bg: 'oklch(0.3303 0.0214 88.0737)',
-      primary: 'oklch(0.6762 0.0567 132.4479)',
-    },
-  },
-  {
-    value: 'quantum-rose',
-    label: 'Quantum Rose',
-    description: 'Modern rose and pink with high-contrast minimal base',
-    light: {
-      bg: 'oklch(0.9692 0.0192 343.9344)',
-      primary: 'oklch(0.6002 0.2414 0.1348)',
-    },
-    dark: {
-      bg: 'oklch(0.1808 0.0535 313.7159)',
-      primary: 'oklch(0.7543 0.2319 332.0212)',
-    },
-  },
-  {
-    value: 'nature',
-    label: 'Nature',
-    description: 'Earthy green and warm brown botanical palette',
-    light: {
-      bg: 'oklch(0.9711 0.0074 80.7211)',
-      primary: 'oklch(0.5234 0.1347 144.1672)',
-    },
-    dark: {
-      bg: 'oklch(0.2683 0.0279 150.7681)',
-      primary: 'oklch(0.6731 0.1624 144.2083)',
-    },
-  },
-  {
-    value: 'bold-tech',
-    label: 'Bold Tech',
-    description: 'High-contrast bold technical theme with strong primary colors',
-    light: {
-      bg: 'oklch(1.0000 0 0)',
-      primary: 'oklch(0.6056 0.2189 292.7172)',
-    },
-    dark: {
-      bg: 'oklch(0.2077 0.0398 265.7549)',
-      primary: 'oklch(0.6056 0.2189 292.7172)',
-    },
-  },
-  {
-    value: 'elegant-luxury',
-    label: 'Elegant Luxury',
-    description: 'Refined luxury theme with gold and warm neutrals',
-    light: {
-      bg: 'oklch(0.9779 0.0042 56.3756)',
-      primary: 'oklch(0.4650 0.1470 24.9381)',
-    },
-    dark: {
-      bg: 'oklch(0.2161 0.0061 56.0434)',
-      primary: 'oklch(0.5054 0.1905 27.5181)',
-    },
-  },
-  {
-    value: 'amber-minimal',
-    label: 'Amber Minimal',
-    description: 'Warm amber and sand tones with minimalist approach',
-    light: {
-      bg: 'oklch(1.0000 0 0)',
-      primary: 'oklch(0.7686 0.1647 70.0804)',
-    },
-    dark: {
-      bg: 'oklch(0.2046 0 0)',
-      primary: 'oklch(0.7686 0.1647 70.0804)',
-    },
-  },
-  {
-    value: 'neo-brutalism',
-    label: 'Neo Brutalism',
-    description: 'Bold brutalist design with stark contrast and raw aesthetics',
-    light: {
-      bg: 'oklch(1.0000 0 0)',
-      primary: 'oklch(0.6489 0.2370 26.9728)',
+      bg: 'oklch(0.9789 0.0082 121.6272)',
+      primary: 'oklch(0.5106 0.2301 276.9656)',
     },
     dark: {
       bg: 'oklch(0 0 0)',
-      primary: 'oklch(0.7044 0.1872 23.1858)',
-    },
-  },
-  {
-    value: 'solar-dusk',
-    label: 'Solar Dusk',
-    description: 'Warm sunset tones blending orange and amber gradients',
-    light: {
-      bg: 'oklch(0.9885 0.0057 84.5659)',
-      primary: 'oklch(0.5553 0.1455 48.9975)',
-    },
-    dark: {
-      bg: 'oklch(0.2161 0.0061 56.0434)',
-      primary: 'oklch(0.7049 0.1867 47.6044)',
-    },
-  },
-  {
-    value: 'claymorphism',
-    label: 'Claymorphism',
-    description: 'Soft clay-inspired surfaces with rounded depth and warmth',
-    light: {
-      bg: 'oklch(0.9232 0.0026 48.7171)',
-      primary: 'oklch(0.5854 0.2041 277.1173)',
-    },
-    dark: {
-      bg: 'oklch(0.2244 0.0074 67.4370)',
       primary: 'oklch(0.6801 0.1583 276.9349)',
     },
   },
   {
-    value: 'cyberpunk',
-    label: 'Cyberpunk',
-    description: 'Neon pink and cyan on dark futuristic backgrounds',
+    value: 'sage-garden',
+    label: 'Sage Garden',
+    description: '',
     light: {
-      bg: 'oklch(0.9816 0.0017 247.8390)',
-      primary: 'oklch(0.6726 0.2904 341.4084)',
+      bg: 'oklch(0.9761 0.0041 91.4461)',
+      primary: 'oklch(0.6333 0.0309 154.9039)',
     },
     dark: {
-      bg: 'oklch(0.1649 0.0352 281.8285)',
-      primary: 'oklch(0.6726 0.2904 341.4084)',
+      bg: 'oklch(0.1448 0 0)',
+      primary: 'oklch(0.6333 0.0309 154.9039)',
     },
   },
   {
-    value: 'pastel-dreams',
-    label: 'Pastel Dreams',
-    description: 'Soft dreamy pastels with gentle color palette',
-    light: {
-      bg: 'oklch(0.9689 0.0090 314.7819)',
-      primary: 'oklch(0.7090 0.1592 293.5412)',
-    },
-    dark: {
-      bg: 'oklch(0.2161 0.0061 56.0434)',
-      primary: 'oklch(0.7874 0.1179 295.7538)',
-    },
-  },
-  {
-    value: 'clean-slate',
-    label: 'Clean Slate',
-    description: 'Ultra-minimal clean grey and white balanced theme',
-    light: {
-      bg: 'oklch(0.9842 0.0034 247.8575)',
-      primary: 'oklch(0.5854 0.2041 277.1173)',
-    },
-    dark: {
-      bg: 'oklch(0.2077 0.0398 265.7549)',
-      primary: 'oklch(0.6801 0.1583 276.9349)',
-    },
-  },
-  {
-    value: 'ocean-breeze',
-    label: 'Ocean Breeze',
-    description: 'Fresh ocean-inspired blue and teal tones',
-    light: {
-      bg: 'oklch(0.9751 0.0127 244.2507)',
-      primary: 'oklch(0.7227 0.1920 149.5793)',
-    },
-    dark: {
-      bg: 'oklch(0.2077 0.0398 265.7549)',
-      primary: 'oklch(0.7729 0.1535 163.2231)',
-    },
-  },
-  {
-    value: 'retro-arcade',
-    label: 'Retro Arcade',
-    description: 'Nostalgic retro gaming with neon accents on dark',
-    light: {
-      bg: 'oklch(0.9735 0.0261 90.0953)',
-      primary: 'oklch(0.5924 0.2025 355.8943)',
-    },
-    dark: {
-      bg: 'oklch(0.2673 0.0486 219.8169)',
-      primary: 'oklch(0.5924 0.2025 355.8943)',
-    },
-  },
-  {
-    value: 'midnight-bloom',
-    label: 'Midnight Bloom',
-    description: 'Dark midnight blue with blooming accent colors',
+    value: 'notebook',
+    label: 'Notebook',
+    description: '',
     light: {
       bg: 'oklch(0.9821 0 0)',
-      primary: 'oklch(0.5676 0.2021 283.0838)',
+      primary: 'oklch(0.4891 0 0)',
     },
     dark: {
-      bg: 'oklch(0.2303 0.0125 264.2926)',
-      primary: 'oklch(0.5676 0.2021 283.0838)',
+      bg: 'oklch(0.2891 0 0)',
+      primary: 'oklch(0.7572 0 0)',
     },
   },
   {
-    value: 'candyland',
-    label: 'Candyland',
-    description: 'Vibrant candy-colored pastels with playful bubbly accents',
+    value: 'darkmatter',
+    label: 'Darkmatter',
+    description: '',
     light: {
-      bg: 'oklch(0.9809 0.0025 228.7836)',
-      primary: 'oklch(0.8677 0.0735 7.0855)',
+      bg: 'oklch(1.0000 0 0)',
+      primary: 'oklch(0.6716 0.1368 48.5130)',
     },
     dark: {
-      bg: 'oklch(0.2303 0.0125 264.2926)',
-      primary: 'oklch(0.8027 0.1355 349.2347)',
-    },
-  },
-  {
-    value: 'northern-lights',
-    label: 'Northern Lights',
-    description: 'Aurora-inspired cool greens and purples on dark base',
-    light: {
-      bg: 'oklch(0.9824 0.0013 286.3757)',
-      primary: 'oklch(0.6487 0.1538 150.3071)',
-    },
-    dark: {
-      bg: 'oklch(0.2303 0.0125 264.2926)',
-      primary: 'oklch(0.6487 0.1538 150.3071)',
-    },
-  },
-  {
-    value: 'sunset-horizon',
-    label: 'Sunset Horizon',
-    description: 'Warm gradient sunset palette with orange and rose',
-    light: {
-      bg: 'oklch(0.9856 0.0084 56.3169)',
-      primary: 'oklch(0.7357 0.1641 34.7091)',
-    },
-    dark: {
-      bg: 'oklch(0.2569 0.0169 352.4042)',
-      primary: 'oklch(0.7357 0.1641 34.7091)',
-    },
-  },
-  {
-    value: 'starry-night',
-    label: 'Starry Night',
-    description: 'Deep space dark blue with celestial accent highlights',
-    light: {
-      bg: 'oklch(0.9755 0.0045 258.3245)',
-      primary: 'oklch(0.4815 0.1178 263.3758)',
-    },
-    dark: {
-      bg: 'oklch(0.2204 0.0198 275.8439)',
-      primary: 'oklch(0.4815 0.1178 263.3758)',
+      bg: 'oklch(0.1797 0.0043 308.1928)',
+      primary: 'oklch(0.7214 0.1337 49.9802)',
     },
   },
 ];

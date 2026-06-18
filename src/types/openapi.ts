@@ -1001,7 +1001,7 @@ export interface paths {
                         wordWrap: "on" | "off";
                         minimap: boolean;
                         /** @enum {string} */
-                        appTheme: "modern-minimal" | "claude" | "graphite" | "amethyst-haze" | "cosmic-night" | "t3-chat" | "supabase" | "twitter" | "mocha-mousse" | "catppuccin" | "vercel" | "bubblegum" | "caffeine" | "vintage-paper" | "violet-bloom" | "doom-64" | "kodama-grove" | "quantum-rose" | "bold-tech" | "elegant-luxury" | "amber-minimal" | "neo-brutalism" | "solar-dusk" | "pastel-dreams" | "clean-slate" | "ocean-breeze" | "retro-arcade" | "midnight-bloom" | "northern-lights" | "sunset-horizon" | "starry-night" | "soft-pop" | "sage-garden";
+                        appTheme: "modern-minimal" | "claude" | "graphite" | "perpetuity" | "amethyst-haze" | "notebook" | "cosmic-night" | "tangerine" | "t3-chat" | "supabase" | "twitter" | "mocha-mousse" | "catppuccin" | "bubblegum" | "caffeine" | "vintage-paper" | "violet-bloom" | "doom-64" | "kodama-grove" | "quantum-rose" | "nature" | "bold-tech" | "elegant-luxury" | "amber-minimal" | "neo-brutalism" | "solar-dusk" | "claymorphism" | "cyberpunk" | "pastel-dreams" | "clean-slate" | "ocean-breeze" | "retro-arcade" | "midnight-bloom" | "candyland" | "northern-lights" | "sunset-horizon" | "starry-night";
                         /** @enum {string} */
                         colorMode: "light" | "dark";
                         useDefaultEditorTheme: boolean;

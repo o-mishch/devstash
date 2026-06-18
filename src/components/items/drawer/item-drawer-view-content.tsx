@@ -103,7 +103,8 @@ function FileSectionContent({ item }: FileSectionProps) {
             <ImageLightbox
               open={lightboxOpen}
               onOpenChange={setLightboxOpen}
-              src={previewSrc}
+              itemId={item.id}
+              previewSrc={previewSrc}
               alt={item.fileName ?? item.title}
             />
           )}
