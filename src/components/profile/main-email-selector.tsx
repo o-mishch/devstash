@@ -101,14 +101,21 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
           <DialogHeader>
             <DialogTitle>Change primary email?</DialogTitle>
             <DialogDescription>
-              {isPro
-                ? 'The email of your subscription will be updated in the payment provider.'
-                : 'Confirm your password to update your primary email.'}
+              Confirm your password to update your primary email.
             </DialogDescription>
           </DialogHeader>
 
           <WarningBanner>
-            You are switching your primary email. All email notifications will be sent to the new primary email (changing from <span className="font-medium text-foreground">{email}</span> to <span className="font-medium text-foreground">{pendingEmail}</span>).
+            <div className="space-y-1.5">
+              <p>
+                You are switching your primary email. All email notifications will be sent to the new primary email (changing from <span className="font-medium text-foreground">{email}</span> to <span className="font-medium text-foreground">{pendingEmail}</span>).
+              </p>
+              {isPro && (
+                <p>
+                  The email of your subscription will be updated in the payment provider.
+                </p>
+              )}
+            </div>
           </WarningBanner>
 
           <div className="space-y-2">
