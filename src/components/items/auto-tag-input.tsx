@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api/client'
 import { parseTagString } from '@/lib/utils/format'
 import { AiFieldBadgeIfPro } from '@/components/shared/ai-field-chrome'
-import { AiTagsField, AI_TAGS_INPUT_CLASS } from '@/components/shared/ai-tags-field'
+import { AiTagsField, useAiTagsField, AI_TAGS_INPUT_CLASS } from '@/components/shared/ai-tags-field'
 import { useItemAiContext } from '@/hooks/use-item-ai-context'
 import type { ItemFileContext } from '@/lib/ai/item-context'
 import type { ItemFormBaseValues } from '@/lib/utils/validators'
@@ -43,6 +43,8 @@ export function AutoTagInput({
     return data
   }, [payload])
 
+  const aiField = useAiTagsField({ canGenerate: canSuggest, disabledReason, onGenerate })
+
   const handleAcceptTag = useCallback((tag: string) => {
     const currentTags = form.getValues('tags') || ''
     const tagsArray = parseTagString(currentTags)
@@ -54,9 +56,7 @@ export function AutoTagInput({
 
   const field = (
     <AiTagsField
-      canGenerate={canSuggest}
-      disabledReason={disabledReason}
-      onGenerate={onGenerate}
+      field={aiField}
       onAcceptTag={handleAcceptTag}
       actionClassName="right-1.5 top-1/2 -translate-y-1/2"
     >
@@ -75,7 +75,11 @@ export function AutoTagInput({
         <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <Tag className="size-3" />
           <span>Tags</span>
-          <AiFieldBadgeIfPro />
+          <AiFieldBadgeIfPro
+            onClick={aiField.run}
+            disabled={aiField.disabled}
+            tooltip={aiField.tooltip}
+          />
         </div>
         {field}
         {error && <p className="text-red-500 text-[10px]">{error}</p>}
@@ -88,7 +92,11 @@ export function AutoTagInput({
     <div className="grid min-w-0 gap-2">
       <label htmlFor="tags" className="flex items-center gap-2 text-sm font-medium leading-none">
         Tags
-        <AiFieldBadgeIfPro />
+        <AiFieldBadgeIfPro
+          onClick={aiField.run}
+          disabled={aiField.disabled}
+          tooltip={aiField.tooltip}
+        />
       </label>
       {field}
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}

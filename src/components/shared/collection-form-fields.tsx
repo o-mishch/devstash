@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api/client'
 import {
   AiDescriptionField,
+  useAiDescriptionField,
   AI_DESCRIPTION_INPUT_CLASS,
 } from '@/components/shared/ai-description-field'
 import { AiFieldBadgeIfPro } from '@/components/shared/ai-field-chrome'
@@ -42,6 +43,7 @@ export function CollectionFormFields({ form, idPrefix, growDescription = false }
     return data
   }, [name])
 
+  const aiField = useAiDescriptionField({ canGenerate, disabledReason, onGenerate })
   const inputProps = form.register('description')
 
   return (
@@ -62,12 +64,14 @@ export function CollectionFormFields({ form, idPrefix, growDescription = false }
       <div className={cn('grid gap-2', growDescription && 'flex min-h-0 flex-1 flex-col')}>
         <Label htmlFor={descId} className="inline-flex shrink-0 items-center gap-2">
           Description
-          <AiFieldBadgeIfPro />
+          <AiFieldBadgeIfPro
+            onClick={aiField.run}
+            disabled={aiField.disabled}
+            tooltip={aiField.tooltip}
+          />
         </Label>
         <AiDescriptionField
-          canGenerate={canGenerate}
-          disabledReason={disabledReason}
-          onGenerate={onGenerate}
+          field={aiField}
           onApply={(description) =>
             form.setValue('description', description, { shouldDirty: true, shouldValidate: true })
           }

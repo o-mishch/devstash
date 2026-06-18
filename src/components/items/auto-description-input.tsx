@@ -6,7 +6,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { api } from '@/lib/api/client'
 import {
   AiDescriptionField,
+  useAiDescriptionField,
   AI_DESCRIPTION_INPUT_CLASS,
+  type UseAiDescriptionFieldResult,
 } from '@/components/shared/ai-description-field'
 import { useItemAiContext } from '@/hooks/use-item-ai-context'
 import type { ItemFileContext } from '@/lib/ai/item-context'
@@ -16,6 +18,7 @@ interface AutoDescriptionInputProps {
   form: UseFormReturn<ItemFormBaseValues>
   itemContext: ItemFileContext
   variant?: 'dialog' | 'drawer'
+  aiField: UseAiDescriptionFieldResult
 }
 
 function getDisabledReason(
@@ -32,15 +35,11 @@ function getDisabledReason(
   return 'Enter a title or content first'
 }
 
-export function AutoDescriptionInput({
-  form,
-  itemContext,
-  variant = 'dialog',
-}: AutoDescriptionInputProps) {
-  const { payload } = useItemAiContext({
-    form,
-    itemContext,
-  })
+export function useAutoDescriptionField(
+  form: UseFormReturn<ItemFormBaseValues>,
+  itemContext: ItemFileContext
+): UseAiDescriptionFieldResult {
+  const { payload } = useItemAiContext({ form, itemContext })
 
   const disabledReason = getDisabledReason(
     itemContext.itemType,
@@ -57,13 +56,18 @@ export function AutoDescriptionInput({
     return data
   }, [payload])
 
-  const inputProps = form.register('description')
+  return useAiDescriptionField({ canGenerate, disabledReason, onGenerate })
+}
 
+export function AutoDescriptionInput({
+  form,
+  itemContext: _itemContext,
+  variant = 'dialog',
+  aiField,
+}: AutoDescriptionInputProps) {
   return (
     <AiDescriptionField
-      canGenerate={canGenerate}
-      disabledReason={disabledReason}
-      onGenerate={onGenerate}
+      field={aiField}
       onApply={(description) =>
         form.setValue('description', description, { shouldDirty: true, shouldValidate: true })
       }
@@ -74,7 +78,7 @@ export function AutoDescriptionInput({
           form. id is set only for the dialog variant, whose label uses htmlFor="description". */}
       <Textarea
         id={variant === 'dialog' ? 'description' : undefined}
-        {...inputProps}
+        {...form.register('description')}
         placeholder="Optional description"
         // max-h caps the field-sizing-content auto-grow so a long description scrolls instead of
         // ballooning the dialog layout.

@@ -4,7 +4,6 @@ import { useState, useCallback, type ReactNode } from 'react'
 import { Check, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   AiFieldAction,
   AiFieldFrame,
@@ -14,24 +13,26 @@ import {
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
 
-interface AiTagsFieldProps {
+interface UseAiTagsFieldParams {
   canGenerate: boolean
   disabledReason: string | null
   onGenerate: () => Promise<string[]>
-  onAcceptTag: (tag: string) => void
-  actionClassName: string
-  children: ReactNode
 }
 
-export function AiTagsField({
+export interface UseAiTagsFieldResult {
+  isLoading: boolean
+  suggestedTags: string[]
+  setSuggestedTags: (tags: string[]) => void
+  run: () => void
+  disabled: boolean
+  tooltip: string
+}
+
+export function useAiTagsField({
   canGenerate,
   disabledReason,
   onGenerate,
-  onAcceptTag,
-  actionClassName,
-  children,
-}: AiTagsFieldProps) {
-  const { isPro } = useAppUserFlagsStore()
+}: UseAiTagsFieldParams): UseAiTagsFieldResult {
   const [suggestedTags, setSuggestedTags] = useState<string[]>([])
 
   const handleSuccess = useCallback((tags: string[]) => {
@@ -42,7 +43,7 @@ export function AiTagsField({
     }
   }, [])
 
-  const { isLoading, run: handleSuggest } = useAiFieldGenerate({
+  const { isLoading, run } = useAiFieldGenerate({
     canGenerate,
     onGenerate,
     onStart: () => setSuggestedTags([]),
@@ -50,13 +51,35 @@ export function AiTagsField({
     failureMessage: 'Failed to generate tags.',
   })
 
+  const disabled = !canGenerate || isLoading
+  const tooltip = disabled ? (disabledReason ?? '') : 'Suggest tags with AI'
+
+  return { isLoading, suggestedTags, setSuggestedTags, run, disabled, tooltip }
+}
+
+interface AiTagsFieldProps {
+  field: UseAiTagsFieldResult
+  onAcceptTag: (tag: string) => void
+  actionClassName: string
+  children: ReactNode
+}
+
+export function AiTagsField({
+  field,
+  onAcceptTag,
+  actionClassName,
+  children,
+}: AiTagsFieldProps) {
+  const { isPro } = useAppUserFlagsStore()
+  const { isLoading, suggestedTags, setSuggestedTags, run, disabled } = field
+
   const handleAccept = (tag: string) => {
     onAcceptTag(tag)
-    setSuggestedTags((prev) => prev.filter((t) => t !== tag))
+    setSuggestedTags(suggestedTags.filter((t) => t !== tag))
   }
 
   const handleReject = (tag: string) => {
-    setSuggestedTags((prev) => prev.filter((t) => t !== tag))
+    setSuggestedTags(suggestedTags.filter((t) => t !== tag))
   }
 
   return (
@@ -65,11 +88,11 @@ export function AiTagsField({
         {children}
         {isPro && (
           <AiFieldAction
-            onClick={handleSuggest}
-            disabled={!canGenerate || isLoading}
+            onClick={run}
+            disabled={disabled}
             isLoading={isLoading}
             tooltipEnabled="Suggest tags with AI"
-            tooltipDisabled={disabledReason ?? ''}
+            tooltipDisabled={field.tooltip}
             ariaLabel={isLoading ? 'Generating tags' : 'Suggest tags with AI'}
             className={actionClassName}
           />
@@ -94,9 +117,14 @@ export function AiTagsField({
                   key={tag}
                   className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-background/80 pl-2.5 pr-1 py-0.5"
                 >
-                  <Badge variant="secondary" className="h-auto border-0 bg-transparent px-0 py-0 text-xs font-medium shadow-none">
+                  <button
+                    type="button"
+                    onClick={() => handleAccept(tag)}
+                    className="h-auto border-0 bg-transparent px-0 py-0 text-xs font-medium shadow-none text-foreground"
+                    aria-label={`Accept ${tag}`}
+                  >
                     {tag}
-                  </Badge>
+                  </button>
                   <Button
                     type="button"
                     variant="ghost"
