@@ -4,11 +4,13 @@ import googleSvg from '@/assets/icons/google.svg'
 import { SvgIcon } from '@/components/icons/svg-icon'
 import { getPendingLink } from '@/lib/auth/pending-link'
 import { linkAccountAction, autoLinkAccountAction } from '@/actions/auth/link'
+import { signInWithOAuthForLinkAction } from '@/actions/auth/login'
 import { auth } from '@/auth'
 import { PROVIDER_LABELS } from '@/lib/utils'
 import { SubmitButton, buttonVariants } from '@/components/ui/button'
 import { LinkAccountForm } from '@/components/auth/dynamic-forms'
 import { getUserAuthInfoByEmail, getUserAuthMethods } from '@/lib/db/users'
+import type { OAuthProvider } from '@/lib/utils/constants'
 import Link from 'next/link'
 
 interface LinkAccountPageProps {
@@ -82,20 +84,39 @@ export default async function LinkAccountPage({ searchParams }: LinkAccountPageP
 
   if (existingUser && !hasPassword) {
     const authMethods = await getUserAuthMethods(existingUser.id)
-    const existingProviders = authMethods?.accounts.map((a) => PROVIDER_LABELS[a.provider] ?? a.provider).join(' or ') ?? 'another provider'
+    const existingAccounts = authMethods?.accounts ?? []
 
     return (
       <AuthFormLayout
-        title="Account already exists"
+        title="Sign in to continue"
         description={
           <span>
-            An account already exists for <strong className="text-foreground">{pending.email}</strong> via {existingProviders}. Please sign in with {existingProviders} to link your {providerLabel} account.
+            An account for <strong className="text-foreground">{pending.email}</strong> already exists.
+            Sign in below to link your <strong className="text-foreground">{providerLabel}</strong> account to it.
           </span>
         }
       >
-        <Link href="/sign-in" className={buttonVariants({ className: 'w-full' })}>
-          Return to sign in
-        </Link>
+        <div className="flex flex-col gap-2">
+          {existingAccounts.map((account) => {
+            const existingProvider = account.provider as OAuthProvider
+            const existingProviderLabel = PROVIDER_LABELS[existingProvider] ?? existingProvider
+            const icon = PROVIDER_ICONS[existingProvider]
+            const boundAction = signInWithOAuthForLinkAction.bind(null, existingProvider, token)
+            return (
+              <form key={existingProvider} action={boundAction}>
+                <SubmitButton variant="outline" className="w-full" isPending={false}>
+                  {icon && <SvgIcon src={icon.src} className="size-4 shrink-0" />}
+                  Sign in with {existingProviderLabel}
+                </SubmitButton>
+              </form>
+            )
+          })}
+          {existingAccounts.length === 0 && (
+            <Link href="/sign-in" className={buttonVariants({ variant: 'outline', className: 'w-full' })}>
+              Return to sign in
+            </Link>
+          )}
+        </div>
       </AuthFormLayout>
     )
   }

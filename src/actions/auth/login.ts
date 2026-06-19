@@ -13,6 +13,10 @@ export async function signInWithGoogle() {
   await signIn('google', { redirectTo: '/dashboard' })
 }
 
+export async function signInWithOAuthForLinkAction(provider: OAuthProvider, linkToken: string): Promise<void> {
+  await signIn(provider, { redirectTo: `/link-account?token=${linkToken}` })
+}
+
 // Used from the profile page to link an additional OAuth provider.
 // Stores the current user's ID in Redis, sets a short-lived httpOnly cookie so the
 // signIn callback in auth.ts can identify this as a link-intent flow (not a sign-in).

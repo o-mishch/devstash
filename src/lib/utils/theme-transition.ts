@@ -6,7 +6,8 @@ export interface TransitionEventCoords {
 export function startThemeTransition(event: TransitionEventCoords, callback: () => void) {
   if (
     !document.startViewTransition ||
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    window.matchMedia('(hover: none)').matches
   ) {
     callback()
     return
