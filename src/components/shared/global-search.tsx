@@ -101,7 +101,7 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
       </div>
 
       {showList && (
-        <div className="z-50 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 lg:absolute lg:top-full lg:left-0 lg:mt-1.5 lg:w-full max-lg:fixed max-lg:inset-x-2 max-lg:top-16">
+        <div className="z-[100] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 lg:absolute lg:top-full lg:left-0 lg:mt-1.5 lg:w-full max-lg:fixed max-lg:inset-x-2 max-lg:top-16">
           <CommandList className="max-h-[60vh] overflow-y-auto p-1">
             {loading && (
               <CommandPrimitive.Loading>

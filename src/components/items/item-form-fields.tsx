@@ -198,7 +198,7 @@ export function ItemFormFields({
       error={form.formState.errors.description?.message}
       className={variant === 'drawer' ? 'space-y-1.5' : undefined}
     >
-      <AutoDescriptionInput form={form} itemContext={itemContext} variant={variant} aiField={descAiField} />
+      <AutoDescriptionInput form={form} variant={variant} aiField={descAiField} />
     </Field>
   )
 

@@ -16,7 +16,6 @@ import type { ItemFormBaseValues } from '@/lib/utils/validators'
 
 interface AutoDescriptionInputProps {
   form: UseFormReturn<ItemFormBaseValues>
-  itemContext: ItemFileContext
   variant?: 'dialog' | 'drawer'
   aiField: UseAiDescriptionFieldResult
 }
@@ -61,7 +60,6 @@ export function useAutoDescriptionField(
 
 export function AutoDescriptionInput({
   form,
-  itemContext: _itemContext,
   variant = 'dialog',
   aiField,
 }: AutoDescriptionInputProps) {

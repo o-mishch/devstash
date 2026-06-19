@@ -80,7 +80,6 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <ConnectedAccounts
-            accounts={user.accounts}
             verificationDisabled={verificationDisabled}
           />
         </CardContent>

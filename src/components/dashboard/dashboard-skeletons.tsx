@@ -1,16 +1,40 @@
+import type { ReactNode } from 'react'
+import type { LucideIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Pin } from 'lucide-react'
+import { ChevronDown, Folder, History, Pin } from 'lucide-react'
 import { CollectionCardSkeleton } from '@/components/shared/skeletons'
 import { STAT_CHIP_BASE } from './stat-chip'
 
+interface SkeletonCardHeaderProps {
+  icon: LucideIcon
+  title: string
+  headerAction?: ReactNode
+}
+
+function SkeletonCardHeader({ icon: Icon, title, headerAction }: SkeletonCardHeaderProps) {
+  return (
+    <CardHeader className="pb-3">
+      <div className="flex w-full items-center justify-between">
+        <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+          <Icon className="size-3.5 text-primary" />
+          {title}
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </CardTitle>
+        {headerAction}
+      </div>
+    </CardHeader>
+  )
+}
+
 export function CollectionsGridSkeleton() {
   return (
-    <Card className="overflow-visible bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-sm font-semibold">Collections</CardTitle>
-        <Skeleton className="h-4 w-12" />
-      </CardHeader>
+    <Card className="overflow-visible bg-[var(--muted,var(--background))] border-l-2 border-l-accent" data-section="collections">
+      <SkeletonCardHeader
+        icon={Folder}
+        title="Collections"
+        headerAction={<Skeleton className="h-4 w-12" />}
+      />
       <CardContent className="overflow-visible pt-0">
         <div className="app-grid card-grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {[...Array(6)].map((_, i) => (
@@ -44,13 +68,8 @@ function DashboardListSkeleton({ count = 3 }: { count?: number }) {
 
 export function PinnedSkeleton() {
   return (
-    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-          <Pin className="size-3.5 text-muted-foreground" />
-          Pinned
-        </CardTitle>
-      </CardHeader>
+    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent" data-section="pinned">
+      <SkeletonCardHeader icon={Pin} title="Pinned" />
       <CardContent>
         <DashboardListSkeleton count={3} />
       </CardContent>
@@ -60,10 +79,8 @@ export function PinnedSkeleton() {
 
 export function RecentItemsSkeleton() {
   return (
-    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold">Recent Items</CardTitle>
-      </CardHeader>
+    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent" data-section="recent">
+      <SkeletonCardHeader icon={History} title="Recent Items" />
       <CardContent>
         <DashboardListSkeleton count={3} />
       </CardContent>
@@ -89,3 +106,4 @@ export function StatsCardsSkeleton() {
     </div>
   )
 }
+

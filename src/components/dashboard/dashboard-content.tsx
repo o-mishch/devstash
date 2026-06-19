@@ -66,4 +66,3 @@ async function DashboardRecentSection({
 
   return <DashboardRecentList firstPage={firstPage} />
 }
-

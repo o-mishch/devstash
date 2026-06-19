@@ -32,27 +32,33 @@ export function DashboardCollapsibleCard({
   const setIsOpen = (open: boolean) => setOpen(section, open)
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} data-section={section}>
       <Card
         className={cn(
-          'bg-[var(--muted,var(--background))] border-l-2 border-l-accent',
+          'bg-[var(--muted,var(--background))] border-l-2 border-l-accent transition-opacity duration-150 hover:opacity-80',
           overflowVisible && 'overflow-visible'
         )}
       >
-        <CardHeader className={cn('pb-3', headerAction && 'flex flex-row items-center justify-between')}>
-          <CollapsibleTrigger className="group flex select-none items-center gap-1.5 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-              <Icon className="size-3.5 text-accent" />
-              {title}
-            </CardTitle>
-            <ChevronDown
-              className={cn(
-                'size-3.5 text-muted-foreground group-hover:text-foreground transition-transform duration-300 ease-in-out',
-                !isOpen && '-rotate-90'
-              )}
-            />
-          </CollapsibleTrigger>
-          {headerAction}
+        <CardHeader className="pb-3">
+          <div className="flex w-full items-center justify-between gap-4">
+            <CollapsibleTrigger className="group flex flex-1 select-none items-center gap-1.5 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                <Icon className="size-3.5 text-primary" />
+                {title}
+                <ChevronDown
+                  className={cn(
+                    'size-3.5 text-muted-foreground group-hover:text-foreground transition-transform duration-300 ease-in-out',
+                    !isOpen && '-rotate-90'
+                  )}
+                />
+              </CardTitle>
+            </CollapsibleTrigger>
+            {headerAction && (
+              <div className="shrink-0">
+                {headerAction}
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CollapsibleContent className={cn(overflowVisible && 'pt-0', overflowVisible && isOpen && '!overflow-visible')}>
           <CardContent className={cn(overflowVisible && 'overflow-visible pt-0 pb-0')}>{children}</CardContent>

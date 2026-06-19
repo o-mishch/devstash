@@ -222,7 +222,7 @@ describe('previewCredentialEmailRemoval', () => {
         currentEmail: 'login@x.com',
         availableEmails: ['login@x.com', 'oauth@x.com'],
         credentialEmail: 'login@x.com',
-        linkedAccounts: [{ provider: 'github', email: 'oauth@x.com' }],
+        linkedAccounts: [{ id: 'acc-1', provider: 'github', email: 'oauth@x.com' }],
       }),
     ).toEqual({
       hasCredentialLogin: false,

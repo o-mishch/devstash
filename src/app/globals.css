@@ -181,7 +181,8 @@
         @apply flex w-full min-w-0 items-center overflow-hidden;
     }
     .card-interactive {
-        @apply relative z-0 cursor-pointer shadow-sm transition-all duration-200 hover:z-10 hover:-translate-y-1 hover:bg-foreground/5 hover:shadow-md;
+        @apply relative z-0 cursor-pointer shadow-sm transition-all duration-200 hover:z-10 hover:-translate-y-1 hover:bg-foreground/5 hover:shadow-md active:z-10 active:-translate-y-1 active:bg-foreground/5 active:shadow-md;
+        touch-action: manipulation;
     }
     /* Reserve space above/below cards so hover lift + shadow aren't clipped */
     .card-grid {
@@ -189,6 +190,34 @@
     }
     .pricing-pro-border {
         background: linear-gradient(to bottom, rgba(59,130,246,0.6), rgba(6,182,212,0.4), rgba(255,255,255,0.06));
+    }
+    /* ── Futuristic app shell ─────────────────────────────────────────────────
+       Dot grid: fixed so it doesn't scroll, GPU-composited, theme-adaptive.
+       Uses color-mix on the semantic foreground token (works light + dark). */
+    .app-dot-grid {
+        background-image: radial-gradient(color-mix(in srgb, var(--foreground) 10%, transparent) 1px, transparent 1px);
+        background-size: 20px 20px;
+        background-attachment: fixed;
+    }
+    /* Topbar: glass effect — content scrolls underneath giving depth. */
+    .app-topbar {
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        background-color: color-mix(in srgb, var(--background) 80%, transparent);
+    }
+    /* Prevent layout shift/flash for collapsed sections before hydration */
+    html[data-section-collections="0"] [data-section="collections"] [data-slot="collapsible-content"],
+    html[data-section-collections="0"] [data-section="collections"] [data-slot="card-content"],
+    html[data-section-pinned="0"] [data-section="pinned"] [data-slot="collapsible-content"],
+    html[data-section-pinned="0"] [data-section="pinned"] [data-slot="card-content"],
+    html[data-section-recent="0"] [data-section="recent"] [data-slot="collapsible-content"],
+    html[data-section-recent="0"] [data-section="recent"] [data-slot="card-content"] {
+        display: none !important;
+    }
+    html[data-section-collections="0"] [data-section="collections"] [data-slot="card-title"] svg:last-child,
+    html[data-section-pinned="0"] [data-section="pinned"] [data-slot="card-title"] svg:last-child,
+    html[data-section-recent="0"] [data-section="recent"] [data-slot="card-title"] svg:last-child {
+        transform: rotate(-90deg) !important;
     }
 }
 

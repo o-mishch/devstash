@@ -18,6 +18,7 @@ interface ProfileActionDialogProps {
   successMessage: string
   errorMessage?: string
   triggerClassName?: string
+  onSuccess?: () => void
 }
 
 export function ProfileActionDialog({
@@ -30,6 +31,7 @@ export function ProfileActionDialog({
   successMessage,
   errorMessage,
   triggerClassName = "h-7 px-2 text-xs text-muted-foreground hover:text-destructive",
+  onSuccess,
 }: ProfileActionDialogProps) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -40,6 +42,7 @@ export function ProfileActionDialog({
       if (!error) {
         toast.success(successMessage)
         setOpen(false)
+        onSuccess?.()
       } else {
         toast.error(error.message || errorMessage || 'Action failed.')
       }

@@ -11,6 +11,7 @@ import { canCreateCollection, canCreateItem } from '@/lib/db/usage'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 
 import { SidebarSkeleton } from '@/components/layout/sidebar/sidebar-skeleton'
+import { DynamicPageSkeleton } from '@/components/dashboard/dynamic-page-skeleton'
 import { AppUserFlagsInitializer } from '@/components/shared/app-user-flags-initializer'
 import { EditorPreferencesInitializer } from '@/components/shared/editor-preferences-initializer'
 import { GlobalSearch } from '@/components/shared/global-search'
@@ -46,10 +47,10 @@ export default async function DashboardLayout({ children }: WithChildren) {
   )
 }
 
-function DashboardLayoutSkeleton({ children }: Partial<WithChildren>) {
+function DashboardLayoutSkeleton() {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-background">
+      <header className="app-topbar relative z-20 flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">
         {/* Mobile menu trigger skeleton */}
         <div className="size-11 shrink-0 lg:hidden" />
 
@@ -87,8 +88,13 @@ function DashboardLayoutSkeleton({ children }: Partial<WithChildren>) {
 
       <div className="flex flex-1 overflow-hidden">
         <SidebarSkeleton collapsible />
-        <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
-          {children}
+        <main className="app-dot-grid relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-background [scrollbar-gutter:stable]">
+          {/* Ambient glow blobs — z-0 so they never cover page content */}
+          <div aria-hidden className="pointer-events-none absolute left-1/3 top-0 z-0 h-[500px] w-[600px] -translate-x-1/2 rounded-full bg-blue-500/[0.08] blur-3xl" />
+          <div aria-hidden className="pointer-events-none absolute right-0 top-1/3 z-0 h-[400px] w-[500px] rounded-full bg-cyan-500/[0.06] blur-3xl" />
+          <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+            <DynamicPageSkeleton />
+          </div>
         </main>
       </div>
     </div>
@@ -125,8 +131,8 @@ async function DashboardLayoutInner({ children }: WithChildren) {
       />
       <EditorPreferencesInitializer preferences={initialPreferences} />
       <UpgradePromptProvider>
-          <div className="flex h-screen flex-col overflow-hidden bg-background">
-            <header className="flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">
+          <div className="relative flex h-screen flex-col overflow-hidden bg-background">
+            <header className="app-topbar relative z-20 flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">
               <MobileDrawer sidebarData={sidebarData} />
 
               {/* Mobile: compact Home icon */}
@@ -189,8 +195,11 @@ async function DashboardLayoutInner({ children }: WithChildren) {
             <div className="flex flex-1 overflow-hidden">
               <SidebarContent sidebarData={sidebarData} collapsible />
 
-              <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]">
-                {children}
+              <main className="app-dot-grid relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-background [scrollbar-gutter:stable]">
+                {/* Ambient glow blobs — z-0 so they never cover page content */}
+                <div aria-hidden className="pointer-events-none absolute left-1/3 top-0 z-0 h-[500px] w-[600px] -translate-x-1/2 rounded-full bg-blue-500/[0.08] blur-3xl" />
+                <div aria-hidden className="pointer-events-none absolute right-0 top-1/3 z-0 h-[400px] w-[500px] rounded-full bg-cyan-500/[0.06] blur-3xl" />
+                <div className="relative z-10 flex min-w-0 flex-1 flex-col">{children}</div>
               </main>
             </div>
           </div>

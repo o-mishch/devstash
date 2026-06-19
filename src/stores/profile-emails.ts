@@ -17,6 +17,7 @@ interface ProfileEmailsStore extends ProfileEmailsState {
   addCredentialLogin: (email: string) => void
   changeCredentialLogin: (email: string) => void
   removeCredentialLogin: () => void
+  removeLinkedAccount: (id: string) => void
 }
 
 // Empty defaults — this module-global store must never expose one user's emails (PII) to the next
@@ -49,4 +50,14 @@ export const useProfileEmailsStore = create<ProfileEmailsStore>((set) => ({
     })),
   changeCredentialLogin: (email) => set((state) => previewCredentialEmailChange(state, email)),
   removeCredentialLogin: () => set((state) => previewCredentialEmailRemoval(state)),
+  removeLinkedAccount: (id) =>
+    set((state) => {
+      const removed = state.linkedAccounts.find((a) => a.id === id)
+      const linkedAccounts = state.linkedAccounts.filter((a) => a.id !== id)
+      const availableEmails =
+        removed?.email && !linkedAccounts.some((a) => a.email === removed.email)
+          ? state.availableEmails.filter((e) => e !== removed.email)
+          : state.availableEmails
+      return { linkedAccounts, availableEmails }
+    }),
 }))

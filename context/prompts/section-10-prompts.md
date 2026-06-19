@@ -82,7 +82,7 @@ map with the existing codebase.
 The goal is to implement the solution 100% complient with recommendations and best practices 
 
 
-get recomendation and best practices from contes7
+Get recommendations and best practices from context7
 
 write short enough consolidated prompt for ai agent
 

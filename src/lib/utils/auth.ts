@@ -48,13 +48,14 @@ export function outboundEmailEnabled(): boolean {
 export const emailVerificationEnabled = outboundEmailEnabled
 
 export interface LinkedAccountEmail {
+  id: string
   provider: string
   email: string | null
 }
 
 export function pickLinkedEmailForPrimary(accounts: LinkedAccountEmail[]): string | undefined {
   const withEmail = accounts.filter(
-    (account): account is { provider: string; email: string } => !!account.email,
+    (account): account is LinkedAccountEmail & { email: string } => !!account.email,
   )
   withEmail.sort((a, b) => {
     const providerOrder = (provider: string) => {

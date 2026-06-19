@@ -16,7 +16,6 @@ import { AddProviderSubmitButton } from './add-provider-submit-button'
 import { RemovePasswordDialog } from './remove-password-dialog'
 
 interface ConnectedAccountsProps {
-  accounts: LinkedAccount[]
   verificationDisabled: boolean
 }
 
@@ -57,9 +56,10 @@ function EmailRow({ email, alsoMovesPrimaryEmail, canUnlink, verificationDisable
 interface ProviderAccountRowProps {
   account: LinkedAccount
   canUnlink: boolean
+  onUnlinked: (id: string) => void
 }
 
-function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
+function ProviderAccountRow({ account, canUnlink, onUnlinked }: ProviderAccountRowProps) {
   const label = PROVIDER_LABELS[account.provider] ?? account.provider
 
   return (
@@ -84,6 +84,7 @@ function ProviderAccountRow({ account, canUnlink }: ProviderAccountRowProps) {
           accountId={account.id}
           successMessage={`${label} account unlinked.`}
           errorMessage="Failed to unlink account."
+          onSuccess={() => onUnlinked(account.id)}
         />
       ) : (
         <span className="text-xs text-muted-foreground shrink-0">Connected</span>
@@ -114,7 +115,7 @@ function AddProviderRow({ provider }: AddProviderRowProps) {
   )
 }
 
-export function ConnectedAccounts({ accounts, verificationDisabled }: ConnectedAccountsProps) {
+export function ConnectedAccounts({ verificationDisabled }: ConnectedAccountsProps) {
   // Credential-login presence + emails come from the shared profile-emails store so adding/deleting a
   // login reflects instantly here AND in the primary-email dropdown (a sibling in another card) — the
   // server re-render lags behind the route handler's stale-while-revalidate cache invalidation. The
@@ -124,13 +125,15 @@ export function ConnectedAccounts({ accounts, verificationDisabled }: ConnectedA
   const credentialEmail = useProfileEmailsStore((state) => state.credentialEmail)
   const currentEmail = useProfileEmailsStore((state) => state.currentEmail)
   const availableEmails = useProfileEmailsStore((state) => state.availableEmails)
+  const linkedAccounts = useProfileEmailsStore((state) => state.linkedAccounts)
   const addCredentialLogin = useProfileEmailsStore((state) => state.addCredentialLogin)
   const changeCredentialLogin = useProfileEmailsStore((state) => state.changeCredentialLogin)
   const removeCredentialLogin = useProfileEmailsStore((state) => state.removeCredentialLogin)
+  const removeLinkedAccount = useProfileEmailsStore((state) => state.removeLinkedAccount)
 
   const loginEmail = credentialEmail ?? currentEmail
   const alsoMovesPrimaryEmail = primaryEmailMovesWithCredential({ email: currentEmail, credentialEmail })
-  const totalMethods = (hasCredentialLogin ? 1 : 0) + accounts.length
+  const totalMethods = (hasCredentialLogin ? 1 : 0) + linkedAccounts.length
 
   return (
     <div className="space-y-2">
@@ -138,7 +141,7 @@ export function ConnectedAccounts({ accounts, verificationDisabled }: ConnectedA
         <EmailRow
           email={loginEmail}
           alsoMovesPrimaryEmail={alsoMovesPrimaryEmail}
-          canUnlink={accounts.length > 0}
+          canUnlink={linkedAccounts.length > 0}
           verificationDisabled={verificationDisabled}
           onChanged={changeCredentialLogin}
           onRemoved={removeCredentialLogin}
@@ -156,11 +159,12 @@ export function ConnectedAccounts({ accounts, verificationDisabled }: ConnectedA
           />
         </div>
       )}
-      {accounts.map((account) => (
+      {linkedAccounts.map((account) => (
         <ProviderAccountRow
           key={account.id}
           account={account}
           canUnlink={totalMethods > 1}
+          onUnlinked={removeLinkedAccount}
         />
       ))}
       {SUPPORTED_OAUTH_PROVIDERS.map((provider) => (
