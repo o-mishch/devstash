@@ -66,8 +66,17 @@ export const generateCollectionDescriptionInput = z
   .transform((data) => ({ name: data.name.trim().slice(0, COLLECTION_NAME_MAX_CHARS) }))
   .refine((data) => data.name.length > 0, { message: 'Collection name is required' })
 
+// Explain a code item the user already owns: only the item id is sent — the route reads the
+// canonical content/language/type from the DB (scoped to the session userId), so the client never
+// re-uploads the code and the server never trusts client-supplied content.
+export const explainCodeInput = z.object({
+  itemId: z.string().trim().min(1),
+})
+
 // Shared `{ description }` response — reused by item + collection description, so `.meta({ id })`
 // emits a single $ref component.
 export const aiDescriptionOutput = z.object({ description: z.string() }).meta({ id: 'AiDescription' })
+
+export const aiExplanationOutput = z.object({ explanation: z.string() }).meta({ id: 'AiExplanation' })
 
 export const aiTagsOutput = z.array(z.string())

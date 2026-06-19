@@ -21,6 +21,7 @@ export type RateLimitKey =
   | 'confirmLoginEmail'
   | 'aiTags'
   | 'aiDescription'
+  | 'aiExplain'
   | 'stripeCheckout'
   | 'stripePortal'
   | 'stripeSubscription'
@@ -52,6 +53,7 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   confirmLoginEmail:    { attempts: 5,  window: '15 m' }, // keyed by IP — public credential-email confirm
   aiTags:               { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage
   aiDescription:        { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage
+  aiExplain:            { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage (code explanations)
   stripeCheckout:       { attempts: 10, window: '1 h'  }, // keyed by userId — Stripe Checkout sessions
   stripePortal:         { attempts: 20, window: '1 h'  }, // keyed by userId — Billing Portal sessions
   stripeSubscription:   { attempts: 10, window: '1 h'  }, // keyed by userId — cancel / reactivate

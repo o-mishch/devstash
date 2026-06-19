@@ -1,17 +1,21 @@
 'use client'
 
-import { useState, type MouseEvent } from 'react'
+import { useState, useLayoutEffect, type MouseEvent } from 'react'
 import { ExternalLink, Tag, Download, FileIcon, XCircle, RotateCcw } from 'lucide-react'
 import { showFileNotFoundToast } from '@/hooks/use-restricted-download'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
+import { UnsavedExplanationDialog } from '@/components/shared/unsaved-explanation-dialog'
+import { ReplaceDescriptionDialog } from '@/components/shared/replace-description-dialog'
 import { ImageLightbox } from '@/components/shared/image-lightbox'
 import { ItemTags } from '@/components/shared/item-tags'
 import { DrawerLayout, DrawerSection, DrawerCollectionsSection, DrawerDetailsSection, DrawerCollectionsSkeleton, DrawerDetailsSkeleton } from './drawer-shared'
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
-import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import { useExplainCode } from '@/hooks/use-explain-code'
+import { useDirtyGuard } from '@/hooks/use-dirty-guard'
+import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { useProDownloadSrc } from '@/hooks/use-pro-download-src'
 import { clearSignedDownloadUrlCache, markPreviewFailed, isPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/lib/utils/signed-download-cache'
@@ -157,17 +161,49 @@ interface ItemDrawerViewContentProps {
   onClose: () => void
   onEdit: () => void
   onDeleted: () => void
+  /**
+   * Ref the parent Sheet reads on Esc/backdrop/swipe so those close paths also run through the
+   * unsaved-explanation guard (mirrors the edit form's dirty guard).
+   */
+  sheetCloseRef?: { current: (() => void) | null }
+  // Fires with the full updated item after an explanation is saved, so the drawer reflects the new
+  // description immediately and it survives reopen (mirrors the edit form's onSave).
+  onExplanationSaved?: (updated: FullItem) => void
 }
 
-export function ItemDrawerViewContent({ item, isLight, contentLoading = false, onClose, onEdit, onDeleted }: ItemDrawerViewContentProps) {
+export function ItemDrawerViewContent({ item, isLight, contentLoading = false, onClose, onEdit, onDeleted, sheetCloseRef, onExplanationSaved }: ItemDrawerViewContentProps) {
   const { itemType } = item
   const fullItem = isFullItem(item) ? item : null
   const description = isFullItem(item) ? item.description : item.descriptionPreview
+  const explain = useExplainCode(fullItem, onExplanationSaved)
+  const canExplain = fullItem !== null && ITEM_TYPES_WITH_CODE_EDITOR.has(itemType.name)
+
+  // Guard the drawer close while an explanation is generated but not yet saved to the description.
+  const { handleOpenChange, confirmOpen, handleConfirmOpenChange, handleDiscard } = useDirtyGuard({
+    isDirty: canExplain && explain.hasUnsaved,
+    onClose,
+  })
+
+  // Route Esc/backdrop/swipe (handled by the parent Sheet) through the same guard. Cleared on unmount.
+  useLayoutEffect(() => {
+    if (!sheetCloseRef) return
+    sheetCloseRef.current = () => handleOpenChange(false)
+    return () => { sheetCloseRef.current = null }
+  })
+
+  const handleSaveAndClose = async () => {
+    const ok = await explain.save()
+    if (ok) {
+      handleConfirmOpenChange(false)
+      handleOpenChange(false, true)
+    }
+  }
 
   return (
+    <>
     <DrawerLayout
       itemType={itemType}
-      onClose={onClose}
+      onClose={() => handleOpenChange(false)}
       titleArea={
         <>
           <h2 className="text-base font-semibold leading-snug max-sm:text-sm">{item.title}</h2>
@@ -203,6 +239,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
                 itemType={itemType.name}
                 content={fullItem!.content}
                 language={fullItem!.language}
+                explain={canExplain ? explain : undefined}
               />
             </div>
           )}
@@ -217,7 +254,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
 
       <DrawerSection label="Description">
         {description ? (
-          <p className="text-sm leading-relaxed">{description}</p>
+          <p className="text-sm leading-relaxed whitespace-pre-line">{description}</p>
         ) : (
           <p className="text-sm text-muted-foreground">—</p>
         )}
@@ -258,5 +295,24 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
         </>
       )}
     </DrawerLayout>
+    {canExplain && (
+      <>
+        <UnsavedExplanationDialog
+          open={confirmOpen}
+          onOpenChange={handleConfirmOpenChange}
+          onSave={handleSaveAndClose}
+          onDiscard={handleDiscard}
+          replacesExisting={explain.replacesExisting}
+          isSaving={explain.isSaving}
+        />
+        <ReplaceDescriptionDialog
+          open={explain.replaceConfirmOpen}
+          onOpenChange={explain.onReplaceConfirmOpenChange}
+          onConfirm={explain.confirmReplace}
+          isSaving={explain.isSaving}
+        />
+      </>
+    )}
+    </>
   )
 }

@@ -23,6 +23,11 @@ export function parseOrFail<T>(schema: ZodType<T>, input: unknown): ParseResult<
 
 export const MAX_PASSWORD_LENGTH = 128
 
+// Item description upper bound. Raised to hold a full AI code explanation (persisted to
+// `item.description`); the explain prompt/parser clamps to the same limit. The separate 280-char
+// auto-description clamp (ITEM_MAX_DESCRIPTION_CHARS) is unrelated and unchanged.
+export const ITEM_DESCRIPTION_MAX_CHARS = 2000
+
 /** Login / link-account password field — min 1 (presence), max 128 (bcrypt DoS guard). */
 export const loginPasswordSchema = z
   .string()
@@ -80,7 +85,7 @@ export type ItemFormBaseValues = z.infer<typeof itemFormBaseSchema>
 
 export const itemMutationSchema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
-  description: z.string().trim().optional().nullable().transform((v) => v || null),
+  description: z.string().trim().max(ITEM_DESCRIPTION_MAX_CHARS, 'Description is too long').optional().nullable().transform((v) => v || null),
   content: z.string().optional().nullable().transform((v) => v || null),
   url: z.union([z.string().trim().pipe(z.url('Must be a valid URL')), z.literal('')]).optional().nullable().transform((v) => v || null),
   language: z.string().trim().optional().nullable().transform((v) => v || null),

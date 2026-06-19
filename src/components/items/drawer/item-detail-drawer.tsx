@@ -143,6 +143,11 @@ function ItemDetailDrawerInner({
             onItemDeleted(displayItem.id)
             onOpenChange(false)
           }}
+          sheetCloseRef={sheetCloseRef}
+          onExplanationSaved={(updated) => {
+            setSavedItem(updated)
+            onItemSaved(updated)
+          }}
         />
       )}
     </>

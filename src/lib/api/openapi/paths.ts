@@ -29,7 +29,9 @@ import {
   generateDescriptionInput,
   generateTagsInput,
   generateCollectionDescriptionInput,
+  explainCodeInput,
   aiDescriptionOutput,
+  aiExplanationOutput,
   aiTagsOutput,
 } from '../schemas/ai'
 import { searchQueryParam, searchResultSchema } from '../schemas/search'
@@ -356,6 +358,22 @@ export const paths: ZodOpenApiPathsObject = {
         200: {
           description: 'The generated description',
           content: { 'application/json': { schema: aiDescriptionOutput } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/ai/explain': {
+    post: {
+      summary: 'Explain a code item with AI (Pro)',
+      requestBody: { content: { 'application/json': { schema: explainCodeInput } } },
+      responses: {
+        200: {
+          description: 'The generated explanation',
+          content: { 'application/json': { schema: aiExplanationOutput } },
         },
         401: unauthorized,
         403: problem('Pro subscription required'),

@@ -15,18 +15,40 @@ vi.mock('@/lib/ai/description-generation', () => ({
   runOpenAiCompletion: vi.fn(),
   resolveItemImageDimensions: vi.fn(),
 }))
+// Keeps the explain route from importing Prisma; the DB read lives inside the mocked runProAiGeneration.
+vi.mock('@/lib/db/items', () => ({ getItemExplainContext: vi.fn() }))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
-import { runProAiGeneration } from '@/lib/ai/description-generation'
+import { runProAiGeneration, runOpenAiCompletion } from '@/lib/ai/description-generation'
+import { getItemExplainContext } from '@/lib/db/items'
+import { EXPLAIN_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 
 import { POST as DESCRIPTION } from './description/route'
 import { POST as TAGS } from './tags/route'
 import { POST as COLLECTION_DESCRIPTION } from './collection-description/route'
+import { POST as EXPLAIN } from './explain/route'
 
 const mockSession = getCachedSession as ReturnType<typeof vi.fn>
 const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 const mockRun = runProAiGeneration as ReturnType<typeof vi.fn>
+const mockCompletion = runOpenAiCompletion as ReturnType<typeof vi.fn>
+const mockGetContext = getItemExplainContext as ReturnType<typeof vi.fn>
+
+// Capture the `execute` callback the route hands to runProAiGeneration so the route's own DB read,
+// null-content guard, and content truncation (which the full mock above would otherwise skip) are
+// exercised directly. Returns the captured callback.
+type ExecuteFn = (client: unknown, data: { itemId: string }) => Promise<unknown>
+async function runExplainExecute(payload: unknown): Promise<ExecuteFn> {
+  let captured: ExecuteFn | null = null
+  mockRun.mockImplementation(async ({ execute }: { execute: ExecuteFn }) => {
+    captured = execute
+    return { ok: true, value: { explanation: 'unused' } }
+  })
+  await EXPLAIN(req(payload))
+  if (!captured) throw new Error('execute callback was never passed to runProAiGeneration')
+  return captured
+}
 
 function req(payload: unknown): NextRequest {
   return new NextRequest('http://localhost/api/ai', { method: 'POST', body: JSON.stringify(payload) })
@@ -86,6 +108,71 @@ describe('POST /ai/tags', () => {
     const res = await TAGS(req({ itemType: 'snippet', title: 'My Snippet' }))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual(['react', 'hooks'])
+  })
+})
+
+describe('POST /ai/explain', () => {
+  it('returns 401 when not signed in', async () => {
+    mockSession.mockResolvedValue(null)
+    const res = await EXPLAIN(req({ itemId: 'item-1' }))
+    expect(res.status).toBe(401)
+    expect(mockRun).not.toHaveBeenCalled()
+  })
+
+  it('returns 422 when itemId is missing', async () => {
+    const res = await EXPLAIN(req({}))
+    expect(res.status).toBe(422)
+    expect(mockRun).not.toHaveBeenCalled()
+  })
+
+  it('returns 403 when the user is not Pro', async () => {
+    mockRun.mockResolvedValue({ ok: false, status: 403, message: 'This feature requires a Pro subscription.' })
+    const res = await EXPLAIN(req({ itemId: 'item-1' }))
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 429 with a Retry-After header when rate-limited', async () => {
+    mockRun.mockResolvedValue({ ok: false, status: 429, message: 'slow down', retryAfter: 30 })
+    const res = await EXPLAIN(req({ itemId: 'item-1' }))
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBe('30')
+  })
+
+  it('returns 500 when the OpenAI client is unconfigured', async () => {
+    mockRun.mockResolvedValue({ ok: false, status: 500, message: 'AI code explanation is not configured.' })
+    const res = await EXPLAIN(req({ itemId: 'item-1' }))
+    expect(res.status).toBe(500)
+  })
+
+  it('returns 200 with the generated explanation', async () => {
+    mockRun.mockResolvedValue({ ok: true, value: { explanation: 'It memoizes a fetch.' } })
+    const res = await EXPLAIN(req({ itemId: 'item-1' }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ explanation: 'It memoizes a fetch.' })
+    // Pro userId from session is passed to the orchestration (IDOR-safe).
+    expect(mockRun).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', isPro: true }))
+  })
+
+  it('execute reads the item scoped to the session userId and yields null when content is empty', async () => {
+    mockGetContext.mockResolvedValue({ itemType: 'snippet', content: null, language: null })
+    const execute = await runExplainExecute({ itemId: 'item-1' })
+
+    await expect(execute({}, { itemId: 'item-1' })).resolves.toBeNull()
+    // IDOR-safe: the DB read is scoped to the session userId, not anything from the request body.
+    expect(mockGetContext).toHaveBeenCalledWith('user-1', 'item-1')
+    expect(mockCompletion).not.toHaveBeenCalled()
+  })
+
+  it('execute truncates content to the input cap before calling the model', async () => {
+    const oversized = 'a'.repeat(EXPLAIN_MAX_INPUT_CHARS + 500)
+    mockGetContext.mockResolvedValue({ itemType: 'snippet', content: oversized, language: 'ts' })
+    mockCompletion.mockResolvedValue({ explanation: 'done' })
+    const execute = await runExplainExecute({ itemId: 'item-1' })
+
+    await expect(execute({}, { itemId: 'item-1' })).resolves.toEqual({ explanation: 'done' })
+    const userMessage = mockCompletion.mock.calls[0][1].input as string
+    expect(userMessage).toContain('a'.repeat(EXPLAIN_MAX_INPUT_CHARS))
+    expect(userMessage).not.toContain('a'.repeat(EXPLAIN_MAX_INPUT_CHARS + 1))
   })
 })
 

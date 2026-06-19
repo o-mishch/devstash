@@ -279,6 +279,26 @@ export const ITEM_CONTENT_SELECT = {
   language: true,
 } as const
 
+export interface ItemExplainContext {
+  itemType: string
+  content: string | null
+  language: string | null
+}
+
+/** Canonical content/language/type for the AI explain route — read server-side so the code is never
+ * re-uploaded by the client and is always scoped to the session userId. */
+export async function getItemExplainContext(userId: string, itemId: string): Promise<ItemExplainContext | null> {
+  'use cache'
+  cacheTag(CacheTags.itemContent(userId, itemId), CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const row = await prisma.item.findUnique({
+    where: { id: itemId, userId },
+    select: { content: true, language: true, itemType: { select: { name: true } } },
+  })
+  if (!row) return null
+  return { itemType: row.itemType.name, content: row.content, language: row.language }
+}
+
 export async function getItemDetails(userId: string, itemId: string): Promise<ItemDetails | null> {
   'use cache'
   const cacheKey = CacheTags.itemDetails(userId, itemId)

@@ -5,6 +5,10 @@ export const FREE_TIER_COLLECTION_LIMIT = 3
 
 export const THEME_STORAGE_KEY = 'theme'
 
+// Max characters of code sent to the AI explain model. The client warns when the item exceeds this
+// (only the first slice is used); the route truncates server-side before calling OpenAI.
+export const EXPLAIN_MAX_INPUT_CHARS = 8000
+
 export const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
   google: 'Google',

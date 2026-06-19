@@ -12,6 +12,8 @@ type UpdateItemPayload = UpdateItemInput
 
 interface UpdateItemOptions {
   onSave: (updated: FullItem) => void
+  // Override the success toast copy (e.g. the explain flow saves the explanation as the description).
+  successMessage?: string
 }
 
 export function useUpdateItem() {
@@ -66,7 +68,7 @@ export function useUpdateItem() {
       }
       updateItem(fullUpdated)
       options.onSave(fullUpdated)
-      toast.success('Item saved')
+      toast.success(options.successMessage ?? 'Item saved')
     } else {
       // Rollback optimistic patch.
       for (const [queryKey, snapshot] of snapshots) {

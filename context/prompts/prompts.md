@@ -87,3 +87,6 @@ Get recommendations and best practices from context7
 write short enough consolidated prompt for ai agent
 
 get recomendations and best practices from context7 and adjust @context/current-feature.md accordinly 
+
+
+/feature load Implement prompt optimization for the prompt types. It should look at the current prompt and refine it if needed, then ask the user if they want to use that updated prompt. Put the "Optimize" button in the header, much like the "Explain" button in the snippets and command header
