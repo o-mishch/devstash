@@ -24,16 +24,18 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className, f
   const { fontSize, tabSize, wordWrap } = useEditorPreferencesStore()
   const isTouch = useIsTouch()
   const expandRef = useRef<(() => void) | null>(null)
-  const triggerExpand = useCallback(() => {
-    expandRef.current?.()
-  }, [])
+  const fullscreenRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // "Show keyboard" button: re-focuses the textarea (summoning the keyboard if it was dismissed)
+  // and expands to fullscreen if not already. preventDefault keeps the textarea from blurring
+  // before we focus it. The focus() runs synchronously inside this pointer gesture — required for
+  // iOS Safari to actually raise the on-screen keyboard.
   const handleKeyboardButtonPointerDown = useCallback((e: PointerEvent<HTMLButtonElement>) => {
-    e.preventDefault() // prevent textarea blur before we focus it
-    triggerExpand()
+    e.preventDefault()
+    if (!fullscreenRef.current) expandRef.current?.()
     textareaRef.current?.focus()
-  }, [triggerExpand])
+  }, [])
 
   const bgStyle = useEditorBgStyle()
 
@@ -43,6 +45,7 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className, f
       style={bgStyle}
       fullscreenLabel={fullscreenLabel}
       expandRef={expandRef}
+      fullscreenRef={fullscreenRef}
       header={
         <div className="flex items-center gap-1">
           {!readOnly && (
@@ -100,6 +103,8 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className, f
                 tabSize,
                 whiteSpace: wordWrap === 'on' ? 'pre-wrap' : 'pre',
               }}
+              // The chrome handles tap-to-expand; the textarea's own tap keeps its natural focus
+              // so the on-screen keyboard rises and stays up (the node is never remounted).
             />
             {isTouch && !readOnly && fullscreenLabel && (
               <button

@@ -105,10 +105,11 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
 
   const effectiveDefaultType = validInitialType || defaultItemType
 
+  // Switching the item type alone is not a "change" — it only re-shapes which empty fields are
+  // shown, so it must not trigger the unsaved-changes guard. Only actual field edits count.
   const isDirty =
     form.formState.isDirty ||
     uploadedFile !== null ||
-    itemType !== effectiveDefaultType ||
     collectionForm.formState.isDirty
 
   // In controlled mode (mobile), the parent changes `open` prop directly without
