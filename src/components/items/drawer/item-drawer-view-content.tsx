@@ -7,18 +7,18 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ItemContentView } from '@/components/shared/item-content-view'
-import { UnsavedExplanationDialog } from '@/components/shared/unsaved-explanation-dialog'
-import { ReplaceDescriptionDialog } from '@/components/shared/replace-description-dialog'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { ImageLightbox } from '@/components/shared/image-lightbox'
 import { ItemTags } from '@/components/shared/item-tags'
 import { DrawerLayout, DrawerSection, DrawerCollectionsSection, DrawerDetailsSection, DrawerCollectionsSkeleton, DrawerDetailsSkeleton } from './drawer-shared'
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { useExplainCode } from '@/hooks/use-explain-code'
+import { useOptimizePrompt } from '@/hooks/use-optimize-prompt'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
-import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_PROMPT_OPTIMIZE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { useProDownloadSrc } from '@/hooks/use-pro-download-src'
-import { clearSignedDownloadUrlCache, markPreviewFailed, isPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/lib/utils/signed-download-cache'
+import { clearSignedDownloadUrlCache, markPreviewFailed, isPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/lib/api/signed-download-cache'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useRestrictedDownload } from '@/hooks/use-restricted-download'
@@ -166,36 +166,80 @@ interface ItemDrawerViewContentProps {
    * unsaved-explanation guard (mirrors the edit form's dirty guard).
    */
   sheetCloseRef?: { current: (() => void) | null }
-  // Fires with the full updated item after an explanation is saved, so the drawer reflects the new
-  // description immediately and it survives reopen (mirrors the edit form's onSave).
-  onExplanationSaved?: (updated: FullItem) => void
+  // Fires with the full updated item after an AI result is persisted (explanation saved to the
+  // description, or optimized prompt applied to the content), so the drawer reflects the change
+  // immediately and it survives reopen (mirrors the edit form's onSave).
+  onAiResultSaved?: (updated: FullItem) => void
 }
 
-export function ItemDrawerViewContent({ item, isLight, contentLoading = false, onClose, onEdit, onDeleted, sheetCloseRef, onExplanationSaved }: ItemDrawerViewContentProps) {
+export function ItemDrawerViewContent({ item, isLight, contentLoading = false, onClose, onEdit, onDeleted, sheetCloseRef, onAiResultSaved }: ItemDrawerViewContentProps) {
   const { itemType } = item
   const fullItem = isFullItem(item) ? item : null
   const description = isFullItem(item) ? item.description : item.descriptionPreview
-  const explain = useExplainCode(fullItem, onExplanationSaved)
+  const explain = useExplainCode(fullItem, onAiResultSaved)
   const canExplain = fullItem !== null && ITEM_TYPES_WITH_CODE_EDITOR.has(itemType.name)
 
-  // Guard the drawer close while an explanation is generated but not yet saved to the description.
+  const optimize = useOptimizePrompt(fullItem, onAiResultSaved)
+  const canOptimize = fullItem !== null && ITEM_TYPES_WITH_PROMPT_OPTIMIZE.has(itemType.name)
+
+  // Guard both the drawer close AND the switch to edit mode while an AI result (explanation or
+  // optimized prompt) is generated but not yet persisted: entering edit unmounts this view, which
+  // would silently discard the result. An item is either a code type (explain) or a prompt
+  // (optimize), never both.
+  const hasUnsavedAi = (canExplain && explain.hasUnsaved) || (canOptimize && optimize.hasUnsaved)
   const { handleOpenChange, confirmOpen, handleConfirmOpenChange, handleDiscard } = useDirtyGuard({
-    isDirty: canExplain && explain.hasUnsaved,
+    isDirty: hasUnsavedAi,
     onClose,
   })
 
-  // Route Esc/backdrop/swipe (handled by the parent Sheet) through the same guard. Cleared on unmount.
+  // Which destination the open confirm dialog resolves to: closing the drawer, or switching to edit
+  // mode. Both must confirm first, but they proceed to different places.
+  const [pendingIntent, setPendingIntent] = useState<'close' | 'edit'>('close')
+
+  const requestClose = () => {
+    setPendingIntent('close')
+    handleOpenChange(false)
+  }
+
+  // Edit entry point (action bar, "Add tags…", collections): confirm first when an AI result is
+  // unsaved, otherwise switch to edit mode immediately.
+  const requestEdit = () => {
+    if (hasUnsavedAi) {
+      setPendingIntent('edit')
+      handleConfirmOpenChange(true)
+    } else {
+      onEdit()
+    }
+  }
+
+  // Route Esc/backdrop/swipe (handled by the parent Sheet) through the close guard. Cleared on unmount.
   useLayoutEffect(() => {
     if (!sheetCloseRef) return
-    sheetCloseRef.current = () => handleOpenChange(false)
+    sheetCloseRef.current = requestClose
     return () => { sheetCloseRef.current = null }
   })
 
-  const handleSaveAndClose = async () => {
-    const ok = await explain.save()
-    if (ok) {
-      handleConfirmOpenChange(false)
+  // After the user resolves the unsaved-AI dialog, proceed to the recorded destination.
+  const proceedAfterGuard = () => {
+    handleConfirmOpenChange(false)
+    if (pendingIntent === 'edit') {
+      onEdit()
+    } else {
       handleOpenChange(false, true)
+    }
+  }
+
+  const handleGuardSave = async () => {
+    const ok = canOptimize ? await optimize.apply() : await explain.save()
+    if (ok) proceedAfterGuard()
+  }
+
+  const handleGuardDiscard = () => {
+    if (pendingIntent === 'edit') {
+      handleConfirmOpenChange(false)
+      onEdit()
+    } else {
+      handleDiscard()
     }
   }
 
@@ -203,7 +247,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
     <>
     <DrawerLayout
       itemType={itemType}
-      onClose={() => handleOpenChange(false)}
+      onClose={requestClose}
       titleArea={
         <>
           <h2 className="text-base font-semibold leading-snug max-sm:text-sm">{item.title}</h2>
@@ -218,7 +262,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
           item={item}
           isLight={isLight}
           fullItem={fullItem}
-          onEdit={onEdit}
+          onEdit={requestEdit}
           onDeleted={onDeleted}
         />
       }
@@ -240,6 +284,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
                 content={fullItem!.content}
                 language={fullItem!.language}
                 explain={canExplain ? explain : undefined}
+                optimize={canOptimize ? optimize : undefined}
               />
             </div>
           )}
@@ -277,7 +322,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
         {item.tags.length > 0 ? (
           <ItemTags tags={item.tags} />
         ) : (
-          <Button variant="outline" size="sm" className="h-7 text-xs border-dashed text-muted-foreground" onClick={onEdit}>
+          <Button variant="outline" size="sm" className="h-7 text-xs border-dashed text-muted-foreground" onClick={requestEdit}>
             Add tags...
           </Button>
         )}
@@ -290,26 +335,58 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
         </>
       ) : fullItem && (
         <>
-          <DrawerCollectionsSection item={fullItem} onEdit={onEdit} />
+          <DrawerCollectionsSection item={fullItem} onEdit={requestEdit} />
           <DrawerDetailsSection item={fullItem} />
         </>
       )}
     </DrawerLayout>
     {canExplain && (
       <>
-        <UnsavedExplanationDialog
+        <ConfirmDialog
           open={confirmOpen}
           onOpenChange={handleConfirmOpenChange}
-          onSave={handleSaveAndClose}
-          onDiscard={handleDiscard}
-          replacesExisting={explain.replacesExisting}
-          isSaving={explain.isSaving}
+          title="Unsaved explanation"
+          description={explain.replacesExisting
+            ? 'This code explanation hasn’t been saved. Save it as the item’s description (replacing the current one) or it will be lost.'
+            : 'This code explanation hasn’t been saved. Save it as the item’s description or it will be lost.'}
+          confirmLabel="Save as description"
+          onConfirm={handleGuardSave}
+          onDiscard={handleGuardDiscard}
+          cancelLabel="Keep open"
+          isPending={explain.isSaving}
         />
-        <ReplaceDescriptionDialog
+        <ConfirmDialog
           open={explain.replaceConfirmOpen}
           onOpenChange={explain.onReplaceConfirmOpenChange}
+          title="Replace description?"
+          description="This item already has a description. Saving the explanation will permanently replace it."
+          confirmLabel="Replace"
           onConfirm={explain.confirmReplace}
-          isSaving={explain.isSaving}
+          isPending={explain.isSaving}
+        />
+      </>
+    )}
+    {canOptimize && (
+      <>
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={handleConfirmOpenChange}
+          title="Unsaved optimized prompt"
+          description="This optimized prompt hasn’t been applied. Apply it as the item’s content (replacing the current prompt) or it will be lost."
+          confirmLabel="Apply"
+          onConfirm={handleGuardSave}
+          onDiscard={handleGuardDiscard}
+          cancelLabel="Keep open"
+          isPending={optimize.isSaving}
+        />
+        <ConfirmDialog
+          open={optimize.replaceConfirmOpen}
+          onOpenChange={optimize.onReplaceConfirmOpenChange}
+          title="Replace prompt?"
+          description="Applying the optimized prompt will permanently replace this item’s current content."
+          confirmLabel="Replace"
+          onConfirm={optimize.confirmReplace}
+          isPending={optimize.isSaving}
         />
       </>
     )}

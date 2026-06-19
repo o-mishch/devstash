@@ -12,7 +12,7 @@ import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { getDownloadUrl } from '@/lib/utils/url'
 import { useProDownloadSrc } from '@/hooks/use-pro-download-src'
-import { clearSignedDownloadUrlCache, markPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/lib/utils/signed-download-cache'
+import { clearSignedDownloadUrlCache, markPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/lib/api/signed-download-cache'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 

@@ -144,7 +144,7 @@ function ItemDetailDrawerInner({
             onOpenChange(false)
           }}
           sheetCloseRef={sheetCloseRef}
-          onExplanationSaved={(updated) => {
+          onAiResultSaved={(updated) => {
             setSavedItem(updated)
             onItemSaved(updated)
           }}
@@ -200,10 +200,18 @@ export function ItemDetailDrawer({
         showCloseButton={false}
         {...swipe.handlers}
       >
+        {/* Desktop resize handle: a thin strip along the inner (left) edge. The centered pill
+            is a visual grip affordance signalling the drawer can be dragged wider/narrower —
+            it brightens on hover and while dragging. Hidden on mobile, which swipes to dismiss. */}
         <div
-          className={`absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize transition-colors max-sm:hidden ${dragging ? 'bg-primary/40' : 'hover:bg-primary/30'}`}
+          className={`group absolute left-0 top-0 z-10 flex h-full w-1.5 cursor-ew-resize items-center justify-center transition-colors max-sm:hidden ${dragging ? 'bg-primary/40' : 'hover:bg-primary/30'}`}
           onMouseDown={startResize}
-        />
+        >
+          <div
+            aria-hidden="true"
+            className={`h-10 w-1 rounded-full transition-colors ${dragging ? 'bg-primary' : 'bg-foreground/20 group-hover:bg-primary/60'}`}
+          />
+        </div>
 
         {/* Mobile-only grab affordance: a vertical pill on the inner (left) edge mirroring the
             bottom sheet's top handle, signalling the drawer can be swiped right to dismiss. The

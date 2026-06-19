@@ -1,7 +1,7 @@
 import { z, ZodType } from 'zod'
 import type { ActionState } from '@/types/actions'
 import { APP_THEMES } from '@/types/editor-preferences'
-import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEM_DESCRIPTION_MAX_CHARS } from '@/lib/utils/constants'
 
 export type ParseResult<T> =
   | { success: true; data: T }
@@ -22,11 +22,6 @@ export function parseOrFail<T>(schema: ZodType<T>, input: unknown): ParseResult<
 }
 
 export const MAX_PASSWORD_LENGTH = 128
-
-// Item description upper bound. Raised to hold a full AI code explanation (persisted to
-// `item.description`); the explain prompt/parser clamps to the same limit. The separate 280-char
-// auto-description clamp (ITEM_MAX_DESCRIPTION_CHARS) is unrelated and unchanged.
-export const ITEM_DESCRIPTION_MAX_CHARS = 2000
 
 /** Login / link-account password field — min 1 (presence), max 128 (bcrypt DoS guard). */
 export const loginPasswordSchema = z

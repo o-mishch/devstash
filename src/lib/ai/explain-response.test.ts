@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseAiExplanationResponse, CODE_EXPLANATION_SYSTEM_PROMPT } from './explain-response'
-import { ITEM_DESCRIPTION_MAX_CHARS } from '@/lib/utils/validators'
+import { ITEM_DESCRIPTION_MAX_CHARS } from '@/lib/utils/constants'
 
 describe('parseAiExplanationResponse', () => {
   it('parses plain Markdown responses (the expected shape)', () => {

@@ -8,7 +8,7 @@ import {
   getSignedDownloadUrl,
   failedPreviewItems,
   failedPreviewUrls,
-} from '@/lib/utils/signed-download-cache'
+} from '@/lib/api/signed-download-cache'
 
 export {
   seedPreviewCache,
@@ -16,7 +16,7 @@ export {
   markPreviewFailed,
   isPreviewFailed,
   getSignedDownloadUrl,
-} from '@/lib/utils/signed-download-cache'
+} from '@/lib/api/signed-download-cache'
 
 interface SignedSrcState {
   itemId: string

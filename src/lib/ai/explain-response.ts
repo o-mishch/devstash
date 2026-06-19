@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { ITEM_DESCRIPTION_MAX_CHARS } from '@/lib/utils/validators'
+import { ITEM_DESCRIPTION_MAX_CHARS } from '@/lib/utils/constants'
+import { stripMarkdownCodeFence } from '@/lib/ai/markdown'
 
 // Pure response parser + system prompt for the code-explanation endpoint — mirrors
 // `description-response.ts`. No `server-only` import: it carries no secrets and is the shared
@@ -10,14 +11,9 @@ const explanationResponseSchema = z.union([
   z.string().trim().min(1),
 ])
 
-function stripMarkdownCodeFence(text: string): string {
-  const fenceMatch = text.match(/^```(?:json|markdown)?\s*\n?([\s\S]*?)\n?```$/i)
-  return fenceMatch ? fenceMatch[1].trim() : text
-}
-
 /** Parses the model output (raw Markdown, or a `{ explanation }` JSON object) and clamps it. */
 export function parseAiExplanationResponse(responseContent: string): string | null {
-  const trimmed = stripMarkdownCodeFence(responseContent.trim())
+  const trimmed = stripMarkdownCodeFence(responseContent)
 
   let parsed: unknown = trimmed
   if (trimmed.startsWith('{')) {

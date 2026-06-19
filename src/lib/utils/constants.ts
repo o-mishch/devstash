@@ -9,6 +9,30 @@ export const THEME_STORAGE_KEY = 'theme'
 // (only the first slice is used); the route truncates server-side before calling OpenAI.
 export const EXPLAIN_MAX_INPUT_CHARS = 8000
 
+// Max characters of prompt text sent to the AI optimize model. The client warns when the item exceeds
+// this (only the first slice is used); the route truncates server-side before calling OpenAI.
+export const OPTIMIZE_MAX_INPUT_CHARS = 8000
+
+// `content` has no DB max-length, so the optimize parser clamps the model output to this explicit cap.
+export const OPTIMIZE_MAX_OUTPUT_CHARS = 8000
+
+// Per-user hourly cap applied to every AI feature (Explain, Optimize, Description, Tags). Single
+// source of truth: `rate-limit.ts` (server-only) imports this for its `ai*` keys, and the AI
+// affordance tooltips surface it to the user via aiRateLimitHint().
+export const AI_FEATURE_HOURLY_LIMIT = 20
+
+// Tooltip suffix surfacing the AI rate limit. Each AI feature has its OWN independent hourly bucket
+// (the `ai*` rate-limit keys are separate), so the hint names the specific operation — e.g.
+// "20 optimizations per hour" — to make clear the cap is per-feature, not a shared AI total.
+export function aiRateLimitHint(operationNoun: string): string {
+  return `${AI_FEATURE_HOURLY_LIMIT} ${operationNoun} per hour`
+}
+
+// Item description upper bound. Raised to hold a full AI code explanation (persisted to
+// `item.description`); the explain prompt/parser clamps to the same limit. The separate 280-char
+// auto-description clamp (ITEM_MAX_DESCRIPTION_CHARS) is unrelated and unchanged.
+export const ITEM_DESCRIPTION_MAX_CHARS = 2000
+
 export const PROVIDER_LABELS: Record<string, string> = {
   github: 'GitHub',
   google: 'Google',
@@ -21,6 +45,9 @@ export const ITEM_TYPES_WITH_CONTENT = new Set(['snippet', 'command', 'prompt', 
 export const ITEM_TYPES_WITH_LANGUAGE = new Set(['snippet', 'command'])
 export const ITEM_TYPES_WITH_CODE_EDITOR = new Set(['snippet', 'command'])
 export const ITEM_TYPES_WITH_MARKDOWN_EDITOR = new Set(['prompt', 'note'])
+// AI prompt optimization is gated strictly to `prompt` — the markdown editor is shared with `note`,
+// which must never get the Optimize affordance.
+export const ITEM_TYPES_WITH_PROMPT_OPTIMIZE = new Set(['prompt'])
 export const ITEM_TYPES_WITH_URL = new Set(['link'])
 export const ITEM_TYPES_WITH_FILE = new Set(['image', 'file'])
 export const ITEM_TYPES_WITH_IMAGE_GRID = new Set(['image'])

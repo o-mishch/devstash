@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { startThemeTransition, type TransitionEventCoords } from '@/lib/utils/theme-transition'
+import { startThemeTransition, type TransitionEventCoords } from '@/lib/dom/theme-transition'
 import { RotateCcw } from 'lucide-react'
 import { DarkLightSwitch } from '@/components/shared/dark-light-switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'

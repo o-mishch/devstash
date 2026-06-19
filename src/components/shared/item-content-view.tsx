@@ -1,17 +1,18 @@
 'use client'
 
 import { type ReactNode, Suspense, useState } from 'react'
-import { Sparkles, Crown, Loader2, Save, Check } from 'lucide-react'
+import { Sparkles, Crown, Loader2, Save, Check, Wand2, type LucideIcon } from 'lucide-react'
 import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR, aiRateLimitHint } from '@/lib/utils/constants'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
 import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { cn } from '@/lib/utils'
 import type { ExplainController } from '@/hooks/use-explain-code'
+import type { OptimizeController } from '@/hooks/use-optimize-prompt'
 import { CodeEditor, MarkdownViewer } from './dynamic-editors'
 
 interface EditorChromeContainerProps {
@@ -58,22 +59,184 @@ function PlainTextView({ content }: PlainTextViewProps) {
   )
 }
 
-interface MarkdownContentViewProps {
-  content: string
+type AiContentTab = 'source' | 'result'
+
+interface AiChromeHeaderLabels {
+  // Free-user chip + generate-button text (e.g. "Optimize" / "Explain").
+  action: string
+  generateTooltip: string
+  // Tab labels for the original content vs. the AI result.
+  sourceTab: string
+  resultTab: string
+  // Shown once the result is persisted (e.g. "Applied" / "Saved").
+  doneLabel: string
+  // Persist-button text + tooltip (e.g. "Apply" / "Save").
+  applyLabel: string
+  applyTooltip: string
 }
 
-function MarkdownContentView({ content }: MarkdownContentViewProps) {
+interface AiChromeHeaderProps {
+  // The AI result, or null before it has been generated.
+  result: string | null
+  isLoading: boolean
+  isSaving: boolean
+  // True once the result has been persisted to the item.
+  isDone: boolean
+  onGenerate: () => void
+  // Persist entry point (the controller confirms first where required).
+  onApply: () => void
+  tab: AiContentTab
+  onTabChange: (tab: AiContentTab) => void
+  labels: AiChromeHeaderLabels
+  ApplyIcon: LucideIcon
+}
+
+// Shared chrome-header affordance for the AI Explain + Optimize features: a Crown hint for free
+// users, a Sparkles generate button before generating, then Source/Result tabs plus a persist button
+// once a result exists.
+function AiChromeHeader({ result, isLoading, isSaving, isDone, onGenerate, onApply, tab, onTabChange, labels, ApplyIcon }: AiChromeHeaderProps) {
+  const { isPro } = useAppUserFlagsStore()
+
+  if (!isPro) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span className="inline-flex cursor-not-allowed items-center gap-1 rounded px-1.5 py-0.5 text-xs text-white/50">
+              <Crown className="size-3.5" />
+              {labels.action}
+            </span>
+          }
+        />
+        <TooltipContent>AI features require Pro subscription</TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  if (result === null) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={isLoading}
+              className="inline-flex items-center gap-1 rounded bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/40 transition-colors hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary/15"
+            >
+              {isLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+              {labels.action}
+            </button>
+          }
+        />
+        <TooltipContent>{labels.generateTooltip}</TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-0.5 rounded bg-black/20 p-0.5 text-xs">
+        <button
+          type="button"
+          onClick={() => onTabChange('source')}
+          aria-pressed={tab === 'source'}
+          className={cn('rounded px-2 py-0.5 transition-colors', tab === 'source' ? 'bg-white/15 text-white' : 'text-white/60 hover:text-white/80')}
+        >
+          {labels.sourceTab}
+        </button>
+        <button
+          type="button"
+          onClick={() => onTabChange('result')}
+          aria-pressed={tab === 'result'}
+          className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 transition-colors', tab === 'result' ? 'bg-white/15 text-white' : 'text-white/60 hover:text-white/80')}
+        >
+          {isLoading ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+          {labels.resultTab}
+        </button>
+      </div>
+      {/* Always rendered while a result exists (both tabs) so toggling never adds or removes this box
+          — neighboring controls would otherwise reflow horizontally. */}
+      {isDone ? (
+        <span className="inline-flex items-center gap-1 px-1 text-[11px] text-white/40">
+          <Check className="size-3" />
+          {labels.doneLabel}
+        </span>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={onApply}
+                disabled={isSaving}
+                className="inline-flex items-center gap-1 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary ring-1 ring-inset ring-primary/40 transition-colors hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary/15"
+              >
+                {isSaving ? <Loader2 className="size-3 animate-spin" /> : <ApplyIcon className="size-3" />}
+                {labels.applyLabel}
+              </button>
+            }
+          />
+          <TooltipContent>{labels.applyTooltip}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  )
+}
+
+interface MarkdownContentViewProps {
+  content: string
+  // Drawer read-view only: the AI Optimize controller for prompt items.
+  optimize?: OptimizeController
+}
+
+function MarkdownContentView({ content, optimize }: MarkdownContentViewProps) {
+  const [tab, setTab] = useState<AiContentTab>('source')
+
+  // Surface a freshly generated optimized prompt by switching to its tab; manual toggles still stick.
+  // Adjusting state during render (vs. an effect) per the React "previous render" pattern.
+  const optimizedPrompt = optimize?.optimizedPrompt ?? null
+  const [shownOptimized, setShownOptimized] = useState<string | null>(null)
+  if (optimizedPrompt !== shownOptimized) {
+    setShownOptimized(optimizedPrompt)
+    if (optimizedPrompt) setTab('result')
+  }
+
+  const shownText = optimize && tab === 'result' && optimizedPrompt !== null ? optimizedPrompt : content
+
   return (
     <EditorChromeContainer
       minHeight="min-h-[120px]"
       fullscreenLabel="markdown"
       headerRight={
         <div className="flex items-center gap-1">
+          {optimize && (
+            <AiChromeHeader
+              result={optimize.optimizedPrompt}
+              isLoading={optimize.isLoading}
+              isSaving={optimize.isSaving}
+              isDone={optimize.isApplied}
+              onGenerate={optimize.generate}
+              onApply={optimize.requestApply}
+              tab={tab}
+              onTabChange={setTab}
+              ApplyIcon={Wand2}
+              labels={{
+                action: 'Optimize',
+                generateTooltip: `Optimize prompt with AI · ${aiRateLimitHint('optimizations')}`,
+                sourceTab: 'Original',
+                resultTab: 'Optimized',
+                doneLabel: 'Applied',
+                applyLabel: 'Apply',
+                applyTooltip: 'Replace the prompt with the optimized version',
+              }}
+            />
+          )}
           <span className="text-xs text-white/50 px-2 py-0 rounded bg-black/20 uppercase font-mono">
             Markdown
           </span>
           <CopyButton
-            value={content}
+            value={shownText}
             className={EDITOR_CHROME_COPY_BUTTON_CLASS}
             title="Copy content"
           />
@@ -84,10 +247,10 @@ function MarkdownContentView({ content }: MarkdownContentViewProps) {
         <div className="absolute inset-0 overflow-auto">
           <Suspense fallback={
             <pre className="p-4 text-sm font-mono whitespace-pre-wrap leading-relaxed h-full">
-              {content}
+              {shownText}
             </pre>
           }>
-            <MarkdownViewer value={content} />
+            <MarkdownViewer value={shownText} />
           </Suspense>
         </div>
       </div>
@@ -112,106 +275,6 @@ function ExplanationBody({ explanation }: { explanation: string }) {
   )
 }
 
-type CodeExplainTab = 'code' | 'explain'
-
-interface CodeExplainHeaderProps {
-  explain: ExplainController
-  tab: CodeExplainTab
-  onTabChange: (tab: CodeExplainTab) => void
-}
-
-// Chrome-header affordance for the Explain feature: a Crown hint for free users, a Sparkles "Explain"
-// button before generating, and Code/Explain tabs once an explanation exists.
-function CodeExplainHeader({ explain, tab, onTabChange }: CodeExplainHeaderProps) {
-  const { isPro } = useAppUserFlagsStore()
-
-  if (!isPro) {
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span className="inline-flex cursor-not-allowed items-center gap-1 rounded px-1.5 py-0.5 text-xs text-white/50">
-              <Crown className="size-3.5" />
-              Explain
-            </span>
-          }
-        />
-        <TooltipContent>AI features require Pro subscription</TooltipContent>
-      </Tooltip>
-    )
-  }
-
-  if (explain.explanation === null) {
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              onClick={explain.generate}
-              disabled={explain.isLoading}
-              className="inline-flex items-center gap-1 rounded bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/40 transition-colors hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary/15"
-            >
-              {explain.isLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-              Explain
-            </button>
-          }
-        />
-        <TooltipContent>Explain code with AI</TooltipContent>
-      </Tooltip>
-    )
-  }
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="flex items-center gap-0.5 rounded bg-black/20 p-0.5 text-xs">
-        <button
-          type="button"
-          onClick={() => onTabChange('code')}
-          aria-pressed={tab === 'code'}
-          className={cn('rounded px-2 py-0.5 transition-colors', tab === 'code' ? 'bg-white/15 text-white' : 'text-white/60 hover:text-white/80')}
-        >
-          Code
-        </button>
-        <button
-          type="button"
-          onClick={() => onTabChange('explain')}
-          aria-pressed={tab === 'explain'}
-          className={cn('inline-flex items-center gap-1 rounded px-2 py-0.5 transition-colors', tab === 'explain' ? 'bg-white/15 text-white' : 'text-white/60 hover:text-white/80')}
-        >
-          {explain.isLoading ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
-          Explain
-        </button>
-      </div>
-      {/* Always rendered while an explanation exists (both tabs) so toggling Code/Explain never
-          adds or removes this box — neighboring controls would otherwise reflow horizontally. */}
-      {explain.isSaved ? (
-        <span className="inline-flex items-center gap-1 px-1 text-[11px] text-white/40">
-          <Check className="size-3" />
-          Saved
-        </span>
-      ) : (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                onClick={explain.requestSave}
-                disabled={explain.isSaving}
-                className="inline-flex items-center gap-1 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary ring-1 ring-inset ring-primary/40 transition-colors hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-primary/15"
-              >
-                {explain.isSaving ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
-                Save
-              </button>
-            }
-          />
-          <TooltipContent>Save explanation as the item description</TooltipContent>
-        </Tooltip>
-      )}
-    </div>
-  )
-}
-
 interface CodeEditorViewProps {
   content: string
   language?: string | null
@@ -220,7 +283,7 @@ interface CodeEditorViewProps {
 
 function CodeEditorView({ content, language, explain }: CodeEditorViewProps) {
   const { resolvedLang, isLoading } = useMonacoLanguage(language)
-  const [tab, setTab] = useState<CodeExplainTab>('code')
+  const [tab, setTab] = useState<AiContentTab>('source')
 
   // Surface a freshly generated explanation by switching to its tab; manual toggles still stick.
   // Adjusting state during render (vs. an effect) per the React "previous render" pattern.
@@ -228,17 +291,36 @@ function CodeEditorView({ content, language, explain }: CodeEditorViewProps) {
   const [shownExplanation, setShownExplanation] = useState<string | null>(null)
   if (explanation !== shownExplanation) {
     setShownExplanation(explanation)
-    if (explanation) setTab('explain')
+    if (explanation) setTab('result')
   }
 
   if (isLoading) return <Skeleton className="h-40 w-full" />
 
   if (resolvedLang !== null || !language) {
     const headerStart = explain ? (
-      <CodeExplainHeader explain={explain} tab={tab} onTabChange={setTab} />
+      <AiChromeHeader
+        result={explain.explanation}
+        isLoading={explain.isLoading}
+        isSaving={explain.isSaving}
+        isDone={explain.isSaved}
+        onGenerate={explain.generate}
+        onApply={explain.requestSave}
+        tab={tab}
+        onTabChange={setTab}
+        ApplyIcon={Save}
+        labels={{
+          action: 'Explain',
+          generateTooltip: `Explain code with AI · ${aiRateLimitHint('explanations')}`,
+          sourceTab: 'Code',
+          resultTab: 'Explain',
+          doneLabel: 'Saved',
+          applyLabel: 'Save',
+          applyTooltip: 'Save explanation as the item description',
+        }}
+      />
     ) : null
     const bodyOverride =
-      explain && tab === 'explain' && explain.explanation !== null ? (
+      explain && tab === 'result' && explain.explanation !== null ? (
         <ExplanationBody explanation={explain.explanation} />
       ) : undefined
 
@@ -266,15 +348,17 @@ interface ItemContentViewProps {
   language?: string | null
   // Drawer read-view only: the AI Explain controller for snippet/command (the code-editor path).
   explain?: ExplainController
+  // Drawer read-view only: the AI Optimize controller for prompt (the markdown path).
+  optimize?: OptimizeController
 }
 
-export function ItemContentView({ itemType, content, language, explain }: ItemContentViewProps) {
+export function ItemContentView({ itemType, content, language, explain, optimize }: ItemContentViewProps) {
   if (!content) {
     return <p className="text-sm text-muted-foreground">—</p>
   }
 
   if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
-    return <MarkdownContentView content={content} />
+    return <MarkdownContentView content={content} optimize={optimize} />
   }
 
   if (ITEM_TYPES_WITH_CODE_EDITOR.has(itemType)) {

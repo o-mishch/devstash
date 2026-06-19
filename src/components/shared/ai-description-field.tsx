@@ -12,6 +12,7 @@ import {
 } from '@/components/shared/ai-field-chrome'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
+import { aiRateLimitHint } from '@/lib/utils/constants'
 import { cn } from '@/lib/utils'
 
 interface AiDescriptionResult {
@@ -57,7 +58,7 @@ export function useAiDescriptionField({
   })
 
   const disabled = !canGenerate || isLoading
-  const tooltip = disabled ? (disabledReason ?? '') : 'Generate description with AI'
+  const tooltip = disabled ? (disabledReason ?? '') : `Generate description with AI · ${aiRateLimitHint('descriptions')}`
 
   return { isLoading, suggestedDescription, setSuggestedDescription, run, disabled, tooltip }
 }
@@ -95,7 +96,7 @@ export function AiDescriptionField({
             onClick={run}
             disabled={disabled}
             isLoading={isLoading}
-            tooltipEnabled="Generate description with AI"
+            tooltipEnabled={`Generate description with AI · ${aiRateLimitHint('descriptions')}`}
             tooltipDisabled={field.tooltip}
             ariaLabel={isLoading ? 'Generating description' : 'Generate description with AI'}
             className={actionClassName}

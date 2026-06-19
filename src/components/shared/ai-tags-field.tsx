@@ -12,6 +12,7 @@ import {
 } from '@/components/shared/ai-field-chrome'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
+import { aiRateLimitHint } from '@/lib/utils/constants'
 
 interface UseAiTagsFieldParams {
   canGenerate: boolean
@@ -52,7 +53,7 @@ export function useAiTagsField({
   })
 
   const disabled = !canGenerate || isLoading
-  const tooltip = disabled ? (disabledReason ?? '') : 'Suggest tags with AI'
+  const tooltip = disabled ? (disabledReason ?? '') : `Suggest tags with AI · ${aiRateLimitHint('tag suggestions')}`
 
   return { isLoading, suggestedTags, setSuggestedTags, run, disabled, tooltip }
 }
@@ -91,7 +92,7 @@ export function AiTagsField({
             onClick={run}
             disabled={disabled}
             isLoading={isLoading}
-            tooltipEnabled="Suggest tags with AI"
+            tooltipEnabled={`Suggest tags with AI · ${aiRateLimitHint('tag suggestions')}`}
             tooltipDisabled={field.tooltip}
             ariaLabel={isLoading ? 'Generating tags' : 'Suggest tags with AI'}
             className={actionClassName}

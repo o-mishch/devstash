@@ -98,6 +98,7 @@ export async function createItem(formData: FormData) { ... }
 | Folder / File                 | Why safe                                                                                   |
 | ----------------------------- | ------------------------------------------------------------------------------------------ |
 | `src/lib/utils/`              | Pure TypeScript — constants, formatters, validators, no secret env vars                    |
+| `src/lib/dom/`                | Browser-effect helpers (View Transitions, DOM triggers) — client-only, no secrets          |
 | `src/lib/editor/`             | Monaco config / themes — used in client editor components                                  |
 | `src/lib/api/schemas/**`      | Bare Zod request/response schemas — browser-safe (imported by `paths.ts` + route handlers) |
 | `src/lib/api/openapi/**`      | `paths.ts` + `spec.ts` — pure schema declarations, no secrets                              |
@@ -145,6 +146,7 @@ import { getItems } from '@/lib/db/items'
   - `src/lib/api/openapi/**` **[C]** — `paths.ts` + `spec.ts` (OpenAPI doc source)
   - `src/lib/api/client.ts` **[C]** — `api` + `$api` (browser route-handler client)
   - `src/lib/editor/` **[C]** — editor themes and config
+  - `src/lib/dom/` **[C]** — browser-effect helpers (View Transitions, DOM triggers); client-only, no secrets
   - `src/lib/utils/` **[C]** — shared constants, formatters, validators (no DB/Stripe)
 - Zustand stores (client UI state): `src/stores/[name]-store.ts` — **never** `createContext`
 

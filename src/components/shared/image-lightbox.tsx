@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { X, Loader2 } from 'lucide-react'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
-import { getSignedDownloadUrl } from '@/lib/utils/signed-download-cache'
+import { getSignedDownloadUrl } from '@/lib/api/signed-download-cache'
 
 interface ImageLightboxProps {
   open: boolean

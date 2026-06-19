@@ -30,8 +30,10 @@ import {
   generateTagsInput,
   generateCollectionDescriptionInput,
   explainCodeInput,
+  optimizePromptInput,
   aiDescriptionOutput,
   aiExplanationOutput,
+  aiOptimizedPromptOutput,
   aiTagsOutput,
 } from '../schemas/ai'
 import { searchQueryParam, searchResultSchema } from '../schemas/search'
@@ -374,6 +376,22 @@ export const paths: ZodOpenApiPathsObject = {
         200: {
           description: 'The generated explanation',
           content: { 'application/json': { schema: aiExplanationOutput } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/ai/optimize': {
+    post: {
+      summary: 'Optimize a prompt item with AI (Pro)',
+      requestBody: { content: { 'application/json': { schema: optimizePromptInput } } },
+      responses: {
+        200: {
+          description: 'The optimized prompt',
+          content: { 'application/json': { schema: aiOptimizedPromptOutput } },
         },
         401: unauthorized,
         403: problem('Pro subscription required'),

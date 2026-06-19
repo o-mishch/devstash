@@ -9,7 +9,7 @@ import { EmptyCard } from '@/components/shared/empty-card'
 import { ItemsTypeSkeleton } from '@/components/shared/skeletons'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
 import { getListGridColumns, getImageGridColumns } from '@/lib/utils/ui'
-import { triggerCreateItemButton } from '@/lib/utils/ui'
+import { triggerCreateItemButton } from '@/lib/dom/create-item-trigger'
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
 

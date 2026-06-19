@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { stripMarkdownCodeFence } from '@/lib/ai/markdown'
 
 export const ITEM_MAX_DESCRIPTION_CHARS = 280
 export const COLLECTION_MAX_DESCRIPTION_CHARS = 500
@@ -8,16 +9,11 @@ const descriptionResponseSchema = z.union([
   z.string().trim().min(1),
 ])
 
-function stripMarkdownCodeFence(text: string): string {
-  const fenceMatch = text.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i)
-  return fenceMatch ? fenceMatch[1].trim() : text
-}
-
 export function parseAiDescriptionResponse(
   responseContent: string,
   maxChars: number
 ): string | null {
-  const trimmed = stripMarkdownCodeFence(responseContent.trim())
+  const trimmed = stripMarkdownCodeFence(responseContent)
 
   let parsed: unknown = trimmed
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {

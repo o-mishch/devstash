@@ -4,7 +4,7 @@ import type { MouseEvent } from 'react'
 import { useRef } from 'react'
 import { Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { startThemeTransition } from '@/lib/utils/theme-transition'
+import { startThemeTransition } from '@/lib/dom/theme-transition'
 
 interface DarkLightSwitchProps {
   colorMode: 'light' | 'dark'

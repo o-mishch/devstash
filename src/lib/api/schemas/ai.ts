@@ -73,10 +73,19 @@ export const explainCodeInput = z.object({
   itemId: z.string().trim().min(1),
 })
 
+// Optimize a prompt the user already owns: only the item id is sent — the route reads the canonical
+// content from the DB (scoped to the session userId), so the client never re-uploads the prompt and
+// the server never trusts client-supplied content.
+export const optimizePromptInput = z.object({
+  itemId: z.string().trim().min(1),
+})
+
 // Shared `{ description }` response — reused by item + collection description, so `.meta({ id })`
 // emits a single $ref component.
 export const aiDescriptionOutput = z.object({ description: z.string() }).meta({ id: 'AiDescription' })
 
 export const aiExplanationOutput = z.object({ explanation: z.string() }).meta({ id: 'AiExplanation' })
+
+export const aiOptimizedPromptOutput = z.object({ prompt: z.string() }).meta({ id: 'AiOptimizedPrompt' })
 
 export const aiTagsOutput = z.array(z.string())

@@ -47,6 +47,12 @@ describe('parseAiDescriptionResponse', () => {
       )
     ).toBe('A fenced summary.')
   })
+
+  it('strips a non-json language fence around a plain-text description', () => {
+    expect(
+      parseAiDescriptionResponse('```text\nA fenced summary.\n```', ITEM_MAX_DESCRIPTION_CHARS)
+    ).toBe('A fenced summary.')
+  })
 })
 
 describe('buildDescriptionOutputRules', () => {

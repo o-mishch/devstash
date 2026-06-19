@@ -15,7 +15,7 @@ const failedPreviewItems = new Set<string>()
 // URL-level tracking: once a specific signed URL 404s, no component should retry it.
 const failedPreviewUrls = new Set<string>()
 
-export function cacheKey(itemId: string, preview: boolean): string {
+function cacheKey(itemId: string, preview: boolean): string {
   return preview ? `${itemId}:preview` : itemId
 }
 

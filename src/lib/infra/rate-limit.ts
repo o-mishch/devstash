@@ -2,6 +2,7 @@ import 'server-only'
 import { Ratelimit, type Duration } from '@upstash/ratelimit'
 import { headers } from 'next/headers'
 import { getRedis, RATE_LIMIT_NS } from '@/lib/infra/redis'
+import { AI_FEATURE_HOURLY_LIMIT } from '@/lib/utils/constants'
 import type { ActionState } from '@/types/actions'
 
 export type RateLimitKey =
@@ -22,6 +23,7 @@ export type RateLimitKey =
   | 'aiTags'
   | 'aiDescription'
   | 'aiExplain'
+  | 'aiOptimize'
   | 'stripeCheckout'
   | 'stripePortal'
   | 'stripeSubscription'
@@ -51,9 +53,10 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   changeCredentials:    { attempts: 5,  window: '15 m' }, // keyed by userId — email/password changes
   credentialEmail:      { attempts: 5,  window: '15 m' }, // keyed by userId — credential-login email requests
   confirmLoginEmail:    { attempts: 5,  window: '15 m' }, // keyed by IP — public credential-email confirm
-  aiTags:               { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage
-  aiDescription:        { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage
-  aiExplain:            { attempts: 20, window: '1 h'  }, // keyed by userId — OpenAI usage (code explanations)
+  aiTags:               { attempts: AI_FEATURE_HOURLY_LIMIT, window: '1 h' }, // keyed by userId — OpenAI usage
+  aiDescription:        { attempts: AI_FEATURE_HOURLY_LIMIT, window: '1 h' }, // keyed by userId — OpenAI usage
+  aiExplain:            { attempts: AI_FEATURE_HOURLY_LIMIT, window: '1 h' }, // keyed by userId — OpenAI usage (code explanations)
+  aiOptimize:           { attempts: AI_FEATURE_HOURLY_LIMIT, window: '1 h' }, // keyed by userId — OpenAI usage (prompt optimization)
   stripeCheckout:       { attempts: 10, window: '1 h'  }, // keyed by userId — Stripe Checkout sessions
   stripePortal:         { attempts: 20, window: '1 h'  }, // keyed by userId — Billing Portal sessions
   stripeSubscription:   { attempts: 10, window: '1 h'  }, // keyed by userId — cancel / reactivate

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { Settings, User, LogOut, Sun, Moon } from 'lucide-react'
 import { useEditorPreferencesStore } from '@/stores/editor-preferences'
-import { startThemeTransition } from '@/lib/utils/theme-transition'
+import { startThemeTransition } from '@/lib/dom/theme-transition'
 
 import {
   DropdownMenuContent,
