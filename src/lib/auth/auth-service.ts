@@ -7,8 +7,8 @@ import { getUserAuthInfoByEmail, getUserAuthMethods, createCredentialUser, updat
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 import type { PendingLinkData } from '@/lib/auth/pending-link'
+import { outboundEmailEnabled } from '@/lib/utils/auth'
 import {
-  emailVerificationEnabled,
   sendRegistrationVerification,
   resendVerification,
   type VerificationResult,
@@ -130,7 +130,7 @@ export async function registerUser(
   email: string,
   password: string
 ): Promise<RegisterOutcome> {
-  const verificationEnabled = emailVerificationEnabled()
+  const verificationEnabled = outboundEmailEnabled()
   // Resolve by any owned email (primary or a linked Account.email) so we never create a duplicate
   // User whose email collides with an existing account's secondary address.
   let existing = await findUserByAnyEmail(email)
@@ -295,7 +295,7 @@ export async function requestCredentialEmail(
   // Already has a password → this is a re-point of the existing sign-in email, not a first-time add.
   const isChange = !!methods?.password
 
-  if (emailVerificationEnabled()) {
+  if (outboundEmailEnabled()) {
     // Only a collision with ANOTHER user blocks the request; the caller's own owned address is allowed
     // (the confirm link then promotes it to a credential login), so it's never a silent dead-end.
     const takenByAnother = await isEmailTakenByAnotherUser(userId, email)

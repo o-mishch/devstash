@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useLayoutEffect } from 'react'
+import { useMemo, useRef } from 'react'
 import { X, Check } from 'lucide-react'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -13,6 +13,7 @@ import { ItemFormFields } from '@/components/items/item-form-fields'
 import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog'
 import { useUpdateItem } from '@/hooks/use-update-item'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
+import { useRegisterSheetClose, type SheetCloseRef } from '@/hooks/use-register-sheet-close'
 import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
@@ -53,7 +54,7 @@ interface ItemDrawerEditContentProps {
    * Ref that this component writes its guarded-close handler into. The parent
    * Sheet reads it on Esc/backdrop so those paths also go through the dirty guard.
    */
-  sheetCloseRef?: { current: (() => void) | null }
+  sheetCloseRef?: SheetCloseRef
 }
 
 export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel, sheetCloseRef }: ItemDrawerEditContentProps) {
@@ -97,12 +98,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
 
   // Expose guarded-close to the parent Sheet so Esc/backdrop go through the guard too.
   // Cleared on unmount so view-mode Esc closes normally.
-  useLayoutEffect(() => {
-    if (sheetCloseRef) {
-      sheetCloseRef.current = () => guardedAction(onClose)
-      return () => { sheetCloseRef.current = null }
-    }
-  })
+  useRegisterSheetClose(sheetCloseRef, () => guardedAction(onClose))
 
   const handleSubmit = form.handleSubmit(async (data: DrawerFormValues) => {
     const tagArray = parseTagString(data.tags)

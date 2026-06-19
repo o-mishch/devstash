@@ -3,7 +3,6 @@ import 'server-only'
 import { findUnverifiedUserByEmail } from '@/lib/db/verification'
 import { createVerificationToken, verificationRecentlySent } from '@/lib/auth/tokens'
 import { sendTokenLinkEmail } from './link-email'
-export { emailVerificationEnabled } from '@/lib/utils/auth'
 
 export type VerificationResult = 'sent' | 'failed' | 'skipped'
 

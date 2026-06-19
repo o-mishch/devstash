@@ -45,8 +45,6 @@ export function outboundEmailEnabled(): boolean {
   return process.env.DISABLE_EMAIL_VERIFICATION !== 'true'
 }
 
-export const emailVerificationEnabled = outboundEmailEnabled
-
 export interface LinkedAccountEmail {
   id: string
   provider: string

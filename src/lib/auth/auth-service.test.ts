@@ -35,8 +35,11 @@ vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', () => ({
   syncStripeCustomerEmailForUserSafe: vi.fn(),
 }))
 
+vi.mock('@/lib/utils/auth', () => ({
+  outboundEmailEnabled: vi.fn(),
+}))
+
 vi.mock('@/lib/emails/verification', () => ({
-  emailVerificationEnabled: vi.fn(),
   sendRegistrationVerification: vi.fn(),
   resendVerification: vi.fn(),
 }))
@@ -95,7 +98,8 @@ import {
 } from '@/lib/db/users'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
-import { emailVerificationEnabled, sendRegistrationVerification, resendVerification } from '@/lib/emails/verification'
+import { outboundEmailEnabled } from '@/lib/utils/auth'
+import { sendRegistrationVerification, resendVerification } from '@/lib/emails/verification'
 import { sendPasswordResetRequest } from '@/lib/emails/password-reset'
 import { sendCredentialEmailLink } from '@/lib/emails/credential-email'
 import { sendSecurityNotification } from '@/lib/emails/security-notification'
@@ -122,7 +126,7 @@ const mockFindUserByAnyEmail = findUserByAnyEmail as ReturnType<typeof vi.fn>
 const mockInvalidateProfileCache = invalidateProfileCache as ReturnType<typeof vi.fn>
 const mockSyncStripeCustomerEmail = syncStripeCustomerEmailForUserSafe as ReturnType<typeof vi.fn>
 
-const mockEmailVerificationEnabled = emailVerificationEnabled as ReturnType<typeof vi.fn>
+const mockEmailVerificationEnabled = outboundEmailEnabled as ReturnType<typeof vi.fn>
 const mockSendRegistrationVerification = sendRegistrationVerification as ReturnType<typeof vi.fn>
 const mockResendVerification = resendVerification as ReturnType<typeof vi.fn>
 const mockSendPasswordResetRequest = sendPasswordResetRequest as ReturnType<typeof vi.fn>

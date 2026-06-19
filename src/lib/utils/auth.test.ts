@@ -4,7 +4,6 @@ import {
   classifyPasswordFingerprint,
   oauthEmailIsVerified,
   outboundEmailEnabled,
-  emailVerificationEnabled,
   pickLinkedEmailForPrimary,
   resolveMatchedVerification,
   primaryEmailMovesWithCredential,
@@ -70,11 +69,6 @@ describe('outboundEmailEnabled', () => {
   it('returns false when DISABLE_EMAIL_VERIFICATION is true', () => {
     vi.stubEnv('DISABLE_EMAIL_VERIFICATION', 'true')
     expect(outboundEmailEnabled()).toBe(false)
-  })
-
-  it('aliases emailVerificationEnabled to the same flag', () => {
-    vi.stubEnv('DISABLE_EMAIL_VERIFICATION', 'true')
-    expect(emailVerificationEnabled()).toBe(outboundEmailEnabled())
   })
 })
 

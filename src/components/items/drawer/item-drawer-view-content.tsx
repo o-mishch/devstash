@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useLayoutEffect, type MouseEvent } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { ExternalLink, Tag, Download, FileIcon, XCircle, RotateCcw } from 'lucide-react'
 import { showFileNotFoundToast } from '@/hooks/use-restricted-download'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +15,7 @@ import { ItemDrawerActionBar } from './item-drawer-action-bar'
 import { useExplainCode } from '@/hooks/use-explain-code'
 import { useOptimizePrompt } from '@/hooks/use-optimize-prompt'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
+import { useRegisterSheetClose, type SheetCloseRef } from '@/hooks/use-register-sheet-close'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_PROMPT_OPTIMIZE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { useProDownloadSrc } from '@/hooks/use-pro-download-src'
@@ -165,7 +166,7 @@ interface ItemDrawerViewContentProps {
    * Ref the parent Sheet reads on Esc/backdrop/swipe so those close paths also run through the
    * unsaved-explanation guard (mirrors the edit form's dirty guard).
    */
-  sheetCloseRef?: { current: (() => void) | null }
+  sheetCloseRef?: SheetCloseRef
   // Fires with the full updated item after an AI result is persisted (explanation saved to the
   // description, or optimized prompt applied to the content), so the drawer reflects the change
   // immediately and it survives reopen (mirrors the edit form's onSave).
@@ -213,11 +214,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
   }
 
   // Route Esc/backdrop/swipe (handled by the parent Sheet) through the close guard. Cleared on unmount.
-  useLayoutEffect(() => {
-    if (!sheetCloseRef) return
-    sheetCloseRef.current = requestClose
-    return () => { sheetCloseRef.current = null }
-  })
+  useRegisterSheetClose(sheetCloseRef, requestClose)
 
   // After the user resolves the unsaved-AI dialog, proceed to the recorded destination.
   const proceedAfterGuard = () => {

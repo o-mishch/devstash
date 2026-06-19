@@ -1,16 +1,18 @@
 import { useEffect, type RefObject } from 'react'
 
+interface UseGlobalSearchShortcutsParams {
+  inputRef: RefObject<HTMLInputElement | null>
+  containerRef: RefObject<HTMLDivElement | null>
+  setOpen: (open: boolean) => void
+  closeDrawer: () => void
+}
+
 export function useGlobalSearchShortcuts({
   inputRef,
   containerRef,
   setOpen,
   closeDrawer,
-}: {
-  inputRef: RefObject<HTMLInputElement | null>
-  containerRef: RefObject<HTMLDivElement | null>
-  setOpen: (open: boolean) => void
-  closeDrawer: () => void
-}) {
+}: UseGlobalSearchShortcutsParams) {
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {

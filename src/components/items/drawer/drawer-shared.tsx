@@ -62,21 +62,6 @@ export function DrawerLayout({ itemType, onClose, titleArea, actionArea, childre
   )
 }
 
-interface SectionLabelProps {
-  children: ReactNode
-  icon?: ReactNode
-  className?: string
-}
-
-function SectionLabel({ children, icon, className }: SectionLabelProps) {
-  return (
-    <p className={cn("mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide", className)}>
-      {icon}
-      {children}
-    </p>
-  )
-}
-
 interface DrawerSectionProps {
   label: ReactNode
   icon?: ReactNode
@@ -88,7 +73,10 @@ interface DrawerSectionProps {
 export function DrawerSection({ label, icon, className, labelClassName, children }: DrawerSectionProps) {
   return (
     <section className={cn("shrink-0", className)}>
-      <SectionLabel icon={icon} className={labelClassName}>{label}</SectionLabel>
+      <p className={cn("mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide", labelClassName)}>
+        {icon}
+        {label}
+      </p>
       {children}
     </section>
   )
