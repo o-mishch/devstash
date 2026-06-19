@@ -24,14 +24,14 @@ description: Next.js architecture for DevStash — where each mutation/fetch goe
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Data read in a Server Component                                                           | `src/lib/db/` helper (not `prisma.*` inline)                                                                            |
 | Mutation or data fetch from a client component                                            | a **route handler** via `api` / `$api` (`@/lib/api/client`). **Never** a Server Action, **never** raw `fetch()`/`axios` |
-| Webhook, third-party callback, redirect with a specific HTTP status                       | exempt explicit route (`apiRoute` / `authenticatedRoute`) — see `api-contract.md`                                       |
-| Redirect-terminating auth flow that can't be REST (OAuth sign-in, sign-out, account link) | Server Action — the **only** sanctioned use (still on the `ApiBody` envelope)                                           |
+| Webhook, third-party callback, redirect with a specific HTTP status                       | exempt explicit route (using the modern route wrappers) — see `api-contract.md`                                         |
+| Redirect-terminating auth flow that can't be REST (OAuth sign-in, sign-out, account link) | Server Action — the **only** sanctioned use (returns `ActionState` or redirects directly)                               |
 
 The typed route-handler client is the default for all client-driven mutations and reads (full contract in `api-contract.md`). New code must not add Server Actions for ordinary mutations. A new endpoint is a new `src/app/api/<domain>/.../route.ts` + a `paths.ts` declaration + schemas, then `npm run openapi:gen` — not a Server Action and not a hand-edited generated type.
 
-> **Client API:** `@/lib/api/client` exports `api` (openapi-fetch — `await api.POST('/path', { body, params })` → `{ data, error, response }`, never throws) and `$api` (openapi-react-query hooks). `ApiBody`/`ApiResponse` survive only for Server Actions and the exempt routes.
+> **Client API:** `@/lib/api/client` exports `api` (openapi-fetch — `await api.POST('/path', { body, params })` → `{ data, error, response }`, never throws) and `$api` (openapi-react-query hooks).
 >
-> **Exempt route wrappers** (`@/lib/api`): `authenticatedRoute(async (request, context, { userId, isPro }) => …)` (IDOR-safe `userId`) and `apiRoute(...)` remain for the exempt explicit routes only (NextAuth, Stripe webhook, S3/Stripe redirects). Feature route handlers use the `authedRoute` / `authedRouteWithParams` / `publicRoute` wrappers from `@/lib/api/route` instead.
+> **Exempt route wrappers** use the same modern wrappers (`authedRoute`, `authedRouteWithParams`, `publicRoute`) from `@/lib/api/route` and return standard JSON or redirect (`apiRedirect`).
 
 ## Server / Client Boundary
 
@@ -103,7 +103,6 @@ export async function createItem(formData: FormData) { ... }
 | `src/lib/api/openapi/**`      | `paths.ts` + `spec.ts` — pure schema declarations, no secrets                              |
 | `src/lib/api/http.ts`         | `json` / `noContent` / `problem` / `parseOr422` — pure Response builders                   |
 | `src/lib/api/client.ts`       | `api` + `$api` — browser route-handler client                                              |
-| `src/lib/api/api-response.ts` | `ApiResponse` builders / `ApiBody` type — shared by Server Actions + exempt routes         |
 | `src/types/`                  | Type definitions only                                                                      |
 | `src/stores/`                 | Zustand stores — client state, no server imports                                           |
 | `src/hooks/`                  | React hooks — client-only by design                                                        |
@@ -111,7 +110,7 @@ export async function createItem(formData: FormData) { ... }
 
 ### Never import Node.js-only modules from client files
 
-A `'use client'` file must never import from `src/lib/db/`, `src/lib/infra/`, `src/lib/auth/`, `src/lib/billing/`, `src/lib/storage/`, `src/lib/session.ts`, or `src/lib/api/index.ts`.
+A `'use client'` file must never import from `src/lib/db/`, `src/lib/infra/`, `src/lib/auth/`, `src/lib/billing/`, `src/lib/storage/`, `src/lib/session.ts`, or `src/lib/api/route.ts`.
 
 ```typescript
 // ✅ correct — client component mutates via the typed route-handler client
@@ -140,13 +139,11 @@ import { getItems } from '@/lib/db/items'
   - `src/lib/emails/` **[S]** — transactional email senders + templates (Resend via `infra`); all outbound sends go through `sendEmail()` which no-ops when `DISABLE_EMAIL_VERIFICATION=true` (see `security.md`)
   - `src/lib/app/` **[S]** — app shell helpers (sidebar data, action utils)
   - `src/lib/session.ts` **[S]** — session + action auth helpers (root exception)
-  - `src/lib/api/index.ts` **[S]** — `apiRoute` route wrappers (exempt routes)
-  - `src/lib/api/route.ts` **[S]** — `authedRoute` / `authedRouteWithParams` / `publicRoute` (feature route handlers)
+  - `src/lib/api/route.ts` **[S]** — `authedRoute` / `authedRouteWithParams` / `publicRoute` (route handlers and wrappers)
   - `src/lib/api/http.ts` **[C]** — `json` / `noContent` / `problem` / `parseOr422` Response builders
   - `src/lib/api/schemas/**` **[C]** — bare Zod request/response schemas (browser-safe)
   - `src/lib/api/openapi/**` **[C]** — `paths.ts` + `spec.ts` (OpenAPI doc source)
   - `src/lib/api/client.ts` **[C]** — `api` + `$api` (browser route-handler client)
-  - `src/lib/api/api-response.ts` **[C]** — `ApiResponse` builders (Server Actions + exempt routes)
   - `src/lib/editor/` **[C]** — editor themes and config
   - `src/lib/utils/` **[C]** — shared constants, formatters, validators (no DB/Stripe)
 - Zustand stores (client UI state): `src/stores/[name]-store.ts` — **never** `createContext`
@@ -213,4 +210,4 @@ export const POST = authedRoute({ rateLimit: 'itemMutation' }, async ({ userId, 
 })
 ```
 
-**Server Actions and exempt routes** keep `parseOrFail` (from `@/lib/utils/validators`), which returns a ready-made `ApiResponse.VALIDATION_ERROR` body on failure.
+**Server Actions** use `parseOrFail` (from `@/lib/utils/validators`), which returns a failed `ActionState` on failure.

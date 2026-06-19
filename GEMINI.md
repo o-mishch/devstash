@@ -51,4 +51,4 @@ Read the following files for detailed rules before making any changes:
 - `.agents/rules/coding-standards.md` — TypeScript, React, Next.js, Tailwind v4, file organisation
 - `.agents/rules/security.md` — IDOR prevention, auth patterns, input validation, token handling
 - `.agents/rules/testing.md` — Vitest conventions, what to test, mocking patterns
-- `.agents/rules/api-contract.md` — ApiBody shape, apiRoute wrapper, apiFetch, status codes
+- `.agents/rules/api-contract.md` — client↔server OpenAPI 3.1 contract, route wrappers, openapi-fetch client, and Server Actions (ActionState)

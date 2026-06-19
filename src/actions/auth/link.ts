@@ -1,44 +1,51 @@
 'use server'
 
+import { AuthError } from 'next-auth'
 import { redirect } from 'next/navigation'
-import { signIn, auth } from '@/auth'
-import { ApiResponse } from '@/lib/api'
-import type { ApiBody } from '@/types/api'
-import { withRateLimit } from '@/lib/infra/rate-limit'
-import { getPendingLink, deletePendingLink } from '@/lib/auth/pending-link'
+import { cookies } from 'next/headers'
+import { signIn, auth, LINK_INTENT_COOKIE } from '@/auth'
+import type { ActionState } from '@/types/actions'
+import { withRateLimit, rateLimitAction, getActionIP } from '@/lib/infra/rate-limit'
+import { getPendingLink, consumePendingLink } from '@/lib/auth/pending-link'
 import { validateUserPassword, linkPendingAccount } from '@/lib/auth/auth-service'
-import { MAX_PASSWORD_LENGTH, parseOrFail } from '@/lib/utils/validators'
-import { z } from 'zod'
-
-const LinkPasswordSchema = z.string().min(1, 'Password is required.').max(MAX_PASSWORD_LENGTH, 'Password is too long.')
+import { loginPasswordSchema, parseOrFail } from '@/lib/utils/validators'
 
 export async function linkAccountAction(
   token: string,
-  _prevState: ApiBody<null> | null,
+  _prevState: ActionState | null,
   formData: FormData
-): Promise<ApiBody<null>> {
+): Promise<ActionState> {
   return withRateLimit('linkAccount', async () => {
-    const result = parseOrFail(LinkPasswordSchema, formData.get('password') || '')
+    const result = parseOrFail(loginPasswordSchema, formData.get('password') || '')
     if (!result.success) return result.response
     const password = result.data
 
     const pending = await getPendingLink(token)
     if (!pending) {
-      return ApiResponse.BAD_REQUEST('This link has expired. Please try signing in again.')
+      return { success: false, message: 'This link has expired. Please try signing in again.' }
     }
 
     const user = await validateUserPassword(pending.email, password)
     if (!user) {
-      return ApiResponse.BAD_REQUEST('Incorrect password or account not found.')
+      return { success: false, message: 'Incorrect password or account not found.' }
     }
 
     await linkPendingAccount(user.id, pending)
 
-    await deletePendingLink(token)
+    // Consume after link succeeds — wrong-password and link failures keep the token for retry.
+    // A null consume after link means a concurrent request won the race; linking is idempotent, so sign in.
+    await consumePendingLink(token)
 
-    await signIn('credentials', { email: pending.email, password, redirectTo: '/dashboard' })
-
-    return ApiResponse.OK()
+    try {
+      // NextAuth 5 does not log credential values passed to signIn — password is safe here.
+      await signIn('credentials', { email: pending.email, password, redirectTo: '/dashboard' })
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return { success: false, message: 'Account linked. Please sign in with your password.' }
+      }
+      throw error
+    }
+    return { success: true }
   })
 }
 
@@ -46,6 +53,9 @@ export async function linkAccountAction(
 // The link-intent flow stores the pending link keyed by the user's primary email; we verify
 // the active session matches that email before creating the Account row.
 export async function autoLinkAccountAction(token: string): Promise<void> {
+  const denied = await rateLimitAction('linkAccount', await getActionIP())
+  if (denied) redirect('/profile?toast=rate_limited')
+
   const session = await auth()
   if (!session?.user?.id || !session?.user?.email) redirect('/sign-in')
 
@@ -56,11 +66,12 @@ export async function autoLinkAccountAction(token: string): Promise<void> {
 
   // Security: the pending link must be for the signed-in user's account
   if (pending.email !== session.user.email) {
+    await consumePendingLink(token)
     redirect('/profile?toast=mismatch')
   }
 
   await linkPendingAccount(session.user.id, pending)
-
-  await deletePendingLink(token)
+  await consumePendingLink(token)
+  ;(await cookies()).delete(LINK_INTENT_COOKIE)
   redirect('/profile?toast=linked')
 }

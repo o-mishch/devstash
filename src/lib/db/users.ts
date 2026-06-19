@@ -35,6 +35,7 @@ export async function getUserSessionInfo(id: string) {
     where: { id },
     select: {
       id: true,
+      email: true,
       password: true,
       isPro: true,
       stripeSubscriptionId: true,

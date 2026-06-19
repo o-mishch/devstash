@@ -41,7 +41,7 @@ Every server action touching user data must verify the session first:
 
 ```ts
 const session = await auth()
-if (!session?.user?.id) return ApiResponse.UNAUTHORIZED()
+if (!session?.user?.id) return { success: false, message: 'Unauthorized' }
 ```
 
 ## Input Validation

@@ -2,11 +2,12 @@ import 'server-only'
 import { Ratelimit, type Duration } from '@upstash/ratelimit'
 import { headers } from 'next/headers'
 import { getRedis, RATE_LIMIT_NS } from '@/lib/infra/redis'
-import { ApiResponse } from '@/lib/api/api-response'
-import type { ApiBody } from '@/types/api'
+import type { ActionState } from '@/types/actions'
 
 export type RateLimitKey =
   | 'login'
+  | 'loginIP'
+  | 'loginAuthorizeIP'
   | 'register'
   | 'forgotPassword'
   | 'resetPassword'
@@ -36,6 +37,8 @@ interface LimitConfig {
 // Auth rate limit thresholds — adjust here to change any limit
 const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   login:                { attempts: 5,  window: '15 m' }, // keyed by IP + email
+  loginIP:              { attempts: 20, window: '1 m'  }, // keyed by IP — broad guard before bcrypt in the /login route
+  loginAuthorizeIP:     { attempts: 20, window: '1 m'  }, // keyed by IP — separate bucket for NextAuth authorize() so a successful /login (route guard + authorize) isn't charged twice against one budget
   register:             { attempts: 3,  window: '1 h'  }, // keyed by IP
   forgotPassword:       { attempts: 3,  window: '1 h'  }, // keyed by IP
   resetPassword:        { attempts: 5,  window: '15 m' }, // keyed by IP
@@ -122,14 +125,14 @@ export async function getActionIP(): Promise<string> {
   return h.get('x-forwarded-for')?.split(',')[0].trim() ?? '127.0.0.1'
 }
 
-/** For use inside Server Actions. Returns the denied ApiBody or null if allowed. */
+/** For use inside Server Actions. Returns the denied ActionState or null if allowed. */
 export async function rateLimitAction(
   key: RateLimitKey,
   identifier: string
-): Promise<ApiBody<null> | null> {
+): Promise<ActionState | null> {
   const result = await check(key, identifier)
   if (result.success) return null
-  return ApiResponse.TOO_MANY_REQUESTS(deniedMessage(result.retryAfter))
+  return { success: false, message: deniedMessage(result.retryAfter) }
 }
 
 /**
@@ -137,9 +140,9 @@ export async function rateLimitAction(
  */
 export async function withRateLimit<T>(
   key: RateLimitKey,
-  fn: () => Promise<ApiBody<T>>
-): Promise<ApiBody<T>> {
+  fn: () => Promise<ActionState<T>>
+): Promise<ActionState<T>> {
   const rl = await rateLimitAction(key, await getActionIP())
-  if (rl) return rl as ApiBody<T>
+  if (rl) return rl as ActionState<T>
   return fn()
 }

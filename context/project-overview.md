@@ -718,19 +718,19 @@ devstash/
 │   │   ├── layout/
 │   │   └── shared/
 │   ├── lib/
+│   │   ├── ai/                     # AI integrations (OpenAI)
+│   │   ├── api/                    # API definitions (schemas, openapi, client, route wrappers)
+│   │   ├── app/                    # App-specific server utilities (sidebar, etc.)
+│   │   ├── auth/                   # Authentication logic (services, tokens, etc.)
+│   │   ├── billing/                # Stripe billing & subscriptions logic
 │   │   ├── db/                     # DB query helpers
-│   │   ├── emails/                 # Email sending (Resend)
-│   │   ├── api.ts                  # ApiResponse builder + apiRoute wrapper
-│   │   ├── api-fetch.ts            # Client-side typed fetch helper
-│   │   ├── auth-service.ts         # Business logic (register, reset password)
-│   │   ├── icon-utils.tsx          # ItemTypeIcon component + static icon map
-│   │   ├── pending-link.ts         # Redis pending OAuth-link state
-│   │   ├── prisma.ts
-│   │   ├── rate-limit.ts
-│   │   ├── redis.ts
-│   │   ├── resend.ts
-│   │   ├── tokens.ts               # Verification + password-reset tokens
-│   │   └── utils.ts
+│   │   ├── editor/                 # Editor themes & config
+│   │   ├── emails/                 # Email sending logic & templates (Resend)
+│   │   ├── infra/                  # Infrastructure (Prisma, Redis, Stripe, Pino, Rate limit)
+│   │   ├── session.ts              # Session and authentication helpers
+│   │   ├── storage/                # Storage integrations (Cloudflare R2 / AWS S3)
+│   │   ├── themes/                 # Visual theme files & helpers
+│   │   └── utils/                  # Core utility functions (formatting, validation, etc.)
 │   ├── types/
 │   ├── auth.ts                     # NextAuth full config (Prisma adapter, bcrypt)
 │   ├── auth.config.ts              # Edge-safe NextAuth config

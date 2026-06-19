@@ -1,5 +1,5 @@
 import 'server-only'
-import { type NextRequest, type NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit, deniedMessage, type RateLimitKey } from '@/lib/infra/rate-limit'
@@ -123,3 +123,9 @@ export function authedRouteWithParams<P>(
     }
   }
 }
+
+/** Redirect from a route handler — prefer over raw `NextResponse.redirect`. */
+export function apiRedirect(url: string | URL, status?: number): NextResponse {
+  return NextResponse.redirect(url, status)
+}
+

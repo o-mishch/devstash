@@ -149,35 +149,33 @@ vi.mock('@/lib/billing/emails/billing-checkout-payment-failed', () => ({
   sendBillingCheckoutPaymentFailedEmail: mockSendBillingCheckoutPaymentFailedEmail,
 }))
 
-vi.mock('@/lib/api', () => {
-  function makeBuilder(status: number) {
-    return (dataOrMessage?: unknown) => {
-      const body = typeof dataOrMessage === 'string'
-        ? { status: status === 200 ? 'ok' : 'bad_request', data: null, message: dataOrMessage }
-        : { status: status === 200 ? 'ok' : status === 400 ? 'bad_request' : 'internal_error', data: dataOrMessage ?? null, message: null }
-      return new Response(JSON.stringify(body), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-  }
-
-  return {
-    ApiResponse: {
-      OK: makeBuilder(200),
-      BAD_REQUEST: makeBuilder(400),
-      INTERNAL_ERROR: makeBuilder(500),
+vi.mock('@/lib/api/route', () => ({
+  publicRoute: (handler: (ctx: { request: Request }) => Promise<Response>) =>
+    async (request: Request) => {
+      try {
+        return await handler({ request })
+      } catch {
+        return new Response(JSON.stringify({ message: 'Something went wrong. Please try again.' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
     },
-    apiRoute: (handler: (request: Request, context: unknown) => Promise<Response>) =>
-      async (request: Request, context: unknown) => {
-        try {
-          return await handler(request, context)
-        } catch {
-          return makeBuilder(500)()
-        }
-      },
-  }
-})
+}))
+
+vi.mock('@/lib/api/http', () => ({
+  json: (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  problem: (status: number, message: string, data?: unknown) =>
+    new Response(JSON.stringify(data === undefined ? { message } : { message, data }), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+}))
+
 
 import * as webhookHandlers from '@/lib/billing/webhook/stripe-webhook-event-handlers'
 import { POST } from './route'
@@ -222,7 +220,6 @@ async function postEvent(event: unknown) {
       body: JSON.stringify({ ok: true }),
       headers: { 'stripe-signature': 'sig_test' },
     }) as never,
-    {} as never,
   )
 }
 
@@ -233,7 +230,6 @@ describe('Stripe webhook route', () => {
         method: 'POST',
         body: '{}',
       }) as never,
-      {} as never,
     )
 
     expect(response.status).toBe(400)
@@ -249,7 +245,6 @@ describe('Stripe webhook route', () => {
         body: '{}',
         headers: { 'stripe-signature': 'sig_test' },
       }) as never,
-      {} as never,
     )
 
     expect(response.status).toBe(500)
@@ -267,7 +262,6 @@ describe('Stripe webhook route', () => {
         body: '{}',
         headers: { 'stripe-signature': 'sig_bad' },
       }) as never,
-      {} as never,
     )
 
     expect(response.status).toBe(400)

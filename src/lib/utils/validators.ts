@@ -1,11 +1,11 @@
 import { z, ZodType } from 'zod'
-import type { ApiBody } from '@/types/api'
+import type { ActionState } from '@/types/actions'
 import { APP_THEMES } from '@/types/editor-preferences'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE } from '@/lib/utils/constants'
 
 export type ParseResult<T> =
   | { success: true; data: T }
-  | { success: false; response: ApiBody<null> }
+  | { success: false; response: ActionState }
 
 export function parseOrFail<T>(schema: ZodType<T>, input: unknown): ParseResult<T> {
   const parsed = schema.safeParse(input)
@@ -13,8 +13,7 @@ export function parseOrFail<T>(schema: ZodType<T>, input: unknown): ParseResult<
     return {
       success: false,
       response: {
-        status: 'validation_error',
-        data: null,
+        success: false,
         message: parsed.error.issues[0]?.message ?? 'Validation failed',
       },
     }
@@ -23,6 +22,12 @@ export function parseOrFail<T>(schema: ZodType<T>, input: unknown): ParseResult<
 }
 
 export const MAX_PASSWORD_LENGTH = 128
+
+/** Login / link-account password field — min 1 (presence), max 128 (bcrypt DoS guard). */
+export const loginPasswordSchema = z
+  .string()
+  .min(1, 'Password is required.')
+  .max(MAX_PASSWORD_LENGTH, 'Password is too long.')
 
 export const validatePassword = (password: string, confirmPassword?: string): string | null => {
   if (password.length < 8) return 'Password must be at least 8 characters.'

@@ -11,7 +11,7 @@ import { outboundEmailEnabled } from '@/lib/utils/auth'
 import {
   createPendingLink,
   getLinkIntent,
-  deleteLinkIntent,
+  consumeLinkIntent,
   type PendingLinkData,
 } from '@/lib/auth/pending-link'
 import {
@@ -23,7 +23,9 @@ import {
 } from '@/lib/db/users'
 import { resolveSessionUserIsPro } from '@/lib/billing/access/pro-access-resolution'
 import { SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils/constants'
-import { validateUserPassword } from '@/lib/auth/auth-service'
+import { validateUserPassword, assertCredentialLoginAllowed } from '@/lib/auth/auth-service'
+import { applySessionActivity } from '@/lib/auth/session-idle'
+import { checkRateLimit, getActionIP } from '@/lib/infra/rate-limit'
 import { classifyPasswordFingerprint } from '@/lib/utils/auth'
 import { oauthEmailIsVerified } from '@/lib/utils/auth'
 import { logger } from '@/lib/infra/pino'
@@ -31,16 +33,23 @@ import { logger } from '@/lib/infra/pino'
 const log = logger.child({ tag: 'auth' })
 export const LINK_INTENT_COOKIE = 'devstash_link_token'
 
-const SESSION_MAX_AGE = 24 * 60 * 60  // 1 day
-const SESSION_UPDATE_AGE = 15 * 60    // 15 minutes
+const SESSION_MAX_AGE = 24 * 60 * 60  // outer envelope; idle check in jwt() enforces inactivity
+// 60s (was 15m): updateAge throttles how often the cookie is re-persisted, so it bounds the
+// `lastActiveAt` write granularity. Keeping it low keeps the persisted idle timestamp fresh enough
+// that the jwt() idle check stays accurate (it can't time out a user who was active <1 min ago).
+const SESSION_UPDATE_AGE = 60         // Re-persist cookie (and lastActiveAt) at most once per minute
 
 const TRANSIENT_DB_ERROR_CODES = new Set(['P1001', 'P1002', 'P1008', 'P1017', 'P2024'])
 
+// Known transient Prisma codes — plus connection/init failures, which the Neon serverless adapter can
+// surface without a P-code — preserve the session during outages. Other unknown errors still invalidate
+// so a corrupted or unexpected failure cannot keep a stale session alive indefinitely.
 function isTransientDatabaseError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientInitializationError) return true
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     return TRANSIENT_DB_ERROR_CODES.has(error.code)
   }
-  return true
+  return false
 }
 
 interface AuthorizedUser {
@@ -76,7 +85,7 @@ function buildPendingLinkData(email: string, userEmail: string | null | undefine
     scope: account.scope ?? null,
     id_token: account.id_token ?? null,
     session_state: typeof account.session_state === 'string' ? account.session_state : null,
-  } as PendingLinkData
+  }
 }
 
 async function handleLinkIntent(user: User | AdapterUser, account: Account): Promise<string | boolean | null> {
@@ -86,9 +95,10 @@ async function handleLinkIntent(user: User | AdapterUser, account: Account): Pro
   if (!intentToken) return null
 
   const intent = await getLinkIntent(intentToken)
-  await deleteLinkIntent(intentToken)
-
-  if (!intent) return null
+  if (!intent) {
+    cookieStore.delete(LINK_INTENT_COOKIE)
+    return null
+  }
 
   const targetUser = await getUserById(intent.userId)
   if (!targetUser) return true // safety: fall through to normal flow
@@ -98,16 +108,20 @@ async function handleLinkIntent(user: User | AdapterUser, account: Account): Pro
   if (existing) {
     // Already linked to this user — nothing to do
     if (existing.userId === intent.userId) {
+      await consumeLinkIntent(intentToken)
       return '/profile?toast=already_linked'
     }
     // Linked to a different DevStash account
+    await consumeLinkIntent(intentToken)
     return '/profile?toast=taken'
   }
 
   // Store pending link keyed by the target user's primary email
   const token = await createPendingLink(buildPendingLinkData(targetUser.email, user.email, account))
 
-  if (!token) return true
+  if (!token) return true // intent left intact so the user can retry if Redis hiccups
+
+  await consumeLinkIntent(intentToken)
   return `/link-account?token=${token}`
 }
 
@@ -135,6 +149,13 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     ...authConfig.callbacks,
     async jwt({ token, user, account, profile }: JwtParams): Promise<JWT | null> {
       if (user) token.id = user.id
+
+      const activity = applySessionActivity(token, Boolean(user))
+      if (!activity) {
+        log.info({ userId: token.id }, 'Session invalidated — idle timeout exceeded')
+        return null
+      }
+      token.lastActiveAt = activity.lastActiveAt
       if (token.id) {
         try {
           const dbUser = await getUserSessionInfo(token.id as string)
@@ -142,6 +163,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             log.warn({ userId: token.id }, 'Session invalidated — user not found')
             return null
           }
+          token.email = dbUser.email
           // Last 8 chars of the bcrypt hash — changes on every password rotation
           const pwFingerprint = dbUser.password?.slice(-8) ?? ''
           if (user) {
@@ -197,10 +219,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.id = token.id as string
         if (token.id) {
-          const dbUser = await getUserById(token.id as string)
-          if (dbUser?.email) {
-            session.user.email = dbUser.email
-          }
+          if (token.email) session.user.email = token.email
           // Refreshed on every session read (Redis-cached). Display fallback only — never gate on this.
           session.user.isPro = await resolveSessionUserIsPro(token.id as string)
         } else {
@@ -242,9 +261,19 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       async authorize(credentials): Promise<AuthorizedUser | null> {
         if (!credentials?.email || !credentials?.password) return null
 
-        const user = await validateUserPassword(credentials.email as string, credentials.password as string)
+        const ip = await getActionIP()
+        // Dedicated per-IP bucket so a /login route call (which already spent `loginIP`) isn't
+        // double-charged when it reaches authorize via signIn.
+        const guard = await assertCredentialLoginAllowed(ip, credentials.password as string, 'loginAuthorizeIP')
+        if (!guard.ok) return null
 
-        if (!user) return null
+        const email = credentials.email as string
+        const user = await validateUserPassword(email, credentials.password as string)
+
+        if (!user) {
+          await checkRateLimit('login', `${ip}:${email}`)
+          return null
+        }
 
         // Gate on the timestamp of the field the input matched: signing in with the OAuth identity
         // `email` checks `emailVerified`; signing in with a `credentialEmail` checks

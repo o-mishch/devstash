@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, useRef, useCallback } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 
@@ -24,6 +24,14 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
   const monacoLanguage = language || 'plaintext'
   const isTouch = useIsTouch()
   const monaco = useMonaco()
+  const expandRef = useRef<(() => void) | null>(null)
+  const fullscreenRef = useRef(false)
+  const triggerExpand = useCallback(() => {
+    if (fullscreenRef.current) return
+    expandRef.current?.()
+  }, [])
+  const focusDisposableRef = useRef<{ dispose: () => void } | null>(null)
+  const skipNextFocusExpandRef = useRef(false)
 
   const { fontSize, minimap, wordWrap, tabSize, colorMode, appTheme, editorThemeMode } = useEditorPreferencesStore()
 
@@ -40,6 +48,11 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
       monaco.editor.setTheme('custom-dynamic')
     }
   }, [monaco, colorMode, appTheme, useMonacoNativeTheme])
+
+  useEffect(() => () => {
+    focusDisposableRef.current?.dispose()
+    focusDisposableRef.current = null
+  }, [])
 
   const editorOptions = useMemo<editor.IStandaloneEditorConstructionOptions>(() => ({
     readOnly,
@@ -75,6 +88,8 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
       className={className}
       style={bgStyle}
       fullscreenLabel={fullscreenLabel}
+      expandRef={expandRef}
+      fullscreenRef={fullscreenRef}
       header={
         <div className="flex items-center gap-2">
           {language && (
@@ -99,6 +114,23 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
             onChange={onChange}
             theme={editorTheme}
             options={editorOptions}
+            onMount={(editorInstance) => {
+              focusDisposableRef.current?.dispose()
+              focusDisposableRef.current = null
+
+              if (!isTouch || !fullscreenLabel) return
+
+              // On touch devices the Monaco iPad keyboard button calls editor.focus(), which
+              // fires onDidFocusEditorText. Expand on subsequent focuses — skip the initial mount focus.
+              skipNextFocusExpandRef.current = true
+              focusDisposableRef.current = editorInstance.onDidFocusEditorText(() => {
+                if (skipNextFocusExpandRef.current) {
+                  skipNextFocusExpandRef.current = false
+                  return
+                }
+                triggerExpand()
+              })
+            }}
           />
         </div>
       </div>

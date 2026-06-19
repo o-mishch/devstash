@@ -48,7 +48,7 @@ function PreferenceRow({ title, description, children }: PreferenceRowProps) {
         <Label>{title}</Label>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="w-full sm:w-auto sm:shrink-0">{children}</div>
     </div>
   )
 }
@@ -83,7 +83,7 @@ export function EditorPreferencesForm() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="max-h-[256px] overflow-y-auto pr-1">
-          <div className="app-grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
             {APP_THEME_OPTIONS.map((theme) => {
               const isActive = store.appTheme === theme.value
               const colors = isDark ? theme.dark : theme.light
@@ -147,7 +147,7 @@ export function EditorPreferencesForm() {
         <CardContent className="space-y-6">
           <PreferenceRow title="Editor Theme" description="Controls syntax highlighting and the editor background">
             <TooltipProvider>
-              <div className="flex rounded-md border border-border overflow-hidden">
+              <div className="flex w-full sm:w-auto rounded-md border border-border overflow-hidden">
                 {EDITOR_THEME_MODE_OPTIONS.map((option) => {
                   const isActive = store.editorThemeMode === option.value
                   return (
@@ -155,7 +155,7 @@ export function EditorPreferencesForm() {
                       <TooltipTrigger
                         onClick={() => void updatePreference('editorThemeMode', option.value)}
                         className={cn(
-                          "px-3 py-1.5 text-sm font-medium transition-colors",
+                          "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium transition-colors text-center",
                           "border-r border-border last:border-r-0",
                           isActive
                             ? "bg-primary text-primary-foreground"

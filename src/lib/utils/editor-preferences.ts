@@ -14,7 +14,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   minimap: false,
   appTheme: 'modern-minimal',
   colorMode: 'dark',
-  editorThemeMode: 'auto',
+  editorThemeMode: 'app',
   dashboardSections: DEFAULT_DASHBOARD_SECTIONS,
 }
 

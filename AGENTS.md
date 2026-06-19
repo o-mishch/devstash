@@ -53,7 +53,7 @@ Read the following files for detailed rules before making any changes. Each carr
 - `.agents/rules/database.md` — Prisma-only data access, `'use cache'` pattern, migrations (glob: `src/lib/db/**`, `prisma/**`)
 - `.agents/rules/security.md` — IDOR prevention, auth patterns, input validation, token handling (glob: API/actions/auth/db)
 - `.agents/rules/testing.md` — Vitest conventions, what to test, mocking patterns (glob: test files)
-- `.agents/rules/api-contract.md` — `ApiBody<T>` shape, `apiRoute`/`authenticatedRoute` wrappers, the api-fetch verb helpers (`get`/`post`/`patch`/`del`), status codes (glob: API/actions/`src/lib/api`)
+- `.agents/rules/api-contract.md` — client↔server OpenAPI 3.1 contract, route wrappers (`authedRoute`/`publicRoute`), openapi-fetch client (`api`/`$api`), and Server Actions (`ActionState`) (glob: API/actions/`src/lib/api`)
 
 <!-- stripe-projects-cli managed:agents-md:start -->
 ## Stripe Projects CLI

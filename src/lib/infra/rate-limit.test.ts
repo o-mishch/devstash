@@ -13,18 +13,8 @@ vi.mock('@/lib/infra/redis', () => ({
   getRedis: vi.fn(),
 }))
 
-vi.mock('@/lib/api/api-response', () => ({
-  ApiResponse: {
-    TOO_MANY_REQUESTS: (message: string) => ({
-      status: 'too_many_requests',
-      data: null,
-      message,
-    }),
-  },
-}))
-
 import { getRedis } from '@/lib/infra/redis'
-import { rateLimitAction, resetRateLimitersForTests } from '@/lib/infra/rate-limit'
+import { rateLimitAction, withRateLimit, resetRateLimitersForTests } from '@/lib/infra/rate-limit'
 
 const mockGetRedis = getRedis as ReturnType<typeof vi.fn>
 
@@ -52,7 +42,7 @@ describe('rateLimitAction', () => {
 
     const result = await rateLimitAction('login', 'user-1')
 
-    expect(result?.status).toBe('too_many_requests')
+    expect(result?.success).toBe(false)
   })
 
   it('denies stripeSync when Redis is unavailable in production', async () => {
@@ -61,7 +51,7 @@ describe('rateLimitAction', () => {
 
     const result = await rateLimitAction('stripeSync', 'user-1')
 
-    expect(result?.status).toBe('too_many_requests')
+    expect(result?.success).toBe(false)
   })
 
   it('denies when limit is exceeded with Redis available', async () => {
@@ -70,7 +60,38 @@ describe('rateLimitAction', () => {
 
     const result = await rateLimitAction('login', 'user-1')
 
-    expect(result?.status).toBe('too_many_requests')
+    expect(result?.success).toBe(false)
     expect(result?.message).toMatch(/Too many attempts/)
+  })
+})
+
+describe('withRateLimit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.unstubAllEnvs()
+    resetRateLimitersForTests()
+    mockGetRedis.mockReturnValue({})
+    mockLimit.mockResolvedValue({ success: true, remaining: 9, reset: Date.now() + 60_000 })
+  })
+
+  it('calls fn and returns its result when allowed', async () => {
+    const fn = vi.fn().mockResolvedValue({ success: true })
+
+    const result = await withRateLimit('login', fn)
+
+    expect(fn).toHaveBeenCalledOnce()
+    expect(result).toEqual({ success: true })
+  })
+
+  it('returns denied ActionState without calling fn when rate limited', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    mockLimit.mockResolvedValue({ success: false, remaining: 0, reset: Date.now() + 60_000 })
+    const fn = vi.fn()
+
+    const result = await withRateLimit('login', fn)
+
+    expect(fn).not.toHaveBeenCalled()
+    expect(result.success).toBe(false)
+    expect(result.message).toMatch(/Too many attempts/)
   })
 })

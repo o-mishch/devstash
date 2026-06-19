@@ -146,27 +146,26 @@ All mutations live in one file. The `withAuth` pattern from `src/actions/profile
 
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-import { ApiResponse } from '@/lib/api'
-import type { ApiBody } from '@/types/api'
+import type { ActionState } from '@/types/actions'
 
 // ── Create ────────────────────────────────────────────────────────────────────
 export async function createItemAction(
-  _prev: ApiBody<ItemDetail | null> | null,
+  _prev: ActionState | null,
   formData: FormData
-): Promise<ApiBody<ItemDetail | null>>
+): Promise<ActionState>
 
 // ── Update ────────────────────────────────────────────────────────────────────
 export async function updateItemAction(
-  _prev: ApiBody<ItemDetail | null> | null,
+  _prev: ActionState | null,
   formData: FormData
-): Promise<ApiBody<ItemDetail | null>>
+): Promise<ActionState>
 
 // ── Delete ────────────────────────────────────────────────────────────────────
-export async function deleteItemAction(id: string): Promise<ApiBody<null>>
+export async function deleteItemAction(id: string): Promise<ActionState>
 
 // ── Toggles (optimistic-friendly) ─────────────────────────────────────────────
-export async function toggleFavoriteAction(id: string): Promise<ApiBody<null>>
-export async function togglePinnedAction(id: string): Promise<ApiBody<null>>
+export async function toggleFavoriteAction(id: string): Promise<ActionState>
+export async function togglePinnedAction(id: string): Promise<ActionState>
 ```
 
 ### Input shape (FormData fields)
@@ -304,7 +303,7 @@ User clicks "New Item"
       → look up ItemType → derive contentType
       → validate required fields for that contentType
       → prisma.item.create + tag upsert + collection connect
-      → return ApiBody<ItemDetail>
+      → return ActionState (success or error)
   → ItemList receives success → router.refresh() reloads items
 
 User clicks Edit on ItemCard

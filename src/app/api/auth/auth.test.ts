@@ -1,14 +1,14 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const { MockAuthError } = vi.hoisted(() => {
+const { MockAuthError, mockAssertCredentialLoginAllowed } = vi.hoisted(() => {
   class MockAuthError extends Error {
     type: string = ''
     constructor() {
       super('AuthError')
     }
   }
-  return { MockAuthError }
+  return { MockAuthError, mockAssertCredentialLoginAllowed: vi.fn() }
 })
 
 // `after` runs the callback immediately so the deferred forgot-password work is observable.
@@ -30,6 +30,7 @@ vi.mock('@/lib/auth/auth-service', () => ({
   triggerPasswordReset: vi.fn(),
   applyPasswordReset: vi.fn(),
   confirmCredentialEmail: vi.fn(),
+  assertCredentialLoginAllowed: mockAssertCredentialLoginAllowed,
 }))
 
 import { signIn } from '@/auth'
@@ -65,6 +66,11 @@ function post(path: string, payload?: unknown): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks()
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
+  mockAssertCredentialLoginAllowed.mockImplementation(async (ip: string) => {
+    const { success, retryAfter } = await vi.mocked(checkRateLimit)('loginIP', ip)
+    if (!success) return { ok: false, reason: 'ip-rate-limited', retryAfter }
+    return { ok: true }
+  })
   mockOutboundEmailEnabled.mockReturnValue(false)
   mockSignIn.mockResolvedValue(undefined)
   // Default: a valid, verified credential user; password is validated before verification status leaks.
@@ -85,10 +91,26 @@ describe('POST /auth/login', () => {
     expect(mockSignIn).not.toHaveBeenCalled()
   })
 
-  it('returns 204 on a successful login and does NOT consult the rate limiter', async () => {
+  it('returns 422 when the login input schema rejects an oversized password', async () => {
+    const res = await LOGIN(post('login', { email: 'user@example.com', password: 'a'.repeat(129) }))
+    expect(res.status).toBe(422)
+    expect(mockValidateUserPassword).not.toHaveBeenCalled()
+    expect(mockSignIn).not.toHaveBeenCalled()
+  })
+
+  it('returns 204 on a successful login and only consults the IP guard', async () => {
     const res = await LOGIN(post('login', { email: 'user@example.com', password: 'password123' }))
     expect(res.status).toBe(204)
-    expect(mockRateLimit).not.toHaveBeenCalled()
+    expect(mockRateLimit).toHaveBeenCalledTimes(1)
+    expect(mockRateLimit).toHaveBeenCalledWith('loginIP', '127.0.0.1')
+  })
+
+  it('returns 429 when the IP guard denies before password validation', async () => {
+    mockRateLimit.mockResolvedValue({ success: false, retryAfter: 60 })
+    const res = await LOGIN(post('login', { email: 'user@example.com', password: 'password123' }))
+    expect(res.status).toBe(429)
+    expect(mockValidateUserPassword).not.toHaveBeenCalled()
+    expect(mockSignIn).not.toHaveBeenCalled()
   })
 
   it('returns generic 400 and consumes the budget when the password is wrong', async () => {
@@ -123,7 +145,9 @@ describe('POST /auth/login', () => {
     expect(res.status).toBe(403)
     expect((await res.json()).data.email).toBe('user@example.com')
     expect(mockSignIn).not.toHaveBeenCalled()
-    expect(mockRateLimit).not.toHaveBeenCalled()
+    // Only the IP guard fires — the per-IP+email budget is not consumed for a correct password
+    expect(mockRateLimit).toHaveBeenCalledTimes(1)
+    expect(mockRateLimit).toHaveBeenCalledWith('loginIP', '127.0.0.1')
   })
 
   it('signs in on a correct password for a verified account (verification enabled)', async () => {

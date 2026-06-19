@@ -35,6 +35,11 @@ function mergeDrawerItem(
   }
 }
 
+interface ItemDetailDrawerInnerProps extends Omit<ItemDetailDrawerProps, 'open'> {
+  sheetCloseRef: { current: (() => void) | null }
+  onEditingChange: (editing: boolean) => void
+}
+
 function ItemDetailDrawerInner({
   item,
   onOpenChange,
@@ -42,7 +47,8 @@ function ItemDetailDrawerInner({
   onItemSaved,
   onItemDeleted,
   sheetCloseRef,
-}: Omit<ItemDetailDrawerProps, 'open'> & { sheetCloseRef: { current: (() => void) | null } }) {
+  onEditingChange,
+}: ItemDetailDrawerInnerProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [savedItem, setSavedItem] = useState<FullItem | null>(null)
 
@@ -103,6 +109,10 @@ function ItemDetailDrawerInner({
   const contentLoading = detailsLoaded && !contentLoaded
   const editing = editingItemId !== null && editingItemId === displayItem?.id && contentLoaded
 
+  useEffect(() => {
+    onEditingChange(editing)
+  }, [editing, onEditingChange])
+
   return (
     <>
       <SheetTitle className="sr-only">{displayItem?.title ?? 'Item details'}</SheetTitle>
@@ -157,6 +167,7 @@ export function ItemDetailDrawer({
   // dirty guard instead of closing immediately. The edit content writes its
   // guarded-close handler here; the Sheet's onOpenChange reads it.
   const sheetCloseRef = useRef<(() => void) | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
 
   function handleSheetOpenChange(nextOpen: boolean) {
     if (!nextOpen && sheetCloseRef.current) {
@@ -166,10 +177,13 @@ export function ItemDetailDrawer({
     }
   }
 
-  const swipe = useSwipeToDismiss({ onDismiss: () => handleSheetOpenChange(false) })
+  const swipe = useSwipeToDismiss({
+    onDismiss: () => handleSheetOpenChange(false),
+    enabled: !isEditing,
+  })
 
   return (
-    <Sheet open={open} onOpenChange={handleSheetOpenChange}>
+    <Sheet open={open} onOpenChange={handleSheetOpenChange} disablePointerDismissal={isEditing}>
       <SheetContent
         side="right"
         // Mobile: full-width so the content area is maximised and nothing is cut off.
@@ -203,6 +217,7 @@ export function ItemDetailDrawer({
             onItemSaved={onItemSaved}
             onItemDeleted={onItemDeleted}
             sheetCloseRef={sheetCloseRef}
+            onEditingChange={setIsEditing}
           />
         ) : (
           <>

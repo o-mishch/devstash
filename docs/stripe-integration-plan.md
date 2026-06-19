@@ -20,7 +20,7 @@
 ## 3. API & Webhook Patterns
 
 - **API Route Structure**: Next.js App Router API routes will be used (`src/app/api/stripe/checkout/route.ts`, `src/app/api/stripe/portal/route.ts`, `src/app/api/webhooks/stripe/route.ts`). Webhooks require raw body access, which the App Router provides natively via `request.text()`.
-- **Server Action Error Handling**: We use the standard `ApiResponse` format (e.g., `ApiResponse.FORBIDDEN()`) for returning errors from server actions.
+- **Server Action Error Handling**: We use the standard `ActionState` structure (e.g., `{ success: false, message: '...' }`) for returning errors from server actions.
 - **Environment Variables**: Server-side env vars mapping to Stripe Price IDs must be used (`STRIPE_PRICE_ID_MONTHLY`, `STRIPE_PRICE_ID_YEARLY`), alongside standard Stripe keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`).
 
 ## 4. Implementation Plan

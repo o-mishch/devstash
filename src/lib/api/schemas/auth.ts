@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { EmailSchema, NameSchema, passwordFieldSchema, passwordMatchRefine, optionalPasswordMatchRefine } from '@/lib/utils/validators'
+import { EmailSchema, NameSchema, passwordFieldSchema, passwordMatchRefine, optionalPasswordMatchRefine, loginPasswordSchema } from '@/lib/utils/validators'
 
 // Request/response schemas for the public auth endpoints (oRPC `oc.route()` wrappers stripped — bare
 // Zod). These run before a session exists, so the routes use `publicRoute` (no session gate) and
@@ -7,7 +7,7 @@ import { EmailSchema, NameSchema, passwordFieldSchema, passwordMatchRefine, opti
 
 export const loginInput = z.object({
   email: EmailSchema,
-  password: z.string().min(1, 'Password is required.'),
+  password: loginPasswordSchema,
 })
 
 export const registerInput = z

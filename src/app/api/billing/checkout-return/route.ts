@@ -9,7 +9,7 @@ import {
 import { finalizeCheckoutReturn } from '@/lib/billing/checkout/finalize-checkout-return'
 import { logger } from '@/lib/infra/pino'
 import { rateLimitAction } from '@/lib/infra/rate-limit'
-import { apiRedirect, apiRoute } from '@/lib/api'
+import { apiRedirect, publicRoute } from '@/lib/api/route'
 import { z } from 'zod'
 
 const log = logger.child({ tag: 'checkout-return' })
@@ -34,7 +34,7 @@ function buildSignInRedirect(request: NextRequest): URL {
   return signInUrl
 }
 
-export const GET = apiRoute(async (request: NextRequest) => {
+export const GET = publicRoute(async ({ request }) => {
   const session = await getCachedSession()
   if (!session?.user?.id) {
     return apiRedirect(buildSignInRedirect(request))

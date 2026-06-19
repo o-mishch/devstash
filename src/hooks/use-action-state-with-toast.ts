@@ -2,12 +2,12 @@
 
 import { useActionState, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
-import type { ApiBody } from '@/types/api'
+import type { ActionState } from '@/types/actions'
 
-type ActionFn<T> = (prev: ApiBody<T> | null, data: FormData) => Promise<ApiBody<T>>
+type ActionFn<T> = (prev: ActionState<T> | null, data: FormData) => Promise<ActionState<T>>
 
 interface Options<T> {
-  onSuccess?: (state: ApiBody<T>) => void
+  onSuccess?: (state: ActionState<T>) => void
   fallbackError?: string
 }
 
@@ -20,12 +20,11 @@ export function useActionStateWithToast<T = null>(
 
   const onSuccessRef = useRef(onSuccess)
   const fallbackErrorRef = useRef(fallbackError)
-  useEffect(() => { onSuccessRef.current = onSuccess })
-  useEffect(() => { fallbackErrorRef.current = fallbackError })
+  useEffect(() => { onSuccessRef.current = onSuccess; fallbackErrorRef.current = fallbackError })
 
   useEffect(() => {
     if (!state) return
-    if (state.status === 'ok') {
+    if (state.success) {
       onSuccessRef.current?.(state)
     } else {
       toast.error(state.message ?? fallbackErrorRef.current)

@@ -107,24 +107,21 @@ For every feature/fix:
 
 ## API Contract
 
-Every FE↔BE response must use `ApiBody<T>`:
-
-```ts
-type ApiBody<T = null> = {
-  status: ApiStatus
-  data: T | null
-  message: string | null
-}
-```
-
-- Wrap API route handlers with `apiRoute()` from `src/lib/api`
-- Never return raw `NextResponse.json()`
-- Frontend must use `apiFetch` from `@/lib/api-fetch` — never raw `fetch()`
+- **REST-native Route Handlers**: Default for all client-driven reads/mutations. Bare Zod schemas validate input; success returns resource JSON directly, and errors return `{ message }` (+ optional `data`) with the appropriate HTTP status code (no envelope).
+- **Server Actions**: Return a unified `ActionState<T>` object (`src/types/actions.ts`):
+  ```ts
+  type ActionState<T = null> = {
+    success: boolean
+    data?: T | null
+    message?: string | null
+  }
+  ```
+- **Frontend Calls**: Use the generated typed client `api` (`openapi-fetch`) or `$api` (`openapi-react-query`) for Route Handlers. Never use `fetch()` directly from client components.
 
 ## Security
 
 - Every Prisma query on user data must scope by `userId` from the session — never from user input (IDOR prevention)
-- Every server action must verify session: `const session = await auth(); if (!session?.user?.id) return ApiResponse.UNAUTHORIZED()`
+- Every server action must verify session: `const session = await auth(); if (!session?.user?.id) return { success: false, message: 'Not authenticated' }`
 - Validate all external inputs with Zod
 - Generate tokens with `generateSecureToken()` — never `Math.random()`
 - Tokens must be single-use; enforce expiry server-side

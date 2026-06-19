@@ -160,7 +160,7 @@ Example v4 configuration:
 ### Errors (KISS)
 
 - **Do not create custom `Error` subclasses** (`class FooError extends Error`, dedicated `name` strings, `instanceof` chains). They add types, files, and branching for little gain.
-- Throw the built-in `Error` with a clear message. Handle outcomes at the boundary that needs them (e.g. return the right HTTP status in a route, map to `ApiResponse` in `apiRoute`).
+- Throw the built-in `Error` with a clear message. Handle outcomes at the boundary that needs them (e.g., return standard `problem()` response in route handlers, or map to `ActionState` in Server Actions).
 - Do not use `instanceof` or `error.name` to route control flow across layers. Prefer return values, result types, or a single catch at the handler edge.
 - Exception: framework or library types you do not own (e.g. `ZodError`, `Stripe.errors.StripeError`) — use those as documented.
 

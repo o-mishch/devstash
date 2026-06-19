@@ -11,8 +11,8 @@ interface MarkdownViewerProps {
 }
 
 export function MarkdownViewer({ value, className }: MarkdownViewerProps) {
-  const { colorMode } = useEditorPreferencesStore()
-  const isDark = colorMode === 'dark'
+  const { colorMode, editorThemeMode } = useEditorPreferencesStore()
+  const isDark = editorThemeMode === 'dark' || colorMode === 'dark'
 
   return (
     <div className={cn("h-full overflow-auto p-4", className)}>

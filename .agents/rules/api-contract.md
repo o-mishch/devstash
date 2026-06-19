@@ -1,20 +1,20 @@
 ---
-trigger: glob
+trigger:glob
 globs:
   - src/app/api/**/*
   - src/actions/**/*
-  - src/types/api.ts
+  - src/types/actions.ts
   - src/lib/api/**/*
 paths:
   - "src/app/api/**/*"
   - "src/actions/**/*"
-  - "src/types/api.ts"
+  - "src/types/actions.ts"
   - "src/lib/api/**/*"
-description: Client↔server contract for DevStash — Next.js Route Handlers with Zod schemas as the source of truth, generated OpenAPI 3.1 doc and typed client (`api`/`$api`), the route wrappers, and the legacy `ApiBody` envelope retained only for Server Actions and exempt routes. Loads when editing API routes, server actions, or `src/lib/api/`.
+description: Client↔server contract for DevStash — Next.js Route Handlers with Zod schemas as the source of truth, generated OpenAPI 3.1 doc and typed client (`api`/`$api`), the route wrappers, and the `ActionState` envelope used only for Server Actions. Loads when editing API routes, server actions, or `src/lib/api/`.
 
 # API Contract
 
-The client↔server contract for the nine feature domains is **native Next.js Route Handlers** with **Zod** schemas as the single source of truth, an **OpenAPI 3.1** document generated from those schemas (`zod-openapi`), and a **generated, typed client** (`openapi-typescript` → `openapi-fetch` + `openapi-react-query`). The legacy `ApiBody` envelope is **retained only** for Server Actions and the exempt explicit routes (see below).
+The client↔server contract for the nine feature domains is **native Next.js Route Handlers** with **Zod** schemas as the single source of truth, an **OpenAPI 3.1** document generated from those schemas (`zod-openapi`), and a **generated, typed client** (`openapi-typescript` → `openapi-fetch` + `openapi-react-query`). The `ActionState` envelope is **used only** for Server Actions (see below).
 
 ## Route Handlers (default for all client-driven reads/mutations)
 
@@ -89,32 +89,29 @@ const list = $api.useQuery('get', '/collections')
 - Form-driven submits use `useApiFormAction(submit, { onSuccess })` (`src/hooks/use-api-form-action.ts`), where `submit` throws `new Error(error.message)` on failure.
 - Direct-to-S3 uploads (with progress) use `uploadToS3` (`src/lib/storage/s3-upload-client.ts`), **not** the api client — the request goes straight to S3.
 
-## Server Actions — still `ApiBody`
+## Server Actions — `ActionState`
 
-Redirect-terminating auth Server Actions (`src/actions/`) and their helpers remain on the `ApiBody` envelope (`src/types/api.ts`, `ApiResponse` builders). `parseOrFail` and `rateLimitAction`/`withRateLimit` serve these. Server Actions aren't HTTP/OpenAPI endpoints (no URL), so they can't be route handlers.
+Redirect-terminating auth Server Actions (`src/actions/`) and their helpers use the `ActionState` interface (`src/types/actions.ts`). `parseOrFail` and `rateLimitAction`/`withRateLimit` serve these actions. Server Actions aren't HTTP/OpenAPI endpoints (no URL), so they are not registered in the OpenAPI document.
 
 ```ts
-import { ApiResponse } from '@/lib/api'
-import type { ApiBody } from '@/types/api'
+import type { ActionState } from '@/types/actions'
 
-export async function myAction(_prev: ApiBody<T | null> | null, formData: FormData): Promise<ApiBody<T | null>> {
-  if (!valid) return ApiResponse.BAD_REQUEST('Validation failed')
-  return ApiResponse.OK({ result })
+export async function myAction(_prev: ActionState | null, formData: FormData): Promise<ActionState> {
+  if (!valid) return { success: false, message: 'Validation failed' }
+  return { success: true }
 }
 ```
 
-## Exempt explicit routes — still `apiRoute` / `ApiResponse`
+## Exempt explicit routes — standard Next.js route wrappers
 
 These don't fit the typed-JSON model and keep their explicit `src/app/api/*/route.ts` files:
 
-| Route | Why exempt |
-|-------|-----------|
-| `api/auth/[...nextauth]` | NextAuth handler |
-| `api/webhooks/stripe` | Raw body + signature verification |
-| `api/download/[id]` | 3xx redirect to a signed S3 URL (the `download/[id]/url` JSON endpoint is a normal route handler) |
-| `api/billing/checkout-return` | 3xx redirect to settings after Stripe |
-
-They use `apiRoute` / `authenticatedRoute` (IDOR-safe `userId`), `ApiResponse`, and `apiRedirect` from `@/lib/api`.
+| Route | Why exempt | Wrapper & Builders |
+|-------|-----------|--------------------|
+| `api/auth/[...nextauth]` | NextAuth handler | Native NextAuth handler |
+| `api/webhooks/stripe` | Raw body + signature verification | `publicRoute()`, `json()`, `problem()` |
+| `api/download/[id]` | 3xx redirect to a signed S3 URL | `authedRouteWithParams()`, `apiRedirect()` |
+| `api/billing/checkout-return` | 3xx redirect to settings after Stripe | `publicRoute()`, `apiRedirect()` |
 
 ## Rules
 
@@ -122,4 +119,4 @@ They use `apiRoute` / `authenticatedRoute` (IDOR-safe `userId`), `ApiResponse`, 
 - **A new endpoint is a new `route.ts` + a `paths.ts` declaration + schemas** — both importing the same Zod schema; then `npm run openapi:gen`. Do not hand-edit `openapi.json` or `src/types/openapi.ts`.
 - `userId` always comes from the session (`ctx.userId`), never from input — IDOR-safe.
 - Schema modules (`schemas/**`) are `[C]` — never import `server-only` code into them; reuse the client-safe schemas in `src/lib/utils/validators.ts`.
-- Server Actions that only redirect (OAuth, sign-out) and the exempt routes keep the envelope; do not migrate them.
+- Server Actions that only redirect (OAuth, sign-out) do not return action states and redirect directly.

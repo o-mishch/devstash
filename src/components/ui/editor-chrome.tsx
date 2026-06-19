@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useEffect, useId, type CSSProperties, type ReactNode } from 'react'
+import { useRef, useState, useEffect, useLayoutEffect, useId, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence, type MotionStyle } from 'motion/react'
 import { Maximize2, Minimize2 } from 'lucide-react'
@@ -80,6 +80,11 @@ interface EditorChromeShellProps {
   // button) and the surface can expand to fill the viewport. The string is the accessible label
   // target, e.g. "code editor" → "Enter full screen code editor". Omit to disable the toggle.
   fullscreenLabel?: string
+  // When provided, callers call this to trigger fullscreen expand from outside (e.g. on editor
+  // focus on touch devices so the keyboard icon auto-expands the editing area).
+  expandRef?: { current: (() => void) | null }
+  // When provided, callers read whether the shell is already fullscreen (e.g. to skip re-expand on refocus).
+  fullscreenRef?: { current: boolean }
 }
 
 // The full editor/viewer surface: the rounded dark bordered shell + the traffic-light header bar
@@ -96,7 +101,7 @@ interface EditorChromeShellProps {
 // Expand/collapse is animated via Motion's layoutId: the inline shell and the portal shell share
 // the same ID so Motion tracks the bounding rect across the DOM transition and smoothly morphs
 // between the two positions with a spring.
-export function EditorChromeShell({ header, children, className, style, fullscreenLabel }: EditorChromeShellProps) {
+export function EditorChromeShell({ header, children, className, style, fullscreenLabel, expandRef, fullscreenRef }: EditorChromeShellProps) {
   // Unique per-instance so multiple shells on the same page don't share a layoutId.
   const shellLayoutId = useId()
   const [fullscreen, setFullscreen] = useState(false)
@@ -139,6 +144,19 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     setFullscreen((open) => !open)
   }
 
+  // Expose an expand trigger for callers that need to programmatically enter fullscreen
+  // (e.g. when the Monaco iPad keyboard button is tapped on touch devices).
+  useLayoutEffect(() => {
+    if (!expandRef) return
+    expandRef.current = fullscreenLabel ? () => setFullscreen(true) : null
+    return () => { expandRef.current = null }
+  }, [expandRef, fullscreenLabel])
+
+  useLayoutEffect(() => {
+    if (!fullscreenRef) return
+    fullscreenRef.current = fullscreen
+  }, [fullscreenRef, fullscreen])
+
   useEffect(() => {
     if (!fullscreen) return
     // Capture-phase listener so Esc collapses the editor before a surrounding Dialog/Sheet can
@@ -173,7 +191,10 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const shellContent = (
     <>
       <EditorChromeHeader
-        className={fullscreenLabel ? 'touch-none cursor-grab active:cursor-grabbing select-none' : undefined}
+        className={cn(
+          fullscreenLabel ? 'touch-none cursor-grab active:cursor-grabbing select-none' : undefined,
+          fullscreen ? 'touch:py-3' : undefined,
+        )}
         onCollapse={fullscreen ? () => setFullscreen(false) : undefined}
         onExpand={!fullscreen && fullscreenLabel ? toggleFullscreen : undefined}
         dragHandlers={headerDragHandlers}
@@ -234,7 +255,9 @@ export function EditorChromeShell({ header, children, className, style, fullscre
       </AnimatePresence>
 
       {/* Fullscreen portal — AnimatePresence keeps the portal element alive long enough for Motion
-          to record its rect before unmounting, enabling the collapse FLIP back to the inline shell. */}
+          to record its rect before unmounting, enabling the collapse FLIP back to the inline shell.
+          document.body: surrounding Dialog has a CSS transform that makes `position:fixed` size
+          against the dialog rather than the viewport — portaling out escapes that stacking context. */}
       {createPortal(
         <AnimatePresence>
           {fullscreen && (

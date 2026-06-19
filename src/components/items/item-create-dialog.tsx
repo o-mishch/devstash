@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, startTransition, useMemo, type SyntheticEvent, type ReactNode } from 'react'
+import { useRef, useState, startTransition, useMemo, useEffect, type SyntheticEvent, type ReactNode } from 'react'
 import { Plus, FolderPlus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -111,12 +111,24 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     itemType !== effectiveDefaultType ||
     collectionForm.formState.isDirty
 
+  // In controlled mode (mobile), the parent changes `open` prop directly without
+  // calling handleOpenChange(true), so the onOpenChange callback below never fires
+  // on open. Sync itemType whenever the dialog transitions to open.
+  // deps intentionally omitted — validInitialType/defaultItemType are captured at mount;
+  // mid-session prop changes to initialType do not shift the default once the dialog is open.
+  useEffect(() => {
+    if (controlledOpen) {
+      startTransition(() => setItemType(effectiveDefaultType))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlledOpen])
+
   const { open, handleOpenChange, confirmOpen, handleConfirmOpenChange, handleDiscard } = useDirtyGuard({
     open: controlledOpen,
     onOpenChange: (isOpen) => {
       controlledOnOpenChange?.(isOpen)
       if (isOpen) {
-        setItemType(validInitialType || defaultItemType)
+        setItemType(effectiveDefaultType)
       }
     },
     onClose: () => {

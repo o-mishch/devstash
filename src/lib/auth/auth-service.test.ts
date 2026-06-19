@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import bcrypt from 'bcryptjs'
+import { Prisma } from '@/generated/prisma'
 
 // Mock dependencies
 vi.mock('bcryptjs', () => ({
@@ -61,6 +62,10 @@ vi.mock('@/lib/auth/tokens', () => ({
   restoreCredentialEmailToken: vi.fn(),
 }))
 
+vi.mock('@/lib/infra/rate-limit', () => ({
+  checkRateLimit: vi.fn(),
+}))
+
 import {
   validateUserPassword,
   verifyUserPasswordById,
@@ -70,6 +75,8 @@ import {
   applyPasswordReset,
   requestCredentialEmail,
   confirmCredentialEmail,
+  assertCredentialLoginAllowed,
+  linkPendingAccount,
 } from './auth-service'
 
 import {
@@ -83,6 +90,8 @@ import {
   setCredentialEmailLogin,
   changeCredentialEmail,
   isEmailTakenByAnotherUser,
+  checkProviderAccountExists,
+  createAccount,
 } from '@/lib/db/users'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
@@ -97,6 +106,7 @@ import {
   createCredentialEmailToken,
   deleteCredentialEmailToken,
 } from '@/lib/auth/tokens'
+import { checkRateLimit } from '@/lib/infra/rate-limit'
 
 const mockBcryptHash = bcrypt.hash as unknown as ReturnType<typeof vi.fn>
 const mockBcryptCompare = bcrypt.compare as unknown as ReturnType<typeof vi.fn>
@@ -126,11 +136,42 @@ const mockSetCredentialEmailLogin = setCredentialEmailLogin as ReturnType<typeof
 const mockChangeCredentialEmail = changeCredentialEmail as ReturnType<typeof vi.fn>
 const mockIsEmailTakenByAnotherUser = isEmailTakenByAnotherUser as ReturnType<typeof vi.fn>
 const mockSendCredentialEmailLink = sendCredentialEmailLink as ReturnType<typeof vi.fn>
+const mockCheckRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
+const mockCheckProviderAccountExists = checkProviderAccountExists as ReturnType<typeof vi.fn>
+const mockCreateAccount = createAccount as ReturnType<typeof vi.fn>
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockCheckRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
+})
 
 describe('auth-service', () => {
+  describe('assertCredentialLoginAllowed', () => {
+    it('rejects oversized passwords without calling rate limit', async () => {
+      const result = await assertCredentialLoginAllowed('127.0.0.1', 'a'.repeat(129))
+      expect(result).toEqual({ ok: false, reason: 'password-too-long', retryAfter: 0 })
+      expect(mockCheckRateLimit).not.toHaveBeenCalled()
+    })
+
+    it('rejects when the IP guard denies', async () => {
+      mockCheckRateLimit.mockResolvedValue({ success: false, retryAfter: 42 })
+      const result = await assertCredentialLoginAllowed('127.0.0.1', 'secret')
+      expect(result).toEqual({ ok: false, reason: 'ip-rate-limited', retryAfter: 42 })
+      expect(mockCheckRateLimit).toHaveBeenCalledWith('loginIP', '127.0.0.1')
+    })
+
+    it('allows when password length and IP guard pass', async () => {
+      expect(await assertCredentialLoginAllowed('127.0.0.1', 'secret')).toEqual({ ok: true })
+    })
+  })
+
   describe('validateUserPassword', () => {
+    it('returns null without bcrypt when password exceeds max length', async () => {
+      expect(await validateUserPassword('test@example.com', 'a'.repeat(129))).toBeNull()
+      expect(mockGetUserAuthInfoByEmail).not.toHaveBeenCalled()
+      expect(mockBcryptCompare).not.toHaveBeenCalled()
+    })
+
     it('returns null and runs a dummy compare when the user is absent', async () => {
       mockGetUserAuthInfoByEmail.mockResolvedValue(null)
       expect(await validateUserPassword('test@example.com', 'pass')).toBeNull()
@@ -760,6 +801,53 @@ describe('auth-service', () => {
         expect(mockSetCredentialEmailLogin).not.toHaveBeenCalled()
         expect(mockChangeCredentialEmail).not.toHaveBeenCalled()
       })
+    })
+  })
+
+  describe('linkPendingAccount', () => {
+    const pending = {
+      email: 'user@example.com',
+      providerEmail: 'oauth@github.com',
+      provider: 'github',
+      providerAccountId: 'gh-123',
+      type: 'oauth',
+      access_token: null,
+      refresh_token: null,
+      expires_at: null,
+      token_type: null,
+      scope: null,
+      id_token: null,
+      session_state: null,
+    }
+
+    it('creates the account and sends notification when not yet linked', async () => {
+      mockCheckProviderAccountExists.mockResolvedValue(false)
+      mockCreateAccount.mockResolvedValue({})
+
+      await linkPendingAccount('user-1', pending)
+
+      expect(mockCreateAccount).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', provider: 'github' }))
+      expect(mockInvalidateProfileCache).toHaveBeenCalledWith('user-1')
+      expect(mockSendSecurityNotification).toHaveBeenCalledWith('user-1', 'method-linked')
+    })
+
+    it('skips creation and notification when account is already linked', async () => {
+      mockCheckProviderAccountExists.mockResolvedValue(true)
+
+      await linkPendingAccount('user-1', pending)
+
+      expect(mockCreateAccount).not.toHaveBeenCalled()
+      expect(mockSendSecurityNotification).not.toHaveBeenCalled()
+    })
+
+    it('treats a P2002 race as idempotent success without throwing', async () => {
+      mockCheckProviderAccountExists.mockResolvedValue(false)
+      mockCreateAccount.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' })
+      )
+
+      await expect(linkPendingAccount('user-1', pending)).resolves.toBeUndefined()
+      expect(mockInvalidateProfileCache).not.toHaveBeenCalled()
     })
   })
 })

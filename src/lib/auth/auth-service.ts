@@ -2,6 +2,7 @@ import 'server-only'
 
 import bcrypt from 'bcryptjs'
 import { BCRYPT_ROUNDS } from '@/auth.config'
+import { Prisma } from '@/generated/prisma'
 import { getUserAuthInfoByEmail, getUserAuthMethods, createCredentialUser, updateUserPassword, setPasswordAndVerifyEmail, bootstrapCredentialLogin, findUserByAnyEmail, checkProviderAccountExists, createAccount, setCredentialEmailLogin, changeCredentialEmail, isEmailTakenByAnotherUser } from '@/lib/db/users'
 import { invalidateProfileCache } from '@/lib/infra/cache'
 import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
@@ -16,9 +17,43 @@ import { sendPasswordResetRequest } from '@/lib/emails/password-reset'
 import { sendCredentialEmailLink } from '@/lib/emails/credential-email'
 import { sendSecurityNotification } from '@/lib/emails/security-notification'
 import { consumePasswordResetToken, consumeCredentialEmailToken, createCredentialEmailToken, deleteCredentialEmailToken, peekCredentialEmailPayload, restoreCredentialEmailToken } from '@/lib/auth/tokens'
+import { checkRateLimit, type RateLimitKey } from '@/lib/infra/rate-limit'
+import { MAX_PASSWORD_LENGTH } from '@/lib/utils/validators'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'auth-service' })
+
+export type CredentialLoginGuardFailure = 'password-too-long' | 'ip-rate-limited'
+
+export interface CredentialLoginGuardResult {
+  ok: boolean
+  reason?: CredentialLoginGuardFailure
+  retryAfter?: number
+}
+
+export function isLoginPasswordTooLong(password: string): boolean {
+  return password.length > MAX_PASSWORD_LENGTH
+}
+
+/**
+ * Pre-bcrypt guards shared by the login route and NextAuth `authorize`. The two layers pass different
+ * per-IP buckets (`loginIP` for the route, `loginAuthorizeIP` for authorize) so one logical /login —
+ * which hits the route guard and then authorize via signIn — isn't charged twice against one budget.
+ */
+export async function assertCredentialLoginAllowed(
+  ip: string,
+  password: string,
+  ipRateLimitKey: Extract<RateLimitKey, 'loginIP' | 'loginAuthorizeIP'> = 'loginIP',
+): Promise<CredentialLoginGuardResult> {
+  if (isLoginPasswordTooLong(password)) {
+    return { ok: false, reason: 'password-too-long', retryAfter: 0 }
+  }
+  const { success, retryAfter } = await checkRateLimit(ipRateLimitKey, ip)
+  if (!success) {
+    return { ok: false, reason: 'ip-rate-limited', retryAfter }
+  }
+  return { ok: true }
+}
 
 export type { VerificationResult }
 
@@ -49,6 +84,8 @@ const DUMMY_PASSWORD_HASH = '$2b$12$/aPGheK5yMwWRHblAh2yH.yldP9ajZcNbVAPj.ph67Gn
  * Used by auth actions to prevent importing bcrypt directly in the web layer.
  */
 export async function validateUserPassword(email: string, password: string) {
+  if (isLoginPasswordTooLong(password)) return null
+
   const user = await getUserAuthInfoByEmail(email)
   if (!user?.password) {
     // Constant-time: run a dummy compare so a missing user / OAuth-only account takes comparable
@@ -414,7 +451,12 @@ export async function confirmCredentialEmail(
 export async function linkPendingAccount(userId: string, pending: PendingLinkData) {
   const alreadyLinked = await checkProviderAccountExists(pending.provider, pending.providerAccountId)
 
-  if (!alreadyLinked) {
+  if (alreadyLinked) {
+    log.info({ userId, provider: pending.provider, providerAccountId: pending.providerAccountId }, 'linkPendingAccount skipped — account already linked')
+    return
+  }
+
+  try {
     await createAccount({
       userId,
       type: pending.type,
@@ -429,7 +471,14 @@ export async function linkPendingAccount(userId: string, pending: PendingLinkDat
       id_token: pending.id_token,
       session_state: pending.session_state,
     })
-    invalidateProfileCache(userId)
-    void sendSecurityNotification(userId, 'method-linked')
+  } catch (error) {
+    // P2002: concurrent request won the unique-constraint race — treat as idempotent success
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      log.info({ userId, provider: pending.provider }, 'linkPendingAccount race — account already created by concurrent request')
+      return
+    }
+    throw error
   }
+  invalidateProfileCache(userId)
+  void sendSecurityNotification(userId, 'method-linked')
 }

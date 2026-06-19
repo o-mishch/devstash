@@ -2,11 +2,11 @@
 
 import { SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import type { ApiBody } from '@/types/api'
+import type { ActionState } from '@/types/actions'
 import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
 interface LinkAccountFormProps {
-  action: (_prev: ApiBody<null> | null, formData: FormData) => Promise<ApiBody<null>>
+  action: (_prev: ActionState | null, formData: FormData) => Promise<ActionState>
   providerLabel: string
 }
 

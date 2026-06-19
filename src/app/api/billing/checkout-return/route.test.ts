@@ -42,8 +42,6 @@ vi.mock('@/lib/infra/pino', () => ({
 
 import { GET } from './route'
 
-const routeContext = { params: Promise.resolve({}) }
-
 function makeRequest(sessionId?: string) {
   const url = new URL('http://localhost:3000/api/billing/checkout-return')
   if (sessionId) {
@@ -63,7 +61,7 @@ describe('GET /api/billing/checkout-return', () => {
   it('redirects unauthenticated users to sign-in with checkout return callback', async () => {
     mockGetSession.mockResolvedValue(null)
 
-    const response = await GET(makeRequest('cs_test_123'), routeContext)
+    const response = await GET(makeRequest('cs_test_123'))
 
     expect(response.status).toBe(307)
     const location = response.headers.get('location')
@@ -75,12 +73,11 @@ describe('GET /api/billing/checkout-return', () => {
 
   it('redirects to settings when rate limited', async () => {
     mockRateLimitAction.mockResolvedValue({
-      status: 'too_many_requests',
-      data: null,
+      success: false,
       message: 'Too many attempts. Please try again shortly.',
     })
 
-    const response = await GET(makeRequest('cs_test_123'), routeContext)
+    const response = await GET(makeRequest('cs_test_123'))
 
     expect(mockRateLimitAction).toHaveBeenCalledWith('stripeSync', 'user-1')
     expect(response.status).toBe(307)
@@ -91,7 +88,7 @@ describe('GET /api/billing/checkout-return', () => {
   it('falls back to passive sync when session_id is invalid', async () => {
     mockFinalizeCheckoutReturn.mockResolvedValue({ type: 'syncing' })
 
-    const response = await GET(makeRequest('bad_session'), routeContext)
+    const response = await GET(makeRequest('bad_session'))
 
     expect(mockFinalizeCheckoutReturn).toHaveBeenCalledWith({
       userId: 'user-1',
@@ -103,7 +100,7 @@ describe('GET /api/billing/checkout-return', () => {
   })
 
   it('finalizes checkout and redirects to the success toast', async () => {
-    const response = await GET(makeRequest('cs_test_123'), routeContext)
+    const response = await GET(makeRequest('cs_test_123'))
 
     expect(mockFinalizeCheckoutReturn).toHaveBeenCalledWith({
       userId: 'user-1',
@@ -117,14 +114,14 @@ describe('GET /api/billing/checkout-return', () => {
   it('redirects with syncing recovery when finalization throws', async () => {
     mockFinalizeCheckoutReturn.mockRejectedValue(new Error('Stripe unavailable'))
 
-    const response = await GET(makeRequest('cs_test_123'), routeContext)
+    const response = await GET(makeRequest('cs_test_123'))
 
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toBe('http://localhost:3000/settings?checkout=syncing')
   })
 
   it('finalizes checkout without session_id when param is omitted', async () => {
-    const response = await GET(makeRequest(), routeContext)
+    const response = await GET(makeRequest())
 
     expect(mockFinalizeCheckoutReturn).toHaveBeenCalledWith({
       userId: 'user-1',
@@ -137,7 +134,7 @@ describe('GET /api/billing/checkout-return', () => {
   it('redirects to settings when finalization returns null', async () => {
     mockFinalizeCheckoutReturn.mockResolvedValue(null)
 
-    const response = await GET(makeRequest('cs_test_123'), routeContext)
+    const response = await GET(makeRequest('cs_test_123'))
 
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toBe('http://localhost:3000/settings')
@@ -146,7 +143,7 @@ describe('GET /api/billing/checkout-return', () => {
   it('redirects with syncing outcome when finalization returns syncing', async () => {
     mockFinalizeCheckoutReturn.mockResolvedValue({ type: 'syncing' })
 
-    const response = await GET(makeRequest('cs_test_123'), routeContext)
+    const response = await GET(makeRequest('cs_test_123'))
 
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toBe('http://localhost:3000/settings?checkout=syncing')
@@ -158,7 +155,7 @@ describe('GET /api/billing/checkout-return', () => {
       messageKey: 'activation_failed',
     })
 
-    const response = await GET(makeRequest('cs_test_123'), routeContext)
+    const response = await GET(makeRequest('cs_test_123'))
 
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toContain('checkout=info')
@@ -171,7 +168,7 @@ describe('GET /api/billing/checkout-return', () => {
       messageKey: 'session_owner_mismatch',
     })
 
-    const response = await GET(makeRequest('cs_test_123'), routeContext)
+    const response = await GET(makeRequest('cs_test_123'))
 
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toContain('checkout=info')

@@ -33,7 +33,7 @@ export async function applyPasswordReset(token: string, password: string): Promi
 
 // profile.ts — changePasswordAction
 await changeUserPassword(userId, newPassword)
-return ApiResponse.OK()
+return { success: true }
 // No session invalidation — all other active sessions remain valid
 ```
 
@@ -98,15 +98,15 @@ async jwt({ token, user }) {
 **Vulnerable Code**:
 ```typescript
 export async function changePasswordAction(
-  _prevState: ApiBody<null> | null,
+  _prevState: ActionState | null,
   formData: FormData
-): Promise<ApiBody<null>> {
+): Promise<ActionState> {
   return withAuth(async (userId) => {
     // No rate limit applied here
     const valid = await verifyUserPasswordById(userId, currentPassword)
-    if (!valid) return ApiResponse.BAD_REQUEST('Current password is incorrect or not set.')
+    if (!valid) return { success: false, message: 'Current password is incorrect or not set.' }
     await changeUserPassword(userId, newPassword)
-    return ApiResponse.OK()
+    return { success: true }
   })
 }
 ```
@@ -124,7 +124,7 @@ changePassword: { attempts: 5, window: '15 m' }, // keyed by userId
 // src/actions/profile.ts
 import { rateLimitAction } from '@/lib/rate-limit'
 
-export async function changePasswordAction(...): Promise<ApiBody<null>> {
+export async function changePasswordAction(...): Promise<ActionState> {
   return withAuth(async (userId) => {
     const rl = await rateLimitAction('changePassword', userId)
     if (rl) return rl
@@ -217,7 +217,7 @@ redirect(`/register?pending=1&email=${encodeURIComponent(email)}&sent=${...}`)
 ```typescript
 // src/actions/auth/register.ts — after extracting fields
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-if (!emailRegex.test(email)) return ApiResponse.BAD_REQUEST('Please enter a valid email address.')
+if (!emailRegex.test(email)) return { success: false, message: 'Please enter a valid email address.' }
 ```
 
 ---
@@ -246,7 +246,7 @@ The following security measures were verified as correctly implemented:
 - **Current password required before password change**: `changePasswordAction` calls `verifyUserPasswordById` with bcrypt before allowing the update.
 - **Password required before OAuth account linking**: `linkAccountAction` calls `validateUserPassword` before creating the Account row.
 - **Passwords never logged**: No `console.log` or logger call includes password values anywhere in the auth path.
-- **No stack traces in error responses**: The `apiRoute` wrapper catches all unhandled errors and returns a generic `internal_error` response without internal details.
+- **No stack traces in error responses**: The route wrappers (`authedRoute`, `publicRoute`) catch all unhandled errors and return a generic 500 error response without internal details.
 - **JWT session with DB presence check**: The `jwt` callback verifies the user ID still exists in the database on every token refresh, ensuring deleted accounts are immediately locked out.
 - **Pending OAuth-link data stored in Redis, not in URL**: The full OAuth token payload is never exposed in a redirect; only an opaque 32-byte hex reference is passed via query string with a 15-minute TTL.
 - **Verification token freshness reuse**: `resendVerification` reuses the existing token if it was issued less than 55 minutes ago, avoiding token thrashing while still allowing resend.

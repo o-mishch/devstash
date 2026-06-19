@@ -1,10 +1,14 @@
-// Human-readable error messages used in more than one place, centralized so wording can't drift
-// between call sites. Two kinds live here: (1) strings shared across BOTH client↔server transports
-// — the route handlers (`problem(status, message)`) and the `ApiResponse` envelope (Server Actions
-// + exempt routes); (2) strings repeated across multiple route handlers in a domain. Bespoke,
-// single-site messages stay inline at their call site. Client-safe (pure strings, no server-only).
+/**
+ * Centralized human-readable error messages to prevent wording drift across call sites.
+ *
+ * Caters to two primary scenarios:
+ * 1. Cross-transport strings shared by Route Handlers (`problem()`) and Server Actions (`ActionState`).
+ * 2. Repeated strings shared across multiple Route Handlers of a single feature domain.
+ *
+ * Pure strings only (client-safe, no server-only imports).
+ */
 export const ErrorMessage = {
-  // Cross-transport (route handlers + ApiResponse)
+  // Cross-transport (route handlers + Server Actions)
   NOT_AUTHENTICATED: 'Not authenticated.',
   FILE_NOT_FOUND: 'File not found.',
 

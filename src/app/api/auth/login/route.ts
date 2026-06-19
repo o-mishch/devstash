@@ -5,12 +5,17 @@ import { noContent, problem, parseOr422 } from '@/lib/api/http'
 import { loginInput } from '@/lib/api/schemas/auth'
 import { checkRateLimit, getActionIP } from '@/lib/infra/rate-limit'
 import { outboundEmailEnabled } from '@/lib/utils/auth'
-import { validateUserPassword } from '@/lib/auth/auth-service'
+import { assertCredentialLoginAllowed, validateUserPassword } from '@/lib/auth/auth-service'
 
 export const POST = publicRoute(async ({ request }) => {
   const parsed = parseOr422(loginInput, await request.json())
   if (!parsed.ok) return parsed.res
   const { email, password } = parsed.data
+
+  // Broad IP guard + max-length before bcrypt — shared with NextAuth `authorize`.
+  const ip = await getActionIP()
+  const guard = await assertCredentialLoginAllowed(ip, password)
+  if (!guard.ok) return rateLimited(guard.retryAfter ?? 60)
 
   // Validate password before signIn so we can return 403 + { email } for correct-but-unverified
   // attempts. signIn → authorize runs validateUserPassword again (defense-in-depth for other callers).
@@ -19,7 +24,7 @@ export const POST = publicRoute(async ({ request }) => {
   if (!user) {
     // Wrong password, or no credential account — generic 400 that consumes the failed-attempt
     // budget. Never reveals whether the account exists.
-    const { success, retryAfter } = await checkRateLimit('login', `${await getActionIP()}:${email}`)
+    const { success, retryAfter } = await checkRateLimit('login', `${ip}:${email}`)
     if (!success) return rateLimited(retryAfter)
     return problem(400, 'Invalid email or password.')
   }
