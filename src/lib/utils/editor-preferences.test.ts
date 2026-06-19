@@ -19,6 +19,7 @@ describe('normalizeEditorPreferences', () => {
       colorMode: 'light' as const,
       editorThemeMode: 'app' as const,
       dashboardSections: { collections: true, pinned: true, recent: true },
+      sidebarCollapsed: true,
     }
     expect(normalizeEditorPreferences(valid)).toEqual(valid)
   })
@@ -33,6 +34,7 @@ describe('normalizeEditorPreferences', () => {
       colorMode: 'light' as const,
       editorThemeMode: 'dark' as const,
       dashboardSections: { collections: false, pinned: true, recent: false },
+      sidebarCollapsed: false,
     }
     expect(normalizeEditorPreferences(withDarkTheme)).toEqual(withDarkTheme)
   })

@@ -230,6 +230,7 @@ describe('PATCH /profile/editor-preferences', () => {
       colorMode: 'dark',
       editorThemeMode: 'app',
       dashboardSections: { collections: true, pinned: true, recent: true },
+      sidebarCollapsed: false,
     }))
     expect(res.status).toBe(204)
   })

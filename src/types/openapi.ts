@@ -1011,6 +1011,7 @@ export interface paths {
                             pinned: boolean;
                             recent: boolean;
                         };
+                        sidebarCollapsed: boolean;
                     };
                 };
             };
@@ -2675,9 +2676,1710 @@ export interface paths {
         trace?: never;
     };
 }
-export type webhooks = Record<string, never>;
+export interface webhooks {
+    "checkout.session.completed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — checkout.session.completed
+         * @description Occurs when a Checkout Session has been successfully completed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "checkout.session.completed";
+                        data: {
+                            object: components["schemas"]["StripeCheckoutSessionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "checkout.session.async_payment_succeeded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — checkout.session.async_payment_succeeded
+         * @description Occurs when a payment intent using a delayed payment method finally succeeds.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "checkout.session.async_payment_succeeded";
+                        data: {
+                            object: components["schemas"]["StripeCheckoutSessionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "checkout.session.async_payment_failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — checkout.session.async_payment_failed
+         * @description Occurs when a payment intent using a delayed payment method fails.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "checkout.session.async_payment_failed";
+                        data: {
+                            object: components["schemas"]["StripeCheckoutSessionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "checkout.session.expired": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — checkout.session.expired
+         * @description Occurs when a Checkout Session is expired.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "checkout.session.expired";
+                        data: {
+                            object: components["schemas"]["StripeCheckoutSessionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.subscription.created": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.subscription.created
+         * @description Occurs whenever a customer is signed up for a new plan.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.subscription.created";
+                        data: {
+                            object: components["schemas"]["StripeSubscriptionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.subscription.updated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.subscription.updated
+         * @description Occurs whenever a subscription changes (e.g., switching from one plan to another, or changing the status from trial to active).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.subscription.updated";
+                        data: {
+                            object: components["schemas"]["StripeSubscriptionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.subscription.deleted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.subscription.deleted
+         * @description Occurs whenever a customer's subscription ends.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.subscription.deleted";
+                        data: {
+                            object: components["schemas"]["StripeSubscriptionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.subscription.paused": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.subscription.paused
+         * @description Occurs whenever a customer's subscription is paused. Only applies when subscriptions enter status=paused, not when payment collection is paused.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.subscription.paused";
+                        data: {
+                            object: components["schemas"]["StripeSubscriptionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.subscription.resumed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.subscription.resumed
+         * @description Occurs whenever a customer's subscription is no longer paused. Only applies when a status=paused subscription is resumed, not when payment collection is resumed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.subscription.resumed";
+                        data: {
+                            object: components["schemas"]["StripeSubscriptionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.subscription.pending_update_applied": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.subscription.pending_update_applied
+         * @description Occurs whenever a customer's subscription's pending update is applied, and the subscription is updated.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.subscription.pending_update_applied";
+                        data: {
+                            object: components["schemas"]["StripeSubscriptionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.subscription.pending_update_expired": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.subscription.pending_update_expired
+         * @description Occurs whenever a customer's subscription's pending update expires before the related invoice is paid.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.subscription.pending_update_expired";
+                        data: {
+                            object: components["schemas"]["StripeSubscriptionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.subscription.trial_will_end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.subscription.trial_will_end
+         * @description Occurs three days before a subscription's trial period is scheduled to end, or immediately when a trial is ended early (for example, with trial_end=now or when a Customer Portal plan change ends a trial). If a trial is shortened so that fewer than three days remain, this event can fire immediately, including during the same transaction that collects payment. Before sending payment-reminder communications from this webhook, check the subscription status and latest invoice to determine whether payment has already been collected.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.subscription.trial_will_end";
+                        data: {
+                            object: components["schemas"]["StripeSubscriptionPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "invoice.paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — invoice.paid
+         * @description Occurs whenever an invoice payment attempt succeeds or an invoice is marked paid.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "invoice.paid";
+                        data: {
+                            object: components["schemas"]["StripeInvoicePayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "invoice.payment_failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — invoice.payment_failed
+         * @description Occurs whenever an invoice payment attempt fails, due to either a declined payment, including soft decline, or to the lack of a stored payment method.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "invoice.payment_failed";
+                        data: {
+                            object: components["schemas"]["StripeInvoicePayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "invoice.payment_action_required": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — invoice.payment_action_required
+         * @description Occurs whenever an invoice payment attempt requires further user action to complete.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "invoice.payment_action_required";
+                        data: {
+                            object: components["schemas"]["StripeInvoicePayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "invoice.payment_attempt_required": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — invoice.payment_attempt_required
+         * @description Occurs when an invoice requires a payment using a payment method that cannot be processed by Stripe.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "invoice.payment_attempt_required";
+                        data: {
+                            object: components["schemas"]["StripeInvoicePayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "charge.refunded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — charge.refunded
+         * @description Occurs whenever a charge is refunded, including partial refunds.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "charge.refunded";
+                        data: {
+                            object: components["schemas"]["StripeChargePayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "charge.dispute.created": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — charge.dispute.created
+         * @description Occurs whenever a customer disputes a charge with their bank.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "charge.dispute.created";
+                        data: {
+                            object: components["schemas"]["StripeDisputePayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "charge.dispute.closed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — charge.dispute.closed
+         * @description Occurs when a dispute is resolved or closed.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "charge.dispute.closed";
+                        data: {
+                            object: components["schemas"]["StripeDisputePayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.updated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.updated
+         * @description Occurs whenever any property of a customer changes, such as their email address.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.updated";
+                        data: {
+                            object: components["schemas"]["StripeCustomerPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "customer.deleted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe → POST /api/webhooks/stripe — customer.deleted
+         * @description Occurs whenever a customer is deleted from Stripe.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "stripe-signature": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        object: "event";
+                        api_version: string | null;
+                        created: number;
+                        livemode: boolean;
+                        /** @constant */
+                        type: "customer.deleted";
+                        data: {
+                            object: components["schemas"]["StripeCustomerPayload"];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Event received (also returned for duplicate/already-processed events) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookReceived"];
+                    };
+                };
+                /** @description Missing signature or signature verification failed */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Webhook secret not configured or handler failed — Stripe will retry */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+}
 export interface components {
     schemas: {
+        /** @description See the full object: https://docs.stripe.com/api/checkout/sessions/object */
+        StripeCheckoutSessionPayload: {
+            id: string;
+            /** @constant */
+            object: "checkout.session";
+            /** @enum {string} */
+            mode: "payment" | "setup" | "subscription";
+            status: ("open" | "complete" | "expired") | null;
+            /** @enum {string} */
+            payment_status: "paid" | "unpaid" | "no_payment_required";
+            /** @description Customer ID (expandable; an ID string on the webhook). */
+            customer: string | null;
+            customer_email: string | null;
+            /** @description Subscription ID, if mode=subscription. */
+            subscription: string | null;
+            client_reference_id: string | null;
+            /** @description Total of the session in the smallest currency unit. */
+            amount_total: number | null;
+            currency: string | null;
+            metadata: {
+                [key: string]: string;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description See the full object: https://docs.stripe.com/api/subscriptions/object */
+        StripeSubscriptionPayload: {
+            id: string;
+            /** @constant */
+            object: "subscription";
+            /** @enum {string} */
+            status: "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete" | "incomplete_expired" | "paused";
+            /** @description Customer ID (expandable; an ID string on the webhook). */
+            customer: string;
+            cancel_at_period_end: boolean;
+            /** @description Unix timestamp the current period ends. */
+            current_period_end: number | null;
+            canceled_at: number | null;
+            trial_end: number | null;
+            items: {
+                data: {
+                    id: string;
+                    price: {
+                        id: string;
+                        product: string;
+                    };
+                }[];
+            };
+            metadata: {
+                [key: string]: string;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description See the full object: https://docs.stripe.com/api/invoices/object */
+        StripeInvoicePayload: {
+            id: string;
+            /** @constant */
+            object: "invoice";
+            status: ("draft" | "open" | "paid" | "uncollectible" | "void") | null;
+            /** @description Customer ID (expandable; an ID string on the webhook). */
+            customer: string;
+            subscription: string | null;
+            amount_due: number;
+            amount_paid: number;
+            currency: string;
+            /** @description e.g. subscription_create, subscription_cycle. */
+            billing_reason: string | null;
+            attempt_count: number;
+            next_payment_attempt: number | null;
+            hosted_invoice_url: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description See the full object: https://docs.stripe.com/api/charges/object */
+        StripeChargePayload: {
+            id: string;
+            /** @constant */
+            object: "charge";
+            amount: number;
+            amount_refunded: number;
+            currency: string;
+            /** @description Customer ID (expandable; an ID string on the webhook). */
+            customer: string | null;
+            payment_intent: string | null;
+            refunded: boolean;
+            /** @enum {string} */
+            status: "succeeded" | "pending" | "failed";
+            receipt_url: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description See the full object: https://docs.stripe.com/api/disputes/object */
+        StripeDisputePayload: {
+            id: string;
+            /** @constant */
+            object: "dispute";
+            /** @description Disputed amount in the smallest currency unit. */
+            amount: number;
+            currency: string;
+            /** @description Charge ID (expandable; an ID string on the webhook). */
+            charge: string;
+            payment_intent: string | null;
+            /** @description e.g. fraudulent, product_not_received. */
+            reason: string;
+            status: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description See the full object: https://docs.stripe.com/api/customers/object */
+        StripeCustomerPayload: {
+            id: string;
+            /** @constant */
+            object: "customer";
+            email: string | null;
+            name: string | null;
+            created: number;
+            /** @description Present (true) on customer.deleted events. */
+            deleted?: boolean;
+            metadata: {
+                [key: string]: string;
+            };
+        } & {
+            [key: string]: unknown;
+        };
         Collection: {
             id: string;
             name: string;
@@ -2794,6 +4496,9 @@ export interface components {
         SignedDownloadUrl: {
             url: string;
             expiresAt: string;
+        };
+        WebhookReceived: {
+            received: boolean;
         };
     };
     responses: never;

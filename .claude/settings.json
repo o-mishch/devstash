@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "mcp__context7__*"
+      "mcp__context7__*",
+      "Bash(node -e ' *)",
+      "Bash(rm -f scripts/fetch-stripe-payload-schemas.ts)",
+      "Bash(rm -f /tmp/stripe-spec3.json /tmp/closure-names.txt /tmp/pruned-names.txt /tmp/event-audit.ts)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/zod/package.json'\\).version\\)\")",
+      "Bash(node -e \"const d=require\\('./openapi.json'\\); const c=Object.keys\\(d.components?.schemas||{}\\).filter\\(k=>k.startsWith\\('Stripe'\\)\\); console.log\\('Stripe payload components:', c.join\\(', '\\)\\); const wh=d.webhooks['customer.subscription.updated']; console.log\\('\\\\\\\\nsub.updated data.object schema ref:', JSON.stringify\\(wh.post.requestBody.content['application/json'].schema.properties.data.properties.object\\)\\);\")",
+      "Bash(node -e \"const d=require\\('./openapi.json'\\); const s=d.components.schemas.StripeSubscriptionPayload; console.log\\('additionalProperties:', JSON.stringify\\(s.additionalProperties\\)\\); console.log\\('description:', s.description\\); console.log\\('top-level field keys:', Object.keys\\(s.properties\\).join\\(', '\\)\\);\")",
+      "Bash(awk '{a+=$1; d+=$2} END {print \"+\"a\" -\"d\" net \"a-d}')",
+      "Bash(awk '{print $3\": +\"$1\" -\"$2}')"
     ],
     "deny": [
       "Bash(npx prisma db push*)",
@@ -11,10 +19,6 @@
     ]
   },
   "autoMode": {
-    "environment": [
-      "$defaults",
-      "Next.js 16 SaaS app (DevStash). Neon PostgreSQL with two branches: 'dev' (safe for all work) and 'production' (live user traffic — never touch directly). Always use prisma migrate dev for schema changes, never prisma db push."
-    ],
     "soft_deny": [
       "$defaults",
       "Never use prisma db push — schema changes must go through prisma migrate dev",
@@ -24,6 +28,10 @@
       "$defaults",
       "Never force-push to main branch",
       "Never run any command against the Neon production branch"
+    ],
+    "environment": [
+      "$defaults",
+      "Next.js 16 SaaS app (DevStash). Neon PostgreSQL with two branches: 'dev' (safe for all work) and 'production' (live user traffic — never touch directly). Always use prisma migrate dev for schema changes, never prisma db push."
     ]
   }
 }

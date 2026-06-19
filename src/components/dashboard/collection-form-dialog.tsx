@@ -1,13 +1,13 @@
 'use client'
 
-import { type ReactNode, useEffect, useCallback, useRef } from 'react'
+import { type ReactNode, useEffect, useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 
-import { ResponsiveFormDialog } from '@/components/ui/responsive-form-dialog'
+import { ResponsiveFormDialog, morphOriginFromClick, type MorphOrigin } from '@/components/ui/responsive-form-dialog'
 import { CollectionFormFields } from '@/components/shared/collection-form-fields'
 import { FormDialogFooter } from '@/components/shared/form-dialog-footer'
 import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog'
@@ -60,6 +60,7 @@ export function CollectionFormDialog({
 }: CollectionFormDialogProps) {
   const router = useRouter()
   const { openPrompt } = useUpgradePromptStore()
+  const [morphOrigin, setMorphOrigin] = useState<MorphOrigin | null>(null)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(collectionFormSchema),
@@ -112,6 +113,7 @@ export function CollectionFormDialog({
         openPrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
         return
       }
+      setMorphOrigin(morphOriginFromClick(e))
       handleOpenChange(true)
     }} className="contents">
       {trigger}
@@ -131,6 +133,7 @@ export function CollectionFormDialog({
         title={title}
         description={description}
         desktopClassName="sm:max-w-[440px]"
+        morphOrigin={morphOrigin}
         mobileResizable
       >
         {(isDesktop) =>

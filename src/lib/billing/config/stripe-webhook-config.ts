@@ -82,6 +82,10 @@ const STRIPE_WEBHOOK_EVENT_CONFIG = [
     description: 'Occurs when a dispute is resolved or closed.',
   },
   {
+    type: 'customer.updated',
+    description: 'Occurs whenever any property of a customer changes, such as their email address.',
+  },
+  {
     type: 'customer.deleted',
     description: 'Occurs whenever a customer is deleted from Stripe.',
   },

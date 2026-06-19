@@ -19,6 +19,10 @@ export function EditorPreferencesInitializer({
     } else {
       useEditorPreferencesStore.setState({ isInitialized: true })
     }
+    // Hand collapse-state control to Base UI: this disables the pre-hydration
+    // display:none guard in globals.css so the Collapsible expand/collapse
+    // animation can run (the guard would otherwise zero the panel on collapse).
+    document.documentElement.setAttribute('data-section-ready', '')
   }, [preferences])
 
   return null

@@ -1237,6 +1237,9 @@
                       "pinned",
                       "recent"
                     ]
+                  },
+                  "sidebarCollapsed": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -1247,7 +1250,8 @@
                   "appTheme",
                   "colorMode",
                   "editorThemeMode",
-                  "dashboardSections"
+                  "dashboardSections",
+                  "sidebarCollapsed"
                 ]
               }
             }
@@ -2822,8 +2826,2780 @@
       }
     }
   },
+  "webhooks": {
+    "checkout.session.completed": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — checkout.session.completed",
+        "description": "Occurs when a Checkout Session has been successfully completed.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "checkout.session.completed"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeCheckoutSessionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "checkout.session.async_payment_succeeded": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — checkout.session.async_payment_succeeded",
+        "description": "Occurs when a payment intent using a delayed payment method finally succeeds.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "checkout.session.async_payment_succeeded"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeCheckoutSessionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "checkout.session.async_payment_failed": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — checkout.session.async_payment_failed",
+        "description": "Occurs when a payment intent using a delayed payment method fails.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "checkout.session.async_payment_failed"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeCheckoutSessionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "checkout.session.expired": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — checkout.session.expired",
+        "description": "Occurs when a Checkout Session is expired.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "checkout.session.expired"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeCheckoutSessionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.subscription.created": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.subscription.created",
+        "description": "Occurs whenever a customer is signed up for a new plan.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.subscription.created"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeSubscriptionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.subscription.updated": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.subscription.updated",
+        "description": "Occurs whenever a subscription changes (e.g., switching from one plan to another, or changing the status from trial to active).",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.subscription.updated"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeSubscriptionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.subscription.deleted": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.subscription.deleted",
+        "description": "Occurs whenever a customer's subscription ends.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.subscription.deleted"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeSubscriptionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.subscription.paused": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.subscription.paused",
+        "description": "Occurs whenever a customer's subscription is paused. Only applies when subscriptions enter status=paused, not when payment collection is paused.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.subscription.paused"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeSubscriptionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.subscription.resumed": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.subscription.resumed",
+        "description": "Occurs whenever a customer's subscription is no longer paused. Only applies when a status=paused subscription is resumed, not when payment collection is resumed.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.subscription.resumed"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeSubscriptionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.subscription.pending_update_applied": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.subscription.pending_update_applied",
+        "description": "Occurs whenever a customer's subscription's pending update is applied, and the subscription is updated.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.subscription.pending_update_applied"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeSubscriptionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.subscription.pending_update_expired": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.subscription.pending_update_expired",
+        "description": "Occurs whenever a customer's subscription's pending update expires before the related invoice is paid.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.subscription.pending_update_expired"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeSubscriptionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.subscription.trial_will_end": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.subscription.trial_will_end",
+        "description": "Occurs three days before a subscription's trial period is scheduled to end, or immediately when a trial is ended early (for example, with trial_end=now or when a Customer Portal plan change ends a trial). If a trial is shortened so that fewer than three days remain, this event can fire immediately, including during the same transaction that collects payment. Before sending payment-reminder communications from this webhook, check the subscription status and latest invoice to determine whether payment has already been collected.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.subscription.trial_will_end"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeSubscriptionPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "invoice.paid": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — invoice.paid",
+        "description": "Occurs whenever an invoice payment attempt succeeds or an invoice is marked paid.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "invoice.paid"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeInvoicePayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "invoice.payment_failed": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — invoice.payment_failed",
+        "description": "Occurs whenever an invoice payment attempt fails, due to either a declined payment, including soft decline, or to the lack of a stored payment method.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "invoice.payment_failed"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeInvoicePayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "invoice.payment_action_required": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — invoice.payment_action_required",
+        "description": "Occurs whenever an invoice payment attempt requires further user action to complete.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "invoice.payment_action_required"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeInvoicePayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "invoice.payment_attempt_required": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — invoice.payment_attempt_required",
+        "description": "Occurs when an invoice requires a payment using a payment method that cannot be processed by Stripe.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "invoice.payment_attempt_required"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeInvoicePayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "charge.refunded": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — charge.refunded",
+        "description": "Occurs whenever a charge is refunded, including partial refunds.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "charge.refunded"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeChargePayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "charge.dispute.created": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — charge.dispute.created",
+        "description": "Occurs whenever a customer disputes a charge with their bank.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "charge.dispute.created"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeDisputePayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "charge.dispute.closed": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — charge.dispute.closed",
+        "description": "Occurs when a dispute is resolved or closed.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "charge.dispute.closed"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeDisputePayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.updated": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.updated",
+        "description": "Occurs whenever any property of a customer changes, such as their email address.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.updated"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeCustomerPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "customer.deleted": {
+      "post": {
+        "summary": "Stripe → POST /api/webhooks/stripe — customer.deleted",
+        "description": "Occurs whenever a customer is deleted from Stripe.",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "stripe-signature",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "object": {
+                    "type": "string",
+                    "const": "event"
+                  },
+                  "api_version": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "created": {
+                    "type": "number"
+                  },
+                  "livemode": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "customer.deleted"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "object": {
+                        "$ref": "#/components/schemas/StripeCustomerPayload"
+                      }
+                    },
+                    "required": [
+                      "object"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "object",
+                  "api_version",
+                  "created",
+                  "livemode",
+                  "type",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event received (also returned for duplicate/already-processed events)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookReceived"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing signature or signature verification failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Webhook secret not configured or handler failed — Stripe will retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "components": {
     "schemas": {
+      "StripeCheckoutSessionPayload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "checkout.session"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "payment",
+              "setup",
+              "subscription"
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "complete",
+                  "expired"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payment_status": {
+            "type": "string",
+            "enum": [
+              "paid",
+              "unpaid",
+              "no_payment_required"
+            ]
+          },
+          "customer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Customer ID (expandable; an ID string on the webhook)."
+          },
+          "customer_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subscription": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Subscription ID, if mode=subscription."
+          },
+          "client_reference_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount_total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Total of the session in the smallest currency unit."
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "mode",
+          "status",
+          "payment_status",
+          "customer",
+          "customer_email",
+          "subscription",
+          "client_reference_id",
+          "amount_total",
+          "currency",
+          "metadata"
+        ],
+        "additionalProperties": {},
+        "description": "See the full object: https://docs.stripe.com/api/checkout/sessions/object"
+      },
+      "StripeSubscriptionPayload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "subscription"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "trialing",
+              "active",
+              "past_due",
+              "canceled",
+              "unpaid",
+              "incomplete",
+              "incomplete_expired",
+              "paused"
+            ]
+          },
+          "customer": {
+            "type": "string",
+            "description": "Customer ID (expandable; an ID string on the webhook)."
+          },
+          "cancel_at_period_end": {
+            "type": "boolean"
+          },
+          "current_period_end": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unix timestamp the current period ends."
+          },
+          "canceled_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trial_end": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "price": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "product": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "product"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "price"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "data"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "status",
+          "customer",
+          "cancel_at_period_end",
+          "current_period_end",
+          "canceled_at",
+          "trial_end",
+          "items",
+          "metadata"
+        ],
+        "additionalProperties": {},
+        "description": "See the full object: https://docs.stripe.com/api/subscriptions/object"
+      },
+      "StripeInvoicePayload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "invoice"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "open",
+                  "paid",
+                  "uncollectible",
+                  "void"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customer": {
+            "type": "string",
+            "description": "Customer ID (expandable; an ID string on the webhook)."
+          },
+          "subscription": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount_due": {
+            "type": "number"
+          },
+          "amount_paid": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "billing_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "e.g. subscription_create, subscription_cycle."
+          },
+          "attempt_count": {
+            "type": "number"
+          },
+          "next_payment_attempt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hosted_invoice_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "status",
+          "customer",
+          "subscription",
+          "amount_due",
+          "amount_paid",
+          "currency",
+          "billing_reason",
+          "attempt_count",
+          "next_payment_attempt",
+          "hosted_invoice_url"
+        ],
+        "additionalProperties": {},
+        "description": "See the full object: https://docs.stripe.com/api/invoices/object"
+      },
+      "StripeChargePayload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "charge"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "amount_refunded": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "customer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Customer ID (expandable; an ID string on the webhook)."
+          },
+          "payment_intent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refunded": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "succeeded",
+              "pending",
+              "failed"
+            ]
+          },
+          "receipt_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "amount",
+          "amount_refunded",
+          "currency",
+          "customer",
+          "payment_intent",
+          "refunded",
+          "status",
+          "receipt_url"
+        ],
+        "additionalProperties": {},
+        "description": "See the full object: https://docs.stripe.com/api/charges/object"
+      },
+      "StripeDisputePayload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "dispute"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Disputed amount in the smallest currency unit."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "charge": {
+            "type": "string",
+            "description": "Charge ID (expandable; an ID string on the webhook)."
+          },
+          "payment_intent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "e.g. fraudulent, product_not_received."
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "amount",
+          "currency",
+          "charge",
+          "payment_intent",
+          "reason",
+          "status"
+        ],
+        "additionalProperties": {},
+        "description": "See the full object: https://docs.stripe.com/api/disputes/object"
+      },
+      "StripeCustomerPayload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "type": "string",
+            "const": "customer"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created": {
+            "type": "number"
+          },
+          "deleted": {
+            "description": "Present (true) on customer.deleted events.",
+            "type": "boolean"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "email",
+          "name",
+          "created",
+          "metadata"
+        ],
+        "additionalProperties": {},
+        "description": "See the full object: https://docs.stripe.com/api/customers/object"
+      },
       "Collection": {
         "type": "object",
         "properties": {
@@ -3425,6 +6201,18 @@
         "required": [
           "url",
           "expiresAt"
+        ],
+        "additionalProperties": false
+      },
+      "WebhookReceived": {
+        "type": "object",
+        "properties": {
+          "received": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "received"
         ],
         "additionalProperties": false
       }

@@ -136,4 +136,5 @@ export const editorPreferencesSchema = z.object({
   colorMode: z.enum(['light', 'dark']),
   editorThemeMode: z.enum(['app', 'auto', 'dark']),
   dashboardSections: dashboardSectionsSchema,
+  sidebarCollapsed: z.boolean(),
 })

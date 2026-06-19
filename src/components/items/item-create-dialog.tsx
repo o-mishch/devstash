@@ -18,7 +18,7 @@ import { FileUpload, type UploadedFile } from '@/components/shared/file-upload'
 import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog'
 import { DialogFooter } from '@/components/ui/dialog'
 import { FormDialogFooter } from '@/components/shared/form-dialog-footer'
-import { ResponsiveFormDialog } from '@/components/ui/responsive-form-dialog'
+import { ResponsiveFormDialog, morphOriginFromClick, type MorphOrigin } from '@/components/ui/responsive-form-dialog'
 import {
   Select,
   SelectContent,
@@ -78,6 +78,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
   const [itemType, setItemType] = useState(defaultItemType)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [morphOrigin, setMorphOrigin] = useState<MorphOrigin | null>(null)
   const savedRef = useRef(false)
 
   const form = useForm<ItemFormBaseValues>({
@@ -509,11 +510,13 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
           openPrompt({ title: 'Limits reached', description: `You've used all free items and collections. Please upgrade to Pro.` })
           return
         }
+        setMorphOrigin(morphOriginFromClick(e))
         handleOpenChange(true)
       }} className="contents">{triggerEl}</span>
       <ResponsiveFormDialog
         open={open}
         onOpenChange={handleOpenChange}
+        morphOrigin={morphOrigin}
         title={isCollectionMode ? 'Create Collection' : 'Create New Item'}
         description={descriptionNode}
         desktopClassName="flex flex-col gap-2 max-h-[90dvh] sm:max-w-[860px]"

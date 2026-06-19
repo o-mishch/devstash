@@ -6,8 +6,8 @@ import { api } from '@/lib/api/client'
 
 interface EditorPreferencesStore extends EditorPreferences {
   isInitialized: boolean
-  updatePreference: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => Promise<void>
-  updatePreferences: (prefs: Partial<EditorPreferences>) => Promise<void>
+  updatePreference: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => Promise<boolean>
+  updatePreferences: (prefs: Partial<EditorPreferences>) => Promise<boolean>
   setPreferences: (prefs: EditorPreferences) => void
 }
 
@@ -23,7 +23,7 @@ export const useEditorPreferencesStore = create<EditorPreferencesStore>((set, ge
   updatePreferences: async (prefs: Partial<EditorPreferences>) => {
     const prev = get()
     // Extract only EditorPreferences fields from state to prevent extra store fields leaking
-    const newPrefs = {
+    const newPrefs: EditorPreferences = {
       fontSize: prev.fontSize,
       tabSize: prev.tabSize,
       wordWrap: prev.wordWrap,
@@ -32,18 +32,21 @@ export const useEditorPreferencesStore = create<EditorPreferencesStore>((set, ge
       colorMode: prev.colorMode,
       editorThemeMode: prev.editorThemeMode,
       dashboardSections: prev.dashboardSections,
+      sidebarCollapsed: prev.sidebarCollapsed,
       ...prefs,
     }
-    set(newPrefs as Partial<EditorPreferencesStore>)
+    set(newPrefs)
 
     try {
       const { error } = await api.PATCH('/profile/editor-preferences', {
         body: newPrefs,
       })
       if (error) throw new Error(error.message)
+      return true
     } catch {
       set(prev)
       toast.error('Could not save editor preferences. Please try again.')
+      return false
     }
   },
   setPreferences: (prefs) => {

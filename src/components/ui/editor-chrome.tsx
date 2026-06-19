@@ -113,12 +113,6 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const viewport = useVisualViewport()
   const isTouch = useIsTouch()
 
-  // The always-portal (never-remount) path exists to keep the on-screen keyboard up on touch.
-  // Desktop has no on-screen keyboard, so there it only portals when fullscreen and otherwise
-  // renders inline — where the dialog's overflow clips it and the footer sits below it, instead of
-  // a fixed z-50 overlay painting over the footer.
-  const portaled = fullscreen || isTouch
-
   // Spring the expand/collapse morph, but follow scroll/drag/keyboard instantly. `morphing` is on
   // only for the brief expand or collapse transition; every other geometry change (page scroll
   // tracking the sentinel, drag offset, keyboard resize) must apply with no spring or it visibly
@@ -126,7 +120,32 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const [morphing, setMorphing] = useState(false)
   const morphTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // The always-portal (never-remount) path exists to keep the on-screen keyboard up on touch.
+  // Desktop has no on-screen keyboard, so there it portals when fullscreen (plus the brief collapse
+  // morph, via `morphing`) and otherwise renders inline — where the dialog's overflow clips it and
+  // the footer sits below it, instead of a fixed z-50 overlay painting over the footer.
+  const portaled = fullscreen || isTouch || morphing
+
+  // Sentinel: an invisible placeholder that holds space in the normal document flow. The portal
+  // reads its bounding rect to position/size itself on top of it while collapsed.
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const [sentinelRect, setSentinelRect] = useState<DOMRect | null>(null)
+
+  // Inline wrapper (the desktop collapsed box) + the rect captured from it on expand, so the portal
+  // can morph out of and back into the exact editor box rather than snapping to/from fullscreen.
+  const inlineRef = useRef<HTMLDivElement>(null)
+  const [morphFromRect, setMorphFromRect] = useState<DOMRect | null>(null)
+
   const changeFullscreen = useCallback((next: boolean) => {
+    // Capture the geometry to morph between so the portal grows out of — and shrinks back into — the
+    // collapsed editor box (desktop). Expanding reads the inline wrapper (the only collapsed mount
+    // on desktop); collapsing reads the sentinel under the overlay, so the collapsed target is valid
+    // on the first frame instead of snapping to the corner.
+    if (next) {
+      if (inlineRef.current) setMorphFromRect(inlineRef.current.getBoundingClientRect())
+    } else if (sentinelRef.current) {
+      setSentinelRect(sentinelRef.current.getBoundingClientRect())
+    }
     setMorphing(true)
     if (morphTimer.current) clearTimeout(morphTimer.current)
     morphTimer.current = setTimeout(() => setMorphing(false), 550)
@@ -134,11 +153,6 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   }, [])
 
   useEffect(() => () => { if (morphTimer.current) clearTimeout(morphTimer.current) }, [])
-
-  // Sentinel: an invisible placeholder that holds space in the normal document flow. The portal
-  // reads its bounding rect to position/size itself on top of it while collapsed.
-  const sentinelRef = useRef<HTMLDivElement>(null)
-  const [sentinelRect, setSentinelRect] = useState<DOMRect | null>(null)
 
   const updateSentinelRect = useCallback(() => {
     const el = sentinelRef.current
@@ -158,9 +172,10 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   // movement, so this re-renders only when the geometry truly changes. Idle while fullscreen, where
   // the visual viewport drives the geometry instead.
   useEffect(() => {
-    // Only the touch collapsed overlay reads the sentinel rect; desktop renders inline and
-    // fullscreen uses the visual viewport — neither needs this loop.
-    if (fullscreen || !isTouch) return
+    // Track the sentinel each frame whenever the portal is anchored to it (collapsed): the touch
+    // collapsed overlay at rest, and the brief desktop collapse morph. Idle while fullscreen (the
+    // visual viewport drives geometry) and while collapsed inline on desktop (no portal/sentinel).
+    if (fullscreen || !portaled) return
     let raf = 0
     const tick = () => {
       updateSentinelRect()
@@ -168,7 +183,7 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [fullscreen, isTouch, updateSentinelRect])
+  }, [fullscreen, portaled, updateSentinelRect])
 
   // Drag-down-to-collapse: grabbing the chrome header and pulling down slides the maximized window
   // with the finger and collapses it on release (past a threshold or a flick).
@@ -312,7 +327,7 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   // footer stays above it. No fixed overlay, no portal.
   if (!portaled) {
     return (
-      <div className={cn('flex flex-col flex-1 min-h-0', className)}>
+      <div ref={inlineRef} className={cn('flex flex-col flex-1 min-h-0', className)}>
         <div className={shellInnerClassName} style={style}>
           {shellContent}
         </div>
@@ -331,10 +346,14 @@ export function EditorChromeShell({ header, children, className, style, fullscre
           Padding/background apply only in fullscreen so the collapsed overlay matches inline. */}
       {createPortal(
         <motion.div
-          animate={{ left: overlayLeft, top: overlayTop, width: overlayWidth, height: overlayHeight }}
+          // initial = the collapsed box (desktop expand): the portal mounts straight into fullscreen,
+          // so without a "from" geometry it would snap. Padding morphs 0→12 in step with the box so
+          // the expand starts flush with the inline editor — and the collapse lands flush back on it.
+          initial={morphFromRect ? { left: morphFromRect.left, top: morphFromRect.top, width: morphFromRect.width, height: morphFromRect.height, padding: 0 } : false}
+          animate={{ left: overlayLeft, top: overlayTop, width: overlayWidth, height: overlayHeight, padding: fullscreen ? 12 : 0 }}
           transition={morphing ? EXPAND_SPRING : { duration: 0 }}
           style={{ position: 'fixed' }}
-          className={cn('z-50 flex flex-col overflow-hidden', fullscreen && 'p-3 bg-background')}
+          className={cn('z-50 flex flex-col overflow-hidden', (fullscreen || morphing) && 'bg-background')}
         >
           <div className={shellInnerClassName} style={style}>
             {shellContent}

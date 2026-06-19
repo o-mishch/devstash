@@ -200,6 +200,15 @@ export function ItemDetailDrawer({
           onMouseDown={startResize}
         />
 
+        {/* Mobile-only grab affordance: a vertical pill on the inner (left) edge mirroring the
+            bottom sheet's top handle, signalling the drawer can be swiped right to dismiss. The
+            swipe gesture lives on the whole SheetContent, so this is purely visual. Hidden on
+            sm+, which has the resize handle and pointer dismissal instead. */}
+        <div
+          aria-hidden="true"
+          className="absolute left-1 top-1/2 z-10 h-10 w-1.5 -translate-y-1/2 rounded-full bg-foreground/20 sm:hidden"
+        />
+
         {dragging && (
           <div
             className="fixed inset-0 z-[60] cursor-ew-resize select-none"

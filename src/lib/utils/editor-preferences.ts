@@ -16,9 +16,10 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   colorMode: 'dark',
   editorThemeMode: 'app',
   dashboardSections: DEFAULT_DASHBOARD_SECTIONS,
+  sidebarCollapsed: false,
 }
 
-function normalizeDashboardSections(input: unknown): DashboardSections {
+export function normalizeDashboardSections(input: unknown): DashboardSections {
   if (!input || typeof input !== 'object') return DEFAULT_DASHBOARD_SECTIONS
   const typed = input as Record<string, unknown>
   return {
@@ -61,6 +62,9 @@ export function normalizeEditorPreferences(input: unknown): EditorPreferences {
       ? typed.editorThemeMode
       : DEFAULT_EDITOR_PREFERENCES.editorThemeMode,
     dashboardSections: normalizeDashboardSections(typed.dashboardSections),
+    sidebarCollapsed: typeof typed.sidebarCollapsed === 'boolean'
+      ? typed.sidebarCollapsed
+      : DEFAULT_EDITOR_PREFERENCES.sidebarCollapsed,
   }
 }
 

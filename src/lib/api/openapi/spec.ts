@@ -1,5 +1,6 @@
 import { createDocument } from 'zod-openapi'
 import { paths } from './paths'
+import { webhooks } from './webhooks'
 
 // Assembles the OpenAPI 3.1 document from the per-domain path declarations + the shared Zod schemas.
 // [C] — pure (schemas only). Run by `npm run openapi:gen` (src/lib/api/openapi/generate.ts).
@@ -9,6 +10,7 @@ export const openApiDocument = createDocument(
     openapi: '3.1.0',
     info: { title: 'DevStash API', version: '1.0.0' },
     paths,
+    webhooks,
   },
   {
     // Schemas carrying a `.meta({ id })` (e.g. Collection, ItemType) always become reusable $ref

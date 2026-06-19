@@ -9,13 +9,14 @@ import type { ItemsPage, LightItem } from '@/types/item'
 
 interface DashboardRecentListProps {
   firstPage: ItemsPage
+  defaultOpen: boolean
 }
 
-export function DashboardRecentList({ firstPage }: DashboardRecentListProps) {
+export function DashboardRecentList({ firstPage, defaultOpen }: DashboardRecentListProps) {
   const { items, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteItems({ type: 'recent' }, firstPage)
 
   return (
-    <DashboardCollapsibleCard icon={History} title="Recent Items" section="recent">
+    <DashboardCollapsibleCard icon={History} title="Recent Items" section="recent" defaultOpen={defaultOpen}>
       <TanStackVirtualGrid<LightItem>
         items={items}
         hasMore={hasNextPage ?? false}

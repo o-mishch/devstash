@@ -1,10 +1,13 @@
 import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { getCachedSession } from '@/lib/session'
 import { getCollectionsPreview, getCollectionStats } from '@/lib/db/collections'
 import { getItemStats, getRecentItemsPage, getPinnedItems } from '@/lib/db/items'
 import { loadAppSidebarData } from '@/lib/app/sidebar-data'
+import { parseLayoutCookie } from '@/lib/utils/layout-cookie'
+import { normalizeDashboardSections } from '@/lib/utils/editor-preferences'
 import { Button } from '@/components/ui/button'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { DashboardStats } from '@/components/dashboard/dashboard-stats'
@@ -22,6 +25,11 @@ export default async function DashboardPage() {
   const recentItemsPromise = getRecentItemsPage(userId)
   const pinnedItemsPromise = getPinnedItems(userId)
   const collectionStatsPromise = getCollectionStats(userId)
+
+  // Persisted collapse state from the ds-layout cookie — resolved server-side so each
+  // section card renders its real open/closed state on first paint (no expand→collapse flash).
+  const layoutCookie = (await cookies()).get('ds-layout')?.value
+  const initialSections = normalizeDashboardSections(parseLayoutCookie(layoutCookie))
 
   // stats is needed to branch empty state — it's 'use cache' so resolves fast
   const stats = await statsPromise
@@ -63,6 +71,7 @@ export default async function DashboardPage() {
         collectionsPromise={collectionsPromise}
         recentItemsPromise={recentItemsPromise}
         pinnedItemsPromise={pinnedItemsPromise}
+        initialSections={initialSections}
       />
     </div>
   )

@@ -164,6 +164,33 @@
     }
 }
 
+/* Dialog "grow from origin" morph (desktop only). Opt-in via the `morph` prop on DialogContent,
+   which sets --ds-morph-x/y (the click point's offset from viewport centre, in px) on the popup's
+   inline style. Centering stays on the `translate` property (Tailwind's -translate-x/y-1/2), so the
+   morph is free to drive `transform`: the popup starts shrunk and offset onto the trigger, then
+   springs to full size at centre. Unlayered so its transition isn't overridden by utility classes.
+   base-ui toggles data-starting-style (open) and data-ending-style (close), and waits for this
+   transition to finish before unmounting — no JS animation library needed. */
+.dialog-morph {
+    transition:
+        transform 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+        opacity 0.28s ease-out;
+}
+.dialog-morph[data-starting-style],
+.dialog-morph[data-ending-style] {
+    opacity: 0;
+    transform: translate(var(--ds-morph-x, 0px), var(--ds-morph-y, 0px)) scale(var(--ds-morph-scale, 0.35));
+}
+@media (prefers-reduced-motion: reduce) {
+    .dialog-morph {
+        transition: opacity 0.15s ease-out;
+    }
+    .dialog-morph[data-starting-style],
+    .dialog-morph[data-ending-style] {
+        transform: none;
+    }
+}
+
 /* App shell layout — prevents horizontal overflow inside sidebar + main flex layout */
 @layer utilities {
     /* Cap content width and center it so ultrawide displays get symmetric margins instead of
@@ -205,19 +232,42 @@
         -webkit-backdrop-filter: blur(12px);
         background-color: color-mix(in srgb, var(--background) 80%, transparent);
     }
-    /* Prevent layout shift/flash for collapsed sections before hydration */
-    html[data-section-collections="0"] [data-section="collections"] [data-slot="collapsible-content"],
-    html[data-section-collections="0"] [data-section="collections"] [data-slot="card-content"],
-    html[data-section-pinned="0"] [data-section="pinned"] [data-slot="collapsible-content"],
-    html[data-section-pinned="0"] [data-section="pinned"] [data-slot="card-content"],
-    html[data-section-recent="0"] [data-section="recent"] [data-slot="collapsible-content"],
-    html[data-section-recent="0"] [data-section="recent"] [data-slot="card-content"] {
+    /* Prevent layout shift/flash for collapsed sections before hydration ONLY.
+       Once the dashboard store hydrates it sets [data-section-ready] on <html>,
+       after which Base UI's Collapsible owns content visibility and its expand/
+       collapse animation runs. Without the :not() gate this display:none fires
+       synchronously on every collapse toggle, zeroing the panel height before
+       Base UI can measure it — the exit transition is then skipped entirely. */
+    html:not([data-section-ready])[data-section-collections="0"] [data-section="collections"] [data-slot="collapsible-content"],
+    html:not([data-section-ready])[data-section-collections="0"] [data-section="collections"] [data-slot="card-content"],
+    html:not([data-section-ready])[data-section-pinned="0"] [data-section="pinned"] [data-slot="collapsible-content"],
+    html:not([data-section-ready])[data-section-pinned="0"] [data-section="pinned"] [data-slot="card-content"],
+    html:not([data-section-ready])[data-section-recent="0"] [data-section="recent"] [data-slot="collapsible-content"],
+    html:not([data-section-ready])[data-section-recent="0"] [data-section="recent"] [data-slot="card-content"] {
         display: none !important;
     }
-    html[data-section-collections="0"] [data-section="collections"] [data-slot="card-title"] svg:last-child,
-    html[data-section-pinned="0"] [data-section="pinned"] [data-slot="card-title"] svg:last-child,
-    html[data-section-recent="0"] [data-section="recent"] [data-slot="card-title"] svg:last-child {
+    html:not([data-section-ready])[data-section-collections="0"] [data-section="collections"] [data-slot="card-title"] svg:last-child,
+    html:not([data-section-ready])[data-section-pinned="0"] [data-section="pinned"] [data-slot="card-title"] svg:last-child,
+    html:not([data-section-ready])[data-section-recent="0"] [data-section="recent"] [data-slot="card-title"] svg:last-child {
         transform: rotate(-90deg) !important;
+    }
+    /* No-flash sidebar width: the real sidebar is server-rendered at the correct width from the
+       persisted preference, but its Suspense fallback (SidebarSkeleton) is static and can't know
+       the state. The blocking script sets html[data-sidebar-collapsed] from the ds-layout cookie,
+       so the skeleton renders the collapsed rail width and the sidebar width never jumps. The
+       skeleton swaps to a centered-icon collapsed layout that mirrors the loaded CollapsedSidebar,
+       instead of clipping the expanded body into the narrow rail. */
+    .sidebar-skeleton-collapsed {
+        display: none;
+    }
+    html[data-sidebar-collapsed="1"] .sidebar-skeleton {
+        width: 3.5rem;
+    }
+    html[data-sidebar-collapsed="1"] .sidebar-skeleton-expanded {
+        display: none;
+    }
+    html[data-sidebar-collapsed="1"] .sidebar-skeleton-collapsed {
+        display: flex;
     }
 }
 

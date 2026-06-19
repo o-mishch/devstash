@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 import { ChevronDown, type LucideIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
@@ -9,14 +9,19 @@ import { cn } from '@/lib/utils'
 
 type DashboardSection = 'collections' | 'pinned' | 'recent'
 
+// Stable no-op subscriber for the hydration probe below — state never changes, so it never fires.
+const subscribeNoop = () => () => { }
+
 interface DashboardCollapsibleCardProps {
   icon: LucideIcon
   title: string
   section: DashboardSection
   children: ReactNode
   headerAction?: ReactNode
-  // The collections grid renders overflowing menus, so its card must not clip.
-  overflowVisible?: boolean
+  // Persisted open state resolved on the server from the ds-layout cookie. Used for SSR and
+  // the first client render so the markup matches; after mount we adopt the store (seeded from
+  // the same cookie, so the value is identical) and follow live toggles.
+  defaultOpen: boolean
 }
 
 export function DashboardCollapsibleCard({
@@ -25,43 +30,60 @@ export function DashboardCollapsibleCard({
   section,
   children,
   headerAction,
-  overflowVisible = false,
+  defaultOpen,
 }: DashboardCollapsibleCardProps) {
-  const isOpen = useDashboardSectionsStore((s) => s[section])
+  const storeOpen = useDashboardSectionsStore((s) => s[section])
   const setOpen = useDashboardSectionsStore((s) => s.setOpen)
+
+  // False during SSR and the client's hydration render (getServerSnapshot), true only after
+  // hydration commits — a setState-free way to detect "mounted on the client".
+  const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false)
+
+  // Server has no per-request access to the client store, so render defaultOpen until hydrated —
+  // this keeps SSR and the first client render identical (no hydration mismatch), then the store
+  // (seeded from the same cookie, so the value matches) takes over for live toggles.
+  const isOpen = hydrated ? storeOpen : defaultOpen
   const setIsOpen = (open: boolean) => setOpen(section, open)
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} data-section={section}>
-      <Card
-        className={cn(
-          'bg-[var(--muted,var(--background))] border-l-2 border-l-accent transition-opacity duration-150 hover:opacity-80',
-          overflowVisible && 'overflow-visible'
-        )}
-      >
-        <CardHeader className="pb-3">
-          <div className="flex w-full items-center justify-between gap-4">
-            <CollapsibleTrigger className="group flex flex-1 select-none items-center gap-1.5 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-                <Icon className="size-3.5 text-primary" />
-                {title}
-                <ChevronDown
-                  className={cn(
-                    'size-3.5 text-muted-foreground group-hover:text-foreground transition-transform duration-300 ease-in-out',
-                    !isOpen && '-rotate-90'
-                  )}
-                />
-              </CardTitle>
-            </CollapsibleTrigger>
+      <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent transition-opacity duration-150 hover:opacity-80">
+        <CardHeader className="group relative pb-3">
+          {/* Full-header click target: covers the entire header so a click anywhere toggles the
+              section. The visible row sits above it (pointer-events-none) and passes clicks through;
+              the header action opts back in (pointer-events-auto) so its own link/button still works.
+              -top-4/-bottom-4 reach past the header into the Card's own py-4 padding so the whole
+              card bar is clickable, not just the header box. When open we stop at the header bottom
+              (bottom-0) so the expanded content stays interactive. */}
+          <CollapsibleTrigger
+            aria-label={`Toggle ${title} section`}
+            className={cn(
+              'absolute inset-x-0 -top-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              isOpen ? 'bottom-0' : '-bottom-4'
+            )}
+          />
+          <div className="pointer-events-none relative flex w-full items-center justify-between gap-4">
+            <CardTitle className="flex select-none items-center gap-1.5 text-sm font-semibold">
+              <Icon className="size-3.5 text-primary" />
+              {title}
+              <ChevronDown
+                className={cn(
+                  'size-3.5 text-muted-foreground group-hover:text-foreground transition-transform duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]',
+                  !isOpen && '-rotate-90'
+                )}
+              />
+            </CardTitle>
             {headerAction && (
-              <div className="shrink-0">
+              <div className="pointer-events-auto shrink-0">
                 {headerAction}
               </div>
             )}
           </div>
         </CardHeader>
-        <CollapsibleContent className={cn(overflowVisible && 'pt-0', overflowVisible && isOpen && '!overflow-visible')}>
-          <CardContent className={cn(overflowVisible && 'overflow-visible pt-0 pb-0')}>{children}</CardContent>
+        <CollapsibleContent>
+          {/* pt-1 gives the first row room for its hover lift (.card-interactive's -translate-y-1);
+              without it the lifted top border is clipped by the panel's overflow-hidden. */}
+          <CardContent className="pt-2">{children}</CardContent>
         </CollapsibleContent>
       </Card>
     </Collapsible>

@@ -251,7 +251,7 @@ async function Sidebar() {
         canCreateCollection={userCanCreateCollection}
       />
       <EditorPreferencesInitializer preferences={initialPreferences} />
-      <SidebarContent sidebarData={sidebarData} collapsible />
+      <SidebarContent sidebarData={sidebarData} collapsible initialCollapsed={initialPreferences.sidebarCollapsed} />
     </>
   )
 }

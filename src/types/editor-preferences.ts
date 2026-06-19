@@ -20,4 +20,5 @@ export interface EditorPreferences {
   colorMode: 'light' | 'dark';
   editorThemeMode: EditorThemeMode;
   dashboardSections: DashboardSections;
+  sidebarCollapsed: boolean;
 }

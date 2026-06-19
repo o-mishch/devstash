@@ -9,9 +9,10 @@ import type { LightItem } from '@/types/item'
 
 interface DashboardPinnedListProps {
   initialItems: LightItem[]
+  defaultOpen: boolean
 }
 
-export function DashboardPinnedList({ initialItems }: DashboardPinnedListProps) {
+export function DashboardPinnedList({ initialItems, defaultOpen }: DashboardPinnedListProps) {
   const overrides = usePinnedItemsStore((s) => s.overrides)
 
   const items = useMemo(() => {
@@ -29,7 +30,7 @@ export function DashboardPinnedList({ initialItems }: DashboardPinnedListProps) 
   if (items.length === 0) return null
 
   return (
-    <DashboardCollapsibleCard icon={Pin} title="Pinned" section="pinned">
+    <DashboardCollapsibleCard icon={Pin} title="Pinned" section="pinned" defaultOpen={defaultOpen}>
       <div className="flex flex-col gap-[12px]">
         {items.map((item) => <ItemRow key={item.id} item={item} />)}
       </div>
