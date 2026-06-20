@@ -34,8 +34,15 @@ interface SwipeToDismissResult {
 // (scrollTop > 0) — so the body scrolls normally and only a top-edge pull dismisses.
 function startedInScroller(target: Element | null, axis: 'x' | 'y'): boolean {
   let el = target
-  while (el && el.getAttribute?.('data-slot') !== 'sheet-content') {
-    if (axis === 'x' && el.classList?.contains('monaco-editor')) return true
+  while (el && el.getAttribute('data-slot') !== 'sheet-content') {
+    // A maximized/collapsed editor overlay is portaled out to document.body. This walk follows the
+    // real DOM parent chain of the touch target (e.target's ancestors), not the React tree — so we
+    // reach here only when the gesture began inside that overlay in the DOM, which means the marker
+    // must sit on a DOM ancestor of the target. Treat any such gesture as "keep" so swiping the
+    // editor never dismisses the surrounding sheet/drawer — the editor owns its own expand/collapse
+    // gesture via its chrome header.
+    if (el.hasAttribute('data-editor-overlay')) return true
+    if (axis === 'x' && el.classList.contains('monaco-editor')) return true
     const style = getComputedStyle(el)
     if (axis === 'x') {
       if ((style.overflowX === 'auto' || style.overflowX === 'scroll') && el.scrollWidth > el.clientWidth + 1) {

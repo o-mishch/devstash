@@ -17,6 +17,30 @@ const COLLAPSE_FLICK_VELOCITY = 0.5 // px per ms
 // Spring used for both expand and collapse transitions.
 const EXPAND_SPRING = { type: 'spring' as const, bounce: 0.08, duration: 0.5 }
 
+interface ClipRect {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+// Walk up from the sentinel collecting every ancestor that clips overflow (the form's scroll
+// container, the dialog/sheet body, etc). The collapsed touch overlay is a position:fixed portal on
+// document.body that deliberately escaped these ancestors' clipping (to dodge transformed dialog /
+// drawer ancestors) — so when the body scrolls or the keyboard reflows the form, the floating editor
+// paints over the header/footer. Re-applying the combined ancestor bounds as a clip-path restores
+// the natural clipping the portal gave up.
+function getClippingAncestors(el: HTMLElement): HTMLElement[] {
+  const result: HTMLElement[] = []
+  let node = el.parentElement
+  while (node && node !== document.body && node !== document.documentElement) {
+    const style = getComputedStyle(node)
+    if (style.overflowX !== 'visible' || style.overflowY !== 'visible') result.push(node)
+    node = node.parentElement
+  }
+  return result
+}
+
 // Shared className for the copy button in editor chrome headers. The `touch:size-5` cancels the
 // Button variant's `touch:size-11` tap-target upsize so the chrome bar stays compact on mobile.
 export const EDITOR_CHROME_COPY_BUTTON_CLASS =
@@ -136,6 +160,12 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const inlineRef = useRef<HTMLDivElement>(null)
   const [morphFromRect, setMorphFromRect] = useState<DOMRect | null>(null)
 
+  // Combined bounds of the sentinel's overflow-clipping ancestors, used to clip the collapsed touch
+  // overlay so it never paints over the form header/footer when the body scrolls. The ancestor list
+  // is stable while mounted, so it's computed once (lazily) and only the rects are re-read per frame.
+  const clipAncestorsRef = useRef<HTMLElement[] | null>(null)
+  const [clipRect, setClipRect] = useState<ClipRect | null>(null)
+
   const changeFullscreen = useCallback((next: boolean) => {
     // Capture the geometry to morph between so the portal grows out of — and shrinks back into — the
     // collapsed editor box (desktop). Expanding reads the inline wrapper (the only collapsed mount
@@ -156,13 +186,46 @@ export function EditorChromeShell({ header, children, className, style, fullscre
 
   const updateSentinelRect = useCallback(() => {
     const el = sentinelRef.current
-    if (!el) return
+    if (!el) return false
     const rect = el.getBoundingClientRect()
     // Only re-render when the rect actually moved/resized, so the rAF loop below stays free.
-    setSentinelRect((prev) =>
-      prev && prev.left === rect.left && prev.top === rect.top && prev.width === rect.width && prev.height === rect.height
+    // Report back whether it changed so the loop can gate the (heavier) clip recompute on it.
+    let changed = false
+    setSentinelRect((prev) => {
+      if (prev && prev.left === rect.left && prev.top === rect.top && prev.width === rect.width && prev.height === rect.height) {
+        return prev
+      }
+      changed = true
+      return rect
+    })
+    return changed
+  }, [])
+
+  const updateClipRect = useCallback(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    if (!clipAncestorsRef.current) clipAncestorsRef.current = getClippingAncestors(el)
+    const ancestors = clipAncestorsRef.current
+    if (ancestors.length === 0) {
+      setClipRect((prev) => (prev === null ? prev : null))
+      return
+    }
+    // Intersection of every clipping ancestor's rect: the visible region the overlay may paint in.
+    let top = -Infinity
+    let left = -Infinity
+    let right = Infinity
+    let bottom = Infinity
+    ancestors.forEach((ancestor) => {
+      const r = ancestor.getBoundingClientRect()
+      if (r.top > top) top = r.top
+      if (r.left > left) left = r.left
+      if (r.right < right) right = r.right
+      if (r.bottom < bottom) bottom = r.bottom
+    })
+    setClipRect((prev) =>
+      prev && prev.top === top && prev.left === left && prev.right === right && prev.bottom === bottom
         ? prev
-        : rect,
+        : { top, left, right, bottom },
     )
   }, [])
 
@@ -176,14 +239,29 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     // collapsed overlay at rest, and the brief desktop collapse morph. Idle while fullscreen (the
     // visual viewport drives geometry) and while collapsed inline on desktop (no portal/sentinel).
     if (fullscreen || !portaled) return
+    // Measure once up front so a collapsed overlay clips correctly even if it never moves again.
+    updateSentinelRect()
+    updateClipRect()
     let raf = 0
     const tick = () => {
+      // Recompute the sentinel AND the clip together every frame. Gating the clip behind sentinel
+      // movement desynced them across the host sheet's open animation: the clip got computed against
+      // mid-animation ancestor rects, then — once the sheet settled and the sentinel stopped moving —
+      // was never recomputed, so a stale `insetTop` hid the collapsed editor until a stray scroll
+      // nudged the sentinel. Reading both in the same frame keeps the clip converged to the settled
+      // geometry; the setState guards below suppress re-renders, so the only added cost is 1–3
+      // ancestor getBoundingClientRect reads on a loop that already measures the sentinel each frame.
       updateSentinelRect()
+      updateClipRect()
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [fullscreen, portaled, updateSentinelRect])
+    return () => {
+      cancelAnimationFrame(raf)
+      clipAncestorsRef.current = null
+      setClipRect(null)
+    }
+  }, [fullscreen, portaled, updateSentinelRect, updateClipRect])
 
   // Drag-down-to-collapse: grabbing the chrome header and pulling down slides the maximized window
   // with the finger and collapses it on release (past a threshold or a flick).
@@ -323,6 +401,20 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     overlayHeight = sentinelRect.height
   }
 
+  // Collapsed touch overlay: clip the fixed portal to its scroll container's bounds so it never
+  // paints over (or intercepts taps on) the form header/footer when the body scrolls or the keyboard
+  // reflows the form. Only applied at rest (collapsed, not mid-morph) where the transition is instant
+  // and the overlay geometry equals the sentinel rect, so the clip insets match the rendered box.
+  // Fullscreen intentionally covers everything, so it is never clipped.
+  let clipPath: string | undefined
+  if (portaled && !fullscreen && !morphing && clipRect) {
+    const insetTop = Math.max(0, clipRect.top - overlayTop)
+    const insetRight = Math.max(0, overlayLeft + overlayWidth - clipRect.right)
+    const insetBottom = Math.max(0, overlayTop + overlayHeight - clipRect.bottom)
+    const insetLeft = Math.max(0, clipRect.left - overlayLeft)
+    clipPath = `inset(${insetTop}px ${insetRight}px ${insetBottom}px ${insetLeft}px)`
+  }
+
   // Desktop, collapsed: render inline in the normal flow so the dialog's overflow clips it and the
   // footer stays above it. No fixed overlay, no portal.
   if (!portaled) {
@@ -352,7 +444,13 @@ export function EditorChromeShell({ header, children, className, style, fullscre
           initial={morphFromRect ? { left: morphFromRect.left, top: morphFromRect.top, width: morphFromRect.width, height: morphFromRect.height, padding: 0 } : false}
           animate={{ left: overlayLeft, top: overlayTop, width: overlayWidth, height: overlayHeight, padding: fullscreen ? 12 : 0 }}
           transition={morphing ? EXPAND_SPRING : { duration: 0 }}
-          style={{ position: 'fixed' }}
+          style={{ position: 'fixed', clipPath }}
+          // The overlay is portaled to document.body, but its touch events still bubble through the
+          // React tree to an enclosing sheet/drawer's swipe-to-dismiss handlers. This marker lets
+          // that gesture handler ignore swipes that begin inside the editor, so dragging the
+          // (maximized) editor never dismisses the surrounding sheet — the editor owns its own
+          // expand/collapse gesture via the chrome header.
+          data-editor-overlay=""
           className={cn('z-50 flex flex-col overflow-hidden', (fullscreen || morphing) && 'bg-background')}
         >
           <div className={shellInnerClassName} style={style}>

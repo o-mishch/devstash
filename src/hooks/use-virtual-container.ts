@@ -1,34 +1,35 @@
 'use client'
 
 import { type RefObject, useRef, useEffect, useState, useCallback } from 'react'
-import { useIsTouch } from './use-is-touch'
+import { computeMainScrollMargin, computeWindowScrollMargin } from '@/lib/utils/scroll-margin'
+
+interface VirtualContainerOptions {
+  getColumns?: (width: number) => number
+  // When true the real scroller is the browser window (mobile document-scroll shell), not <main>.
+  // Changes how scrollMargin is measured (absolute document offset vs. offset within <main>) so the
+  // window- or element-virtualizer's coordinates line up either way.
+  windowMode: boolean
+}
 
 interface VirtualContainerResult {
   containerRef: RefObject<HTMLDivElement | null>
   cols: number
   containerWidth: number
-  // True when the `touch:` variant is active (coarse pointer OR viewport < lg), so
-  // callers can feed the virtualizer a taller row height that matches the upsized cards.
-  isTouch: boolean
-  // Offset (px) of the list wrapper from the top of the `<main>` scroll content. Fed to
-  // the virtualizer's `scrollMargin` so multiple lists can share the single `<main>` scroller
-  // (the dashboard stacks several cards in one scroll). Scroll-invariant by construction.
+  // Offset (px) from the start of the scroller to the top of this list, fed to the virtualizer's
+  // `scrollMargin`. Element mode: offset within the <main> scroll content. Window mode: absolute
+  // offset from the top of the document. Scroll-invariant by construction either way.
   scrollMargin: number
-  getScrollElement: () => HTMLElement | null
 }
 
-export function useVirtualContainer(getColumns?: (width: number) => number): VirtualContainerResult {
+export function useVirtualContainer({ getColumns, windowMode }: VirtualContainerOptions): VirtualContainerResult {
   const containerRef = useRef<HTMLDivElement>(null)
   const [cols, setCols] = useState(() => getColumns?.(Infinity) ?? 1)
   const [containerWidth, setContainerWidth] = useState(0)
   const [scrollMargin, setScrollMargin] = useState(0)
-  const isTouch = useIsTouch()
 
   const measure = useCallback(() => {
     const el = containerRef.current
     if (!el) return
-    const scrollEl = el.closest('main')
-    if (!scrollEl) return
 
     if (getColumns) {
       // Columns are driven by the *viewport* width (not the container width) so the
@@ -41,12 +42,20 @@ export function useVirtualContainer(getColumns?: (width: number) => number): Vir
       setContainerWidth(el.getBoundingClientRect().width)
     }
 
+    if (windowMode) {
+      // Window scroller: absolute offset from the top of the document. window.scrollY is the only
+      // source of the document scroll position — there is no React/Next equivalent for a layout read.
+      setScrollMargin(computeWindowScrollMargin(el.getBoundingClientRect().top, window.scrollY))
+      return
+    }
+
+    const scrollEl = el.closest('main')
+    if (!scrollEl) return
     // Distance from the start of <main>'s scrollable content to the top of this list.
-    // rect.top - mainTop cancels the current scroll; adding scrollTop yields the absolute
-    // content offset, so the value is stable regardless of how far the page is scrolled.
-    const margin = el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop
-    setScrollMargin(Math.max(0, Math.round(margin)))
-  }, [getColumns])
+    setScrollMargin(
+      computeMainScrollMargin(el.getBoundingClientRect().top, scrollEl.getBoundingClientRect().top, scrollEl.scrollTop),
+    )
+  }, [getColumns, windowMode])
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -83,10 +92,5 @@ export function useVirtualContainer(getColumns?: (width: number) => number): Vir
     }
   }, [measure])
 
-  const getScrollElement = useCallback(
-    () => containerRef.current?.closest('main') as HTMLElement | null,
-    []
-  )
-
-  return { containerRef, cols, containerWidth, isTouch, scrollMargin, getScrollElement }
+  return { containerRef, cols, containerWidth, scrollMargin }
 }

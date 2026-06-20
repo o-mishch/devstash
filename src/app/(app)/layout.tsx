@@ -62,15 +62,26 @@ interface AppShellProps extends WithChildren {
  */
 function AppShell({ topbar, sidebar, children }: AppShellProps) {
   return (
-    <div className="relative flex h-screen flex-col overflow-hidden bg-background">
-      <header className="app-topbar relative z-20 flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4">
+    // Desktop: a fixed app-shell (h-screen + overflow-hidden) where only <main> scrolls. Mobile:
+    // the *document* scrolls instead — the shell grows past the viewport (min-h-dvh, no overflow
+    // lock) and <main> is not its own scroller — so the mobile browser's URL bar collapses on
+    // scroll (it only reacts to the root/window scroller, never an inner overflow container). The
+    // topbar sticks on mobile so search stays reachable; on desktop it's a static flex child.
+    <div className="relative flex min-h-dvh flex-col bg-background lg:h-screen lg:overflow-hidden">
+      <header className="app-topbar sticky top-0 z-20 flex h-14 min-w-0 shrink-0 items-center gap-3 border-b border-border px-4 lg:static">
         {topbar}
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 lg:overflow-hidden">
         {sidebar}
 
-        <main className="app-dot-grid relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto bg-background [scrollbar-gutter:stable]">
+        {/* overflow-x-clip (not overflow-x-hidden): `hidden` on one axis with the other left `visible`
+            makes CSS coerce the visible axis to `auto`, turning <main> into a vertical scroll
+            container on mobile — which swallows the first scroll so the browser URL bar never
+            collapses (it only reacts to the document/window scroller) and breaks the window
+            virtualizer. `clip` clips horizontal overflow without establishing a scroll container, so
+            on mobile the document scrolls. Desktop still scrolls <main> via lg:overflow-y-auto. */}
+        <main className="app-dot-grid relative flex min-w-0 flex-1 flex-col overflow-x-clip bg-background lg:overflow-y-auto lg:[scrollbar-gutter:stable]">
           {/* Ambient glow blobs — z-0 so they never cover page content */}
           <div aria-hidden className="pointer-events-none absolute left-1/3 top-0 z-0 h-[500px] w-[600px] -translate-x-1/2 rounded-full bg-blue-500/[0.08] blur-3xl" />
           <div aria-hidden className="pointer-events-none absolute right-0 top-1/3 z-0 h-[400px] w-[500px] rounded-full bg-cyan-500/[0.06] blur-3xl" />
