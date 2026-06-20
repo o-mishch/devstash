@@ -189,16 +189,11 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
   const handleFormSubmit = (e: SyntheticEvent) => {
     e.preventDefault()
     void form.handleSubmit(async (data: ItemFormBaseValues) => {
-      if (ITEM_TYPES_WITH_URL.has(itemType)) {
-        if (!data.url) {
-          form.setError('url', { message: 'URL is required for this item type' })
-          return
-        }
-        const urlParsed = z.string().url().safeParse(data.url)
-        if (!urlParsed.success) {
-          form.setError('url', { message: 'Must be a valid URL' })
-          return
-        }
+      // URL shape is enforced by the zodResolver (itemFormBaseSchema.url); only the per-type
+      // presence gate remains — link items require a non-empty URL.
+      if (ITEM_TYPES_WITH_URL.has(itemType) && !data.url) {
+        form.setError('url', { message: 'URL is required for this item type' })
+        return
       }
       if (ITEM_TYPES_WITH_FILE.has(itemType) && !uploadedFile) {
         setFileError('File is required for this item type')

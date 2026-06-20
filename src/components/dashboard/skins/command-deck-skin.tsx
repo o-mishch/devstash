@@ -3,10 +3,11 @@ import { Pin, History, BarChart3, Folder } from 'lucide-react'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
+import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { AnimatedGridPattern } from '@/components/ui/animated-grid-pattern'
 import { cn } from '@/lib/utils'
-import { SkinCollapsibleSection } from './skin-collapsible-section'
+import { SkinWidget } from './skin-widget'
 import { computeUsage, slotsLeftLabel, resolveSkinData, TypeDistributionSegments, type DashboardSkinData } from './shared'
 
 const HUD_PANEL = 'rounded-lg border border-border bg-foreground/[0.015] p-5'
@@ -20,13 +21,23 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
   const hasPinned = pinned.length > 0
   const hasRecent = recent.items.length > 0
 
+  // Favorites is reachable from the header/sidebar star, so the vanity Favorites readout is dropped
+  // (Total + Collections are the useful counts). Free keeps the slots-left readout; "free tier" copy
+  // only ever shows to non-Pro. The slots-left cell only renders for non-Pro.
   const cells = [
     { label: 'Total Items', value: String(stats.totalItems), pct: usage.isPro ? 100 : usage.pct, sub: usage.isPro ? 'Pro · unlimited' : `${usage.pct}% of free tier (${usage.limit})`, href: undefined as string | undefined },
-    { label: 'Collections', value: String(collectionStats.totalCollections).padStart(2, '0'), pct: 40, sub: `${collectionStats.favoriteCollections} favorite`, href: '/collections' },
-    { label: 'Favorites', value: String(stats.favoriteItems).padStart(2, '0'), pct: 20, sub: `${stats.favoriteItems} item${stats.favoriteItems === 1 ? '' : 's'}`, href: '/favorites' },
-    { label: usage.isPro ? 'Unlimited' : 'Slots Left', value: slotsLeftLabel(usage), pct: 70, sub: 'all changes saved', href: undefined as string | undefined },
+    { label: 'Collections', value: String(collectionStats.totalCollections).padStart(2, '0'), pct: 40, sub: `${collectionStats.favoriteCollections} favorite`, href: '/collections' as string | undefined },
+    ...(isPro
+      ? []
+      : [{ label: 'Slots Left', value: slotsLeftLabel(usage), pct: 70, sub: 'all changes saved', href: undefined as string | undefined }]),
   ]
-  const cellClass = 'ds-hud-cell relative rounded-md border border-primary/20 bg-gradient-to-b from-primary/[0.04] to-foreground/[0.015] p-[18px]'
+  const cellClass = 'ds-hud-cell relative rounded-md border border-primary/20 bg-gradient-to-b from-primary/[0.04] to-foreground/[0.015] px-[18px] py-3'
+  // Pro is a clean 2-up (Total + Collections). Free has 3 cells; the odd last (Slots Left) spans the
+  // full row on the 2-col grid so it is never orphaned, resolving to its own column at lg.
+  const cellGridCols =
+    cells.length === 2
+      ? 'lg:grid-cols-2'
+      : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'
 
   return (
     // overflow-hidden clips the AnimatedGridPattern's intentional bleed (h-[160%] pushed up via
@@ -46,16 +57,22 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
           <p className="mt-1 text-sm text-muted-foreground">knowledge index synced · {stats.totalItems} records</p>
         </header>
 
-        <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+        <div className={cn('mb-6 grid grid-cols-2 gap-3.5', cellGridCols)}>
           {cells.map((c) => {
+            // Compact readout for the wide 2-up cells: label + value share the top row with the sub on
+            // the right (no separate stacked sub line), bar underneath — roughly half the old height.
             const inner = (
               <>
-                <div className="text-[10.5px] uppercase tracking-[0.14em] text-primary">{c.label}</div>
-                <div className="mt-2 text-3xl font-extrabold">{c.value}</div>
-                <div className="mt-2.5 h-1 overflow-hidden rounded-sm bg-foreground/[0.06]">
+                <div className="flex items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10.5px] uppercase tracking-[0.14em] text-primary">{c.label}</div>
+                    <div className="mt-1 text-2xl font-extrabold leading-none">{c.value}</div>
+                  </div>
+                  <div className="truncate text-[10.5px] text-muted-foreground">{c.sub}</div>
+                </div>
+                <div className="mt-2 h-1 overflow-hidden rounded-sm bg-foreground/[0.06]">
                   <i className="block h-full bg-gradient-to-r from-cyan-400 to-primary" style={{ width: `${c.pct}%` }} />
                 </div>
-                <div className="mt-1.5 text-[10.5px] text-muted-foreground">{c.sub}</div>
               </>
             )
             if (c.href) {
@@ -72,34 +89,42 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
           })}
         </div>
 
-        <div className="mb-6 rounded-lg border border-border bg-foreground/[0.015] p-5">
-          <SkinCollapsibleSection icon={<BarChart3 />} title="Type distribution">
-            <TypeDistributionSegments distribution={distribution} />
-          </SkinCollapsibleSection>
-        </div>
-
         <div className={`${HUD_PANEL} mb-6`}>
-          <SkinCollapsibleSection icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
             <DashboardCollectionsList collections={collections} />
-          </SkinCollapsibleSection>
+          </SkinWidget>
         </div>
 
-        <div className="grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+        <div className="mb-6 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
           {hasPinned && (
             <div className={HUD_PANEL}>
-              <SkinCollapsibleSection icon={<Pin />} title="Pinned">
+              <SkinWidget icon={<Pin />} title="Pinned">
                 <DashboardPinnedItems initialItems={pinned} />
-              </SkinCollapsibleSection>
+              </SkinWidget>
             </div>
           )}
           {hasRecent && (
             <div className={HUD_PANEL}>
-              <SkinCollapsibleSection icon={<History />} title="Recent records">
+              <SkinWidget icon={<History />} title="Recent records">
                 <DashboardRecentItems firstPage={recent} />
-              </SkinCollapsibleSection>
+              </SkinWidget>
             </div>
           )}
         </div>
+
+        {/* Type distribution — analytics, below the content lists. */}
+        <div className="mb-6 rounded-lg border border-border bg-foreground/[0.015] p-5">
+          <SkinWidget icon={<BarChart3 />} title="Type distribution">
+            <TypeDistributionSegments distribution={distribution} />
+          </SkinWidget>
+        </div>
+
+        {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
+        {isPro && (
+          <div className={`${HUD_PANEL} mt-6`}>
+            <AiUsageWidget skin="command-deck" />
+          </div>
+        )}
       </div>
     </div>
   )

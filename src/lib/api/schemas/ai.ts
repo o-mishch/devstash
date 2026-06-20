@@ -89,3 +89,15 @@ export const aiExplanationOutput = z.object({ explanation: z.string() }).meta({ 
 export const aiOptimizedPromptOutput = z.object({ prompt: z.string() }).meta({ id: 'AiOptimizedPrompt' })
 
 export const aiTagsOutput = z.array(z.string())
+
+// Read-only AI usage meter payload — one entry per AI feature bucket (browser-safe; the rate-limit
+// keys live in the server-only `rate-limit.ts`, so the key is a plain string here). `resetAt` is an
+// epoch-ms timestamp; `0` means full budget / nothing counting down.
+const aiFeatureUsageSchema = z.object({
+  key: z.string(),
+  limit: z.number(),
+  remaining: z.number(),
+  resetAt: z.number(),
+})
+
+export const aiUsageOutput = z.object({ features: z.array(aiFeatureUsageSchema) }).meta({ id: 'AiUsage' })

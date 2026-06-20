@@ -66,11 +66,18 @@ export const collectionFormSchema = z.object({
   description: z.string().trim().max(500, 'Description is too long').optional().nullable().transform((v) => v || null),
 })
 
+/**
+ * Optional URL field for item forms: an empty string passes (per-type presence is enforced in the
+ * create/edit forms for link items), but any non-empty value must look like a URL rather than a
+ * plain string.
+ */
+export const optionalUrlSchema = z.union([z.literal(''), z.url('Must be a valid URL')])
+
 export const itemFormBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
   content: z.string().optional(),
-  url: z.string().optional(),
+  url: optionalUrlSchema.optional(),
   language: z.string().optional(),
   tags: z.string().optional(),
   collectionIds: z.array(z.string()),

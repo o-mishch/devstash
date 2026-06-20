@@ -35,6 +35,7 @@ import {
   aiExplanationOutput,
   aiOptimizedPromptOutput,
   aiTagsOutput,
+  aiUsageOutput,
 } from '../schemas/ai'
 import { searchQueryParam, searchResultSchema } from '../schemas/search'
 import { getUploadUrlInput, deleteUploadQuery, uploadUrlResultSchema } from '../schemas/upload'
@@ -415,6 +416,19 @@ export const paths: ZodOpenApiPathsObject = {
         403: problem('Pro subscription required'),
         422: problem('Validation failed'),
         429: rateLimited,
+      },
+    },
+  },
+  '/ai/usage': {
+    get: {
+      summary: 'Read the current user\'s remaining AI budget per feature (Pro, non-consuming)',
+      responses: {
+        200: {
+          description: 'Remaining AI budget for each feature bucket',
+          content: { 'application/json': { schema: aiUsageOutput } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
       },
     },
   },

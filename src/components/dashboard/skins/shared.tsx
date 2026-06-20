@@ -73,10 +73,10 @@ export function usageLabel(usage: SkinUsage): string {
   return `${usage.slotsLeft} of ${usage.limit} free slots left`
 }
 
-// "Slots left" = how many more items fit under the free-tier cap. Pro users are unlimited, so show ∞
-// instead of a misleading 0. Used by the skins that surface the remaining-slots stat.
+// "Slots left" = how many more items fit under the free-tier cap. Only the free-tier upgrade cards
+// surface this stat (Pro skins drop it for the AI Usage section), so the caller is always non-Pro.
 export function slotsLeftLabel(usage: SkinUsage): string {
-  return usage.isPro ? '∞' : String(usage.slotsLeft)
+  return String(usage.slotsLeft)
 }
 
 export function typeColor(name: string): string {

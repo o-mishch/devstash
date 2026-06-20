@@ -4,13 +4,14 @@ import { getTypeHref } from '@/components/layout/sidebar/utils'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
+import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import {
   MissionControlDonut,
   MissionControlSparkline,
   MissionControlHeatmap,
 } from './mission-control/charts-island'
-import { SkinCollapsibleSection } from './skin-collapsible-section'
+import { SkinWidget } from './skin-widget'
 import { computeUsage, typeColor, resolveSkinData, type DashboardSkinData } from './shared'
 
 const MC_PANEL = 'rounded-2xl border border-border bg-foreground/[0.02] p-5'
@@ -28,39 +29,66 @@ export async function MissionControlSkin(data: DashboardSkinData) {
 
   return (
     <div>
-      <header className="mb-6">
+      <header className="mb-5">
         <p className="text-sm font-semibold text-primary">Mission control</p>
         <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Your developer knowledge hub</p>
       </header>
 
-      <div className="mb-4 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        <div className="rounded-2xl border border-border bg-foreground/[0.02] p-4">
+      {/* KPI strip — compact summary. Pro is unlimited, so the dead "Free tier used" tile is dropped
+          (the row reflows from 4-up to 3-up); free keeps it. */}
+      <div className={`mb-4 grid grid-cols-2 gap-3.5 ${isPro ? 'lg:grid-cols-2' : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'}`}>
+        <div className="rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3">
           <TotalItemsReveal variant="pop">
             <div className="flex items-center justify-between text-xs text-muted-foreground">Total items<span className="text-primary">↑</span></div>
-            <div className="my-1.5 text-3xl font-extrabold tracking-[-0.02em]">{stats.totalItems}</div>
+            <div className="mt-1 text-2xl font-extrabold leading-none tracking-[-0.02em]">{stats.totalItems}</div>
           </TotalItemsReveal>
           <MissionControlSparkline activity={activity} />
         </div>
         <KpiCard label="Collections" value={collectionStats.totalCollections} sub={`${collectionStats.favoriteCollections} favorite`} href="/collections" />
-        <KpiCard label="Favorites" value={stats.favoriteItems} sub={`of ${stats.totalItems} items`} href="/favorites" />
-        <div className="rounded-2xl border border-border bg-foreground/[0.02] p-4">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">Free tier used<span className="text-violet-400">{usage.isPro ? 'Pro' : `${usage.pct}%`}</span></div>
-          <div className="my-1.5 text-3xl font-extrabold">{stats.totalItems}<span className="text-base font-semibold text-muted-foreground">/{usage.limit}</span></div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-sm bg-foreground/[0.06]">
-            <i className="block h-full bg-gradient-to-r from-violet-500 to-primary" style={{ width: `${usage.isPro ? 100 : usage.pct}%` }} />
+        {!isPro && (
+          <div className="rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">Free tier used<span className="text-violet-400">{`${usage.pct}%`}</span></div>
+            <div className="mt-1 text-2xl font-extrabold leading-none">{stats.totalItems}<span className="text-sm font-semibold text-muted-foreground">/{usage.limit}</span></div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-sm bg-foreground/[0.06]">
+              <i className="block h-full bg-gradient-to-r from-violet-500 to-primary" style={{ width: `${usage.pct}%` }} />
+            </div>
           </div>
+        )}
+      </div>
+
+      {/* Day-to-day content first — Pinned + Recent + Collections sit above the analytics so the most
+          useful data lands above the fold. */}
+      {hasPinned && (
+        <div className={`${MC_PANEL} mb-4`}>
+          <SkinWidget icon={<Pin />} title="Pinned">
+            <DashboardPinnedItems initialItems={pinned} />
+          </SkinWidget>
+        </div>
+      )}
+
+      <div className="mb-4 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+        <div className={MC_PANEL}>
+          <SkinWidget icon={<History />} title="Recent items">
+            {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
+          </SkinWidget>
+        </div>
+        <div className={MC_PANEL}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+            <DashboardCollectionsList collections={collections} />
+          </SkinWidget>
         </div>
       </div>
 
-      <div className="mb-4 grid items-start gap-4 lg:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
+      {/* Insights — the analytics cockpit (activity heatmap + by-type donut) moves below the content;
+          it's exploratory data, not the daily task. */}
+      <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
         <div className={MC_PANEL}>
-          <SkinCollapsibleSection icon={<CalendarRange />} title="Activity · last 12 weeks">
+          <SkinWidget icon={<CalendarRange />} title="Activity · last 12 weeks">
             <MissionControlHeatmap activity={activity} />
-          </SkinCollapsibleSection>
+          </SkinWidget>
         </div>
         <div className={MC_PANEL}>
-          <SkinCollapsibleSection icon={<PieIcon />} title="By type">
+          <SkinWidget icon={<PieIcon />} title="By type">
             <MissionControlDonut distribution={distribution} />
             <div className="mt-4 flex flex-col gap-0.5">
               {legend.map((d) => (
@@ -76,30 +104,16 @@ export async function MissionControlSkin(data: DashboardSkinData) {
                 </Link>
               ))}
             </div>
-          </SkinCollapsibleSection>
+          </SkinWidget>
         </div>
       </div>
 
-      {hasPinned && (
-        <div className={`${MC_PANEL} mb-4`}>
-          <SkinCollapsibleSection icon={<Pin />} title="Pinned">
-            <DashboardPinnedItems initialItems={pinned} />
-          </SkinCollapsibleSection>
+      {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
+      {isPro && (
+        <div className={`${MC_PANEL} mt-4`}>
+          <AiUsageWidget skin="mission-control" />
         </div>
       )}
-
-      <div className="grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
-        <div className={MC_PANEL}>
-          <SkinCollapsibleSection icon={<History />} title="Recent items">
-            {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
-          </SkinCollapsibleSection>
-        </div>
-        <div className={MC_PANEL}>
-          <SkinCollapsibleSection icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
-            <DashboardCollectionsList collections={collections} />
-          </SkinCollapsibleSection>
-        </div>
-      </div>
     </div>
   )
 }
@@ -112,12 +126,14 @@ interface KpiCardProps {
 }
 
 function KpiCard({ label, value, sub, href }: KpiCardProps) {
-  const className = 'block rounded-2xl border border-border bg-foreground/[0.02] p-4'
+  const className = 'block rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3'
   const inner = (
     <>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="my-1.5 text-3xl font-extrabold">{value}</div>
-      <div className="text-[11px] text-muted-foreground">{sub}</div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-[11px] text-muted-foreground">{sub}</span>
+      </div>
+      <div className="mt-1 text-2xl font-extrabold leading-none">{value}</div>
     </>
   )
   if (href) {

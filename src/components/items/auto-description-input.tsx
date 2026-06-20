@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { Textarea } from '@/components/ui/textarea'
-import { api } from '@/lib/api/client'
+import { useAiMutation } from '@/hooks/use-ai-usage'
 import {
   AiDescriptionField,
   useAiDescriptionField,
@@ -49,11 +49,12 @@ export function useAutoDescriptionField(
   )
   const canGenerate = disabledReason === null
 
+  const aiMutate = useAiMutation()
   const onGenerate = useCallback(async () => {
-    const { data, error } = await api.POST('/ai/description', { body: payload })
+    const { data, error } = await aiMutate('/ai/description', payload)
     if (error) throw new Error(error.message)
     return data
-  }, [payload])
+  }, [aiMutate, payload])
 
   return useAiDescriptionField({ canGenerate, disabledReason, onGenerate })
 }

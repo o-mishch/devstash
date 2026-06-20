@@ -29,11 +29,17 @@ function PopoverContent({
     <PopoverPrimitive.Portal>
       {/* z-[60] keeps popovers above nested dialogs (also z-[60]) and the drawer grab rail (z-[55]):
           a popover opened from inside a nested AlertDialog must paint over it, not behind it. */}
+      {/* positionMethod="fixed": keep the popup out of the document's scroll context. With the
+          default "absolute" the positioner lives in the (still-scrollable) <html> flow behind a
+          sheet, so a descendant calling scrollIntoView — e.g. cmdk auto-scrolling its active item
+          when a Command list opens — walks past the popup and scrolls the whole page to the top.
+          Fixed anchors it to the viewport, so that scroll stays inside the list. */}
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        positionMethod="fixed"
         className="isolate z-[60]"
       >
         <PopoverPrimitive.Popup

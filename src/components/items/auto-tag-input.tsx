@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import { Tag } from 'lucide-react'
 import type { UseFormReturn } from 'react-hook-form'
 import { Input } from '@/components/ui/input'
-import { api } from '@/lib/api/client'
+import { useAiMutation } from '@/hooks/use-ai-usage'
 import { parseTagString } from '@/lib/utils/format'
 import { AiFieldBadgeIfPro } from '@/components/shared/ai-field-chrome'
 import { AiTagsField, useAiTagsField, AI_TAGS_INPUT_CLASS } from '@/components/shared/ai-tags-field'
@@ -37,11 +37,12 @@ export function AutoTagInput({
   const canSuggest = Boolean(payload.title || payload.fileName)
   const disabledReason = getDisabledReason(payload.title ?? '', payload.fileName ?? '')
 
+  const aiMutate = useAiMutation()
   const onGenerate = useCallback(async () => {
-    const { data, error } = await api.POST('/ai/tags', { body: payload })
+    const { data, error } = await aiMutate('/ai/tags', payload)
     if (error) throw new Error(error.message)
     return data
-  }, [payload])
+  }, [aiMutate, payload])
 
   const aiField = useAiTagsField({ canGenerate: canSuggest, disabledReason, onGenerate })
 

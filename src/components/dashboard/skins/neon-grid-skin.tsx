@@ -3,12 +3,14 @@ import { History, Folder, Pin } from 'lucide-react'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
+import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { RetroGrid } from '@/components/ui/retro-grid'
-import { SkinCollapsibleSection } from './skin-collapsible-section'
+import { cn } from '@/lib/utils'
+import { SkinWidget } from './skin-widget'
 import { computeUsage, resolveSkinData, slotsLeftLabel, TypeDistributionSegments, type DashboardSkinData } from './shared'
 
-const NEON_CELL = 'rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] p-5 backdrop-blur'
+const NEON_CELL = 'rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] px-4 py-3 backdrop-blur'
 const NEON_PANEL = 'relative z-10 rounded-lg border border-primary/30 bg-[color-mix(in_srgb,var(--card)_55%,transparent)] p-5 backdrop-blur'
 
 // Neon Grid (Pro) — synthwave neon outlines over an animated perspective grid horizon.
@@ -20,13 +22,21 @@ export async function NeonGridSkin(data: DashboardSkinData) {
   const hasRecent = recent.items.length > 0
   const hasPinned = pinned.length > 0
 
+  // Favorites + fav. collections are reachable from the header/sidebar star and Collections nav, so
+  // those vanity cells are dropped (Total + Collections are the useful counts). Free keeps slots-left.
   const cells = [
     { value: String(stats.totalItems), label: 'total items', color: 'var(--primary)', href: undefined as string | undefined },
-    { value: String(collectionStats.totalCollections).padStart(2, '0'), label: 'collections', color: '#ec4899', href: '/collections' },
-    { value: String(stats.favoriteItems).padStart(2, '0'), label: 'favorites', color: '#8b5cf6', href: '/favorites' },
-    { value: String(collectionStats.favoriteCollections).padStart(2, '0'), label: 'fav. collections', color: '#a78bfa', href: '/collections' },
-    { value: slotsLeftLabel(usage), label: usage.isPro ? 'unlimited' : 'slots left', color: '#22d3ee', href: undefined as string | undefined },
+    { value: String(collectionStats.totalCollections).padStart(2, '0'), label: 'collections', color: '#ec4899', href: '/collections' as string | undefined },
+    ...(isPro
+      ? []
+      : [{ value: slotsLeftLabel(usage), label: 'slots left', color: '#22d3ee', href: undefined as string | undefined }]),
   ]
+  // Pro is a clean 2-up (Total + Collections). Free has 3 cells; the odd last (slots left) spans the
+  // full row on the 2-col grid so it is never orphaned, resolving to its own column at lg.
+  const cellGridCols =
+    cells.length === 2
+      ? 'lg:grid-cols-2'
+      : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'
 
   return (
     <div className="relative min-h-[70vh]">
@@ -40,12 +50,12 @@ export async function NeonGridSkin(data: DashboardSkinData) {
           <p className="mt-1 text-sm text-muted-foreground">{stats.totalItems} records indexed · grid online</p>
         </header>
 
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        <div className={cn('mb-6 grid grid-cols-2 gap-4', cellGridCols)}>
           {cells.map((c) => {
             const style = { borderColor: c.color, boxShadow: `0 0 24px -6px ${c.color}, inset 0 0 24px -14px ${c.color}` }
             const inner = (
               <>
-                <div className="font-mono text-3xl font-extrabold">{c.value}</div>
+                <div className="font-mono text-2xl font-extrabold leading-none">{c.value}</div>
                 <div className="mt-1.5 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{c.label}</div>
               </>
             )
@@ -65,29 +75,36 @@ export async function NeonGridSkin(data: DashboardSkinData) {
 
         {hasPinned && (
           <div className={`${NEON_PANEL} mb-4`}>
-            <SkinCollapsibleSection icon={<Pin />} title="Pinned" headerClassName="font-mono tracking-[0.1em] text-primary">
+            <SkinWidget icon={<Pin />} title="Pinned" headerClassName="font-mono tracking-[0.1em] text-primary">
               <DashboardPinnedItems initialItems={pinned} />
-            </SkinCollapsibleSection>
+            </SkinWidget>
           </div>
         )}
 
         <div className="grid items-start gap-4 lg:grid-cols-[1.3fr_1fr] [&>*]:min-w-0">
           <div className={NEON_PANEL}>
-            <SkinCollapsibleSection title="Recent records" headerClassName="font-mono tracking-[0.1em] text-primary">
+            <SkinWidget title="Recent records" headerClassName="font-mono tracking-[0.1em] text-primary">
               {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
-            </SkinCollapsibleSection>
+            </SkinWidget>
           </div>
           <div className={NEON_PANEL}>
-            <SkinCollapsibleSection icon={<Folder />} title="Collections" headerClassName="font-mono tracking-[0.1em] text-primary">
+            <SkinWidget icon={<Folder />} title="Collections" headerClassName="font-mono tracking-[0.1em] text-primary">
               <DashboardCollectionsList collections={collections} />
-            </SkinCollapsibleSection>
+            </SkinWidget>
             <div className="mt-5">
-              <SkinCollapsibleSection icon={<History />} title="Distribution" headerClassName="font-mono tracking-[0.1em] text-primary">
+              <SkinWidget icon={<History />} title="Distribution" headerClassName="font-mono tracking-[0.1em] text-primary">
                 <TypeDistributionSegments distribution={distribution} />
-              </SkinCollapsibleSection>
+              </SkinWidget>
             </div>
           </div>
         </div>
+
+        {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
+        {isPro && (
+          <div className={`${NEON_PANEL} mt-6`}>
+            <AiUsageWidget skin="neon-grid" />
+          </div>
+        )}
       </div>
     </div>
   )

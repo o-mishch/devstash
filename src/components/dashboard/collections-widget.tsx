@@ -3,16 +3,16 @@
 import Link from 'next/link'
 import { Folder } from 'lucide-react'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
-import { DashboardCollapsibleCard } from '@/components/dashboard/dashboard-collapsible-card'
+import { DashboardWidget } from '@/components/dashboard/dashboard-widget'
 import type { CollectionWithTypes } from '@/types/collection'
 
-interface DashboardCollectionsCardProps {
+interface CollectionsWidgetProps {
   collections: CollectionWithTypes[]
 }
 
-export function DashboardCollectionsCard({ collections }: DashboardCollectionsCardProps) {
+export function CollectionsWidget({ collections }: CollectionsWidgetProps) {
   return (
-    <DashboardCollapsibleCard
+    <DashboardWidget
       icon={Folder}
       title="Collections"
       headerAction={
@@ -26,6 +26,6 @@ export function DashboardCollectionsCard({ collections }: DashboardCollectionsCa
       }
     >
       <CollectionsGrid collections={collections} />
-    </DashboardCollapsibleCard>
+    </DashboardWidget>
   )
 }

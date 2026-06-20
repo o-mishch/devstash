@@ -2038,6 +2038,43 @@
         }
       }
     },
+    "/ai/usage": {
+      "get": {
+        "summary": "Read the current user's remaining AI budget per feature (Pro, non-consuming)",
+        "responses": {
+          "200": {
+            "description": "Remaining AI budget for each feature bucket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiUsage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Pro subscription required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ai/collection-description": {
       "post": {
         "summary": "Generate an AI collection description (Pro)",
@@ -6255,6 +6292,42 @@
         },
         "required": [
           "prompt"
+        ],
+        "additionalProperties": false
+      },
+      "AiUsage": {
+        "type": "object",
+        "properties": {
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "limit": {
+                  "type": "number"
+                },
+                "remaining": {
+                  "type": "number"
+                },
+                "resetAt": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "key",
+                "limit",
+                "remaining",
+                "resetAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "features"
         ],
         "additionalProperties": false
       },

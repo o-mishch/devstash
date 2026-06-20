@@ -1,13 +1,14 @@
 import type { CSSProperties } from 'react'
 import Link from 'next/link'
-import { Folder, Pin, History, Star, FolderHeart, Zap } from 'lucide-react'
+import { Folder, Pin, History, Zap } from 'lucide-react'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
+import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { DotPattern } from '@/components/ui/dot-pattern'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { cn } from '@/lib/utils'
-import { SkinCollapsibleSection } from './skin-collapsible-section'
+import { SkinWidget } from './skin-widget'
 import {
   computeUsage,
   usageLabel,
@@ -26,13 +27,18 @@ export async function AuroraSkin(data: DashboardSkinData) {
   const hasRecent = recent.items.length > 0
   const hasPinned = pinned.length > 0
 
+  // Favorites + favorite-collections are reachable from the header/sidebar star and Collections nav,
+  // so those vanity tiles are dropped. The hero card already shows the total, leaving Collections as
+  // the one useful secondary count. Free users keep the slots-left upgrade tile.
   const tiles = [
-    { icon: Folder, value: collectionStats.totalCollections, label: 'Collections', color: 'var(--primary)', href: '/collections' },
-    { icon: Star, value: stats.favoriteItems, label: 'Favorite items', color: '#fde047', href: '/favorites' },
-    { icon: FolderHeart, value: collectionStats.favoriteCollections, label: 'Favorite collections', color: '#8b5cf6', href: '/collections' },
-    { icon: Zap, value: slotsLeftLabel(usage), label: usage.isPro ? 'unlimited' : 'Slots left', color: '#10b981', href: undefined as string | undefined },
+    { icon: Folder, value: collectionStats.totalCollections, label: 'Collections', color: 'var(--primary)', href: '/collections' as string | undefined },
+    ...(isPro
+      ? []
+      : [{ icon: Zap, value: slotsLeftLabel(usage), label: 'Slots left', color: '#10b981', href: undefined as string | undefined }]),
   ]
-  const tileClass = 'ds-glass flex flex-col justify-between gap-3 rounded-2xl p-5 transition-transform hover:-translate-y-0.5'
+  // Centered stat cards — the value is large and centered so a lone Collections card reads as an
+  // intentional stat (it stretches to the hero's height) rather than a sparse box with a content gap.
+  const tileClass = 'ds-glass flex flex-col items-center justify-center gap-2 rounded-2xl p-6 text-center transition-transform hover:-translate-y-0.5'
 
   return (
     <div className="relative">
@@ -46,29 +52,28 @@ export async function AuroraSkin(data: DashboardSkinData) {
           </p>
         </header>
 
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {/* hero */}
-          <div className="ds-glass col-span-2 row-span-2 flex flex-col gap-5 rounded-2xl p-6">
-            <div className="flex items-center gap-6">
-              <div
-                className="ds-ring relative grid size-[120px] shrink-0 place-items-center rounded-full"
-                style={{ '--ds-pct': usage.isPro ? 100 : usage.pct } as CSSProperties}
-              >
-                <TotalItemsReveal variant="pop" align="center" className="relative text-center">
-                  <b className="block text-3xl font-extrabold">{stats.totalItems}</b>
-                  <span className="text-[11px] text-muted-foreground">total items</span>
-                </TotalItemsReveal>
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-base font-bold">{usageLabel(usage)}</h3>
-                <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-                  {usage.isPro
-                    ? 'You have unlimited items, files & AI with Pro.'
-                    : `You're using ${usage.pct}% of your free tier. Upgrade to Pro for unlimited items, files & AI.`}
-                </p>
-              </div>
+        {/* Top: total-items hero + Collections stat, balanced 2-up. The hero is full-width for free
+            (so the Slots tile pairs with Collections below it). Type distribution moved to its own
+            full-width card below so the hero stays compact and the stat cards aren't oversized. */}
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
+          <div className={`ds-glass flex items-center gap-6 rounded-2xl p-6 ${isPro ? '' : 'col-span-2 lg:col-span-2'}`}>
+            <div
+              className="ds-ring relative grid size-[120px] shrink-0 place-items-center rounded-full"
+              style={{ '--ds-pct': usage.isPro ? 100 : usage.pct } as CSSProperties}
+            >
+              <TotalItemsReveal variant="pop" align="center" className="relative text-center">
+                <b className="block text-3xl font-extrabold">{stats.totalItems}</b>
+                <span className="text-[11px] text-muted-foreground">total items</span>
+              </TotalItemsReveal>
             </div>
-            <TypeDistributionBars distribution={distribution} className="mt-auto" />
+            <div className="min-w-0">
+              <h3 className="text-base font-bold">{usageLabel(usage)}</h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+                {usage.isPro
+                  ? 'You have unlimited items, files & AI with Pro.'
+                  : `You're using ${usage.pct}% of your free tier. Upgrade to Pro for unlimited items, files & AI.`}
+              </p>
+            </div>
           </div>
 
           {tiles.map((t) => {
@@ -80,10 +85,8 @@ export async function AuroraSkin(data: DashboardSkinData) {
                 >
                   <t.icon className="size-[19px]" />
                 </span>
-                <div>
-                  <div className="text-[28px] font-extrabold leading-none">{t.value}</div>
-                  <div className="mt-1.5 text-[12.5px] text-muted-foreground">{t.label}</div>
-                </div>
+                <div className="text-4xl font-extrabold leading-none">{t.value}</div>
+                <div className="text-[12.5px] text-muted-foreground">{t.label}</div>
               </>
             )
             return t.href ? (
@@ -94,30 +97,41 @@ export async function AuroraSkin(data: DashboardSkinData) {
           })}
         </div>
 
+        <div className="ds-glass mb-6 rounded-2xl p-5">
+          <TypeDistributionBars distribution={distribution} />
+        </div>
+
         <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
           <div className="flex flex-col gap-4">
             <section className="ds-glass rounded-2xl p-5">
-              <SkinCollapsibleSection icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+              <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
                 <CollectionsGrid collections={collections} />
-              </SkinCollapsibleSection>
+              </SkinWidget>
             </section>
             {hasPinned && (
               <section className="ds-glass rounded-2xl p-5">
-                <SkinCollapsibleSection icon={<Pin />} title="Pinned">
+                <SkinWidget icon={<Pin />} title="Pinned">
                   <DashboardPinnedItems initialItems={pinned} />
-                </SkinCollapsibleSection>
+                </SkinWidget>
               </section>
             )}
           </div>
 
           {hasRecent && (
             <section className="ds-glass rounded-2xl p-5">
-              <SkinCollapsibleSection icon={<History />} title="Recent items">
+              <SkinWidget icon={<History />} title="Recent items">
                 <DashboardRecentItems firstPage={recent} />
-              </SkinCollapsibleSection>
+              </SkinWidget>
             </section>
           )}
         </div>
+
+        {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
+        {isPro && (
+          <div className="ds-glass mt-6 rounded-2xl p-5">
+            <AiUsageWidget skin="aurora" />
+          </div>
+        )}
       </div>
     </div>
   )

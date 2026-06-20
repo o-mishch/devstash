@@ -21,24 +21,15 @@ import { parseTagString } from '@/lib/utils/format'
 import type { FullItem } from '@/types/item'
 import type { CollectionPickerItem } from '@/types/collection'
 
+// URL shape ("must look like a URL") is validated by `itemFormBaseSchema.url`; this only adds the
+// per-type presence gate — link items require a non-empty URL.
 const createDrawerFormSchema = (itemType: string) => itemFormBaseSchema.superRefine((data, ctx) => {
-  if (ITEM_TYPES_WITH_URL.has(itemType)) {
-    if (!data.url) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'URL is required for this item type',
-        path: ['url'],
-      })
-    } else {
-      const urlParsed = z.string().url().safeParse(data.url)
-      if (!urlParsed.success) {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'Must be a valid URL',
-          path: ['url'],
-        })
-      }
-    }
+  if (ITEM_TYPES_WITH_URL.has(itemType) && !data.url) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'URL is required for this item type',
+      path: ['url'],
+    })
   }
 })
 

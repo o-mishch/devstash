@@ -71,6 +71,12 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
     const active = document.activeElement
     if (!(active instanceof HTMLElement)) return
     if (!active.closest('[data-slot=sheet-content]')) return
+    // Skip when focus is on a dropdown/combobox trigger (Language, Collections, Type, …). Opening
+    // an in-sheet dropdown moves focus to its trigger; scrolling to "center" it then drags the
+    // popover — which is anchored to the trigger — upward, the jump seen when opening those menus.
+    // The popover owns its own positioning, so the sheet must stay put. Real text inputs (Title,
+    // Tags, Description) carry none of these markers, so keyboard-avoidance for them is unaffected.
+    if (active.closest('[aria-haspopup],[aria-expanded],[role=combobox]')) return
 
     // Find the sheet's scrollable body — walk up without breaking so we capture the outermost
     // overflow-y:auto/scroll ancestor rather than an editor's internal scroll container.
