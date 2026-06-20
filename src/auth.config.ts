@@ -1,15 +1,22 @@
-import type { NextAuthConfig, Session } from 'next-auth'
+import type { NextAuthConfig, Session, User } from 'next-auth'
+import type { AdapterUser } from 'next-auth/adapters'
 import type { JWT } from 'next-auth/jwt'
 import type { NextRequest } from 'next/server'
 import GitHub from 'next-auth/providers/github'
 import Google from 'next-auth/providers/google'
 import Credentials from 'next-auth/providers/credentials'
+import { applySessionActivity } from '@/lib/auth/session-idle'
 
 export const BCRYPT_ROUNDS = 12
 
 interface AuthorizedParams {
   auth: Session | null
   request: NextRequest
+}
+
+interface JwtParams {
+  token: JWT
+  user?: User | AdapterUser
 }
 
 export const authConfig: NextAuthConfig = {
@@ -30,6 +37,22 @@ export const authConfig: NextAuthConfig = {
     }),
   ],
   callbacks: {
+    // Runs in the proxy (proxy.ts) — the route gate. Its job here is to INVALIDATE on idle:
+    // returning null empties the session so `authorized` redirects protected routes to /sign-in.
+    // The lastActiveAt refresh below keeps the decoded token consistent within this request, but
+    // the proxy does not configure session rotation (no updateAge), so it does not durably persist
+    // a fresh timestamp — auth.ts (node instance) owns the durable lastActiveAt refresh via its
+    // updateAge-driven cookie rotation, and overrides jwt with a richer DB-backed version. This
+    // edge copy only affects the proxy instance and is intentionally a safe subset of auth.ts.
+    // It deliberately does NOT log the invalidation (unlike auth.ts, which logs it on the node
+    // path): importing the server-only Pino logger here would pull Node-only code into the
+    // proxy/middleware bundle, breaking this file's edge-safe contract (see the bcrypt note above).
+    jwt({ token, user }: JwtParams): JWT | null {
+      const activity = applySessionActivity(token, Boolean(user))
+      if (!activity) return null
+      token.lastActiveAt = activity.lastActiveAt
+      return token
+    },
     authorized({ auth, request: { nextUrl } }: AuthorizedParams) {
       const isLoggedIn = !!auth?.user?.id
       const isProtected =
