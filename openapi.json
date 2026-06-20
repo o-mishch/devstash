@@ -1203,7 +1203,15 @@
                       "soft-pop",
                       "sage-garden",
                       "notebook",
-                      "darkmatter"
+                      "darkmatter",
+                      "aurora",
+                      "editorial",
+                      "spatial",
+                      "command-deck",
+                      "orbital",
+                      "mission-control",
+                      "neon-grid",
+                      "holographic"
                     ]
                   },
                   "colorMode": {
@@ -1221,23 +1229,18 @@
                       "dark"
                     ]
                   },
-                  "dashboardSections": {
-                    "type": "object",
-                    "properties": {
-                      "collections": {
-                        "type": "boolean"
-                      },
-                      "pinned": {
-                        "type": "boolean"
-                      },
-                      "recent": {
-                        "type": "boolean"
-                      }
-                    },
-                    "required": [
-                      "collections",
-                      "pinned",
-                      "recent"
+                  "uiSkin": {
+                    "type": "string",
+                    "enum": [
+                      "classic",
+                      "aurora",
+                      "editorial",
+                      "spatial",
+                      "command-deck",
+                      "orbital",
+                      "mission-control",
+                      "neon-grid",
+                      "holographic"
                     ]
                   },
                   "sidebarCollapsed": {
@@ -1252,7 +1255,7 @@
                   "appTheme",
                   "colorMode",
                   "editorThemeMode",
-                  "dashboardSections",
+                  "uiSkin",
                   "sidebarCollapsed"
                 ]
               }

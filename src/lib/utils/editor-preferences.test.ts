@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeEditorPreferences, DEFAULT_EDITOR_PREFERENCES } from './editor-preferences'
+import { normalizeEditorPreferences, normalizeUiSkin, DEFAULT_EDITOR_PREFERENCES } from './editor-preferences'
+import { DEFAULT_UI_SKIN } from '@/types/editor-preferences'
 
 describe('normalizeEditorPreferences', () => {
   it('returns default preferences on null or undefined input', () => {
@@ -18,7 +19,7 @@ describe('normalizeEditorPreferences', () => {
       appTheme: 'claude' as const,
       colorMode: 'light' as const,
       editorThemeMode: 'app' as const,
-      dashboardSections: { collections: true, pinned: true, recent: true },
+      uiSkin: 'aurora' as const,
       sidebarCollapsed: true,
     }
     expect(normalizeEditorPreferences(valid)).toEqual(valid)
@@ -33,7 +34,7 @@ describe('normalizeEditorPreferences', () => {
       appTheme: 'catppuccin' as const,
       colorMode: 'light' as const,
       editorThemeMode: 'dark' as const,
-      dashboardSections: { collections: false, pinned: true, recent: false },
+      uiSkin: 'mission-control' as const,
       sidebarCollapsed: false,
     }
     expect(normalizeEditorPreferences(withDarkTheme)).toEqual(withDarkTheme)
@@ -48,7 +49,34 @@ describe('normalizeEditorPreferences', () => {
       appTheme: 'invalid-theme',
       colorMode: 'invalid-mode',
       editorThemeMode: 'invalid-mode',
+      uiSkin: 'invalid-skin',
     } as unknown
     expect(normalizeEditorPreferences(invalid)).toEqual(DEFAULT_EDITOR_PREFERENCES)
+  })
+
+  it('ignores unknown legacy keys (e.g. removed dashboardSections) without erroring', () => {
+    const legacy = {
+      ...DEFAULT_EDITOR_PREFERENCES,
+      dashboardSections: { collections: false, pinned: true, recent: false },
+    } as unknown
+    const result = normalizeEditorPreferences(legacy)
+    expect(result).toEqual(DEFAULT_EDITOR_PREFERENCES)
+    expect('dashboardSections' in result).toBe(false)
+  })
+
+  it('clamps an unknown uiSkin to the default skin', () => {
+    expect(normalizeEditorPreferences({ uiSkin: 'nope' }).uiSkin).toBe(DEFAULT_UI_SKIN)
+  })
+})
+
+describe('normalizeUiSkin', () => {
+  it('accepts a known skin', () => {
+    expect(normalizeUiSkin('holographic')).toBe('holographic')
+  })
+
+  it('falls back to default for unknown / non-string input', () => {
+    expect(normalizeUiSkin('unknown')).toBe(DEFAULT_UI_SKIN)
+    expect(normalizeUiSkin(42)).toBe(DEFAULT_UI_SKIN)
+    expect(normalizeUiSkin(null)).toBe(DEFAULT_UI_SKIN)
   })
 })

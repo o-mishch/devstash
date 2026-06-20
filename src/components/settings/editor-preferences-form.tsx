@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import {
   EDITOR_FONT_SIZE_OPTIONS,
@@ -9,9 +10,15 @@ import {
 } from '@/lib/utils/editor-preferences'
 import {
   APP_THEME_OPTIONS,
+  UI_SKIN_OPTIONS,
+  SKIN_THEME_PRESET,
+  isProSkin,
   type AppTheme,
+  type UiSkin,
   type EditorThemeMode,
 } from '@/types/editor-preferences'
+import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -19,9 +26,22 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { startThemeTransition, type TransitionEventCoords } from '@/lib/dom/theme-transition'
-import { RotateCcw } from 'lucide-react'
+import { Crown, RotateCcw } from 'lucide-react'
 import { DarkLightSwitch } from '@/components/shared/dark-light-switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+
+// Representative gradient swatch per skin for the picker grid (purely decorative preview).
+const SKIN_SWATCHES: Record<UiSkin, string> = {
+  classic: 'linear-gradient(135deg, var(--muted), var(--card))',
+  aurora: 'linear-gradient(135deg, #4f7cff, #7c5cff)',
+  editorial: 'linear-gradient(135deg, #e5e7eb, #6b7280)',
+  spatial: 'linear-gradient(135deg, rgba(124,92,255,0.6), rgba(34,211,238,0.5))',
+  'command-deck': 'linear-gradient(135deg, #22d3ee, #0f172a)',
+  orbital: 'radial-gradient(circle at 35% 30%, #4f7cff, #0c0e16)',
+  'mission-control': 'linear-gradient(135deg, #3b82f6, #8b5cf6, #10b981)',
+  'neon-grid': 'linear-gradient(135deg, #22d3ee, #ec4899)',
+  holographic: 'conic-gradient(from 0deg, #22d3ee, #4f7cff, #8b5cf6, #ec4899, #fde047, #22d3ee)',
+}
 
 interface EditorThemeModeOption {
   value: EditorThemeMode
@@ -56,10 +76,37 @@ function PreferenceRow({ title, description, children }: PreferenceRowProps) {
 export function EditorPreferencesForm() {
   const store = useEditorPreferencesStore()
   const { updatePreference, updatePreferences } = store
+  const isPro = useAppUserFlagsStore((s) => s.isPro)
+  const { openPrompt } = useUpgradePromptStore()
+  const router = useRouter()
 
   const handleAppThemeChange = (e: TransitionEventCoords, theme: AppTheme) => {
     startThemeTransition(e, () => {
       void updatePreference('appTheme', theme)
+    })
+  }
+
+  // Pro skins are locked for free users: clicking routes to the upgrade prompt instead of selecting
+  // (server-side enforcement is authoritative; this is just the affordance). Selecting a skin also
+  // auto-applies its paired App Theme preset (animated with the same view transition as a manual
+  // theme change) so the dashboard matches its mockup out of the box; the user can change the theme
+  // afterwards. `classic` has no paired theme — it keeps the current appTheme.
+  const handleSkinSelect = (e: TransitionEventCoords, skin: UiSkin) => {
+    if (isProSkin(skin) && !isPro) {
+      openPrompt({
+        title: 'Pro dashboard skin',
+        description: 'This dashboard skin is only available on the Pro plan. Upgrade to unlock all skins.',
+      })
+      return
+    }
+    const themePreset = SKIN_THEME_PRESET[skin]
+    const patch = themePreset ? { uiSkin: skin, appTheme: themePreset } : { uiSkin: skin }
+    startThemeTransition(e, () => {
+      void updatePreferences(patch).then((ok) => {
+        // The skin is server-rendered on /dashboard. A route-handler save doesn't clear the client
+        // Router Cache, so refresh it here — otherwise the dashboard shows the old skin until reload.
+        if (ok) router.refresh()
+      })
     })
   }
 
@@ -74,6 +121,56 @@ export function EditorPreferencesForm() {
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Dashboard Skin</CardTitle>
+          <CardDescription>
+            Choose how your dashboard is laid out. Pro skins unlock bolder, data-rich layouts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
+            {UI_SKIN_OPTIONS.map((skin) => {
+              const isActive = store.uiSkin === skin.value
+              const locked = isProSkin(skin.value) && !isPro
+              return (
+                <button
+                  key={skin.value}
+                  type="button"
+                  onClick={(e) => handleSkinSelect(e, skin.value)}
+                  className={cn(
+                    'group relative flex flex-col gap-2 rounded-lg border-2 p-3 text-left transition-all hover:bg-foreground/5',
+                    isActive ? 'border-primary bg-foreground/5' : 'border-border'
+                  )}
+                >
+                  <div
+                    className="relative h-14 w-full overflow-hidden rounded-md ring-1 ring-border/20"
+                    style={{ background: SKIN_SWATCHES[skin.value] }}
+                  >
+                    {locked && (
+                      <span className="absolute inset-0 grid place-items-center bg-black/40">
+                        <Crown className="size-4 text-amber-300" />
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-xs font-semibold leading-none">{skin.label}</p>
+                      {skin.tier === 'pro' && (
+                        <span className="shrink-0 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-500">
+                          Pro
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[10px] leading-tight text-muted-foreground">{skin.description}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">App Theme</CardTitle>

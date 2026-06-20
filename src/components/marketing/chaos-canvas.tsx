@@ -136,9 +136,28 @@ export function ChaosCanvas() {
       mouse.x = (t.clientX - rect.left) * (canvas.width / rect.width);
       mouse.y = (t.clientY - rect.top) * (canvas.height / rect.height);
     };
+    // A tap on touch devices is momentary, so the gradual per-frame repel barely
+    // moves anything before touchend resets the pointer. Apply an immediate velocity
+    // kick to nearby icons so a single tap visibly scatters them.
+    const burst = () => {
+      const burstRadius = 130;
+      icons.forEach(ic => {
+        const dx = ic.x - mouse.x;
+        const dy = ic.y - mouse.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < burstRadius && dist > 0) {
+          const force = ((burstRadius - dist) / burstRadius) * 4;
+          ic.vx += (dx / dist) * force;
+          ic.vy += (dy / dist) * force;
+        }
+      });
+    };
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
-      if (t) trackTouch(t);
+      if (t) {
+        trackTouch(t);
+        burst();
+      }
     };
     const onTouchMove = (e: TouchEvent) => {
       const t = e.touches[0];

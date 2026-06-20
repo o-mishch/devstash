@@ -46,6 +46,14 @@ export const APP_THEMES = [
   'sage-garden',
   'notebook',
   'darkmatter',
+  'aurora',
+  'editorial',
+  'spatial',
+  'command-deck',
+  'orbital',
+  'mission-control',
+  'neon-grid',
+  'holographic',
 ] as const;
 
 export type AppTheme = typeof APP_THEMES[number];
@@ -609,6 +617,110 @@ export const APP_THEME_OPTIONS: ThemePresetOption[] = [
     dark: {
       bg: 'oklch(0.1797 0.0043 308.1928)',
       primary: 'oklch(0.7214 0.1337 49.9802)',
+    },
+  },
+  {
+    value: 'aurora',
+    label: 'Aurora Bento',
+    description: 'Glassmorphic blue-violet — pairs with the Aurora Bento skin.',
+    light: {
+      bg: '#f5f8ff',
+      primary: '#4f7cff',
+    },
+    dark: {
+      bg: '#0a0e1a',
+      primary: '#4f7cff',
+    },
+  },
+  {
+    value: 'editorial',
+    label: 'Editorial',
+    description: 'Swiss indigo on paper — pairs with the Editorial skin.',
+    light: {
+      bg: '#fbfbf9',
+      primary: '#6366f1',
+    },
+    dark: {
+      bg: '#0c0c10',
+      primary: '#6366f1',
+    },
+  },
+  {
+    value: 'spatial',
+    label: 'Spatial Depth',
+    description: 'visionOS frosted violet — pairs with the Spatial Depth skin.',
+    light: {
+      bg: '#f7f5ff',
+      primary: '#7c5cff',
+    },
+    dark: {
+      bg: '#0b0a14',
+      primary: '#7c5cff',
+    },
+  },
+  {
+    value: 'command-deck',
+    label: 'Command Deck',
+    description: 'HUD cyan on black — pairs with the Command Deck skin.',
+    light: {
+      bg: '#f0fdff',
+      primary: '#22d3ee',
+    },
+    dark: {
+      bg: '#060a0d',
+      primary: '#22d3ee',
+    },
+  },
+  {
+    value: 'orbital',
+    label: 'Orbital Core',
+    description: 'Deep-space blue — pairs with the Orbital Core skin.',
+    light: {
+      bg: '#f5f7ff',
+      primary: '#4f7cff',
+    },
+    dark: {
+      bg: '#07080f',
+      primary: '#4f7cff',
+    },
+  },
+  {
+    value: 'mission-control',
+    label: 'Mission Control',
+    description: 'Analytics cockpit slate-blue — pairs with the Mission Control skin.',
+    light: {
+      bg: '#f7f8fb',
+      primary: '#3b6ef5',
+    },
+    dark: {
+      bg: '#0a0c12',
+      primary: '#3b6ef5',
+    },
+  },
+  {
+    value: 'neon-grid',
+    label: 'Neon Grid',
+    description: 'Synthwave cyan + magenta — pairs with the Neon Grid skin.',
+    light: {
+      bg: '#faf7ff',
+      primary: '#22d3ee',
+    },
+    dark: {
+      bg: '#070510',
+      primary: '#22d3ee',
+    },
+  },
+  {
+    value: 'holographic',
+    label: 'Holographic',
+    description: 'Iridescent violet foil — pairs with the Holographic skin.',
+    light: {
+      bg: '#faf7ff',
+      primary: '#8b5cf6',
+    },
+    dark: {
+      bg: '#0a0810',
+      primary: '#8b5cf6',
     },
   },
 ];

@@ -1,5 +1,6 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { CollectionWithTypes } from '@/types/collection'
@@ -15,12 +16,15 @@ export function FavoriteCollectionRow({ collection }: FavoriteCollectionRowProps
   const href = `/collections/${collection.id}`
   const dotColor = collection.dominantColor ?? '#6b7280'
 
+  // Same card family as the dashboard item rows: rounded-xl, left accent border, subtle ring,
+  // bg-card, hover-lift.
   return (
     <Link
       href={href}
       prefetch={false}
       onMouseEnter={() => router.prefetch(href)}
-      className="card-interactive app-row group gap-3 rounded px-3 py-1.5 text-left touch:py-3"
+      className="card-interactive app-row group gap-3 rounded-xl border-l-2 border-l-[var(--item-color)] bg-card px-3 py-2 text-left ring-1 ring-border touch:py-3"
+      style={{ '--item-color': dotColor } as CSSProperties}
     >
       <FolderOpen
         className="size-3.5 shrink-0 touch:size-5"
@@ -30,7 +34,7 @@ export function FavoriteCollectionRow({ collection }: FavoriteCollectionRowProps
         {collection.name}
       </span>
       <span
-        className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px]"
+        className="shrink-0 rounded-md border px-1.5 py-0.5 text-[10px]"
         style={{
           color: dotColor,
           borderColor: `${dotColor}40`,
@@ -39,7 +43,7 @@ export function FavoriteCollectionRow({ collection }: FavoriteCollectionRowProps
       >
         collection
       </span>
-      <span className="w-16 shrink-0 text-right font-mono text-xs text-muted-foreground">
+      <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
         {formatDate(collection.createdAt)}
       </span>
     </Link>

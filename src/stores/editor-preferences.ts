@@ -31,7 +31,7 @@ export const useEditorPreferencesStore = create<EditorPreferencesStore>((set, ge
       appTheme: prev.appTheme,
       colorMode: prev.colorMode,
       editorThemeMode: prev.editorThemeMode,
-      dashboardSections: prev.dashboardSections,
+      uiSkin: prev.uiSkin,
       sidebarCollapsed: prev.sidebarCollapsed,
       ...prefs,
     }

@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevStash — Dashboard Redesign Concepts</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- animated background -->
+  <div class="bg-fx" aria-hidden="true">
+    <span class="blob b1"></span>
+    <span class="blob b2"></span>
+    <span class="blob b3"></span>
+  </div>
+
+  <!-- CONCEPT SWITCHER (review-only chrome) -->
+  <div class="switcher">
+    <span class="brand-tag"><b>DevStash</b> · Dashboard redesign — pick a direction</span>
+    <div class="seg" id="seg">
+      <button class="active" data-c="a">Aurora Bento</button>
+      <button data-c="b">Command Deck</button>
+      <button data-c="d">Orbital Core</button>
+      <button data-c="e">Spatial Depth</button>
+      <button data-c="f">Mission Control</button>
+      <button data-c="g">Neon Grid</button>
+      <button data-c="h">Editorial</button>
+      <button data-c="k">Holographic</button>
+    </div>
+  </div>
+
+  <div class="app">
+
+    <!-- LEFT RAIL (shared) -->
+    <aside class="rail">
+      <div class="logo">◧</div>
+      <div class="ricon" title="Snippets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+      <div class="ricon" title="Prompts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <div class="ricon" title="Commands"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+      <div class="ricon" title="Notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5z"/><polyline points="15 3 15 9 21 9"/></svg></div>
+      <div class="ricon" title="Files"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>
+      <div class="ricon" title="Images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.5-3.5L9 20"/></svg></div>
+      <div class="ricon" title="Links"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></div>
+      <div class="spacer"></div>
+      <div class="ricon active" title="Favorites"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg></div>
+      <div class="ricon" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main">
+
+      <!-- TOPBAR (shared) -->
+      <div class="topbar">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <span>Search snippets, prompts, commands…</span>
+          <span class="kbd">⌘K</span>
+        </div>
+        <div class="grow"></div>
+        <button class="icon-btn" title="Favorites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg></button>
+        <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>New Collection</button>
+        <button class="btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New Item</button>
+      </div>
+
+      <div class="content">
+
+        <!-- ===================================================== -->
+        <!-- CONCEPT A — AURORA BENTO                              -->
+        <!-- ===================================================== -->
+        <section class="concept show" data-concept="a">
+          <div class="page-head">
+            <div class="hi">Good evening, Aleksandr</div>
+            <h1>Your knowledge hub</h1>
+            <p>11 items · 1 collection · last saved 3 hours ago</p>
+          </div>
+
+          <!-- BENTO -->
+          <div class="bento">
+            <!-- hero stat -->
+            <div class="glass hero-stat">
+              <div class="ring-wrap">
+                <div class="ring">
+                  <div class="ring-in"><b>11</b><span>total items</span></div>
+                </div>
+                <div class="hmeta">
+                  <h3>39 of 50 free slots left</h3>
+                  <p>You're using 22% of your free tier. Snippets lead your stash — upgrade to Pro for unlimited items, files & AI.</p>
+                </div>
+              </div>
+              <div class="typebars">
+                <div class="typebar"><span class="tname">Snippet</span><span class="track"><i class="fill" style="width:64%;background:var(--t-snippet)"></i></span><span class="tnum">7</span></div>
+                <div class="typebar"><span class="tname">Prompt</span><span class="track"><i class="fill" style="width:27%;background:var(--t-prompt)"></i></span><span class="tnum">3</span></div>
+                <div class="typebar"><span class="tname">Command</span><span class="track"><i class="fill" style="width:9%;background:var(--t-command)"></i></span><span class="tnum">1</span></div>
+              </div>
+            </div>
+
+            <!-- stat tiles -->
+            <div class="glass stat-tile">
+              <div class="ti" style="background:rgba(16,185,129,.14);color:var(--t-link)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+              <div class="num">1</div>
+              <div class="lbl">Collections</div>
+            </div>
+            <div class="glass stat-tile">
+              <div class="ti" style="background:rgba(253,224,71,.14);color:var(--t-note)"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg></div>
+              <div class="num">1</div>
+              <div class="lbl">Favorite items</div>
+            </div>
+            <div class="glass stat-tile">
+              <div class="ti" style="background:rgba(124,92,255,.14);color:var(--brand-2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+              <div class="num">1</div>
+              <div class="lbl">Favorite collections</div>
+            </div>
+            <div class="glass stat-tile">
+              <div class="ti" style="background:rgba(79,124,255,.14);color:var(--brand)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div>
+              <div class="num">3h</div>
+              <div class="lbl">Since last save</div>
+              <div class="trend">↑ active streak</div>
+            </div>
+          </div>
+
+          <!-- two columns -->
+          <div class="bento-cols">
+            <!-- collections + pinned -->
+            <div class="stack">
+              <div class="glass panel">
+                <div class="section-label">
+                  <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+                  Collections <span class="count">1</span>
+                  <span class="view-all">View all →</span>
+                </div>
+                <div class="coll-grid">
+                  <div class="coll-card">
+                    <div class="glow" style="background:var(--t-snippet)"></div>
+                    <div class="cc-top">
+                      <div class="cc-ico" style="background:rgba(59,130,246,.16);color:var(--t-snippet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+                      <span class="star" style="color:var(--t-note)"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg></span>
+                    </div>
+                    <h4>test angular</h4>
+                    <div class="cc-sub">Items related to testing Angular apps</div>
+                    <div class="cc-foot"><span class="pill">1 item</span><span class="dots"><span class="tdot" style="background:var(--t-snippet)"></span></span></div>
+                  </div>
+                  <div class="coll-card" style="border-style:dashed;display:grid;place-items:center;text-align:center;color:var(--muted)">
+                    <div>
+                      <div style="font-size:22px;margin-bottom:6px;opacity:.6">＋</div>
+                      <div style="font-size:13px;font-weight:600">New collection</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="glass panel">
+                <div class="section-label">
+                  <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.5-9H6.5z"/><path d="M9 8V3h6v5"/></svg></span>
+                  Pinned <span class="count">1</span>
+                </div>
+                <div class="item-row">
+                  <div class="ir-ico" style="background:rgba(59,130,246,.16);color:var(--t-snippet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+                  <div class="ir-body"><h5>sdg</h5><p>zsdgvfgghgggg</p></div>
+                  <span class="pin"><svg viewBox="0 0 24 24" fill="currentColor"><line x1="12" y1="17" x2="12" y2="22" stroke="currentColor" stroke-width="2"/><path d="M5 17h14l-1.5-9H6.5z"/></svg></span>
+                  <span class="ir-time">Jun 16</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- recent -->
+            <div class="glass panel">
+              <div class="section-label">
+                <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></span>
+                Recent items
+                <span class="view-all">View all →</span>
+              </div>
+              <div class="stack" id="recent-a"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================== -->
+        <!-- CONCEPT B — COMMAND DECK (HUD)                        -->
+        <!-- ===================================================== -->
+        <section class="concept hud" data-concept="b">
+          <div class="page-head">
+            <div class="hi" style="font-family:var(--mono)">// SYSTEM ONLINE</div>
+            <h1>dashboard</h1>
+            <p>knowledge index synced · 11 records · 1 collection</p>
+          </div>
+
+          <div class="hud-strip">
+            <div class="hud-cell">
+              <div class="hlabel">Total Items</div>
+              <div class="hval">11</div>
+              <div class="hbar"><i style="width:22%"></i></div>
+              <div class="hsub">22% of free tier (50)</div>
+            </div>
+            <div class="hud-cell">
+              <div class="hlabel">Collections</div>
+              <div class="hval">01</div>
+              <div class="hbar"><i style="width:33%"></i></div>
+              <div class="hsub">2 slots remaining</div>
+            </div>
+            <div class="hud-cell">
+              <div class="hlabel">Favorites</div>
+              <div class="hval">01</div>
+              <div class="hbar"><i style="width:9%"></i></div>
+              <div class="hsub">1 item · 1 collection</div>
+            </div>
+            <div class="hud-cell">
+              <div class="hlabel">Last Sync</div>
+              <div class="hval">3h</div>
+              <div class="hbar"><i style="width:70%"></i></div>
+              <div class="hsub">all changes saved</div>
+            </div>
+          </div>
+
+          <div class="hud-distribution">
+            <div class="section-label" style="color:var(--brand-3)">
+              <span class="ico" style="color:var(--brand-3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="8"/><rect x="12" y="6" width="3" height="12"/><rect x="17" y="13" width="3" height="5"/></svg></span>
+              Type distribution
+            </div>
+            <div class="seg-bar">
+              <span style="flex:7;background:var(--t-snippet)"></span>
+              <span style="flex:3;background:var(--t-prompt)"></span>
+              <span style="flex:1;background:var(--t-command)"></span>
+            </div>
+            <div class="seg-legend">
+              <div class="lg"><span class="tdot" style="background:var(--t-snippet)"></span>Snippet <b>7</b></div>
+              <div class="lg"><span class="tdot" style="background:var(--t-prompt)"></span>Prompt <b>3</b></div>
+              <div class="lg"><span class="tdot" style="background:var(--t-command)"></span>Command <b>1</b></div>
+              <div class="lg"><span class="tdot" style="background:var(--t-note)"></span>Note <b>0</b></div>
+              <div class="lg"><span class="tdot" style="background:var(--t-link)"></span>Link <b>0</b></div>
+            </div>
+          </div>
+
+          <div class="hud-cols">
+            <div class="hud-panel">
+              <div class="section-label" style="color:var(--brand-3)">
+                <span class="ico" style="color:var(--brand-3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.5-9H6.5z"/></svg></span>
+                Pinned
+              </div>
+              <div class="hud-row" style="border-left-color:var(--t-snippet)">
+                <span class="idx">01</span>
+                <span class="ico" style="background:rgba(59,130,246,.18);color:var(--t-snippet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+                <div class="nm"><h5>sdg</h5><p>zsdgvfgghgggg</p></div>
+                <span class="tm">JUN 16</span>
+              </div>
+            </div>
+            <div class="hud-panel">
+              <div class="section-label" style="color:var(--brand-3)">
+                <span class="ico" style="color:var(--brand-3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></span>
+                Recent records
+              </div>
+              <div id="recent-b"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================== -->
+        <!-- CONCEPT D — ORBITAL CORE                              -->
+        <!-- ===================================================== -->
+        <section class="concept" data-concept="d">
+          <div class="orb-layout">
+            <!-- orbital centerpiece -->
+            <div class="orb-stage">
+              <div class="orb-ring r3"></div>
+              <div class="orb-ring r2"></div>
+              <div class="orb-ring r1"></div>
+              <div class="orb-core">
+                <b>11</b>
+                <span>items</span>
+              </div>
+              <!-- orbiting type nodes -->
+              <div class="orb-node" style="--a:-90deg;--d:185px;--c:var(--t-snippet)"><i>7</i><label>Snippet</label></div>
+              <div class="orb-node" style="--a:-20deg;--d:185px;--c:var(--t-prompt)"><i>3</i><label>Prompt</label></div>
+              <div class="orb-node" style="--a:55deg;--d:130px;--c:var(--t-command)"><i>1</i><label>Command</label></div>
+              <div class="orb-node muted" style="--a:140deg;--d:130px;--c:var(--t-note)"><i>0</i><label>Note</label></div>
+              <div class="orb-node muted" style="--a:210deg;--d:185px;--c:var(--t-link)"><i>0</i><label>Link</label></div>
+              <div class="orb-cap">Type constellation · live</div>
+            </div>
+
+            <!-- side stack -->
+            <div class="orb-side">
+              <div class="orb-stats">
+                <div class="orb-kpi"><div class="okv">39</div><div class="okl">slots left</div><div class="okbar"><i style="width:22%"></i></div></div>
+                <div class="orb-kpi"><div class="okv">1</div><div class="okl">collection</div></div>
+                <div class="orb-kpi"><div class="okv">1</div><div class="okl">favorite</div></div>
+              </div>
+              <div class="orb-panel">
+                <div class="section-label"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></span>Recent <span class="view-all">View all →</span></div>
+                <div id="recent-d"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================== -->
+        <!-- CONCEPT E — SPATIAL DEPTH (visionOS-like)             -->
+        <!-- ===================================================== -->
+        <section class="concept spatial" data-concept="e">
+          <div class="page-head">
+            <div class="hi">Good evening, Aleksandr</div>
+            <h1>Your knowledge hub</h1>
+          </div>
+
+          <div class="sp-stats">
+            <div class="sp-card sp-hero">
+              <div class="sp-sheen"></div>
+              <div class="sp-big">11</div>
+              <div class="sp-cap">items stashed</div>
+              <div class="sp-usage"><i style="width:22%"></i></div>
+              <div class="sp-note">39 of 50 free slots remaining</div>
+            </div>
+            <div class="sp-mini-grid">
+              <div class="sp-card sp-mini"><div class="sp-sheen"></div><div class="spm-ico" style="color:var(--t-link)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div><div class="spm-v">1</div><div class="spm-l">Collections</div></div>
+              <div class="sp-card sp-mini"><div class="sp-sheen"></div><div class="spm-ico" style="color:var(--t-note)"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg></div><div class="spm-v">1</div><div class="spm-l">Favorites</div></div>
+              <div class="sp-card sp-mini"><div class="sp-sheen"></div><div class="spm-ico" style="color:var(--t-prompt)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div><div class="spm-v">1</div><div class="spm-l">Fav. collections</div></div>
+              <div class="sp-card sp-mini"><div class="sp-sheen"></div><div class="spm-ico" style="color:var(--brand)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div><div class="spm-v">3h</div><div class="spm-l">Last save</div></div>
+            </div>
+          </div>
+
+          <div class="sp-cols">
+            <div class="sp-card sp-panel">
+              <div class="sp-sheen"></div>
+              <div class="section-label"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>Collections <span class="view-all">View all →</span></div>
+              <div class="sp-floating-coll">
+                <div class="sc-ico" style="background:rgba(59,130,246,.18);color:var(--t-snippet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+                <div><h5>test angular</h5><p>Items related to testing Angular apps · 1 item</p></div>
+                <span class="star" style="color:var(--t-note)"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg></span>
+              </div>
+            </div>
+            <div class="sp-card sp-panel">
+              <div class="sp-sheen"></div>
+              <div class="section-label"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></span>Recent items <span class="view-all">View all →</span></div>
+              <div id="recent-e"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================== -->
+        <!-- CONCEPT F — MISSION CONTROL (analytics-dense)         -->
+        <!-- ===================================================== -->
+        <section class="concept mc" data-concept="f">
+          <div class="page-head">
+            <div class="hi">Mission control</div>
+            <h1>Dashboard</h1>
+            <p>Your developer knowledge hub</p>
+          </div>
+
+          <div class="mc-kpis">
+            <div class="mc-kpi">
+              <div class="mck-top"><span class="mck-l">Total items</span><span class="mck-d" style="color:var(--brand)">↑</span></div>
+              <div class="mck-v">11</div>
+              <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,22 16,18 32,20 48,12 64,14 80,6 100,8" fill="none" stroke="var(--brand)" stroke-width="2"/></svg>
+            </div>
+            <div class="mc-kpi">
+              <div class="mck-top"><span class="mck-l">Collections</span><span class="mck-d" style="color:var(--t-link)">●</span></div>
+              <div class="mck-v">1</div>
+              <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,20 25,20 50,16 75,16 100,10" fill="none" stroke="var(--t-link)" stroke-width="2"/></svg>
+            </div>
+            <div class="mc-kpi">
+              <div class="mck-top"><span class="mck-l">Favorites</span><span class="mck-d" style="color:var(--t-note)">★</span></div>
+              <div class="mck-v">1</div>
+              <svg class="spark" viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points="0,24 30,24 55,20 80,18 100,14" fill="none" stroke="var(--t-note)" stroke-width="2"/></svg>
+            </div>
+            <div class="mc-kpi">
+              <div class="mck-top"><span class="mck-l">Free tier used</span><span class="mck-d" style="color:var(--brand-2)">22%</span></div>
+              <div class="mck-v">11<span class="mck-sub">/50</span></div>
+              <div class="mck-bar"><i style="width:22%"></i></div>
+            </div>
+          </div>
+
+          <div class="mc-grid">
+            <div class="mc-panel mc-activity">
+              <div class="section-label"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg></span>Activity · last 12 weeks</div>
+              <div class="heatmap" id="heatmap"></div>
+              <div class="heat-legend"><span>Less</span><span class="hl" style="background:rgba(255,255,255,.06)"></span><span class="hl" style="background:rgba(79,124,255,.35)"></span><span class="hl" style="background:rgba(79,124,255,.6)"></span><span class="hl" style="background:var(--brand)"></span><span>More</span></div>
+            </div>
+            <div class="mc-panel">
+              <div class="section-label"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.2 15.9A10 10 0 1 1 8.1 2.8"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></span>By type</div>
+              <div class="donut-wrap">
+                <div class="donut"></div>
+                <div class="donut-c"><b>11</b><span>items</span></div>
+              </div>
+              <div class="mc-legend">
+                <div class="lg"><span class="tdot" style="background:var(--t-snippet)"></span>Snippet <b>7</b></div>
+                <div class="lg"><span class="tdot" style="background:var(--t-prompt)"></span>Prompt <b>3</b></div>
+                <div class="lg"><span class="tdot" style="background:var(--t-command)"></span>Command <b>1</b></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mc-grid">
+            <div class="mc-panel">
+              <div class="section-label"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg></span>Recent items <span class="view-all">View all →</span></div>
+              <div id="recent-f"></div>
+            </div>
+            <div class="mc-panel">
+              <div class="section-label"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>Collections <span class="count">1</span></div>
+              <div class="mc-coll">
+                <div class="ir-ico" style="background:rgba(59,130,246,.16);color:var(--t-snippet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+                <div class="ir-body"><h5>test angular</h5><p style="font-family:var(--font)">Items related to testing Angular apps</p></div>
+                <span class="ir-time">1 item</span>
+              </div>
+              <div class="mc-coll add">
+                <div class="ir-ico" style="background:rgba(255,255,255,.04);border:1px dashed var(--border-strong);color:var(--muted)">＋</div>
+                <div class="ir-body"><h5 style="color:var(--muted)">New collection</h5></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================== -->
+        <!-- CONCEPT G — NEON GRID (synthwave)                     -->
+        <!-- ===================================================== -->
+        <section class="concept neon" data-concept="g">
+          <div class="neon-floor" aria-hidden="true"></div>
+          <div class="page-head">
+            <div class="hi">// knowledge.exe running</div>
+            <h1 data-text="DASHBOARD">DASHBOARD</h1>
+            <p>11 records indexed · grid online</p>
+          </div>
+
+          <div class="neon-strip">
+            <div class="neon-cell"><div class="nv">11</div><div class="nl">total items</div></div>
+            <div class="neon-cell c2"><div class="nv">01</div><div class="nl">collections</div></div>
+            <div class="neon-cell c3"><div class="nv">01</div><div class="nl">favorites</div></div>
+            <div class="neon-cell"><div class="nv">39</div><div class="nl">slots left</div></div>
+          </div>
+
+          <div class="neon-cols">
+            <div class="neon-panel">
+              <div class="section-label neon-lbl">▸ Recent records</div>
+              <div id="recent-g"></div>
+            </div>
+            <div class="neon-panel">
+              <div class="section-label neon-lbl">▸ Collections</div>
+              <div class="neon-coll">
+                <div class="ir-ico" style="background:rgba(59,130,246,.16);color:var(--t-snippet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+                <div class="ir-body"><h5>test angular</h5><p style="font-family:var(--mono)">testing Angular apps · 1 item</p></div>
+              </div>
+              <div class="neon-distribution">
+                <div class="seg-bar">
+                  <span style="flex:7;background:var(--t-snippet)"></span>
+                  <span style="flex:3;background:var(--t-prompt)"></span>
+                  <span style="flex:1;background:var(--t-command)"></span>
+                </div>
+                <div class="seg-legend">
+                  <div class="lg"><span class="tdot" style="background:var(--t-snippet)"></span>Snippet <b>7</b></div>
+                  <div class="lg"><span class="tdot" style="background:var(--t-prompt)"></span>Prompt <b>3</b></div>
+                  <div class="lg"><span class="tdot" style="background:var(--t-command)"></span>Command <b>1</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================== -->
+        <!-- CONCEPT H — EDITORIAL (Swiss / typographic)           -->
+        <!-- ===================================================== -->
+        <section class="concept editorial" data-concept="h">
+          <div class="ed-top">
+            <div>
+              <div class="ed-kicker">Developer Knowledge Hub</div>
+              <h1 class="ed-title">Good evening,<br>Aleksandr.</h1>
+            </div>
+            <div class="ed-meta">
+              <div class="ed-meta-row"><span>Last saved</span><b>3 hours ago</b></div>
+              <div class="ed-meta-row"><span>Free tier</span><b>11 / 50</b></div>
+              <div class="ed-meta-row"><span>Status</span><b style="color:var(--t-link)">Active</b></div>
+            </div>
+          </div>
+
+          <div class="ed-rule"></div>
+
+          <div class="ed-figures">
+            <div class="ed-fig">
+              <div class="ed-num">11</div>
+              <div class="ed-cap"><b>Total items</b><span>across 3 types</span></div>
+            </div>
+            <div class="ed-fig">
+              <div class="ed-num">01</div>
+              <div class="ed-cap"><b>Collection</b><span>test angular</span></div>
+            </div>
+            <div class="ed-fig">
+              <div class="ed-num">01</div>
+              <div class="ed-cap"><b>Favorite</b><span>1 item starred</span></div>
+            </div>
+          </div>
+
+          <div class="ed-rule"></div>
+
+          <div class="ed-cols">
+            <div class="ed-block">
+              <div class="ed-block-h"><span class="ed-idx">01</span> Recent items <span class="view-all">All →</span></div>
+              <div id="recent-h"></div>
+            </div>
+            <div class="ed-block">
+              <div class="ed-block-h"><span class="ed-idx">02</span> Distribution</div>
+              <div class="ed-bars">
+                <div class="ed-bar"><span class="ebn">Snippet</span><span class="ebt"><i style="width:100%;background:var(--t-snippet)"></i></span><b>7</b></div>
+                <div class="ed-bar"><span class="ebn">Prompt</span><span class="ebt"><i style="width:43%;background:var(--t-prompt)"></i></span><b>3</b></div>
+                <div class="ed-bar"><span class="ebn">Command</span><span class="ebt"><i style="width:14%;background:var(--t-command)"></i></span><b>1</b></div>
+                <div class="ed-bar muted"><span class="ebn">Note</span><span class="ebt"><i style="width:0"></i></span><b>0</b></div>
+                <div class="ed-bar muted"><span class="ebn">Link</span><span class="ebt"><i style="width:0"></i></span><b>0</b></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================== -->
+        <!-- CONCEPT K — HOLOGRAPHIC (iridescent foil)             -->
+        <!-- ===================================================== -->
+        <section class="concept holo" data-concept="k">
+          <div class="page-head">
+            <div class="hi holo-hi">Good evening, Aleksandr</div>
+            <h1>Your knowledge hub</h1>
+          </div>
+
+          <div class="holo-stats">
+            <div class="holo-card holo-hero">
+              <div class="holo-inner">
+                <div class="hh-v">11</div>
+                <div class="hh-l">total items · 39 slots left</div>
+                <div class="hh-bar"><i style="width:22%"></i></div>
+              </div>
+            </div>
+            <div class="holo-card"><div class="holo-inner"><div class="hc-v">1</div><div class="hc-l">Collections</div></div></div>
+            <div class="holo-card"><div class="holo-inner"><div class="hc-v">1</div><div class="hc-l">Favorites</div></div></div>
+          </div>
+
+          <div class="holo-cols">
+            <div class="holo-card holo-panel">
+              <div class="holo-inner">
+                <div class="section-label">Recent items <span class="view-all">View all →</span></div>
+                <div id="recent-k"></div>
+              </div>
+            </div>
+            <div class="holo-card holo-panel">
+              <div class="holo-inner">
+                <div class="section-label">Collections <span class="count">1</span></div>
+                <div class="item-row">
+                  <div class="ir-ico" style="background:rgba(59,130,246,.16);color:var(--t-snippet)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+                  <div class="ir-body"><h5>test angular</h5><p style="font-family:var(--font)">Items related to testing Angular apps</p></div>
+                  <span class="ir-time">1 item</span>
+                </div>
+                <div class="holo-cta">✦ Upgrade to Pro for unlimited items, files &amp; AI</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

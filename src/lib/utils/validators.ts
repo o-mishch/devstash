@@ -1,6 +1,6 @@
 import { z, ZodType } from 'zod'
 import type { ActionState } from '@/types/actions'
-import { APP_THEMES } from '@/types/editor-preferences'
+import { APP_THEMES, UI_SKINS } from '@/types/editor-preferences'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEM_DESCRIPTION_MAX_CHARS } from '@/lib/utils/constants'
 
 export type ParseResult<T> =
@@ -121,12 +121,6 @@ export const changePasswordSchema = z.object({
   confirmPassword: passwordFieldSchema,
 }).superRefine(passwordMatchRefine('newPassword'))
 
-const dashboardSectionsSchema = z.object({
-  collections: z.boolean(),
-  pinned: z.boolean(),
-  recent: z.boolean(),
-})
-
 export const editorPreferencesSchema = z.object({
   fontSize: z.number().min(8).max(100),
   tabSize: z.number().min(1).max(16),
@@ -135,6 +129,6 @@ export const editorPreferencesSchema = z.object({
   appTheme: z.enum(APP_THEMES),
   colorMode: z.enum(['light', 'dark']),
   editorThemeMode: z.enum(['app', 'auto', 'dark']),
-  dashboardSections: dashboardSectionsSchema,
+  uiSkin: z.enum(UI_SKINS),
   sidebarCollapsed: z.boolean(),
 })

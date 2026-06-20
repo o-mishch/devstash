@@ -5,7 +5,7 @@ import { prisma } from '@/lib/infra/prisma'
 import { CacheTags } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
-import type { FullItem, ItemDetails, ItemSavedDetails, ItemContent, ItemStats, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
+import type { FullItem, ItemDetails, ItemSavedDetails, ItemContent, ItemStats, ItemTypeDistribution, DashboardActivityDay, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
 import { Prisma, ContentType } from '@/generated/prisma/client'
 
 const log = logger.child({ tag: 'db:items' })
@@ -179,6 +179,74 @@ export async function getItemStats(userId: string): Promise<ItemStats> {
   const favoriteItems = rows.find((r) => r.isFavorite)?._count ?? 0
   log.info({ userId, cacheKey, totalItems, favoriteItems, duration: Date.now() - start }, 'DB: getItemStats')
   return { totalItems, favoriteItems }
+}
+
+// Per-type counts for the dashboard skins' type-distribution viz. Returns every system type
+// (count 0 when none) in SYSTEM_TYPE_ORDER, so callers can render a stable, ordered bar/legend.
+export async function getItemTypeDistribution(userId: string): Promise<ItemTypeDistribution[]> {
+  'use cache'
+  const cacheKey = CacheTags.itemTypeDistribution(userId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  const [rows, types] = await Promise.all([
+    prisma.item.groupBy({ by: ['itemTypeId'], where: { userId }, _count: true }),
+    getSystemItemTypes(),
+  ])
+  const countById = new Map(rows.map((r) => [r.itemTypeId, r._count]))
+  const distribution = types.map((t) => ({ name: t.name, count: countById.get(t.id) ?? 0 }))
+  log.info({ userId, cacheKey, typeCount: distribution.length, duration: Date.now() - start }, 'DB: getItemTypeDistribution')
+  return distribution
+}
+
+const ACTIVITY_WINDOW_DAYS = 84 // ~12 weeks for the mission-control contribution heatmap
+
+// Per-day item-creation counts for the last ~12 weeks, shaped for react-activity-calendar
+// (contiguous days, level 0–4). Consumed only by the mission-control skin.
+export async function getDashboardActivity(userId: string): Promise<DashboardActivityDay[]> {
+  'use cache'
+  const cacheKey = CacheTags.dashboardActivity(userId)
+  cacheTag(cacheKey, CacheTags.itemGroup(userId))
+  cacheLife('max')
+  const start = Date.now()
+  // Anchor both the SQL lower bound and the JS series to one clock (this server's `today`, as a UTC
+  // calendar date) so a DB-vs-app clock skew across a UTC midnight can't drop the most-recent day.
+  const today = new Date()
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
+  const windowStart = new Date(todayUtc)
+  windowStart.setUTCDate(windowStart.getUTCDate() - (ACTIVITY_WINDOW_DAYS - 1))
+  const windowStartDate = toIsoDate(windowStart)
+  // $queryRaw needed: Prisma groupBy cannot truncate a timestamp to a calendar day
+  // (no date_trunc / ::date projection in the query builder).
+  const rows = await prisma.$queryRaw<Array<{ day: Date; count: bigint }>>`
+    SELECT ("createdAt" AT TIME ZONE 'UTC')::date AS day, COUNT(*)::int AS count
+    FROM items
+    WHERE "userId" = ${userId}
+      AND ("createdAt" AT TIME ZONE 'UTC')::date >= ${windowStartDate}::date
+    GROUP BY day`
+  const countByDate = new Map(rows.map((r) => [toIsoDate(r.day), Number(r.count)]))
+  const maxCount = Math.max(0, ...countByDate.values())
+
+  // Build a contiguous series ending today so the calendar has no gaps.
+  const series: DashboardActivityDay[] = Array.from({ length: ACTIVITY_WINDOW_DAYS }, (_, i) => {
+    const d = new Date(todayUtc)
+    d.setUTCDate(d.getUTCDate() - (ACTIVITY_WINDOW_DAYS - 1 - i))
+    const date = toIsoDate(d)
+    const count = countByDate.get(date) ?? 0
+    return { date, count, level: activityLevel(count, maxCount) }
+  })
+  log.info({ userId, cacheKey, days: series.length, maxCount, duration: Date.now() - start }, 'DB: getDashboardActivity')
+  return series
+}
+
+function toIsoDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+// Bucket a day's count into a 0–4 intensity level relative to the busiest day in the window.
+function activityLevel(count: number, maxCount: number): number {
+  if (count === 0 || maxCount === 0) return 0
+  return Math.min(4, Math.ceil((count / maxCount) * 4))
 }
 
 export async function getItemById(userId: string, itemId: string): Promise<FullItem | null> {

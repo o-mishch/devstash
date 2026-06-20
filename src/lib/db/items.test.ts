@@ -20,13 +20,15 @@ vi.mock('@/lib/infra/cache', () => ({
     itemsByType: (userId: string, type: string) => `user:${userId}:items:${type}`,
     itemsByCollection: (userId: string, id: string) => `user:${userId}:collection:${id}:items`,
     itemStats: (userId: string) => `user:${userId}:item-stats`,
+    itemTypeDistribution: (userId: string) => `user:${userId}:item-type-distribution`,
+    dashboardActivity: (userId: string) => `user:${userId}:dashboard-activity`,
     downloadItem: (userId: string, itemId: string) => `user:${userId}:download-item:${itemId}`,
   },
 }))
 
 import { prisma } from '@/lib/infra/prisma'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
-import { createItem, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem } from './items'
+import { createItem, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem, getItemTypeDistribution, getDashboardActivity } from './items'
 
 const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>
 const mockItemFindFirst = prisma.item.findFirst as ReturnType<typeof vi.fn>
@@ -90,6 +92,63 @@ describe('getSidebarItemTypes', () => {
     const prompt = result.find((t) => t.name === 'prompt')
     expect(snippet?.count).toBe(5)
     expect(prompt?.count).toBe(0)
+  })
+})
+
+// ── getItemTypeDistribution ──────────────────────────────────────────────────
+
+describe('getItemTypeDistribution', () => {
+  const systemTypes = [
+    { id: '1', name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true, userId: null },
+    { id: '2', name: 'prompt', icon: 'Sparkles', color: '#8b5cf6', isSystem: true, userId: null },
+    { id: '3', name: 'command', icon: 'Terminal', color: '#f97316', isSystem: true, userId: null },
+  ]
+
+  it('maps groupBy counts onto every system type, defaulting missing types to 0', async () => {
+    mockFindMany.mockResolvedValue(systemTypes)
+    mockGroupBy.mockResolvedValue([
+      { itemTypeId: '1', _count: 7 },
+      { itemTypeId: '3', _count: 1 },
+    ])
+    const result = await getItemTypeDistribution('user-1')
+    expect(result).toEqual([
+      { name: 'snippet', count: 7 },
+      { name: 'prompt', count: 0 },
+      { name: 'command', count: 1 },
+    ])
+    // IDOR: the aggregation is scoped to the session userId
+    expect(mockGroupBy).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'user-1' } }))
+  })
+})
+
+// ── getDashboardActivity ─────────────────────────────────────────────────────
+
+describe('getDashboardActivity', () => {
+  it('returns a contiguous 84-day series ending today with levels bucketed against the busiest day', async () => {
+    const today = new Date()
+    const todayIso = today.toISOString().slice(0, 10)
+    mockQueryRaw.mockResolvedValue([{ day: new Date(`${todayIso}T00:00:00Z`), count: 4n }])
+
+    const result = await getDashboardActivity('user-1')
+
+    expect(result).toHaveLength(84)
+    expect(result[result.length - 1].date).toBe(todayIso)
+    // every entry is a valid ISO date and a 0–4 level
+    expect(result.every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.date) && d.level >= 0 && d.level <= 4)).toBe(true)
+    // the only non-zero day is today, and being the max it lands at level 4
+    const todayEntry = result[result.length - 1]
+    expect(todayEntry.count).toBe(4)
+    expect(todayEntry.level).toBe(4)
+    expect(result.slice(0, -1).every((d) => d.count === 0 && d.level === 0)).toBe(true)
+    // IDOR: the raw aggregation interpolates the session userId into the WHERE clause
+    expect(mockQueryRaw.mock.calls[0]).toContain('user-1')
+  })
+
+  it('returns all-zero levels when there is no activity', async () => {
+    mockQueryRaw.mockResolvedValue([])
+    const result = await getDashboardActivity('user-1')
+    expect(result).toHaveLength(84)
+    expect(result.every((d) => d.count === 0 && d.level === 0)).toBe(true)
   })
 })
 

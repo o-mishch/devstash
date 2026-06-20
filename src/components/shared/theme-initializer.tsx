@@ -6,6 +6,7 @@ import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 export function ThemeInitializer() {
   const appTheme = useEditorPreferencesStore((state) => state.appTheme)
   const colorMode = useEditorPreferencesStore((state) => state.colorMode)
+  const uiSkin = useEditorPreferencesStore((state) => state.uiSkin)
   const isInitialized = useEditorPreferencesStore((state) => state.isInitialized)
 
   useEffect(() => {
@@ -27,7 +28,10 @@ export function ThemeInitializer() {
     }
 
     document.cookie = `ds-theme=${encodeURIComponent(`${appTheme}|${colorMode}`)}; path=/; max-age=31536000; SameSite=Lax`
-  }, [appTheme, colorMode, isInitialized])
+    // Persist the skin so the dashboard's route-level loading.tsx can render the matching skin
+    // skeleton (it can't read the DB synchronously). Mirrors the ds-theme cookie pattern.
+    document.cookie = `ds-skin=${encodeURIComponent(uiSkin)}; path=/; max-age=31536000; SameSite=Lax`
+  }, [appTheme, colorMode, uiSkin, isInitialized])
 
   return null
 }

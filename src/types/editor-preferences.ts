@@ -3,13 +3,19 @@ import type { AppTheme } from './theme-presets.generated';
 export { APP_THEMES, APP_THEME_OPTIONS } from './theme-presets.generated';
 export type { AppTheme, ThemePresetOption } from './theme-presets.generated';
 
-export type EditorThemeMode = 'app' | 'auto' | 'dark'
+export {
+  UI_SKINS,
+  UI_SKIN_OPTIONS,
+  DEFAULT_UI_SKIN,
+  SKIN_THEME_PRESET,
+  isProSkin,
+  resolveAccessibleSkin,
+} from './ui-skins';
+export type { UiSkin, UiSkinTier, UiSkinOption } from './ui-skins';
 
-export interface DashboardSections {
-  collections: boolean;
-  pinned: boolean;
-  recent: boolean;
-}
+import type { UiSkin } from './ui-skins';
+
+export type EditorThemeMode = 'app' | 'auto' | 'dark'
 
 export interface EditorPreferences {
   fontSize: number;
@@ -19,6 +25,6 @@ export interface EditorPreferences {
   appTheme: AppTheme;
   colorMode: 'light' | 'dark';
   editorThemeMode: EditorThemeMode;
-  dashboardSections: DashboardSections;
+  uiSkin: UiSkin;
   sidebarCollapsed: boolean;
 }

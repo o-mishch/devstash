@@ -35,7 +35,7 @@ export function ItemCard({ item }: ItemCardProps) {
     <Card
       role="button"
       tabIndex={0}
-      className="card-interactive group/card relative h-full min-h-20 min-w-0 gap-0 overflow-visible py-0 border-l-2 border-l-[var(--item-color)] focus-visible:ring-2 focus-visible:ring-ring"
+      className="card-interactive group/card relative h-full min-h-20 min-w-0 gap-0 overflow-visible py-0 border-l-2 border-l-[var(--item-color)] ring-border focus-visible:ring-2 focus-visible:ring-ring"
       style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
       onClick={() => openDrawer(item)}
       onKeyDown={handleCardKeyDown}

@@ -88,7 +88,7 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
 
             {/* Group items */}
             {!isCollapsed && (
-              <div className="pl-4">
+              <div className="mt-1 flex flex-col gap-1.5 pl-4">
                 {groupItems.map((item) => (
                   <FavoriteItemRow key={item.id} item={item} onOpen={openDrawer} />
                 ))}
@@ -100,9 +100,9 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
 
       {hasNextPage && <div ref={sentinelRef} className="h-px" aria-hidden="true" />}
       {isFetchingNextPage && (
-        <div className="flex flex-col pl-4">
+        <div className="flex flex-col gap-1.5 pl-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="app-row gap-3 rounded px-3 py-1.5 touch:py-3">
+            <div key={i} className="app-row gap-3 rounded-xl border-l-2 border-l-border bg-card px-3 py-2 ring-1 ring-border touch:py-3">
               <Skeleton className="size-3.5 touch:size-5 shrink-0 rounded" />
               <Skeleton className="h-4 touch:h-5 min-w-0 flex-1" />
               <Skeleton className="hidden sm:block h-4 w-14 shrink-0 rounded" />

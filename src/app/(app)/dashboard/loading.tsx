@@ -1,26 +1,21 @@
-import { Skeleton } from '@/components/ui/skeleton'
-import {
-  StatsCardsSkeleton,
-  CollectionsGridSkeleton,
-  PinnedSkeleton,
-  RecentItemsSkeleton,
-} from '@/components/dashboard/dashboard-skeletons'
+import { cookies } from 'next/headers'
+import { normalizeUiSkin } from '@/lib/utils/editor-preferences'
+import { DashboardSkinFallback } from '@/components/dashboard/skins/skeletons'
 
-export default function DashboardLoading() {
+// Route-level loading state. The skin can't be read from the DB synchronously here, so it comes
+// from the ds-skin cookie (written client-side by ThemeInitializer) — letting the loading skeleton
+// match the selected skin instead of always showing the classic one. Falls back to the default skin
+// on first ever load (no cookie yet).
+//
+// Note: this is a pure no-flash hint and is NOT Pro-gated (the cookie has no plan info). page.tsx is
+// authoritative — it applies resolveAccessibleSkin. The only mismatch is a Pro→free downgrade with a
+// stale cookie naming a Pro skin: the skeleton briefly shows that skin before page.tsx renders the
+// classic fallback. Cosmetic and self-correcting (ThemeInitializer rewrites the cookie post-hydration).
+export default async function DashboardLoading() {
+  const skin = normalizeUiSkin((await cookies()).get('ds-skin')?.value)
   return (
-    <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6">
-      {/* Matches the `hidden sm:block` heading in page.tsx */}
-      <div className="hidden sm:block">
-        <Skeleton className="mb-1 h-7 w-24" />
-        <Skeleton className="h-4 w-52" />
-      </div>
-
-      {/* Reuse the same skeletons the page uses as Suspense fallbacks so the
-       * loading route can never drift from the loaded cards. */}
-      <StatsCardsSkeleton />
-      <CollectionsGridSkeleton />
-      <PinnedSkeleton />
-      <RecentItemsSkeleton />
+    <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6" data-skin={skin}>
+      <DashboardSkinFallback skin={skin} />
     </div>
   )
 }

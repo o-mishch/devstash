@@ -72,7 +72,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
     <Card
       role="button"
       tabIndex={0}
-      className="card-interactive group/card relative h-full min-w-0 w-full overflow-visible p-0 focus-visible:ring-2 focus-visible:ring-ring"
+      className="card-interactive group/card relative h-full min-w-0 w-full overflow-visible p-0 ring-border focus-visible:ring-2 focus-visible:ring-ring"
       onClick={() => openDrawer(item)}
       onKeyDown={handleCardKeyDown}
     >

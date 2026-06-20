@@ -6,6 +6,9 @@
       "Bash(prisma db push*)",
       "Bash(git push --force*)",
       "Bash(git push -f *)"
+    ],
+    "additionalDirectories": [
+      "/Users/amishchenko/repos/devstash/src/components/ui"
     ]
   },
   "autoMode": {

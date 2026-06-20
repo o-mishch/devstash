@@ -10,7 +10,7 @@ export default async function FavoriteCollectionsPage() {
   if (favoriteCollections.length === 0) return <FavoritesEmpty kind="collections" />
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-1.5">
       {favoriteCollections.map((collection) => (
         <FavoriteCollectionRow key={collection.id} collection={collection} />
       ))}
