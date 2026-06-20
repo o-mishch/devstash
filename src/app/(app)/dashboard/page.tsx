@@ -91,7 +91,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6" data-skin={skin}>
-      <Suspense fallback={<DashboardSkinFallback skin={skin} />}>
+      <Suspense fallback={<DashboardSkinFallback skin={skin} isPro={isPro} />}>
         <DashboardSkinShell
           skin={skin}
           isPro={isPro}
