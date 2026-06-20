@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect, useLayoutEffect, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'motion/react'
+import { motion, useMotionValue, animate } from 'motion/react'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useVisualViewport } from '@/hooks/use-visual-viewport'
@@ -158,10 +158,10 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const sentinelRef = useRef<HTMLDivElement>(null)
   const [sentinelRect, setSentinelRect] = useState<DOMRect | null>(null)
 
-  // Inline wrapper (the desktop collapsed box) + the rect captured from it on expand, so the portal
-  // can morph out of and back into the exact editor box rather than snapping to/from fullscreen.
+  // Inline wrapper (the desktop collapsed box). Its rect is captured on expand and seeded into the
+  // motion values (in changeFullscreen) so the portal morphs out of — and back into — the exact
+  // editor box rather than snapping to/from fullscreen.
   const inlineRef = useRef<HTMLDivElement>(null)
-  const [morphFromRect, setMorphFromRect] = useState<DOMRect | null>(null)
 
   // Combined bounds of the sentinel's overflow-clipping ancestors, used to clip the collapsed touch
   // overlay so it never paints over the form header/footer when the body scrolls. The ancestor list
@@ -169,13 +169,33 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const clipAncestorsRef = useRef<HTMLElement[] | null>(null)
   const [clipRect, setClipRect] = useState<ClipRect | null>(null)
 
+  // Geometry is driven by motion values, NOT React state + Motion's declarative `animate`, so the
+  // collapsed overlay can be positioned imperatively each frame (see the tracking effect) with zero
+  // lag — the same imperative-mirror technique the drawer's grab-handle rail uses. Routing the rect
+  // through setState → Motion's own frame loop landed a frame late, so the editor visibly trailed
+  // ("floated") behind the drawer as it slid/dragged. Motion still springs these during the morph.
+  const mvLeft = useMotionValue(0)
+  const mvTop = useMotionValue(0)
+  const mvWidth = useMotionValue(0)
+  const mvHeight = useMotionValue(0)
+  const mvPadding = useMotionValue(0)
+
   const changeFullscreen = useCallback((next: boolean) => {
     // Capture the geometry to morph between so the portal grows out of — and shrinks back into — the
     // collapsed editor box (desktop). Expanding reads the inline wrapper (the only collapsed mount
     // on desktop); collapsing reads the sentinel under the overlay, so the collapsed target is valid
     // on the first frame instead of snapping to the corner.
     if (next) {
-      if (inlineRef.current) setMorphFromRect(inlineRef.current.getBoundingClientRect())
+      if (inlineRef.current) {
+        const rect = inlineRef.current.getBoundingClientRect()
+        // Seed the motion values at the collapsed inline box so the expand springs out of it
+        // (desktop). On touch they're already at the sentinel rect from the tracking effect.
+        mvLeft.set(rect.left)
+        mvTop.set(rect.top)
+        mvWidth.set(rect.width)
+        mvHeight.set(rect.height)
+        mvPadding.set(0)
+      }
     } else if (sentinelRef.current) {
       setSentinelRect(sentinelRef.current.getBoundingClientRect())
     }
@@ -183,7 +203,7 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     if (morphTimer.current) clearTimeout(morphTimer.current)
     morphTimer.current = setTimeout(() => setMorphing(false), 550)
     setFullscreen(next)
-  }, [])
+  }, [mvLeft, mvTop, mvWidth, mvHeight, mvPadding])
 
   useEffect(() => () => { if (morphTimer.current) clearTimeout(morphTimer.current) }, [])
 
@@ -241,12 +261,26 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     // Track the sentinel each frame whenever the portal is anchored to it (collapsed): the touch
     // collapsed overlay at rest, and the brief desktop collapse morph. Idle while fullscreen (the
     // visual viewport drives geometry) and while collapsed inline on desktop (no portal/sentinel).
-    if (fullscreen || !portaled) return
+    if (fullscreen || !portaled || morphing) return
+    // Write the overlay's geometry straight to its motion values from the sentinel rect — same frame,
+    // no setState/Motion round-trip — so the collapsed editor never trails the drawer's transform as
+    // it slides or is swipe-dragged. (Idle during the morph, where the effect below springs them.)
+    const writeLive = () => {
+      const el = sentinelRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      mvLeft.set(r.left)
+      mvTop.set(r.top)
+      mvWidth.set(r.width)
+      mvHeight.set(r.height)
+    }
+    writeLive()
     // Measure once up front so a collapsed overlay clips correctly even if it never moves again.
     updateSentinelRect()
     updateClipRect()
     let raf = 0
     const tick = () => {
+      writeLive()
       // Recompute the sentinel AND the clip together every frame. Gating the clip behind sentinel
       // movement desynced them across the host sheet's open animation: the clip got computed against
       // mid-animation ancestor rects, then — once the sheet settled and the sentinel stopped moving —
@@ -264,7 +298,7 @@ export function EditorChromeShell({ header, children, className, style, fullscre
       clipAncestorsRef.current = null
       setClipRect(null)
     }
-  }, [fullscreen, portaled, updateSentinelRect, updateClipRect])
+  }, [fullscreen, portaled, morphing, updateSentinelRect, updateClipRect, mvLeft, mvTop, mvWidth, mvHeight])
 
   // Drag-down-to-collapse: grabbing the chrome header and pulling down slides the maximized window
   // with the finger and collapses it on release (past a threshold or a flick).
@@ -428,6 +462,46 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     clipPath = `inset(${insetTop}px ${insetRight}px ${insetBottom}px ${insetLeft}px)`
   }
 
+  // Morph (expand/collapse) springs the motion values to the target; fullscreen-at-rest (keyboard /
+  // viewport resize, drag-to-collapse offset) snaps them. Idle while collapsed-tracking (the rAF
+  // effect above owns the values then, lag-free) and while inline (no overlay).
+  useEffect(() => {
+    if (!portaled || (!fullscreen && !morphing)) return
+    const padTarget = fullscreen ? 12 : 0
+    if (morphing) {
+      // Stop the springs on cleanup so a re-fire (target change) or unmount mid-morph never leaves
+      // an orphaned animation writing to a motion value after the effect re-runs.
+      const controls = [
+        animate(mvLeft, overlayLeft, EXPAND_SPRING),
+        animate(mvTop, overlayTop, EXPAND_SPRING),
+        animate(mvWidth, overlayWidth, EXPAND_SPRING),
+        animate(mvHeight, overlayHeight, EXPAND_SPRING),
+        animate(mvPadding, padTarget, EXPAND_SPRING),
+      ]
+      return () => controls.forEach((c) => c.stop())
+    } else {
+      mvLeft.set(overlayLeft)
+      mvTop.set(overlayTop)
+      mvWidth.set(overlayWidth)
+      mvHeight.set(overlayHeight)
+      mvPadding.set(padTarget)
+    }
+  }, [portaled, fullscreen, morphing, overlayLeft, overlayTop, overlayWidth, overlayHeight, mvLeft, mvTop, mvWidth, mvHeight, mvPadding])
+
+  // Seed the collapsed overlay geometry before first paint so it never flashes at 0,0 before the
+  // tracking effect's first (post-paint) frame.
+  useLayoutEffect(() => {
+    if (fullscreen || !portaled || morphing) return
+    const el = sentinelRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    mvLeft.set(r.left)
+    mvTop.set(r.top)
+    mvWidth.set(r.width)
+    mvHeight.set(r.height)
+    mvPadding.set(0)
+  }, [fullscreen, portaled, morphing, mvLeft, mvTop, mvWidth, mvHeight, mvPadding])
+
   // Desktop, collapsed: render inline in the normal flow so the dialog's overflow clips it and the
   // footer stays above it. No fixed overlay, no portal.
   if (!portaled) {
@@ -451,13 +525,12 @@ export function EditorChromeShell({ header, children, className, style, fullscre
           Padding/background apply only in fullscreen so the collapsed overlay matches inline. */}
       {createPortal(
         <motion.div
-          // initial = the collapsed box (desktop expand): the portal mounts straight into fullscreen,
-          // so without a "from" geometry it would snap. Padding morphs 0→12 in step with the box so
-          // the expand starts flush with the inline editor — and the collapse lands flush back on it.
-          initial={morphFromRect ? { left: morphFromRect.left, top: morphFromRect.top, width: morphFromRect.width, height: morphFromRect.height, padding: 0 } : false}
-          animate={{ left: overlayLeft, top: overlayTop, width: overlayWidth, height: overlayHeight, padding: fullscreen ? 12 : 0 }}
-          transition={morphing ? EXPAND_SPRING : { duration: 0 }}
-          style={{ position: 'fixed', clipPath }}
+          // Geometry comes from motion values (left/top/width/height/padding), written either
+          // imperatively each frame by the tracking effect (collapsed — zero lag) or sprung by the
+          // morph effect (expand/collapse). No declarative `animate`, so React/Motion never re-applies
+          // a frame-late rect over the live one. clipPath stays state-derived (a mask; its lag is
+          // imperceptible). morphFromRect is seeded into the values in changeFullscreen (desktop).
+          style={{ position: 'fixed', left: mvLeft, top: mvTop, width: mvWidth, height: mvHeight, padding: mvPadding, clipPath }}
           // The overlay is portaled to document.body, but its touch events still bubble through the
           // React tree to an enclosing sheet/drawer's swipe-to-dismiss handlers. This marker lets
           // that gesture handler ignore swipes that begin inside the editor, so dragging the

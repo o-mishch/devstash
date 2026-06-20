@@ -2,9 +2,10 @@ import Link from 'next/link'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
+import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { getTypeHref } from '@/components/layout/sidebar/utils'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
-import { SkinCollapsibleSection } from './skin-collapsible-section'
+import { SkinWidget } from './skin-widget'
 import { computeUsage, typeColor, resolveSkinData, type DashboardSkinData } from './shared'
 
 // Editorial (free) — Swiss/typographic: oversized gradient numerals, hairline rules, asymmetric grid.
@@ -17,10 +18,18 @@ export async function EditorialSkin(data: DashboardSkinData) {
   const hasRecent = recent.items.length > 0
   const hasPinned = pinned.length > 0
 
+  // Favorites is reachable from the header/sidebar star, so the vanity Favorites figure is dropped —
+  // Total + Collections are the useful counts.
   const figures = [
     { num: stats.totalItems, label: 'Total items', sub: `across ${distribution.filter((d) => d.count > 0).length} types`, href: undefined as string | undefined },
     { num: collectionStats.totalCollections, label: 'Collections', sub: `${collections[0]?.name ?? 'none yet'}`, href: '/collections' },
-    { num: stats.favoriteItems, label: 'Favorites', sub: `${stats.favoriteItems} item${stats.favoriteItems === 1 ? '' : 's'} starred`, href: '/favorites' },
+  ]
+  // Desktop-only side summary (the dl sits beside the title at sm+). Free tier shows to non-Pro only;
+  // favorite-collections is dropped. Hidden on mobile, where it duplicated the figures below.
+  const summary: string[][] = [
+    ...(isPro ? [] : [['Free tier', `${stats.totalItems} / ${usage.limit}`]]),
+    ['Collections', String(collectionStats.totalCollections)],
+    ['Status', usage.isPro ? 'Pro' : 'Active'],
   ]
 
   return (
@@ -30,13 +39,8 @@ export async function EditorialSkin(data: DashboardSkinData) {
           <div className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">Developer Knowledge Hub</div>
           <h1 className="mt-3.5 text-4xl font-extrabold leading-[1.02] tracking-[-0.035em] sm:text-5xl">Dashboard</h1>
         </div>
-        <dl className="flex min-w-[200px] flex-col gap-2.5 pt-2">
-          {[
-            ['Free tier', `${stats.totalItems} / ${usage.limit}`],
-            ['Collections', String(collectionStats.totalCollections)],
-            ['Favorite collections', String(collectionStats.favoriteCollections)],
-            ['Status', usage.isPro ? 'Pro' : 'Active'],
-          ].map(([k, v]) => (
+        <dl className="hidden min-w-[200px] flex-col gap-2.5 pt-2 sm:flex">
+          {summary.map(([k, v]) => (
             <div key={k} className="flex justify-between border-b border-border pb-2 text-[13px]">
               <dt className="text-muted-foreground">{k}</dt>
               <dd className="font-semibold">{v}</dd>
@@ -47,11 +51,11 @@ export async function EditorialSkin(data: DashboardSkinData) {
 
       <div className="h-px bg-border" />
 
-      <div className="my-7 grid grid-cols-1 gap-8 sm:grid-cols-3">
+      <div className="my-7 grid grid-cols-2 gap-4 sm:gap-8">
         {figures.map((f) => {
           const inner = (
             <>
-              <div className="ds-ed-num text-6xl font-extrabold leading-[0.8] tracking-[-0.05em] sm:text-7xl">
+              <div className="ds-ed-num text-5xl font-extrabold leading-[0.8] tracking-[-0.05em] sm:text-7xl">
                 {String(f.num).padStart(2, '0')}
               </div>
               <div className="flex flex-col">
@@ -62,19 +66,19 @@ export async function EditorialSkin(data: DashboardSkinData) {
           )
           if (f.label === 'Total items') {
             return (
-              <TotalItemsReveal key={f.label} variant="list" className="flex items-baseline gap-4 transition-opacity hover:opacity-70">
+              <TotalItemsReveal key={f.label} variant="list" className="flex items-baseline gap-3 sm:gap-4 transition-opacity hover:opacity-70">
                 {inner}
               </TotalItemsReveal>
             )
           }
           if (f.href) {
             return (
-              <Link key={f.label} href={f.href} prefetch={false} className="flex items-baseline gap-4 transition-opacity hover:opacity-70">
+              <Link key={f.label} href={f.href} prefetch={false} className="flex items-baseline gap-3 sm:gap-4 transition-opacity hover:opacity-70">
                 {inner}
               </Link>
             )
           }
-          return <div key={f.label} className="flex items-baseline gap-4">{inner}</div>
+          return <div key={f.label} className="flex items-baseline gap-3 sm:gap-4">{inner}</div>
         })}
       </div>
 
@@ -82,7 +86,7 @@ export async function EditorialSkin(data: DashboardSkinData) {
 
       <div className="mt-7 grid grid-cols-1 gap-10 lg:grid-cols-[1.2fr_1fr]">
         <section>
-          <SkinCollapsibleSection
+          <SkinWidget
             icon={<span className="font-mono text-xs text-primary">01</span>}
             title="Recent items"
             headerClassName="tracking-[0.1em] text-foreground"
@@ -92,10 +96,10 @@ export async function EditorialSkin(data: DashboardSkinData) {
             ) : (
               <p className="text-sm text-muted-foreground">No items yet.</p>
             )}
-          </SkinCollapsibleSection>
+          </SkinWidget>
         </section>
         <section>
-          <SkinCollapsibleSection
+          <SkinWidget
             icon={<span className="font-mono text-xs text-primary">02</span>}
             title="Distribution"
             headerClassName="tracking-[0.1em] text-foreground"
@@ -119,31 +123,38 @@ export async function EditorialSkin(data: DashboardSkinData) {
               </Link>
             ))}
           </div>
-          </SkinCollapsibleSection>
+          </SkinWidget>
         </section>
       </div>
 
       {hasPinned && (
         <div className="mt-9">
-          <SkinCollapsibleSection
+          <SkinWidget
             icon={<span className="font-mono text-xs text-primary">03</span>}
             title="Pinned"
             headerClassName="tracking-[0.1em] text-foreground"
           >
             <DashboardPinnedItems initialItems={pinned} />
-          </SkinCollapsibleSection>
+          </SkinWidget>
         </div>
       )}
 
       <div className="mt-9">
-        <SkinCollapsibleSection
+        <SkinWidget
           icon={<span className="font-mono text-xs text-primary">{hasPinned ? '04' : '03'}</span>}
           title="Collections"
           headerClassName="tracking-[0.1em] text-foreground"
         >
           <CollectionsGrid collections={collections} />
-        </SkinCollapsibleSection>
+        </SkinWidget>
       </div>
+
+      {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
+      {isPro && (
+        <div className="mt-9">
+          <AiUsageWidget skin="editorial" />
+        </div>
+      )}
     </div>
   )
 }

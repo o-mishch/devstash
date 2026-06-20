@@ -60,3 +60,16 @@ export function getTypePlural(name: string): string {
 export function slugToTypeName(slug: string): string {
   return SYSTEM_TYPE_ORDER.find(t => getTypePlural(t) === slug) ?? slug
 }
+
+/**
+ * Rolling-window renewal phrasing for the AI usage meter. `resetAt` is an epoch-ms timestamp (when
+ * the oldest counted hit slides out of the window). Defensive: a zero, past, or seconds-scale value
+ * means nothing is currently counting down, so it reads "renews as you go" rather than rendering
+ * negative or absurd time. The window slides continuously, so this is never "resets at midnight".
+ */
+export function formatRenewIn(resetAt: number): string {
+  const now = Date.now()
+  if (!resetAt || resetAt <= now) return 'renews as you go'
+  const minutes = Math.ceil((resetAt - now) / 60_000)
+  return minutes <= 1 ? 'next slot in 1m' : `next slot in ${minutes}m`
+}

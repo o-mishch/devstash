@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { itemCountLabel, pluralize, getTypeLabel, getTypePlural, slugToTypeName, formatDate, formatBytes, parseTagString, getFileExtension, positiveOrUndefined } from './format'
+import { itemCountLabel, pluralize, getTypeLabel, getTypePlural, slugToTypeName, formatDate, formatBytes, parseTagString, getFileExtension, positiveOrUndefined, formatRenewIn } from './format'
 
 describe('formatDate', () => {
   it('formats a date as "Mon D"', () => {
@@ -113,6 +113,24 @@ describe('getTypeLabel', () => {
 
   it('returns empty string for empty input', () => {
     expect(getTypeLabel('')).toBe('')
+  })
+})
+
+describe('formatRenewIn', () => {
+  it('rounds up the minutes until the next slot frees', () => {
+    expect(formatRenewIn(Date.now() + 30 * 60_000)).toBe('next slot in 30m')
+    expect(formatRenewIn(Date.now() + 90_000)).toBe('next slot in 2m')
+  })
+
+  it('floors to "next slot in 1m" within the last minute', () => {
+    expect(formatRenewIn(Date.now() + 30_000)).toBe('next slot in 1m')
+  })
+
+  it('reads "renews as you go" for zero, past, or seconds-scale timestamps', () => {
+    expect(formatRenewIn(0)).toBe('renews as you go')
+    expect(formatRenewIn(Date.now() - 60_000)).toBe('renews as you go')
+    // A seconds-epoch value (~1.7e9) is far below the ms `now`, so it reads as past — never negative.
+    expect(formatRenewIn(Math.floor(Date.now() / 1000))).toBe('renews as you go')
   })
 })
 

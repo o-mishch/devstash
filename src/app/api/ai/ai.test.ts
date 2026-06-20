@@ -9,6 +9,7 @@ vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerified
 vi.mock('@/lib/infra/rate-limit', () => ({
   checkRateLimit: vi.fn(),
   deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  getAiUsage: vi.fn(),
 }))
 vi.mock('@/lib/ai/description-generation', () => ({
   runProAiGeneration: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@/lib/db/items', () => ({ getItemExplainContext: vi.fn() }))
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { runProAiGeneration, runOpenAiCompletion } from '@/lib/ai/description-generation'
+import { getAiUsage } from '@/lib/infra/rate-limit'
 import { getItemExplainContext } from '@/lib/db/items'
 import { EXPLAIN_MAX_INPUT_CHARS, OPTIMIZE_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 
@@ -29,12 +31,14 @@ import { POST as TAGS } from './tags/route'
 import { POST as COLLECTION_DESCRIPTION } from './collection-description/route'
 import { POST as EXPLAIN } from './explain/route'
 import { POST as OPTIMIZE } from './optimize/route'
+import { GET as USAGE } from './usage/route'
 
 const mockSession = getCachedSession as ReturnType<typeof vi.fn>
 const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 const mockRun = runProAiGeneration as ReturnType<typeof vi.fn>
 const mockCompletion = runOpenAiCompletion as ReturnType<typeof vi.fn>
 const mockGetContext = getItemExplainContext as ReturnType<typeof vi.fn>
+const mockGetAiUsage = getAiUsage as ReturnType<typeof vi.fn>
 
 // Capture the `execute` callback the route hands to runProAiGeneration so the route's own DB read,
 // null-content guard, and content truncation (which the full mock above would otherwise skip) are
@@ -266,5 +270,34 @@ describe('POST /ai/collection-description', () => {
     const res = await COLLECTION_DESCRIPTION(req({ name: 'My Collection' }))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ description: 'A tidy collection.' })
+  })
+})
+
+describe('GET /ai/usage', () => {
+  function getReq(): NextRequest {
+    return new NextRequest('http://localhost/api/ai/usage', { method: 'GET' })
+  }
+
+  it('returns 401 when not signed in', async () => {
+    mockSession.mockResolvedValue(null)
+    const res = await USAGE(getReq())
+    expect(res.status).toBe(401)
+    expect(mockGetAiUsage).not.toHaveBeenCalled()
+  })
+
+  it('returns 403 when the user is not Pro (the route does its own gate, never reading usage)', async () => {
+    mockIsPro.mockResolvedValue(false)
+    const res = await USAGE(getReq())
+    expect(res.status).toBe(403)
+    expect(mockGetAiUsage).not.toHaveBeenCalled()
+  })
+
+  it('returns 200 with the per-feature usage, read for the session userId (IDOR-safe)', async () => {
+    const features = [{ key: 'aiOptimize', limit: 20, remaining: 13, resetAt: 0 }]
+    mockGetAiUsage.mockResolvedValue(features)
+    const res = await USAGE(getReq())
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ features })
+    expect(mockGetAiUsage).toHaveBeenCalledWith('user-1')
   })
 })

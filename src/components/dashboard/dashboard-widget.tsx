@@ -6,26 +6,31 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 
-interface DashboardCollapsibleCardProps {
+interface DashboardWidgetProps {
   icon: LucideIcon
   title: string
   children: ReactNode
   headerAction?: ReactNode
 }
 
-// Sections render open by default and can be toggled in-session, but the open/closed state is no
-// longer persisted or restored across loads (collapse persistence was removed with the skin work).
-export function DashboardCollapsibleCard({
+// The classic dashboard widget shell: a collapsible Card with an icon + title header. Widgets render
+// open by default and can be toggled in-session, but the open/closed state is no longer persisted or
+// restored across loads (collapse persistence was removed with the skin work).
+export function DashboardWidget({
   icon: Icon,
   title,
   children,
   headerAction,
-}: DashboardCollapsibleCardProps) {
+}: DashboardWidgetProps) {
   const [isOpen, setIsOpen] = useState(true)
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent transition-opacity duration-150 hover:opacity-80">
+      {/* Hover highlight uses background + border, NOT opacity: opacity on the Card cascades to and
+          dims the item cards inside it, whereas a background/border change leaves the inner cards
+          (which paint on top with their own backgrounds) untouched. So the group highlights while its
+          inner cards stay unaffected. */}
+      <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent transition-colors hover:border-l-primary hover:bg-accent/50">
         <CardHeader className="group relative pb-3">
           {/* Full-header click target: covers the entire header so a click anywhere toggles the
               section. The visible row sits above it (pointer-events-none) and passes clicks through;

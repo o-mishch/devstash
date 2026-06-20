@@ -254,18 +254,14 @@ export function ItemDetailDrawer({
         showCloseButton={false}
         {...swipe.handlers}
       >
-        {/* Desktop resize handle: a thin strip along the inner (left) edge. The centered pill
-            is a visual grip affordance signalling the drawer can be dragged wider/narrower —
-            it brightens on hover and while dragging. Hidden on mobile, which swipes to dismiss. */}
+        {/* Desktop resize handle: a thin strip along the inner (left) edge — drag to widen/narrow
+            the drawer. No always-visible grip pill (it read as a swipe indicator on desktop); the
+            strip itself brightens on hover and while dragging. Hidden on mobile, which uses the
+            swipe-to-dismiss grab handle instead. */}
         <div
-          className={`group absolute left-0 top-0 z-10 flex h-full w-1.5 cursor-ew-resize items-center justify-center transition-colors max-sm:hidden ${dragging ? 'bg-primary/40' : 'hover:bg-primary/30'}`}
+          className={`absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize transition-colors max-sm:hidden ${dragging ? 'bg-primary/40' : 'hover:bg-primary/30'}`}
           onMouseDown={startResize}
-        >
-          <div
-            aria-hidden="true"
-            className={`h-10 w-1 rounded-full transition-colors ${dragging ? 'bg-primary' : 'bg-foreground/20 group-hover:bg-primary/60'}`}
-          />
-        </div>
+        />
 
         {dragging && (
           <div

@@ -86,7 +86,20 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
         </span>
         <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
+      {/* initialFocus: on touch/pen, do NOT move focus into the popup on open. Otherwise the
+          search CommandInput auto-focuses, which pops the mobile soft keyboard; the bottom-sheet
+          then lifts/resizes to clear the keyboard, dragging the field (and this anchored popover)
+          upward — the "dropdown jumps up then settles" seen on first open. Desktop keeps the
+          default focus-the-input behaviour for type-to-search. */}
+      {/* max-h-(--available-height): bound the popup to the space on its chosen side so the list
+          scrolls within it instead of overflowing the viewport. Without it, a field low in a short
+          mobile sheet leaves too little room either side for the full-height list, so the popup
+          spills past the top edge (the search input gets clipped). Matches collection-selector. */}
+      <PopoverContent
+        className="w-[300px] max-h-(--available-height) overflow-hidden p-0"
+        align="start"
+        initialFocus={(openType) => openType !== 'touch' && openType !== 'pen'}
+      >
         <Command>
           <CommandInput placeholder="Search language..." />
           <CommandList>

@@ -1,8 +1,9 @@
 import { Suspense } from 'react'
 import { DashboardStats } from '@/components/dashboard/dashboard-stats'
-import { DashboardCollectionsCard } from '@/components/dashboard/dashboard-collections-card'
-import { DashboardPinnedList } from '@/components/dashboard/dashboard-pinned-list'
-import { DashboardRecentList } from '@/components/dashboard/dashboard-recent-list'
+import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
+import { CollectionsWidget } from '@/components/dashboard/collections-widget'
+import { PinnedWidget } from '@/components/dashboard/pinned-widget'
+import { RecentItemsWidget } from '@/components/dashboard/recent-items-widget'
 import {
   StatsCardsSkeleton,
   CollectionsGridSkeleton,
@@ -17,6 +18,7 @@ import type { DashboardSkinData } from './shared'
 // cards. Kept as the free default so existing users see no change. Each section streams in its own
 // Suspense boundary, mirroring the original behavior.
 export function ClassicSkin({
+  isPro,
   statsPromise,
   collectionStatsPromise,
   collectionsPromise,
@@ -45,6 +47,9 @@ export function ClassicSkin({
       <Suspense fallback={<RecentItemsSkeleton />}>
         <ClassicRecent recentItemsPromise={recentItemsPromise} />
       </Suspense>
+
+      {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
+      {isPro && <AiUsageWidget skin="classic" />}
     </>
   )
 }
@@ -55,7 +60,7 @@ interface ClassicCollectionsProps {
 
 async function ClassicCollections({ collectionsPromise }: ClassicCollectionsProps) {
   const collections = await collectionsPromise
-  return <DashboardCollectionsCard collections={collections} />
+  return <CollectionsWidget collections={collections} />
 }
 
 interface ClassicPinnedProps {
@@ -64,7 +69,7 @@ interface ClassicPinnedProps {
 
 async function ClassicPinned({ pinnedItemsPromise }: ClassicPinnedProps) {
   const initialItems = await pinnedItemsPromise
-  return <DashboardPinnedList initialItems={initialItems} />
+  return <PinnedWidget initialItems={initialItems} />
 }
 
 interface ClassicRecentProps {
@@ -74,5 +79,5 @@ interface ClassicRecentProps {
 async function ClassicRecent({ recentItemsPromise }: ClassicRecentProps) {
   const firstPage = await recentItemsPromise
   if (firstPage.items.length === 0) return null
-  return <DashboardRecentList firstPage={firstPage} />
+  return <RecentItemsWidget firstPage={firstPage} />
 }

@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { api } from '@/lib/api/client'
+import { useAiMutation } from '@/hooks/use-ai-usage'
 import {
   AiDescriptionField,
   useAiDescriptionField,
@@ -37,11 +37,12 @@ export function CollectionFormFields({ form, idPrefix, growDescription = false }
   const canGenerate = name.trim().length > 0
   const disabledReason = canGenerate ? null : 'Enter a collection name first'
 
+  const aiMutate = useAiMutation()
   const onGenerate = useCallback(async () => {
-    const { data, error } = await api.POST('/ai/collection-description', { body: { name: name.trim() } })
+    const { data, error } = await aiMutate('/ai/collection-description', { name: name.trim() })
     if (error) throw new Error(error.message)
     return data
-  }, [name])
+  }, [aiMutate, name])
 
   const aiField = useAiDescriptionField({ canGenerate, disabledReason, onGenerate })
   const inputProps = form.register('description')

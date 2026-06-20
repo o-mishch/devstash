@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { api } from '@/lib/api/client'
+import { useAiMutation } from '@/hooks/use-ai-usage'
 import { useAiItemRewrite, type AiRewriteResult } from '@/hooks/use-ai-item-rewrite'
 import { EXPLAIN_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 import type { FullItem } from '@/types/item'
@@ -33,12 +33,13 @@ export interface ExplainController {
  * which owns the shared generate → confirm → save machine.
  */
 export function useExplainCode(item: FullItem | null, onSaved?: (updated: FullItem) => void): ExplainController {
+  const aiMutate = useAiMutation()
   const generate = useCallback(async (target: FullItem): Promise<AiRewriteResult> => {
     // Only the id is sent — the route reads the canonical content/language from the DB.
-    const { data, error } = await api.POST('/ai/explain', { body: { itemId: target.id } })
+    const { data, error } = await aiMutate('/ai/explain', { itemId: target.id })
     if (error || !data) return { ok: false, message: error?.message ?? 'Failed to explain code.' }
     return { ok: true, result: data.explanation }
-  }, [])
+  }, [aiMutate])
 
   const controller = useAiItemRewrite({
     item,

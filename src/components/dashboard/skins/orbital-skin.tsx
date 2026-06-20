@@ -4,8 +4,9 @@ import { getTypeHref } from '@/components/layout/sidebar/utils'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
+import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { OrbitingCircles } from '@/components/ui/orbiting-circles'
-import { SkinCollapsibleSection } from './skin-collapsible-section'
+import { SkinWidget } from './skin-widget'
 import { computeUsage, typeColor, resolveSkinData, slotsLeftLabel, type DashboardSkinData } from './shared'
 
 // Orbital Core (Pro) — item-type constellation that genuinely orbits a glowing core. A single
@@ -20,15 +21,19 @@ export async function OrbitalSkin(data: DashboardSkinData) {
   const hasRecent = recent.items.length > 0
   const hasPinned = pinned.length > 0
 
+  // Favorites + fav. collections are reachable from the header/sidebar star and Collections nav, so
+  // those vanity KPIs are dropped. The constellation core already shows the total, leaving Collections
+  // as the one useful secondary count (it spans full width below the stage). Free keeps slots-left.
   const kpis = [
-    { value: slotsLeftLabel(usage), label: usage.isPro ? 'unlimited' : 'slots left', href: undefined as string | undefined },
-    { value: String(collectionStats.totalCollections), label: 'collections', href: '/collections' },
-    { value: String(stats.favoriteItems), label: 'favorites', href: '/favorites' },
-    { value: String(collectionStats.favoriteCollections), label: 'fav. collections', href: '/collections' },
+    ...(isPro
+      ? []
+      : [{ value: slotsLeftLabel(usage), label: 'slots left', href: undefined as string | undefined }]),
+    { value: String(collectionStats.totalCollections), label: 'collections', href: '/collections' as string | undefined },
   ]
-  const kpiClass = 'rounded-2xl border border-border bg-foreground/[0.02] p-4'
+  const kpiClass = 'rounded-2xl border border-border bg-foreground/[0.02] px-4 py-2.5'
 
   return (
+    <div>
     <div className="grid items-start gap-6 lg:grid-cols-[1.05fr_1fr] [&>*]:min-w-0">
       {/* Left column: the constellation stage with the KPI cards stacked beneath it.
           items-start (not stretch) keeps the stage at its own min-h-[460px] height instead of
@@ -63,7 +68,7 @@ export async function OrbitalSkin(data: DashboardSkinData) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid grid-cols-2 gap-3 ${isPro ? '[&>*:last-child]:col-span-2' : ''}`}>
           {kpis.map((k) => {
             const inner = (
               <>
@@ -78,27 +83,36 @@ export async function OrbitalSkin(data: DashboardSkinData) {
             )
           })}
         </div>
+
+        <div className="flex-1 rounded-2xl border border-border bg-foreground/[0.02] p-5">
+          <SkinWidget icon={<History />} title="Recent">
+            {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
+          </SkinWidget>
+        </div>
       </div>
 
       <div className="flex flex-col gap-5">
         {hasPinned && (
           <div className="rounded-2xl border border-border bg-foreground/[0.02] p-5">
-            <SkinCollapsibleSection icon={<Pin />} title="Pinned">
+            <SkinWidget icon={<Pin />} title="Pinned">
               <DashboardPinnedItems initialItems={pinned} />
-            </SkinCollapsibleSection>
+            </SkinWidget>
           </div>
         )}
         <div className="rounded-2xl border border-border bg-foreground/[0.02] p-5">
-          <SkinCollapsibleSection icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
             <DashboardCollectionsList collections={collections} />
-          </SkinCollapsibleSection>
-        </div>
-        <div className="flex-1 rounded-2xl border border-border bg-foreground/[0.02] p-5">
-          <SkinCollapsibleSection icon={<History />} title="Recent">
-            {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
-          </SkinCollapsibleSection>
+          </SkinWidget>
         </div>
       </div>
+    </div>
+
+      {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
+      {isPro && (
+        <div className="mt-6 rounded-2xl border border-border bg-foreground/[0.02] p-5">
+          <AiUsageWidget skin="orbital" />
+        </div>
+      )}
     </div>
   )
 }

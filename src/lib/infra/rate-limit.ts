@@ -2,6 +2,7 @@ import 'server-only'
 import { Ratelimit, type Duration } from '@upstash/ratelimit'
 import { headers } from 'next/headers'
 import { getRedis, RATE_LIMIT_NS } from '@/lib/infra/redis'
+import { logger } from '@/lib/infra/pino'
 import { AI_FEATURE_HOURLY_LIMIT } from '@/lib/utils/constants'
 import type { ActionState } from '@/types/actions'
 
@@ -150,4 +151,63 @@ export async function withRateLimit<T>(
   const rl = await rateLimitAction(key, await getActionIP())
   if (rl) return rl as ActionState<T>
   return fn()
+}
+
+// ── AI usage meter (read-only observability) ────────────────────────────────────────────────────
+// The four per-feature AI buckets, each its own AI_FEATURE_HOURLY_LIMIT rolling window (no shared
+// pool). Surfaced by the dashboard AI Usage widget via the non-consuming `getRemaining` read.
+export const AI_RATE_LIMIT_KEYS = ['aiOptimize', 'aiExplain', 'aiTags', 'aiDescription'] as const
+
+export type AiRateLimitKey = (typeof AI_RATE_LIMIT_KEYS)[number]
+
+export interface AiFeatureUsage {
+  key: AiRateLimitKey
+  limit: number
+  remaining: number
+  // Epoch ms at which the oldest counted hit slides out of the window (next slot frees up).
+  resetAt: number
+}
+
+const aiUsageLog = logger.child({ tag: 'ai-usage' })
+
+/** Full-budget entry for a key — the fail-open value (never spends a token, never blocks the UI). */
+function fullBudget(key: AiRateLimitKey): AiFeatureUsage {
+  const limit = LIMIT_CONFIG[key].attempts
+  return { key, limit, remaining: limit, resetAt: 0 }
+}
+
+/**
+ * Reads the remaining AI budget per feature for a user WITHOUT consuming a token (`getRemaining`,
+ * never `limit()`/`check()`). The four reads fire synchronously before one `await Promise.all`, so
+ * with `enableAutoPipelining` they collapse to a single `/pipeline` round-trip.
+ *
+ * Always fails OPEN (full budget per feature) on any error or missing limiters, regardless of
+ * NODE_ENV — the meter is observability, never enforcement, so it must never block the UI or
+ * mislead the user into thinking they are throttled. A single try/catch degrades the whole payload
+ * (never a mix of real + zeroed entries).
+ */
+export async function getAiUsage(userId: string): Promise<AiFeatureUsage[]> {
+  try {
+    const l = getLimiters()
+    if (!l) {
+      // Static config state (Redis unconfigured), not an incident — keep it at debug so the 60s
+      // per-Pro-user poll never floods logs. Real read failures still surface via the catch below.
+      aiUsageLog.debug({ userId }, 'ai usage read skipped — no limiters (Redis unconfigured), failing open with full budget')
+      return AI_RATE_LIMIT_KEYS.map(fullBudget)
+    }
+
+    // Fire all four reads synchronously (no `await` between them) so auto-pipelining groups them.
+    const reads = AI_RATE_LIMIT_KEYS.map((key) => l[key].getRemaining(userId))
+    const results = await Promise.all(reads)
+
+    return AI_RATE_LIMIT_KEYS.map((key, i) => ({
+      key,
+      limit: LIMIT_CONFIG[key].attempts,
+      remaining: results[i].remaining,
+      resetAt: results[i].reset,
+    }))
+  } catch (err) {
+    aiUsageLog.warn({ userId, err }, 'ai usage read failed — failing open with full budget')
+    return AI_RATE_LIMIT_KEYS.map(fullBudget)
+  }
 }

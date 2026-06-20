@@ -93,6 +93,10 @@ export function CollectionSelector({ collections, selectedIds, onChange }: Colle
         className="w-(--anchor-width) min-w-48 max-h-(--available-height) overflow-hidden border border-border p-0 shadow-xl"
         align="start"
         sideOffset={6}
+        // On touch/pen, don't move focus to the search input on open — auto-focusing it pops the
+        // mobile keyboard, which lifts/resizes the bottom sheet and drags this anchored popover
+        // upward (a jump). Desktop keeps default focus for type-to-search.
+        initialFocus={(openType) => openType !== 'touch' && openType !== 'pen'}
       >
         <Command>
           <CommandInput placeholder="Search collections..." />

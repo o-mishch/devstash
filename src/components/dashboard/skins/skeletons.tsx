@@ -34,7 +34,7 @@ interface SectionLabelProps {
   count?: boolean
 }
 
-// Matches the SkinCollapsibleSection header row that every non-classic skin renders: a primary icon
+// Matches the SkinWidget header row that every non-classic skin renders: a primary icon
 // on the left, the uppercase label, an optional count badge, and a chevron pushed to the right
 // (ml-auto). mb-3.5 mirrors the real header→content gap (CollapsibleContent pt-3.5).
 function SectionLabel({ count = false }: SectionLabelProps) {

@@ -5,7 +5,7 @@ import { ChevronDown } from 'lucide-react'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 
-interface SkinCollapsibleSectionProps {
+interface SkinWidgetProps {
   icon?: ReactNode
   title: string
   count?: number
@@ -16,20 +16,20 @@ interface SkinCollapsibleSectionProps {
   children: ReactNode
 }
 
-// A skin-agnostic collapsible group card: the section header doubles as the toggle (chevron +
+// A skin-agnostic collapsible dashboard widget: the header doubles as the toggle (chevron +
 // full-width click target), content collapses below it. The skin keeps its own panel chrome around
 // this — the component owns only the header row + collapsible body, so it drops into any skin's
 // panel (glass, HUD, foil, neon) unchanged. State is in-session only (default open), never persisted
 // — matching the dashboard's collapse-persistence removal. Replaces SkinSectionHeader where a
-// section should collapse; inline "View all →" actions are dropped (the header is now the control).
-export function SkinCollapsibleSection({
+// widget should collapse; inline "View all →" actions are dropped (the header is now the control).
+export function SkinWidget({
   icon,
   title,
   count,
   headerClassName,
   contentClassName,
   children,
-}: SkinCollapsibleSectionProps) {
+}: SkinWidgetProps) {
   const [open, setOpen] = useState(true)
 
   return (

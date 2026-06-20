@@ -248,11 +248,16 @@
         background-size: 20px 20px;
         background-attachment: fixed;
     }
-    /* Topbar: glass effect — content scrolls underneath giving depth. */
+    /* Topbar: near-solid frosted bar. The background alone is a near-opaque 92% so it stays legible
+       even when backdrop-filter does not render (low-power mode, some Android/WebViews, or simply
+       unsupported) — the page content scrolling under the mobile sticky header never bleeds through
+       as a sharp, readable layer. backdrop-filter then adds a subtle frost on top where supported;
+       browsers that lack it just ignore the line and keep the solid background, so no @supports
+       fallback is needed (and an @supports block here was dropping the blur in the Lightning-CSS
+       build). -webkit- omitted on purpose: every backdrop-filter-capable engine ships it unprefixed. */
     .app-topbar {
+        background-color: color-mix(in srgb, var(--background) 92%, transparent);
         backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        background-color: color-mix(in srgb, var(--background) 80%, transparent);
     }
     /* No-flash sidebar width: the real sidebar is server-rendered at the correct width from the
        persisted preference, but its Suspense fallback (SidebarSkeleton) is static and can't know
