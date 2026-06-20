@@ -29,7 +29,11 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
   const cellClass = 'ds-hud-cell relative rounded-md border border-primary/20 bg-gradient-to-b from-primary/[0.04] to-foreground/[0.015] p-[18px]'
 
   return (
-    <div className="relative">
+    // overflow-hidden clips the AnimatedGridPattern's intentional bleed (h-[160%] pushed up via
+    // inset-y-[-30%]). Without it the pattern's bottom 30% overflows the skin root and — since
+    // neither app-page nor <main> clips vertically — inflates the document past <main>, leaving a
+    // tall empty (dot-grid-less) band below the content on mobile.
+    <div className="relative overflow-hidden">
       <AnimatedGridPattern
         numSquares={24}
         maxOpacity={0.06}

@@ -48,6 +48,8 @@ import {
   confirmLoginEmailInput,
   authRedirectSchema,
   loginEmailNotVerifiedSchema,
+  authCallbackProviderParam,
+  authCallbackQueryParam,
 } from '../schemas/auth'
 import { downloadQueryParam, signedDownloadUrlSchema } from '../schemas/download'
 import { problemSchema, idParam, toggleFavoriteInput } from '../schemas/common'
@@ -604,6 +606,28 @@ export const paths: ZodOpenApiPathsObject = {
         204: { description: 'Verification email sent' },
         422: problem('Validation failed'),
         429: rateLimited,
+      },
+    },
+  },
+  '/auth/callback/{provider}': {
+    get: {
+      summary: 'NextAuth OAuth callback (provider redirect back to the app)',
+      description:
+        'Handled natively by the `[...nextauth]` catch-all — not a typed `api`/`$api` route. The OAuth provider redirects here with `code`/`state`; NextAuth exchanges the code, establishes the session, and 302-redirects into the app (or to the error page).',
+      requestParams: { path: authCallbackProviderParam, query: authCallbackQueryParam },
+      responses: {
+        302: { description: 'Session established — redirect into the app (or to the error page)' },
+        400: problem('Invalid or missing OAuth state/code'),
+      },
+    },
+    post: {
+      summary: 'NextAuth callback (credentials / provider form_post)',
+      description:
+        'Handled natively by the `[...nextauth]` catch-all — not a typed `api`/`$api` route. Used by the credentials provider and OAuth providers that POST back to the app.',
+      requestParams: { path: authCallbackProviderParam },
+      responses: {
+        302: { description: 'Session established — redirect into the app (or to the error page)' },
+        400: problem('Invalid callback request'),
       },
     },
   },

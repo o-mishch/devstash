@@ -27,12 +27,14 @@ function PopoverContent({
   >) {
   return (
     <PopoverPrimitive.Portal>
+      {/* z-[60] keeps popovers above nested dialogs (also z-[60]) and the drawer grab rail (z-[55]):
+          a popover opened from inside a nested AlertDialog must paint over it, not behind it. */}
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        className="isolate z-50"
+        className="isolate z-[60]"
       >
         <PopoverPrimitive.Popup
           data-slot="popover-content"

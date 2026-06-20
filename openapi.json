@@ -2906,6 +2906,97 @@
         }
       }
     },
+    "/auth/callback/{provider}": {
+      "get": {
+        "summary": "NextAuth OAuth callback (provider redirect back to the app)",
+        "description": "Handled natively by the `[...nextauth]` catch-all — not a typed `api`/`$api` route. The OAuth provider redirects here with `code`/`state`; NextAuth exchanges the code, establishes the session, and 302-redirects into the app (or to the error page).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "github",
+                "google",
+                "credentials"
+              ]
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Session established — redirect into the app (or to the error page)"
+          },
+          "400": {
+            "description": "Invalid or missing OAuth state/code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "NextAuth callback (credentials / provider form_post)",
+        "description": "Handled natively by the `[...nextauth]` catch-all — not a typed `api`/`$api` route. Used by the credentials provider and OAuth providers that POST back to the app.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "github",
+                "google",
+                "credentials"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Session established — redirect into the app (or to the error page)"
+          },
+          "400": {
+            "description": "Invalid callback request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/download/{id}/url": {
       "get": {
         "summary": "Get a signed download or preview URL for a file/image item",

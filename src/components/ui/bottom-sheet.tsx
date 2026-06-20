@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type UIEvent, type PointerEvent } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
+import { usePressHighlight } from '@/hooks/use-press-highlight'
 import { useVisualViewport } from '@/hooks/use-visual-viewport'
 import { cn } from '@/lib/utils'
 
@@ -42,6 +43,8 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
     enabled: !resizable,
     onDismiss: () => onOpenChange(false),
   })
+  // Press state for the plain (non-resizable) grab handle; the resizable handle uses `resizing`.
+  const grip = usePressHighlight()
   const [scrolled, setScrolled] = useState(false)
 
   // When the on-screen keyboard opens it covers the lower part of the screen. The sheet is a fixed
@@ -234,14 +237,35 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
             role="separator"
             aria-orientation="horizontal"
             aria-label="Resize sheet"
-            className="group mx-auto -mt-2 flex h-6 w-full shrink-0 cursor-row-resize touch-none items-center justify-center"
+            // Tall, full-width grab zone (not just the thin pill) so a press slightly above or below
+            // the pill still starts the resize drag — no pixel-perfect aim. -mt-3 extends the zone up
+            // toward the sheet's top edge while keeping the pill near the top; touch-none keeps the
+            // browser from cancelling the gesture mid-drag.
+            className="mx-auto -mt-3 flex h-11 w-full shrink-0 cursor-row-resize touch-none items-center justify-center"
           >
-            {/* Brightens while the handle is pressed/dragged so the grip reacts to touch. */}
-            <div className="h-1.5 w-10 rounded-full bg-foreground/20 transition-colors group-active:bg-primary/70" />
+            {/* Stays highlighted for the whole drag (resizing is set on pointer-down). */}
+            <div className={cn('h-1.5 w-10 rounded-full transition-colors', resizing ? 'bg-primary/70' : 'bg-foreground/20')} />
           </div>
         ) : (
-          // Brightens while pressed (active:) — mirrors the right drawer's grab pill feedback.
-          <div className="mx-auto mb-1.5 h-1.5 w-10 shrink-0 rounded-full bg-foreground/20 transition-colors active:bg-primary/70" aria-hidden="true" />
+          // Swipe-down grab handle — same rule as the right-side drawer's indicator: a press well
+          // above OR below the pill still counts as pressing it. The visible pill stays in normal
+          // flow (its slot, so the header sits below it); the actual press target is the larger
+          // TRANSPARENT overlay, which OVERLAPS the top of the header WITHOUT pushing it down (it
+          // ends well above the first form field) instead of widening the thin pill in flow. A press
+          // anywhere in it highlights the pill; the swipe-down gesture itself lives on the whole
+          // SheetContent (see `handlers` above), so the press still drives the dismiss. touch-none
+          // keeps the browser from cancelling the press mid-swipe; pointer-captured so the highlight
+          // holds for the whole press.
+          <>
+            <div
+              aria-hidden="true"
+              {...grip.handlers}
+              className="absolute inset-x-0 top-0 z-10 h-20 touch-none"
+            />
+            <div aria-hidden="true" className="mx-auto mt-0.5 mb-1.5 flex h-5 w-full shrink-0 items-center justify-center">
+              <div className={cn('h-1.5 w-10 rounded-full transition-colors', grip.pressed ? 'bg-primary/70' : 'bg-foreground/20')} />
+            </div>
+          </>
         )}
         <div
           className={cn(

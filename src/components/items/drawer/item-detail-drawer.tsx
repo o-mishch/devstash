@@ -1,10 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { Dialog } from '@base-ui/react/dialog'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
+import { usePressHighlight } from '@/hooks/use-press-highlight'
+import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
 import { $api } from '@/lib/api/client'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
@@ -162,6 +165,10 @@ export function ItemDetailDrawer({
     maxBoundarySelector: 'main',
     maxBoundaryGapVw: 0.1,
   })
+  const grip = usePressHighlight()
+  // A maximized content editor covers the whole drawer; swipe-to-dismiss is disabled while it is
+  // fullscreen so a swipe over the editor can't close the drawer — the user collapses it first.
+  const editorFullscreen = useEditorFullscreenStore((s) => s.fullscreen)
 
   // Outside-press / Esc / swipe all funnel through here. The edit (and read) content registers a
   // mode-aware guarded close in sheetCloseRef, so every dismissal is intercepted: edit mode prompts
@@ -195,11 +202,46 @@ export function ItemDetailDrawer({
   const swipe = useSwipeToDismiss({
     // Enabled while editing too (no `enabled` gate): a genuine dismiss swipe funnels through the
     // guarded close above. useSwipeToDismiss already ignores swipes that begin in the editor or any
-    // scroller, so this never fires from normal editing interactions.
+    // scroller, so this never fires from normal editing interactions. The same instance also backs
+    // the portaled grab handle below — distanceThreshold keeps the dismiss distance sane when the
+    // gesture starts on that small handle (its width would make the fractional threshold tiny).
     onDismiss: () => handleSheetOpenChange(false),
+    distanceThreshold: 90,
+    enabled: !editorFullscreen,
   })
 
+  // The grab handle is portaled to <body> (it must paint above the editor/viewer overlay, itself a
+  // body portal that covers the drawer), so it lives OUTSIDE the drawer's DOM and can't inherit the
+  // drawer's open/close/drag transform. To keep it STRICTLY bound to the drawer's edge with zero
+  // drift, we mirror that transform every frame: read the drawer's live left edge and translate the
+  // handle's rail to match. This holds through the open slide, the close slide, and a swipe-drag (the
+  // drawer already carries the drag offset, so mirroring its rect moves the handle with it). Direct
+  // style writes via a ref — no setState, so it never re-renders or trips set-state-in-effect. The
+  // rail's initial translateX(100vw) matches the drawer's off-screen start, so it never flashes at
+  // the left edge on mount before the first frame runs.
+  const railRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open || editorFullscreen) return
+    let raf = 0
+    // The right sheet element is stable while open, so query it once and cache it rather than every
+    // frame; the `??=` re-queries only until it first appears (the portal may mount a frame after this
+    // effect runs). document is required: the sheet is portaled outside this component's subtree, so
+    // there is no React ref to it here.
+    let sheet: Element | null = null
+    const sync = () => {
+      sheet ??= document.querySelector('[data-slot="sheet-content"][data-side="right"]')
+      const rail = railRef.current
+      if (rail && sheet) {
+        rail.style.transform = `translateX(${sheet.getBoundingClientRect().left}px)`
+      }
+      raf = requestAnimationFrame(sync)
+    }
+    raf = requestAnimationFrame(sync)
+    return () => cancelAnimationFrame(raf)
+  }, [open, editorFullscreen])
+
   return (
+    <>
     <Sheet open={open} onOpenChange={handleSheetOpenChange}>
       <SheetContent
         side="right"
@@ -224,16 +266,6 @@ export function ItemDetailDrawer({
             className={`h-10 w-1 rounded-full transition-colors ${dragging ? 'bg-primary' : 'bg-foreground/20 group-hover:bg-primary/60'}`}
           />
         </div>
-
-        {/* Mobile-only grab affordance: a vertical pill on the inner (left) edge mirroring the
-            bottom sheet's top handle, signalling the drawer can be swiped right to dismiss. The
-            swipe gesture lives on the whole SheetContent, so this is purely visual. Hidden on
-            sm+, which has the resize handle and pointer dismissal instead. Brightens while pressed
-            (active:) so the grip reacts to touch — mirrors the desktop resize pill's drag feedback. */}
-        <div
-          aria-hidden="true"
-          className="absolute left-1 top-1/2 z-10 h-10 w-1.5 -translate-y-1/2 rounded-full bg-foreground/20 transition-colors active:bg-primary/70 sm:hidden"
-        />
 
         {dragging && (
           <div
@@ -261,5 +293,51 @@ export function ItemDetailDrawer({
         )}
       </SheetContent>
     </Sheet>
+
+      {/* Mobile-only swipe-to-dismiss grab handle, PORTALED to <body> at z-[55]. It must live above
+          the markdown editor/viewer, which is itself portaled to <body> as a fixed z-50 overlay that
+          covers the drawer content — a handle rendered inside the drawer (a lower stacking context)
+          sits *behind* that overlay, so presses and swipes never reach it (the old "pixel-perfect"
+          bug). This is a LARGE transparent hit area: a press anywhere in it highlights the pill and
+          starts the gesture, no precise aim needed. It shares the drawer's `swipe` instance, so the
+          drawer still follows the finger; `distanceThreshold` keeps the dismiss distance sane given
+          the handle's small width. `touch-none` makes the engine yield the horizontal swipe to our
+          JS rather than the browser's edge "back" gesture; the pill sits a little in from the screen
+          edge so the press starts outside the OS edge-back zone. It overlays the drawer's left edge
+          without changing layout, so the content keeps its full width. Hidden on sm+ (resize handle
+          + backdrop there). Only mounted while open. */}
+      {open &&
+        !editorFullscreen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          // Full-height, click-through centering rail. Portaled to <body> so it sits ABOVE the editor
+          // overlay (itself a fixed z-50 body portal that covers the drawer) — a handle rendered inside
+          // the drawer would be behind it. Its translateX is driven imperatively by the mirror effect
+          // above (railRef), which keeps it locked to the drawer's live left edge through the open
+          // slide, close slide, and swipe-drag. The initial inline translateX(100vw) matches the
+          // drawer's off-screen start so it never flashes at the left before the first frame, and it's
+          // a constant React never rewrites, so the effect's per-frame writes survive re-renders. It
+          // unmounts the instant `open` flips or the editor goes fullscreen (swipe is disabled then —
+          // the user collapses the editor before swiping closed). The rail centres the handle
+          // vertically; the INNER handle owns the press/swipe gesture.
+          <div
+            ref={railRef}
+            style={{ transform: 'translateX(100vw)' }}
+            className="pointer-events-none fixed inset-y-0 left-0 z-[55] flex items-center sm:hidden"
+          >
+            <div
+              aria-hidden="true"
+              {...swipe.handlers}
+              {...grip.handlers}
+              className="pointer-events-auto flex h-3/5 max-h-72 min-h-40 w-16 touch-none items-center justify-start pl-1.5"
+            >
+              {/* Visible pill hugs the drawer's edge (not over the content); the transparent hit area
+                  extends inward, on top of the content, so a press anywhere in it starts the gesture. */}
+              <div className={`h-14 w-1.5 rounded-full transition-colors ${grip.pressed ? 'bg-primary/70' : 'bg-foreground/20'}`} />
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   )
 }

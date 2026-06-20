@@ -27,6 +27,7 @@ export interface UseAiTagsFieldResult {
   run: () => void
   disabled: boolean
   tooltip: string
+  tooltipEnabled: string
 }
 
 export function useAiTagsField({
@@ -53,9 +54,10 @@ export function useAiTagsField({
   })
 
   const disabled = !canGenerate || isLoading
-  const tooltip = disabled ? (disabledReason ?? '') : `Suggest tags with AI · ${aiRateLimitHint('tag suggestions')}`
+  const tooltipEnabled = `Suggest tags with AI · ${aiRateLimitHint('tag suggestions')}`
+  const tooltip = disabled ? (disabledReason ?? '') : tooltipEnabled
 
-  return { isLoading, suggestedTags, setSuggestedTags, run, disabled, tooltip }
+  return { isLoading, suggestedTags, setSuggestedTags, run, disabled, tooltip, tooltipEnabled }
 }
 
 interface AiTagsFieldProps {
@@ -92,7 +94,7 @@ export function AiTagsField({
             onClick={run}
             disabled={disabled}
             isLoading={isLoading}
-            tooltipEnabled={`Suggest tags with AI · ${aiRateLimitHint('tag suggestions')}`}
+            tooltipEnabled={field.tooltipEnabled}
             tooltipDisabled={field.tooltip}
             ariaLabel={isLoading ? 'Generating tags' : 'Suggest tags with AI'}
             className={actionClassName}

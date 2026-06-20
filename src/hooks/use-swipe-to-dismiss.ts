@@ -2,6 +2,8 @@
 
 import { useCallback, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
 
+import { shouldDismissSwipe } from '@/lib/utils/swipe'
+
 type SwipeDirection = 'left' | 'right' | 'down'
 
 interface SwipeToDismissOptions {
@@ -11,6 +13,10 @@ interface SwipeToDismissOptions {
   direction?: SwipeDirection
   // Dismiss once dragged past this fraction of the element's length (or on a fast flick).
   threshold?: number
+  // Absolute px distance to dismiss, overriding the fraction-of-element-length `threshold`. Use when
+  // the gesture can start on a small element (e.g. a grab handle) whose width would make the
+  // fractional threshold far too sensitive.
+  distanceThreshold?: number
   enabled?: boolean
 }
 
@@ -66,7 +72,7 @@ const DIRECTION_LOCK_PX = 8
 // fire for mouse), so it adds nothing to the desktop pointer experience. Commits to dragging
 // only once the gesture is clearly along the closing axis and moving toward the closing edge, so
 // the cross-axis scroll (and inner scrollers / the code editor) keep working.
-export function useSwipeToDismiss({ onDismiss, direction = 'right', threshold = 0.35, enabled = true }: SwipeToDismissOptions): SwipeToDismissResult {
+export function useSwipeToDismiss({ onDismiss, direction = 'right', threshold = 0.35, distanceThreshold, enabled = true }: SwipeToDismissOptions): SwipeToDismissResult {
   const axis: 'x' | 'y' = direction === 'down' ? 'y' : 'x'
   // +1 closes by moving right/down, -1 closes by moving left.
   const sign = direction === 'left' ? -1 : 1
@@ -136,11 +142,12 @@ export function useSwipeToDismiss({ onDismiss, direction = 'right', threshold = 
     const dragged = Math.abs(offsetRef.current)
     const elapsed = Date.now() - startTime.current
     const velocity = dragged / Math.max(1, elapsed) // px per ms
-    if (dragged > size.current * threshold || velocity > 0.5) {
+    const limit = distanceThreshold ?? size.current * threshold
+    if (shouldDismissSwipe({ dragged, velocity, limit })) {
       onDismiss()
     }
     reset()
-  }, [onDismiss, reset, threshold])
+  }, [onDismiss, reset, threshold, distanceThreshold])
 
   const dragStyle = useMemo<CSSProperties>(() => {
     if (!offset) return { transition: dragging ? 'none' : undefined }

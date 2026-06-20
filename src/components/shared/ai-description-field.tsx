@@ -32,6 +32,7 @@ export interface UseAiDescriptionFieldResult {
   run: () => void
   disabled: boolean
   tooltip: string
+  tooltipEnabled: string
 }
 
 export function useAiDescriptionField({
@@ -58,9 +59,10 @@ export function useAiDescriptionField({
   })
 
   const disabled = !canGenerate || isLoading
-  const tooltip = disabled ? (disabledReason ?? '') : `Generate description with AI · ${aiRateLimitHint('descriptions')}`
+  const tooltipEnabled = `Generate description with AI · ${aiRateLimitHint('descriptions')}`
+  const tooltip = disabled ? (disabledReason ?? '') : tooltipEnabled
 
-  return { isLoading, suggestedDescription, setSuggestedDescription, run, disabled, tooltip }
+  return { isLoading, suggestedDescription, setSuggestedDescription, run, disabled, tooltip, tooltipEnabled }
 }
 
 interface AiDescriptionFieldProps {
@@ -96,7 +98,7 @@ export function AiDescriptionField({
             onClick={run}
             disabled={disabled}
             isLoading={isLoading}
-            tooltipEnabled={`Generate description with AI · ${aiRateLimitHint('descriptions')}`}
+            tooltipEnabled={field.tooltipEnabled}
             tooltipDisabled={field.tooltip}
             ariaLabel={isLoading ? 'Generating description' : 'Generate description with AI'}
             className={actionClassName}

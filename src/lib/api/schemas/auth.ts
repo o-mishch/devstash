@@ -49,6 +49,19 @@ export const confirmLoginEmailInput = z
 // register / forgotPassword return a path the client navigates to after the flow.
 export const authRedirectSchema = z.object({ redirectTo: z.string() }).meta({ id: 'AuthRedirect' })
 
+// NextAuth OAuth/credentials callback — handled natively by the `[...nextauth]` catch-all, NOT a
+// typed `api`/`$api` route. Documented for visibility only (like the Stripe webhooks). The provider
+// segment matches the configured providers; the query carries the OAuth `code`/`state` (or `error`).
+export const authCallbackProviderParam = z.object({
+  provider: z.enum(['github', 'google', 'credentials']),
+})
+
+export const authCallbackQueryParam = z.object({
+  code: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional(),
+})
+
 // login's 403 carries the unverified `email` so the client can offer "resend verification". This is
 // the one auth error with a structured `data` body — every other auth error is a bare `{ message }`,
 // so `'data' in error` narrows to this shape on the client.

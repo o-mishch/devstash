@@ -2752,6 +2752,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/callback/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * NextAuth OAuth callback (provider redirect back to the app)
+         * @description Handled natively by the `[...nextauth]` catch-all — not a typed `api`/`$api` route. The OAuth provider redirects here with `code`/`state`; NextAuth exchanges the code, establishes the session, and 302-redirects into the app (or to the error page).
+         */
+        get: {
+            parameters: {
+                query?: {
+                    code?: string;
+                    state?: string;
+                    error?: string;
+                };
+                header?: never;
+                path: {
+                    provider: "github" | "google" | "credentials";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session established — redirect into the app (or to the error page) */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid or missing OAuth state/code */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * NextAuth callback (credentials / provider form_post)
+         * @description Handled natively by the `[...nextauth]` catch-all — not a typed `api`/`$api` route. Used by the credentials provider and OAuth providers that POST back to the app.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    provider: "github" | "google" | "credentials";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session established — redirect into the app (or to the error page) */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid callback request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/download/{id}/url": {
         parameters: {
             query?: never;

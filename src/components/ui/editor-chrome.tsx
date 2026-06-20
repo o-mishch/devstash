@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { useVisualViewport } from '@/hooks/use-visual-viewport'
 import { useEditorHeaderDrag } from '@/hooks/use-editor-header-drag'
 import { useIsTouch } from '@/hooks/use-is-touch'
+import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
 
 // Past this downward drag (or a faster flick) the maximized editor collapses; below it the window
 // snaps back to full screen.
@@ -136,6 +137,8 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const [fullscreen, setFullscreen] = useState(false)
   const viewport = useVisualViewport()
   const isTouch = useIsTouch()
+  const enterEditorFullscreen = useEditorFullscreenStore((s) => s.enter)
+  const exitEditorFullscreen = useEditorFullscreenStore((s) => s.exit)
 
   // Spring the expand/collapse morph, but follow scroll/drag/keyboard instantly. `morphing` is on
   // only for the brief expand or collapse transition; every other geometry change (page scroll
@@ -301,6 +304,16 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     if (!fullscreenRef) return
     fullscreenRef.current = fullscreen
   }, [fullscreenRef, fullscreen])
+
+  // Publish fullscreen state so a surrounding item drawer can disable swipe-to-dismiss while the
+  // editor is maximized (only fullscreen-capable editors participate). Reference-counted: enter while
+  // this editor is fullscreen, and the cleanup exits both when it collapses (fullscreen → false) and
+  // when it unmounts — so the flag is always balanced and never stays stuck true.
+  useEffect(() => {
+    if (!fullscreenLabel || !fullscreen) return
+    enterEditorFullscreen()
+    return () => exitEditorFullscreen()
+  }, [fullscreenLabel, fullscreen, enterEditorFullscreen, exitEditorFullscreen])
 
   useEffect(() => {
     if (!fullscreen) return
