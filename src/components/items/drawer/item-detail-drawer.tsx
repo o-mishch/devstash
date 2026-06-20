@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import type { Dialog } from '@base-ui/react/dialog'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useResizable } from '@/hooks/use-resizable'
 import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
@@ -37,7 +38,6 @@ function mergeDrawerItem(
 
 interface ItemDetailDrawerInnerProps extends Omit<ItemDetailDrawerProps, 'open'> {
   sheetCloseRef: { current: (() => void) | null }
-  onEditingChange: (editing: boolean) => void
 }
 
 function ItemDetailDrawerInner({
@@ -47,7 +47,6 @@ function ItemDetailDrawerInner({
   onItemSaved,
   onItemDeleted,
   sheetCloseRef,
-  onEditingChange,
 }: ItemDetailDrawerInnerProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [savedItem, setSavedItem] = useState<FullItem | null>(null)
@@ -109,10 +108,6 @@ function ItemDetailDrawerInner({
   const contentLoading = detailsLoaded && !contentLoaded
   const editing = editingItemId !== null && editingItemId === displayItem?.id && contentLoaded
 
-  useEffect(() => {
-    onEditingChange(editing)
-  }, [editing, onEditingChange])
-
   return (
     <>
       <SheetTitle className="sr-only">{displayItem?.title ?? 'Item details'}</SheetTitle>
@@ -168,27 +163,44 @@ export function ItemDetailDrawer({
     maxBoundaryGapVw: 0.1,
   })
 
-  // When the edit form is open and dirty, Esc/backdrop must go through the
-  // dirty guard instead of closing immediately. The edit content writes its
-  // guarded-close handler here; the Sheet's onOpenChange reads it.
+  // Outside-press / Esc / swipe all funnel through here. The edit (and read) content registers a
+  // mode-aware guarded close in sheetCloseRef, so every dismissal is intercepted: edit mode prompts
+  // to discard unsaved changes, view mode closes directly. We do NOT disable dismissal while
+  // editing — silently swallowing a backdrop click or swipe felt broken; routing through the guard
+  // shows the discard dialog instead.
   const sheetCloseRef = useRef<(() => void) | null>(null)
-  const [isEditing, setIsEditing] = useState(false)
 
-  function handleSheetOpenChange(nextOpen: boolean) {
-    if (!nextOpen && sheetCloseRef.current) {
+  function handleSheetOpenChange(nextOpen: boolean, eventDetails?: Dialog.Root.ChangeEventDetails) {
+    if (nextOpen) {
+      onOpenChange(true)
+      return
+    }
+    // The markdown editor/viewer is portaled OUT of the drawer's DOM (on touch and in fullscreen),
+    // so a press inside it reads as a base-ui "outside press". Ignore those — interacting with the
+    // editor must never dismiss the drawer (otherwise every tap-to-type would pop the guard).
+    if (eventDetails?.reason === 'outside-press') {
+      const target = eventDetails.event.target
+      if (target instanceof Element && target.closest('[data-editor-overlay]')) {
+        eventDetails.cancel()
+        return
+      }
+    }
+    if (sheetCloseRef.current) {
       sheetCloseRef.current()
     } else {
-      onOpenChange(nextOpen)
+      onOpenChange(false)
     }
   }
 
   const swipe = useSwipeToDismiss({
+    // Enabled while editing too (no `enabled` gate): a genuine dismiss swipe funnels through the
+    // guarded close above. useSwipeToDismiss already ignores swipes that begin in the editor or any
+    // scroller, so this never fires from normal editing interactions.
     onDismiss: () => handleSheetOpenChange(false),
-    enabled: !isEditing,
   })
 
   return (
-    <Sheet open={open} onOpenChange={handleSheetOpenChange} disablePointerDismissal={isEditing}>
+    <Sheet open={open} onOpenChange={handleSheetOpenChange}>
       <SheetContent
         side="right"
         // Mobile: full-width so the content area is maximised and nothing is cut off.
@@ -216,10 +228,11 @@ export function ItemDetailDrawer({
         {/* Mobile-only grab affordance: a vertical pill on the inner (left) edge mirroring the
             bottom sheet's top handle, signalling the drawer can be swiped right to dismiss. The
             swipe gesture lives on the whole SheetContent, so this is purely visual. Hidden on
-            sm+, which has the resize handle and pointer dismissal instead. */}
+            sm+, which has the resize handle and pointer dismissal instead. Brightens while pressed
+            (active:) so the grip reacts to touch — mirrors the desktop resize pill's drag feedback. */}
         <div
           aria-hidden="true"
-          className="absolute left-1 top-1/2 z-10 h-10 w-1.5 -translate-y-1/2 rounded-full bg-foreground/20 sm:hidden"
+          className="absolute left-1 top-1/2 z-10 h-10 w-1.5 -translate-y-1/2 rounded-full bg-foreground/20 transition-colors active:bg-primary/70 sm:hidden"
         />
 
         {dragging && (
@@ -239,7 +252,6 @@ export function ItemDetailDrawer({
             onItemSaved={onItemSaved}
             onItemDeleted={onItemDeleted}
             sheetCloseRef={sheetCloseRef}
-            onEditingChange={setIsEditing}
           />
         ) : (
           <>

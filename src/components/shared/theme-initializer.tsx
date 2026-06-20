@@ -29,7 +29,7 @@ export function ThemeInitializer() {
 
     document.cookie = `ds-theme=${encodeURIComponent(`${appTheme}|${colorMode}`)}; path=/; max-age=31536000; SameSite=Lax`
     // Persist the skin so the dashboard's route-level loading.tsx can render the matching skin
-    // skeleton (it can't read the DB synchronously). Mirrors the ds-theme cookie pattern.
+    // skeleton from a request-synchronous cookie (no DB suspense). Mirrors the ds-theme cookie.
     document.cookie = `ds-skin=${encodeURIComponent(uiSkin)}; path=/; max-age=31536000; SameSite=Lax`
   }, [appTheme, colorMode, uiSkin, isInitialized])
 

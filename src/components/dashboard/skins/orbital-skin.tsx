@@ -6,7 +6,7 @@ import { DashboardCollectionsList } from '@/components/dashboard/dashboard-colle
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { OrbitingCircles } from '@/components/ui/orbiting-circles'
 import { SkinCollapsibleSection } from './skin-collapsible-section'
-import { computeUsage, typeColor, resolveSkinData, type DashboardSkinData } from './shared'
+import { computeUsage, typeColor, resolveSkinData, slotsLeftLabel, type DashboardSkinData } from './shared'
 
 // Orbital Core (Pro) — item-type constellation that genuinely orbits a glowing core. A single
 // OrbitingCircles ring keeps the nodes evenly spaced (no clustering) while they revolve; the
@@ -21,7 +21,7 @@ export async function OrbitalSkin(data: DashboardSkinData) {
   const hasPinned = pinned.length > 0
 
   const kpis = [
-    { value: usage.isPro ? '∞' : String(usage.slotsLeft), label: usage.isPro ? 'unlimited' : 'slots left', href: undefined as string | undefined },
+    { value: slotsLeftLabel(usage), label: usage.isPro ? 'unlimited' : 'slots left', href: undefined as string | undefined },
     { value: String(collectionStats.totalCollections), label: 'collections', href: '/collections' },
     { value: String(stats.favoriteItems), label: 'favorites', href: '/favorites' },
     { value: String(collectionStats.favoriteCollections), label: 'fav. collections', href: '/collections' },

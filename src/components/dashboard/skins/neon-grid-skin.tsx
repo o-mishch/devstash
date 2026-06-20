@@ -6,7 +6,7 @@ import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-it
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { RetroGrid } from '@/components/ui/retro-grid'
 import { SkinCollapsibleSection } from './skin-collapsible-section'
-import { computeUsage, resolveSkinData, TypeDistributionSegments, type DashboardSkinData } from './shared'
+import { computeUsage, resolveSkinData, slotsLeftLabel, TypeDistributionSegments, type DashboardSkinData } from './shared'
 
 const NEON_CELL = 'rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] p-5 backdrop-blur'
 const NEON_PANEL = 'relative z-10 rounded-lg border border-primary/30 bg-[color-mix(in_srgb,var(--card)_55%,transparent)] p-5 backdrop-blur'
@@ -25,7 +25,7 @@ export async function NeonGridSkin(data: DashboardSkinData) {
     { value: String(collectionStats.totalCollections).padStart(2, '0'), label: 'collections', color: '#ec4899', href: '/collections' },
     { value: String(stats.favoriteItems).padStart(2, '0'), label: 'favorites', color: '#8b5cf6', href: '/favorites' },
     { value: String(collectionStats.favoriteCollections).padStart(2, '0'), label: 'fav. collections', color: '#a78bfa', href: '/collections' },
-    { value: usage.isPro ? '∞' : String(usage.slotsLeft), label: usage.isPro ? 'unlimited' : 'slots left', color: '#22d3ee', href: undefined as string | undefined },
+    { value: slotsLeftLabel(usage), label: usage.isPro ? 'unlimited' : 'slots left', color: '#22d3ee', href: undefined as string | undefined },
   ]
 
   return (
@@ -54,7 +54,7 @@ export async function NeonGridSkin(data: DashboardSkinData) {
             }
             if (c.label === 'total items') {
               return (
-                <div key={c.label} className={NEON_CELL} style={style}>
+                <div key={c.label} className={`${NEON_CELL} transition-transform hover:-translate-y-0.5`} style={style}>
                   <TotalItemsReveal variant="neon" className="block w-full">{inner}</TotalItemsReveal>
                 </div>
               )

@@ -48,34 +48,21 @@ export function MarkdownEditor({ value, onChange, readOnly = false, className, f
       fullscreenRef={fullscreenRef}
       header={
         <div className="flex items-center gap-1">
-          {!readOnly && (
-            <>
-              <button
-                type="button"
-                onClick={() => setActiveTab('write')}
-                className={cn(
-                  "px-3 py-0.5 text-xs rounded transition-colors",
-                  activeTab === 'write'
-                    ? "bg-white/15 text-white"
-                    : "text-white/50 hover:text-white/80"
-                )}
-              >
-                Write
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('preview')}
-                className={cn(
-                  "px-3 py-0.5 text-xs rounded transition-colors",
-                  activeTab === 'preview'
-                    ? "bg-white/15 text-white"
-                    : "text-white/50 hover:text-white/80"
-                )}
-              >
-                Preview
-              </button>
-            </>
-          )}
+          {!readOnly && (['write', 'preview'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                "px-3 py-0.5 text-xs rounded transition-colors capitalize",
+                activeTab === tab
+                  ? "bg-white/15 text-white"
+                  : "text-white/50 hover:text-white/80"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
           {readOnly && (
             <span className="text-xs text-white/50 px-2 py-0 rounded bg-black/20 uppercase font-mono">
               Markdown

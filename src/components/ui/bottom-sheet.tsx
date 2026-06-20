@@ -234,12 +234,14 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
             role="separator"
             aria-orientation="horizontal"
             aria-label="Resize sheet"
-            className="mx-auto -mt-2 flex h-6 w-full shrink-0 cursor-row-resize touch-none items-center justify-center"
+            className="group mx-auto -mt-2 flex h-6 w-full shrink-0 cursor-row-resize touch-none items-center justify-center"
           >
-            <div className="h-1.5 w-10 rounded-full bg-foreground/20" />
+            {/* Brightens while the handle is pressed/dragged so the grip reacts to touch. */}
+            <div className="h-1.5 w-10 rounded-full bg-foreground/20 transition-colors group-active:bg-primary/70" />
           </div>
         ) : (
-          <div className="mx-auto mb-1.5 h-1.5 w-10 shrink-0 rounded-full bg-foreground/20" aria-hidden="true" />
+          // Brightens while pressed (active:) — mirrors the right drawer's grab pill feedback.
+          <div className="mx-auto mb-1.5 h-1.5 w-10 shrink-0 rounded-full bg-foreground/20 transition-colors active:bg-primary/70" aria-hidden="true" />
         )}
         <div
           className={cn(

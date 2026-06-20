@@ -10,7 +10,6 @@ import { getEditorPreferences } from '@/lib/db/profile'
 import { canCreateCollection, canCreateItem } from '@/lib/db/usage'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 
-import { Skeleton } from '@/components/ui/skeleton'
 import { SidebarSkeleton } from '@/components/layout/sidebar/sidebar-skeleton'
 import { AppUserFlagsInitializer } from '@/components/shared/app-user-flags-initializer'
 import { EditorPreferencesInitializer } from '@/components/shared/editor-preferences-initializer'
@@ -86,33 +85,15 @@ function AppShell({ topbar, sidebar, children }: AppShellProps) {
           <div aria-hidden className="pointer-events-none absolute left-1/3 top-0 z-0 h-[500px] w-[600px] -translate-x-1/2 rounded-full bg-blue-500/[0.08] blur-3xl" />
           <div aria-hidden className="pointer-events-none absolute right-0 top-1/3 z-0 h-[400px] w-[500px] rounded-full bg-cyan-500/[0.06] blur-3xl" />
           <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-            {/* Cache Components requires uncached page data to sit inside a
-             * Suspense boundary. Each route's own `loading.tsx` supplies the
-             * real skeleton on navigation; this route-neutral fallback only
-             * covers prerender + the brief first-paint window. */}
-            <Suspense fallback={<PageContentFallback />}>{children}</Suspense>
+            {/* Cache Components requires uncached page data to sit inside a Suspense boundary; this
+             * one supplies it for prerender + the first-paint window. The fallback is `null` (not a
+             * generic skeleton) on purpose: each route's own `loading.tsx` is the inner boundary and
+             * owns the real skeleton, so a route-neutral fallback here would only flash a mismatched
+             * shape on top of (e.g.) the dashboard's skin skeleton before loading.tsx resolves. */}
+            <Suspense fallback={null}>{children}</Suspense>
           </div>
         </main>
       </div>
-    </div>
-  )
-}
-
-/**
- * Route-neutral content placeholder. Only used as the layout-level Suspense
- * fallback to satisfy Cache Components during prerender and the first-paint
- * window; each route's `loading.tsx` provides the route-specific skeleton on
- * navigation, so this never shows a dashboard-shaped skeleton on settings/profile.
- */
-function PageContentFallback() {
-  return (
-    <div className="app-page gap-6 p-6 animate-pulse">
-      <div className="space-y-1.5">
-        <Skeleton className="h-7 w-40" />
-        <Skeleton className="h-4 w-64" />
-      </div>
-      <Skeleton className="h-40 w-full rounded-lg" />
-      <Skeleton className="h-40 w-full rounded-lg" />
     </div>
   )
 }

@@ -30,8 +30,22 @@ function Head({ wide = false }: HeadProps) {
   )
 }
 
-function SectionLabel() {
-  return <Skeleton className="mb-3.5 h-4 w-32" />
+interface SectionLabelProps {
+  count?: boolean
+}
+
+// Matches the SkinCollapsibleSection header row that every non-classic skin renders: a primary icon
+// on the left, the uppercase label, an optional count badge, and a chevron pushed to the right
+// (ml-auto). mb-3.5 mirrors the real header→content gap (CollapsibleContent pt-3.5).
+function SectionLabel({ count = false }: SectionLabelProps) {
+  return (
+    <div className="mb-3.5 flex w-full items-center gap-2.5">
+      <Skeleton className="size-[15px] shrink-0 rounded-sm" />
+      <Skeleton className="h-3.5 w-28" />
+      {count && <Skeleton className="h-5 w-7 rounded-full" />}
+      <Skeleton className="ml-auto size-4 shrink-0 rounded-sm" />
+    </div>
+  )
 }
 
 interface CountSkelProps {
@@ -154,7 +168,7 @@ function AuroraSkeleton() {
         {/* Left column stacks Collections + Pinned (mirrors the real flex-col). */}
         <div className="flex flex-col gap-4">
           <section className={`${GLASS} p-5`}>
-            <SectionLabel />
+            <SectionLabel count />
             <CollGridSkel count={4} />
           </section>
           <section className={`${GLASS} p-5`}>
@@ -273,7 +287,12 @@ const HUD_PANEL = 'rounded-lg border border-border bg-foreground/[0.015] p-5'
 function CommandDeckSkeleton() {
   return (
     <div className="font-mono">
-      <Head />
+      {/* Mono HUD header (// SYSTEM ONLINE · dashboard · sub) — not the generic Head. */}
+      <header className="mb-6 space-y-1">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-8 w-44" />
+        <Skeleton className="h-4 w-60" />
+      </header>
       <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="rounded-md border border-primary/20 bg-gradient-to-b from-primary/[0.04] to-foreground/[0.015] p-[18px]">
@@ -289,10 +308,10 @@ function CommandDeckSkeleton() {
         <SegmentsSkel />
       </div>
       <div className={`mb-6 ${HUD_PANEL}`}>
-        <SectionLabel />
+        <SectionLabel count />
         <CollListSkel />
       </div>
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className={HUD_PANEL}><SectionLabel /><RowsSkel /></div>
         <div className={HUD_PANEL}><SectionLabel /><RowsSkel /></div>
       </div>
@@ -322,7 +341,7 @@ function OrbitalSkeleton() {
       {/* Right column: Collections + Recent (Pinned is gated, so omitted). */}
       <div className="flex flex-col gap-5">
         <div className="rounded-2xl border border-border bg-foreground/[0.02] p-5">
-          <SectionLabel />
+          <SectionLabel count />
           <CollListSkel />
         </div>
         <div className="rounded-2xl border border-border bg-foreground/[0.02] p-5">
@@ -372,7 +391,7 @@ function MissionControlSkeleton() {
       </div>
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className={MC_PANEL}><SectionLabel /><RowsSkel /></div>
-        <div className={MC_PANEL}><SectionLabel /><CollListSkel /></div>
+        <div className={MC_PANEL}><SectionLabel count /><CollListSkel /></div>
       </div>
     </>
   )
@@ -441,7 +460,7 @@ function HolographicSkeleton() {
       </div>
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <HoloSkel><SectionLabel /><RowsSkel /></HoloSkel>
-        <HoloSkel><SectionLabel /><CollListSkel /></HoloSkel>
+        <HoloSkel><SectionLabel count /><CollListSkel /></HoloSkel>
       </div>
     </>
   )

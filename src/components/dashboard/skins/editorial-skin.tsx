@@ -62,7 +62,7 @@ export async function EditorialSkin(data: DashboardSkinData) {
           )
           if (f.label === 'Total items') {
             return (
-              <TotalItemsReveal key={f.label} variant="list" className="flex items-baseline gap-4">
+              <TotalItemsReveal key={f.label} variant="list" className="flex items-baseline gap-4 transition-opacity hover:opacity-70">
                 {inner}
               </TotalItemsReveal>
             )

@@ -4,7 +4,7 @@ import { type ReactNode } from 'react'
 import { api } from '@/lib/api/client'
 import { CollectionFormDialog } from './collection-form-dialog'
 import { useLastNonNull } from '@/hooks/use-last-non-null'
-import type { CollectionWithTypes } from '@/types/collection'
+import { EMPTY_COLLECTION, type CollectionWithTypes } from '@/types/collection'
 
 interface CollectionEditDialogProps {
   collection: CollectionWithTypes | null
@@ -13,20 +13,9 @@ interface CollectionEditDialogProps {
   onOpenChange?: (open: boolean) => void
 }
 
-const DUMMY_COLLECTION: CollectionWithTypes = {
-  id: '',
-  name: '',
-  description: '',
-  isFavorite: false,
-  createdAt: new Date(),
-  itemCount: 0,
-  dominantColor: null,
-  types: [],
-}
-
 export function CollectionEditDialog({ collection: activeCollection, trigger, open, onOpenChange }: CollectionEditDialogProps) {
   const lastNonNullCollection = useLastNonNull(activeCollection)
-  const displayCollection = lastNonNullCollection || DUMMY_COLLECTION
+  const displayCollection = lastNonNullCollection || EMPTY_COLLECTION
 
 
   return (

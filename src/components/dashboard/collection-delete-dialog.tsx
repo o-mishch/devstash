@@ -15,7 +15,7 @@ import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-
 import { api } from '@/lib/api/client'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import { useLastNonNull } from '@/hooks/use-last-non-null'
-import type { CollectionWithTypes } from '@/types/collection'
+import { EMPTY_COLLECTION, type CollectionWithTypes } from '@/types/collection'
 
 interface CollectionDeleteDialogProps {
   collection: CollectionWithTypes | null
@@ -25,22 +25,11 @@ interface CollectionDeleteDialogProps {
   onSuccess?: () => void
 }
 
-const DUMMY_COLLECTION: CollectionWithTypes = {
-  id: '',
-  name: '',
-  description: '',
-  isFavorite: false,
-  createdAt: new Date(),
-  itemCount: 0,
-  dominantColor: null,
-  types: [],
-}
-
 export function CollectionDeleteDialog({ collection: activeCollection, trigger, open: controlledOpen, onOpenChange, onSuccess }: CollectionDeleteDialogProps) {
   const router = useRouter()
   const [isDeleting, setIsDeleting] = useState(false)
   const lastNonNullCollection = useLastNonNull(activeCollection)
-  const displayCollection = lastNonNullCollection || DUMMY_COLLECTION
+  const displayCollection = lastNonNullCollection || EMPTY_COLLECTION
 
   const { open, handleOpenChange } = useControllableOpen({
     open: controlledOpen,

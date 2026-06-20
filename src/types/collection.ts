@@ -11,6 +11,18 @@ export interface CollectionWithTypes {
   types: ItemType[]
 }
 
+/** Empty placeholder used as a fallback while a real collection loads/closes (see `useLastNonNull`). */
+export const EMPTY_COLLECTION: CollectionWithTypes = {
+  id: '',
+  name: '',
+  description: '',
+  isFavorite: false,
+  createdAt: new Date(),
+  itemCount: 0,
+  dominantColor: null,
+  types: [],
+}
+
 /** Slim shape used in the sidebar, search, and collection picker — no type chips */
 export interface SidebarCollection {
   id: string

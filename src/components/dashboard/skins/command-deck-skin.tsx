@@ -59,7 +59,7 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
             }
             if (c.label === 'Total Items') {
               return (
-                <div key={c.label} className={cellClass}>
+                <div key={c.label} className={`${cellClass} transition-colors hover:bg-primary/[0.08]`}>
                   <TotalItemsReveal variant="terminal" className="block w-full">{inner}</TotalItemsReveal>
                 </div>
               )
