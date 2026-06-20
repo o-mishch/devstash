@@ -71,7 +71,7 @@ When `DISABLE_EMAIL_VERIFICATION=true` (local dev / staging):
 
 - **Never send outbound email** — verification links, password resets, credential-email links, security notifications, and billing emails must all no-op.
 - The single enforcement point is `sendEmail()` in `src/lib/infra/resend.ts` (returns `'skipped'` without calling Resend, logging the skip — never `'sent'`, so telemetry stays honest). **Never** call the Resend SDK directly — all senders funnel through `sendEmail`.
-- Verification **gates** (register auto-verify, login/authorize skip unverified check, instant credential-email activation) use `emailVerificationEnabled()` from `src/lib/emails/verification.ts` — same flag, aliased to `outboundEmailEnabled()` in `src/lib/utils/auth.ts`.
+- Verification **gates** (register auto-verify, login/authorize skip unverified check, instant credential-email activation) use `outboundEmailEnabled()` from `src/lib/utils/auth.ts` — the single source for this flag.
 - Do not add per-sender bypasses for security or billing emails when the flag is set.
 
 ## What NextAuth Handles (Do Not Re-implement)

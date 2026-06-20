@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { LightItem } from '@/types/item'
 
-interface PinnedOverride {
+export interface PinnedOverride {
   item: LightItem
   pinned: boolean
 }

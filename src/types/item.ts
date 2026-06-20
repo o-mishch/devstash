@@ -99,6 +99,21 @@ export interface ItemStats {
   favoriteItems: number
 }
 
+/** Per-system-type item counts for the dashboard skins' type-distribution viz. Always includes
+ * every system type (count 0 when none), ordered by SYSTEM_TYPE_ORDER. */
+export interface ItemTypeDistribution {
+  name: string
+  count: number
+}
+
+/** One day of item-creation activity for the mission-control heatmap. Shaped to feed
+ * react-activity-calendar directly (`date` as YYYY-MM-DD, `level` 0–4). */
+export interface DashboardActivityDay {
+  date: string
+  count: number
+  level: number
+}
+
 export interface SignedDownloadUrlResponse {
   url: string
   expiresAt: string

@@ -1,11 +1,5 @@
-import { APP_THEMES } from '@/types/editor-preferences'
-import type { DashboardSections, EditorPreferences } from '@/types/editor-preferences'
-
-const DEFAULT_DASHBOARD_SECTIONS: DashboardSections = {
-  collections: true,
-  pinned: true,
-  recent: true,
-}
+import { APP_THEMES, UI_SKINS, DEFAULT_UI_SKIN } from '@/types/editor-preferences'
+import type { EditorPreferences, UiSkin } from '@/types/editor-preferences'
 
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   fontSize: 14,
@@ -15,18 +9,16 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   appTheme: 'modern-minimal',
   colorMode: 'dark',
   editorThemeMode: 'app',
-  dashboardSections: DEFAULT_DASHBOARD_SECTIONS,
+  uiSkin: DEFAULT_UI_SKIN,
   sidebarCollapsed: false,
 }
 
-export function normalizeDashboardSections(input: unknown): DashboardSections {
-  if (!input || typeof input !== 'object') return DEFAULT_DASHBOARD_SECTIONS
-  const typed = input as Record<string, unknown>
-  return {
-    collections: typeof typed.collections === 'boolean' ? typed.collections : DEFAULT_DASHBOARD_SECTIONS.collections,
-    pinned: typeof typed.pinned === 'boolean' ? typed.pinned : DEFAULT_DASHBOARD_SECTIONS.pinned,
-    recent: typeof typed.recent === 'boolean' ? typed.recent : DEFAULT_DASHBOARD_SECTIONS.recent,
-  }
+// Clamp an unknown/invalid skin to the default. Unknown values (e.g. a renamed/removed skin in an
+// old prefs blob) silently fall back so existing users always load a valid layout.
+export function normalizeUiSkin(input: unknown): UiSkin {
+  return typeof input === 'string' && (UI_SKINS as readonly string[]).includes(input)
+    ? (input as UiSkin)
+    : DEFAULT_UI_SKIN
 }
 
 export function normalizeEditorPreferences(input: unknown): EditorPreferences {
@@ -61,7 +53,7 @@ export function normalizeEditorPreferences(input: unknown): EditorPreferences {
     editorThemeMode: (typed.editorThemeMode === 'app' || typed.editorThemeMode === 'auto' || typed.editorThemeMode === 'dark')
       ? typed.editorThemeMode
       : DEFAULT_EDITOR_PREFERENCES.editorThemeMode,
-    dashboardSections: normalizeDashboardSections(typed.dashboardSections),
+    uiSkin: normalizeUiSkin(typed.uiSkin),
     sidebarCollapsed: typeof typed.sidebarCollapsed === 'boolean'
       ? typed.sidebarCollapsed
       : DEFAULT_EDITOR_PREFERENCES.sidebarCollapsed,

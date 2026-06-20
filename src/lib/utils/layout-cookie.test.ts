@@ -8,12 +8,12 @@ describe('parseLayoutCookie', () => {
   })
 
   it('parses a URL-encoded JSON cookie value', () => {
-    const raw = encodeURIComponent(JSON.stringify({ collections: false, pinned: true, recent: false }))
-    expect(parseLayoutCookie(raw)).toEqual({ collections: false, pinned: true, recent: false })
+    const raw = encodeURIComponent(JSON.stringify({ sidebar: true }))
+    expect(parseLayoutCookie(raw)).toEqual({ sidebar: true })
   })
 
   it('parses a plain (non-encoded) JSON cookie value', () => {
-    expect(parseLayoutCookie('{"recent":false}')).toEqual({ recent: false })
+    expect(parseLayoutCookie('{"sidebar":false}')).toEqual({ sidebar: false })
   })
 
   it('returns empty object on malformed JSON', () => {

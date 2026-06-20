@@ -1,13 +1,10 @@
-// Shared read/write for the ds-layout cookie that persists collapse state across page loads.
-// Written on every toggle so the combined AppScript blocking script can apply the state before
-// first paint — same pattern as the ds-theme cookie for the color theme.
+// Shared read/write for the ds-layout cookie that persists the sidebar collapsed state across page
+// loads. DB (editorPreferences.sidebarCollapsed) is the source of truth; this cookie is the
+// pre-hydration no-flash hint read by the blocking script (theme-script.tsx) so the sidebar
+// skeleton renders at the correct width before hydration. (Dashboard section collapse state is no
+// longer persisted — only the sidebar field remains.)
 
 export interface LayoutCookieValue {
-  collections: boolean
-  pinned: boolean
-  recent: boolean
-  // Sidebar collapsed state mirror — DB (editorPreferences.sidebarCollapsed) is the source of
-  // truth; this is the pre-hydration no-flash hint read by the blocking script for skeleton width.
   sidebar: boolean
 }
 
@@ -35,11 +32,9 @@ export function readLayoutCookie(): Partial<LayoutCookieValue> {
 export function writeLayoutCookie(patch: Partial<LayoutCookieValue>): void {
   const current = readLayoutCookie()
   const next = { ...current, ...patch }
-  // document.cookie is the only browser API available to write cookies synchronously in client components/stores.
-  // Only the cookie is written here; it is consumed by the pre-hydration script (theme-script.tsx) to set the
-  // html[data-section-*] no-flash attributes on the NEXT load. At runtime Base UI's Collapsible owns visibility,
-  // so we must NOT touch those attributes here — doing so re-triggers the display:none guard and kills the
-  // collapse animation (the guard is gated behind html[data-section-ready] once hydrated).
+  // document.cookie is the only browser API available to write cookies synchronously in client
+  // components/stores. The cookie is consumed by the pre-hydration script (theme-script.tsx) to set
+  // the html[data-sidebar-collapsed] no-flash attribute on the NEXT load.
   if (typeof document !== 'undefined') {
     document.cookie = `${COOKIE_NAME}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`
   }

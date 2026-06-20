@@ -1,52 +1,30 @@
 'use client'
 
-import { useSyncExternalStore, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ChevronDown, type LucideIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
-import { useDashboardSectionsStore } from '@/stores/dashboard-sections'
 import { cn } from '@/lib/utils'
-
-type DashboardSection = 'collections' | 'pinned' | 'recent'
-
-// Stable no-op subscriber for the hydration probe below — state never changes, so it never fires.
-const subscribeNoop = () => () => { }
 
 interface DashboardCollapsibleCardProps {
   icon: LucideIcon
   title: string
-  section: DashboardSection
   children: ReactNode
   headerAction?: ReactNode
-  // Persisted open state resolved on the server from the ds-layout cookie. Used for SSR and
-  // the first client render so the markup matches; after mount we adopt the store (seeded from
-  // the same cookie, so the value is identical) and follow live toggles.
-  defaultOpen: boolean
 }
 
+// Sections render open by default and can be toggled in-session, but the open/closed state is no
+// longer persisted or restored across loads (collapse persistence was removed with the skin work).
 export function DashboardCollapsibleCard({
   icon: Icon,
   title,
-  section,
   children,
   headerAction,
-  defaultOpen,
 }: DashboardCollapsibleCardProps) {
-  const storeOpen = useDashboardSectionsStore((s) => s[section])
-  const setOpen = useDashboardSectionsStore((s) => s.setOpen)
-
-  // False during SSR and the client's hydration render (getServerSnapshot), true only after
-  // hydration commits — a setState-free way to detect "mounted on the client".
-  const hydrated = useSyncExternalStore(subscribeNoop, () => true, () => false)
-
-  // Server has no per-request access to the client store, so render defaultOpen until hydrated —
-  // this keeps SSR and the first client render identical (no hydration mismatch), then the store
-  // (seeded from the same cookie, so the value matches) takes over for live toggles.
-  const isOpen = hydrated ? storeOpen : defaultOpen
-  const setIsOpen = (open: boolean) => setOpen(section, open)
+  const [isOpen, setIsOpen] = useState(true)
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} data-section={section}>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent transition-opacity duration-150 hover:opacity-80">
         <CardHeader className="group relative pb-3">
           {/* Full-header click target: covers the entire header so a click anywhere toggles the

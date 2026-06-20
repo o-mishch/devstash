@@ -8,16 +8,13 @@ import type { CollectionWithTypes } from '@/types/collection'
 
 interface DashboardCollectionsCardProps {
   collections: CollectionWithTypes[]
-  defaultOpen: boolean
 }
 
-export function DashboardCollectionsCard({ collections, defaultOpen }: DashboardCollectionsCardProps) {
+export function DashboardCollectionsCard({ collections }: DashboardCollectionsCardProps) {
   return (
     <DashboardCollapsibleCard
       icon={Folder}
       title="Collections"
-      section="collections"
-      defaultOpen={defaultOpen}
       headerAction={
         <Link
           href="/collections"

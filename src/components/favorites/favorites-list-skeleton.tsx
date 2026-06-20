@@ -8,9 +8,9 @@ interface FavoritesListSkeletonProps {
 // all visible). Used by the favorite collections tab.
 export function FavoritesListSkeleton({ count = 6 }: FavoritesListSkeletonProps) {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-1.5">
       {[...Array(count)].map((_, i) => (
-        <div key={i} className="app-row gap-3 rounded px-3 py-1.5 touch:py-3">
+        <div key={i} className="app-row gap-3 rounded-xl border-l-2 border-l-border bg-card px-3 py-2 ring-1 ring-border touch:py-3">
           <Skeleton className="size-3.5 shrink-0 rounded touch:size-5" />
           <Skeleton className="h-4 min-w-0 flex-1 touch:h-5" />
           <Skeleton className="h-4 w-16 shrink-0 rounded" />
@@ -39,9 +39,9 @@ export function FavoriteItemsSkeleton({ groups = 3, rowsPerGroup = 3 }: Favorite
             <Skeleton className="h-3 w-16 touch:h-4" />
             <Skeleton className="h-3 w-6 rounded" />
           </div>
-          <div className="pl-4">
+          <div className="mt-1 flex flex-col gap-1.5 pl-4">
             {[...Array(rowsPerGroup)].map((_, r) => (
-              <div key={r} className="app-row gap-3 rounded px-3 py-1.5 touch:py-3">
+              <div key={r} className="app-row gap-3 rounded-xl border-l-2 border-l-border bg-card px-3 py-2 ring-1 ring-border touch:py-3">
                 <Skeleton className="size-3.5 shrink-0 rounded touch:size-5" />
                 <Skeleton className="h-4 min-w-0 flex-1 touch:h-5" />
                 <Skeleton className="hidden h-4 w-14 shrink-0 rounded sm:block" />

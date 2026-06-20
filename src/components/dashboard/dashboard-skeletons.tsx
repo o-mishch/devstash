@@ -29,7 +29,7 @@ function SkeletonCardHeader({ icon: Icon, title, headerAction }: SkeletonCardHea
 
 export function CollectionsGridSkeleton() {
   return (
-    <Card className="overflow-visible bg-[var(--muted,var(--background))] border-l-2 border-l-accent" data-section="collections">
+    <Card className="overflow-visible bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <SkeletonCardHeader
         icon={Folder}
         title="Collections"
@@ -68,7 +68,7 @@ function DashboardListSkeleton({ count = 3 }: { count?: number }) {
 
 export function PinnedSkeleton() {
   return (
-    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent" data-section="pinned">
+    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <SkeletonCardHeader icon={Pin} title="Pinned" />
       <CardContent>
         <DashboardListSkeleton count={3} />
@@ -79,7 +79,7 @@ export function PinnedSkeleton() {
 
 export function RecentItemsSkeleton() {
   return (
-    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent" data-section="recent">
+    <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <SkeletonCardHeader icon={History} title="Recent Items" />
       <CardContent>
         <DashboardListSkeleton count={3} />

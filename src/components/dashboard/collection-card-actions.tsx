@@ -41,15 +41,8 @@ export function CollectionCardActions({ collection }: CollectionCardActionsProps
 
   return (
     <div className="absolute right-2 top-2 z-20 flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        className={`size-8 rounded-full transition-all hover:bg-transparent ${isFavorite ? 'opacity-100 text-yellow-500 hover:text-yellow-500' : 'opacity-0 group-hover/collection-card:opacity-100 touch:opacity-100 text-muted-foreground hover:text-foreground'}`}
-        onClick={handleFavoriteToggle}
-        title={isFavorite ? 'Remove favorite' : 'Add to favorites'}
-      >
-        <Star className={`size-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
-      </Button>
+      {/* Favorite state is shown as a small inline star next to the title (see CollectionCard); the
+          toggle lives in the menu below so it never overlaps the title. */}
       <DropdownMenu>
         <DropdownMenuTrigger render={
           <Button variant="ghost" size="icon" className="size-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-transparent opacity-0 group-hover/collection-card:opacity-100 touch:opacity-100 data-[popup-open]:opacity-100 transition-all" title="More options">

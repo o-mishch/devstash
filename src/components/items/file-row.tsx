@@ -9,12 +9,14 @@ import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useRestrictedDownload } from '@/hooks/use-restricted-download'
 import { formatDate, formatBytes } from '@/lib/utils/format'
 import { getDownloadUrl } from '@/lib/utils/url'
+import type { CSSProperties } from 'react'
 import {
   ALLOWED_IMAGE_EXTS,
   FILE_ICON_CODE_EXTS,
   FILE_ICON_JSON_EXTS,
   FILE_ICON_TEXT_EXTS,
   PRO_ITEM_TYPE_NAMES,
+  SYSTEM_TYPE_COLORS,
 } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 
@@ -50,7 +52,8 @@ export function FileRow({ item }: FileRowProps) {
     <div
       role="button"
       tabIndex={0}
-      className="card-interactive group/card flex h-full w-full min-w-0 items-center gap-3 rounded-lg border border-border bg-muted px-4 py-2.5 focus-visible:ring-2 focus-visible:ring-ring"
+      className="card-interactive group/card flex h-full w-full min-w-0 items-center gap-3 rounded-xl border-l-2 border-l-[var(--item-color)] bg-card px-4 py-2.5 ring-1 ring-border focus-visible:ring-2 focus-visible:ring-ring"
+      style={{ '--item-color': SYSTEM_TYPE_COLORS[item.itemType.name] } as CSSProperties}
       onClick={() => openDrawer(item)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {

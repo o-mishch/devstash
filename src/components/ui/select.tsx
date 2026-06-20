@@ -70,6 +70,13 @@ function SelectContent({
     SelectPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset" | "alignItemWithTrigger"
   >) {
+  // Align-mode selects (the default) scroll the selected item over the trigger as they open, so the
+  // clip-path reveal (animate-select-open) suits that repositioning. A non-align select is a plain
+  // dropdown-below-trigger — visually identical to DropdownMenu/Popover — so it gets the same
+  // fade/zoom/slide animation the rest of the app's dropdowns use, for a consistent, smooth open.
+  const animationClassName = alignItemWithTrigger
+    ? "data-open:animate-select-open data-closed:animate-select-close"
+    : "duration-500 ease-out data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:overflow-hidden data-closed:fade-out-0 data-closed:zoom-out-95"
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner
@@ -89,7 +96,8 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            "relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-top overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 data-open:animate-select-open data-closed:animate-select-close",
+            "relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-top overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10",
+            animationClassName,
             className
           )}
           {...props}
