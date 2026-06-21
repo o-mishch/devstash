@@ -242,3 +242,23 @@ When building a skeleton for a component rendered inside `TanStackVirtualGrid`:
 3. **Use `invisible &nbsp;` (not `h-*` utilities) to hold line-height.** An explicit `h-*` can't track both root-font scales (110% and 125%) with a single value. The `&nbsp;` inherits the wrapper's natural line-height automatically.
 4. **Mirror multi-line text with multiple single-line wrappers.** `line-clamp-2` renders 2 × (line-height) px. Replicate this with two consecutive `text-xs` wrapper divs (no margin between them).
 5. **Verify with Playwright.** After writing the skeleton, inject it into the page alongside a real card clone and measure `iconTopRel` for both — they must match.
+
+---
+
+## Round 3: Dashboard skin skeletons + slimmed top widgets (Jun 2026)
+
+### Context
+
+The Spatial / Holographic / Aurora top widgets were slimmed (hero → horizontal one-line layout, ~half height) and the Editorial figures/header revisited. Their per-skin skeletons in `src/components/dashboard/skins/skeletons.tsx` had to follow.
+
+### Fixes
+
+1. **`TextSkel` helper.** Codified the Round-2 structural-mirroring pattern as a reusable component: a wrapper `<div>` carrying the loaded element's text classes (line-height + width), an `invisible` placeholder to hold the line-box, and an `absolute inset-x-0` bar. Use it for any text the card height depends on instead of a bare `h-*` Skeleton. Default placeholder is a non-breaking space; pass `placeholder="00"` to size a wrapper by char-count (e.g. the Editorial 2-digit figures).
+2. **Fixed-px vs rem traps.** The hero numbers are `text-3xl`/`text-5xl`/`text-7xl` (rem) and scale to ~125% on desktop, so a `h-[30px]` bar drifts short. `TextSkel` tracks them. Conversely the Aurora ring (`size-[64px]`) and progress bars (`h-[7px]`) are px-fixed and need no mirroring — but the Aurora hero text block must be kept **shorter than the 64px ring** (one description line, not two), or the skeleton card grows taller than the ring-driven real card.
+3. **Pro/free layout parity (`ds-pro` cookie).** Route-level `loading.tsx` derived `isPro` from `isProSkin(skin)`, which is false for the free skins (aurora/editorial/classic) — so a Pro user on Aurora got the free skeleton (full-width hero + 2 tiles) before page.tsx streamed the Pro layout. `AppUserFlagsInitializer` now persists a `ds-pro` cookie (mirroring `ds-skin`); `loading.tsx` reads it: `isPro = isProSkin(skin) || ds-pro === '1'`.
+
+### Files Modified
+
+- `src/components/dashboard/skins/skeletons.tsx`
+- `src/components/shared/app-user-flags-initializer.tsx`
+- `src/app/(app)/dashboard/loading.tsx`

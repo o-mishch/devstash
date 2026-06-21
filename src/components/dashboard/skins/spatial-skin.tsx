@@ -38,39 +38,40 @@ export async function SpatialSkin(data: DashboardSkinData) {
         <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Your knowledge hub</h1>
       </header>
 
-      <div className="mb-5 grid gap-5 lg:grid-cols-[1fr_1.4fr]">
-        <div className={`${SP_CARD} flex flex-col justify-center p-5`}>
+      <div className="mb-5 grid grid-cols-[1.3fr_1fr] gap-3 sm:gap-5 lg:grid-cols-[1fr_1.4fr]">
+        <div className={`${SP_CARD} flex items-center gap-3 px-4 py-3 sm:gap-5 sm:px-5`}>
           <div className={SP_SHEEN} />
-          <div className="relative">
-            <TotalItemsReveal variant="float">
-              <div className="text-4xl font-extrabold leading-none tracking-[-0.03em]">{stats.totalItems}</div>
-              <div className="mt-1 text-sm text-muted-foreground">items stashed</div>
-            </TotalItemsReveal>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-foreground/10">
+          <TotalItemsReveal variant="float" className="relative shrink-0">
+            <div className="text-3xl font-extrabold leading-none tracking-[-0.03em]">{stats.totalItems}</div>
+            <div className="mt-1 text-sm text-muted-foreground">items stashed</div>
+          </TotalItemsReveal>
+          <div className="relative min-w-0 flex-1">
+            <div className="h-2 overflow-hidden rounded-full bg-foreground/10">
               <i className="block h-full rounded-full bg-gradient-to-r from-primary to-cyan-400" style={{ width: `${usage.isPro ? 100 : usage.pct}%` }} />
             </div>
-            <div className="mt-2.5 text-xs text-muted-foreground">{usageLabel(usage)}</div>
+            <div className="mt-2 text-xs text-muted-foreground">{usageLabel(usage)}</div>
           </div>
         </div>
 
         <div className={`grid grid-cols-2 gap-4 ${isPro ? '[&>*:last-child]:col-span-2' : ''}`}>
           {minis.map((m) => {
+            // A lone mini (Pro, just Collections) reads as a single line — icon + value + label inline.
+            const isLone = minis.length === 1
             const inner = (
               <>
                 <div className={SP_SHEEN} />
                 <m.icon className="relative size-[22px]" style={{ color: m.color }} />
-                <div className="relative">
+                <div className={isLone ? 'relative flex items-baseline gap-2' : 'relative'}>
                   <div className="text-2xl font-extrabold leading-none">{m.value}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{m.label}</div>
+                  <div className={`text-xs text-muted-foreground ${isLone ? '' : 'mt-1'}`}>{m.label}</div>
                 </div>
               </>
             )
-            // A lone mini (Pro, just Collections) centers its content so it doesn't read as an empty
-            // box when it stretches to the hero's height; the free pair keeps the top/bottom layout.
-            const cls =
-              minis.length === 1
-                ? `${SP_CARD} flex flex-col items-center justify-center gap-2 p-5 text-center`
-                : `${SP_CARD} flex flex-col justify-between gap-2 p-3.5`
+            // Horizontal layout keeps these minis as short as the slimmed hero. The lone mini centers
+            // its single row; the free pair left-aligns icon + value side by side.
+            const cls = isLone
+              ? `${SP_CARD} flex items-center justify-center gap-3 px-5 py-3 text-center`
+              : `${SP_CARD} flex items-center gap-3 px-4 py-3`
             return m.href ? (
               <Link key={m.label} href={m.href} prefetch={false} className={cls}>{inner}</Link>
             ) : (

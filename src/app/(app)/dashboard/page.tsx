@@ -33,7 +33,12 @@ const SKINS_WITH_TYPE_DISTRIBUTION: ReadonlySet<UiSkin> = new Set([
   'mission-control',
 ])
 
-export default async function DashboardPage() {
+export default async function DashboardPage(props: {
+  searchParams: Promise<{ skeleton?: string }>
+}) {
+  const searchParams = await props.searchParams
+  const forceSkeleton = searchParams.skeleton === 'true'
+
   const session = await getCachedSession()
   const userId = session?.user?.id
   if (!userId) redirect('/sign-in')
@@ -88,6 +93,14 @@ export default async function DashboardPage() {
     : Promise.resolve<ItemTypeDistribution[]>([])
   // Only the mission-control skin consumes the activity series — gate the fetch.
   const activityPromise = skin === 'mission-control' ? getDashboardActivity(userId) : undefined
+
+  if (forceSkeleton) {
+    return (
+      <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6" data-skin={skin}>
+        <DashboardSkinFallback skin={skin} isPro={isPro} />
+      </div>
+    )
+  }
 
   return (
     <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6" data-skin={skin}>

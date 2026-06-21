@@ -31,11 +31,36 @@ interface HeadProps {
 
 function Head({ wide = false }: HeadProps) {
   return (
-    <header className="mb-6 space-y-2">
+    <header className="mb-6">
       <Skeleton className="h-4 w-28" />
-      <Skeleton className={wide ? 'h-10 w-72' : 'h-8 w-60'} />
-      <Skeleton className="h-4 w-48" />
+      <Skeleton className={cn('mt-1', wide ? 'h-10 w-72' : 'h-8 w-60')} />
+      <Skeleton className="mt-1 h-4 w-48" />
     </header>
+  )
+}
+
+interface TextSkelProps {
+  // Text utility classes to mirror — the SAME ones the loaded element uses. The wrapper inherits the
+  // real CSS line-height (and, with a width class, the real box), so the skeleton occupies an identical
+  // box at every root-font scale (110% touch / 125% desktop) where a fixed h-* bar would drift. The
+  // bar is absolute so it never affects the wrapper's height. See context/fixes/skeleton-positioning-
+  // alignment.md (Round 2).
+  className?: string
+  // Vertical thickness of the bar within the line box (cosmetic only — doesn't affect layout).
+  inset?: string
+  // Invisible glyphs that hold the line-height; when no width class is given they also size the wrapper
+  // (use the real text's char count, e.g. "00" for a 2-digit figure).
+  placeholder?: string
+}
+
+// A skeleton bar that occupies the exact line-box of the text it stands in for. Prefer this over a bare
+// <Skeleton className="h-..."> for any text the card's height depends on.
+function TextSkel({ className, inset = 'inset-y-[18%]', placeholder = ' ' }: TextSkelProps) {
+  return (
+    <div className={cn('relative', className)}>
+      <span className="invisible select-none">{placeholder}</span>
+      <Skeleton className={cn('absolute inset-x-0 rounded-sm', inset)} />
+    </div>
   )
 }
 
@@ -227,53 +252,63 @@ function AuroraSkeleton({ isPro }: SkinSkeletonProps) {
   // Free keeps both tiles; the hero spans the full row above them.
   const tileCount = isPro ? 1 : 2
   return (
-    <>
-      <Head />
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
-        <div className={cn(`${GLASS} flex items-center gap-6 p-6`, !isPro && 'col-span-2 lg:col-span-2')}>
-          <Skeleton className="size-[120px] shrink-0 rounded-full" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-3 w-full max-w-[260px]" />
-            <Skeleton className="h-3 w-3/4" />
+    <div className="relative">
+      <div className="relative">
+        <Head />
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
+          {/* Height is driven by the fixed 64px ring (the text block stays shorter), matching the real hero. */}
+          <div className={cn(`${GLASS} flex items-center gap-4 px-5 py-3`, !isPro && 'col-span-2 lg:col-span-2')}>
+            <Skeleton className="size-[64px] shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1">
+              <TextSkel className="w-44 text-sm font-bold sm:text-base" inset="inset-y-[18%]" />
+              <TextSkel className="mt-1 hidden w-full max-w-[280px] text-[13px] leading-snug sm:block" inset="inset-y-[15%]" />
+            </div>
           </div>
+          {Array.from({ length: tileCount }).map((_, i) => (
+            <div
+              key={i}
+              className={cn(
+                GLASS,
+                isPro
+                  ? 'flex items-center justify-center gap-3 px-5 py-3 text-center'
+                  : 'flex items-center gap-3 px-4 py-3',
+              )}
+            >
+              <Skeleton className="size-9 shrink-0 rounded-xl" />
+              <Skeleton className="h-6 w-10" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          ))}
         </div>
-        {Array.from({ length: tileCount }).map((_, i) => (
-          <div key={i} className={`${GLASS} flex flex-col items-center justify-center gap-2 p-6 text-center`}>
-            <Skeleton className="size-10 rounded-xl" />
-            <Skeleton className="h-9 w-12" />
-            <Skeleton className="h-3 w-20" />
+        {/* Type distribution — its own full-width card below the hero/stat row. */}
+        <div className={`${GLASS} mb-6 p-5`}>
+          <BarsSkel rows={7} />
+        </div>
+        <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
+          {/* Left column stacks Collections + Pinned (mirrors the real flex-col). */}
+          <div className="flex flex-col gap-4">
+            <section className={`${GLASS} p-5`}>
+              <SectionLabel count />
+              <CollGridSkel count={6} />
+            </section>
+            <section className={`${GLASS} p-5`}>
+              <SectionLabel />
+              <RowsSkel count={5} />
+            </section>
           </div>
-        ))}
-      </div>
-      {/* Type distribution — its own full-width card below the hero/stat row. */}
-      <div className={`${GLASS} mb-6 p-5`}>
-        <BarsSkel rows={7} />
-      </div>
-      <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
-        {/* Left column stacks Collections + Pinned (mirrors the real flex-col). */}
-        <div className="flex flex-col gap-4">
-          <section className={`${GLASS} p-5`}>
-            <SectionLabel count />
-            <CollGridSkel count={4} />
-          </section>
+          {/* Right column: Recent. */}
           <section className={`${GLASS} p-5`}>
             <SectionLabel />
-            <RowsSkel />
+            <RowsSkel count={7} />
           </section>
         </div>
-        {/* Right column: Recent. */}
-        <section className={`${GLASS} p-5`}>
-          <SectionLabel />
-          <RowsSkel />
-        </section>
+        {isPro && (
+          <div className={`${GLASS} mt-6 p-5`}>
+            <AiUsageSkel skin="aurora" />
+          </div>
+        )}
       </div>
-      {isPro && (
-        <div className={`${GLASS} mt-6 p-5`}>
-          <AiUsageSkel skin="aurora" />
-        </div>
-      )}
-    </>
+    </div>
   )
 }
 
@@ -284,27 +319,31 @@ function EditorialSkeleton({ isPro }: SkinSkeletonProps) {
   return (
     <div className="mx-auto max-w-5xl">
       <header className="mb-7 flex flex-col justify-between gap-7 sm:flex-row sm:items-start">
-        <div className="space-y-3.5">
-          <Skeleton className="h-3 w-48" />
-          <Skeleton className="h-12 w-64" />
+        <div>
+          <TextSkel className="w-48 text-xs font-semibold uppercase tracking-[0.22em]" inset="inset-y-[15%]" />
+          <TextSkel className="mt-3.5 w-56 text-4xl font-extrabold leading-[1.02] tracking-[-0.035em] sm:text-5xl" inset="inset-y-[20%]" />
         </div>
-        <div className="hidden min-w-[200px] flex-col gap-2.5 pt-2 sm:flex">
+        <dl className="hidden min-w-[200px] flex-col gap-2.5 pt-2 sm:flex">
           {Array.from({ length: summaryRows }).map((_, i) => (
-            <div key={i} className="flex justify-between border-b border-border pb-2">
-              <Skeleton className="h-3.5 w-20" />
-              <Skeleton className="h-3.5 w-12" />
+            <div key={i} className="flex justify-between border-b border-border pb-2 text-[13px]">
+              <TextSkel className="w-20" inset="inset-y-[20%]" />
+              <TextSkel className="w-12" inset="inset-y-[20%]" />
             </div>
           ))}
-        </div>
+        </dl>
       </header>
       <div className="h-px bg-border" />
       <div className="my-7 grid grid-cols-2 gap-4 sm:gap-8">
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="flex items-baseline gap-3 sm:gap-4">
-            <Skeleton className="h-12 w-14 shrink-0 sm:h-16 sm:w-20" />
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-3 w-24" />
+            <TextSkel
+              className="shrink-0 text-5xl font-extrabold leading-[0.8] tracking-[-0.05em] sm:text-7xl"
+              inset="inset-y-[10%]"
+              placeholder="00"
+            />
+            <div className="flex flex-col">
+              <TextSkel className="w-20 text-sm font-bold" inset="inset-y-[18%]" />
+              <TextSkel className="mt-0.5 w-24 text-[12.5px]" inset="inset-y-[15%]" />
             </div>
           </div>
         ))}
@@ -313,24 +352,29 @@ function EditorialSkeleton({ isPro }: SkinSkeletonProps) {
       <div className="mt-7 grid grid-cols-1 gap-10 lg:grid-cols-[1.2fr_1fr]">
         <section>
           <SectionLabel />
-          <RowsSkel />
+          <RowsSkel count={7} />
         </section>
         <section>
           <SectionLabel />
           <div className="flex flex-col gap-1.5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3.5 px-2 py-1.5">
-                <Skeleton className="h-3 w-20 shrink-0" />
-                <Skeleton className="h-0.5 flex-1" />
-                <Skeleton className="h-3 w-6 shrink-0" />
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="-mx-2 flex items-center gap-3.5 px-2 py-1.5 text-[13px]">
+                <TextSkel className="w-20" inset="inset-y-[20%]" />
+                <span className="h-0.5 flex-1 bg-border" />
+                <TextSkel className="w-6" inset="inset-y-[20%]" />
               </div>
             ))}
           </div>
         </section>
       </div>
+      {/* Pinned section */}
       <div className="mt-9">
         <SectionLabel />
-        <CollGridSkel count={4} />
+        <RowsSkel count={5} />
+      </div>
+      <div className="mt-9">
+        <SectionLabel />
+        <CollGridSkel count={6} />
       </div>
       {isPro && (
         <div className="mt-9">
@@ -346,27 +390,40 @@ const SP = 'relative overflow-hidden rounded-[28px] border border-foreground/15 
 
 function SpatialSkeleton() {
   return (
-    <>
-      <header className="mb-7 space-y-2">
+    <div>
+      <header className="mb-7">
         <Skeleton className="h-4 w-16" />
-        <Skeleton className="h-8 w-60" />
+        <Skeleton className="mt-1 h-8 w-60" />
       </header>
-      <div className="mb-5 grid gap-5 lg:grid-cols-[1fr_1.4fr]">
-        <div className={`${SP} flex flex-col justify-center p-5`}>
-          <Skeleton className="h-10 w-28" />
-          <Skeleton className="mt-1 h-3 w-24" />
-          <Skeleton className="mt-4 h-2 w-full rounded-full" />
-          <Skeleton className="mt-2.5 h-3 w-40" />
+      <div className="mb-5 grid grid-cols-[1.3fr_1fr] gap-3 sm:gap-5 lg:grid-cols-[1fr_1.4fr]">
+        <div className={`${SP} flex items-center gap-3 px-4 py-3 sm:gap-5 sm:px-5`}>
+          {/* number text-3xl leading-none + mt-1 + label text-sm — mirrored so the block height tracks
+              the real text at every root-font scale (a fixed h-* would drift on the 125% desktop root). */}
+          <div className="shrink-0">
+            <TextSkel className="w-8 text-3xl font-extrabold leading-none" inset="inset-y-[12%]" />
+            <TextSkel className="mt-1 w-16 text-sm" inset="inset-y-[18%]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <Skeleton className="h-2 w-full rounded-full" />
+            <TextSkel className="mt-2 w-20 text-xs" inset="inset-y-[20%]" />
+          </div>
         </div>
-        {/* Pro: a single Collections mini spans the full width of the 2-col grid, centered. */}
+        {/* Pro: a single one-line Collections mini spans the full width of the 2-col grid, centered. */}
         <div className="grid grid-cols-2 gap-4 [&>*:last-child]:col-span-2">
-          <div className={`${SP} flex flex-col items-center justify-center gap-2 p-5 text-center`}>
+          <div className={`${SP} flex items-center justify-center gap-3 px-5 py-3 text-center`}>
             <Skeleton className="size-[22px] rounded-md" />
-            <Skeleton className="h-7 w-12" />
-            <Skeleton className="h-3 w-20" />
+            <div className="flex items-baseline gap-2">
+              <TextSkel className="w-6 text-2xl font-extrabold leading-none" inset="inset-y-[12%]" />
+              <TextSkel className="w-14 text-xs" inset="inset-y-[20%]" />
+            </div>
           </div>
         </div>
       </div>
+      {/* Pinned section */}
+      <section className={`${SP} mb-5 p-6`}>
+        <SectionLabel />
+        <RowsSkel count={5} />
+      </section>
       <div className="grid items-start gap-5 lg:grid-cols-2 [&>*]:min-w-0">
         <section className={`${SP} p-6`}>
           <SectionLabel />
@@ -374,13 +431,13 @@ function SpatialSkeleton() {
         </section>
         <section className={`${SP} p-6`}>
           <SectionLabel />
-          <RowsSkel />
+          <RowsSkel count={7} />
         </section>
       </div>
       <section className={`${SP} mt-5 p-6`}>
         <AiUsageSkel skin="spatial" />
       </section>
-    </>
+    </div>
   )
 }
 
@@ -389,42 +446,44 @@ const CD_CELL = 'rounded-md border border-primary/20 bg-gradient-to-b from-prima
 
 function CommandDeckSkeleton() {
   return (
-    <div className="font-mono">
-      {/* Mono HUD header (// SYSTEM ONLINE · dashboard · sub) — not the generic Head. */}
-      <header className="mb-6 space-y-1">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-8 w-44" />
-        <Skeleton className="h-4 w-60" />
-      </header>
-      {/* Pro: clean 2-up readout cells (Total + Collections); the slots-left cell is dropped. */}
-      <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-2">
-        {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className={CD_CELL}>
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0">
+    <div className="relative overflow-hidden">
+      <div className="relative font-mono">
+        {/* Mono HUD header (// SYSTEM ONLINE · dashboard · sub) — not the generic Head. */}
+        <header className="mb-6">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="mt-1 h-8 w-44" />
+          <Skeleton className="mt-1 h-4 w-60" />
+        </header>
+        {/* Pro: clean 2-up readout cells (Total + Collections); the slots-left cell is dropped. */}
+        <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className={CD_CELL}>
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <Skeleton className="h-2.5 w-16" />
+                  <Skeleton className="mt-1 h-6 w-12" />
+                </div>
                 <Skeleton className="h-2.5 w-16" />
-                <Skeleton className="mt-1 h-6 w-12" />
               </div>
-              <Skeleton className="h-2.5 w-16" />
+              <Skeleton className="mt-2 h-1 w-full rounded-sm" />
             </div>
-            <Skeleton className="mt-2 h-1 w-full rounded-sm" />
-          </div>
-        ))}
-      </div>
-      <div className={`mb-6 ${HUD_PANEL}`}>
-        <SectionLabel count />
-        <CollListSkel />
-      </div>
-      <div className="mb-6 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
-        <div className={HUD_PANEL}><SectionLabel /><RowsSkel /></div>
-        <div className={HUD_PANEL}><SectionLabel /><RowsSkel /></div>
-      </div>
-      <div className={`mb-6 ${HUD_PANEL}`}>
-        <SectionLabel />
-        <SegmentsSkel />
-      </div>
-      <div className={`mt-6 ${HUD_PANEL}`}>
-        <AiUsageSkel skin="command-deck" />
+          ))}
+        </div>
+        <div className={`mb-6 ${HUD_PANEL}`}>
+          <SectionLabel count />
+          <CollListSkel />
+        </div>
+        <div className="mb-6 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+          <div className={HUD_PANEL}><SectionLabel /><RowsSkel count={5} /></div>
+          <div className={HUD_PANEL}><SectionLabel /><RowsSkel count={7} /></div>
+        </div>
+        <div className={`mb-6 ${HUD_PANEL}`}>
+          <SectionLabel />
+          <SegmentsSkel />
+        </div>
+        <div className={`mt-6 ${HUD_PANEL}`}>
+          <AiUsageSkel skin="command-deck" />
+        </div>
       </div>
     </div>
   )
@@ -452,11 +511,15 @@ function OrbitalSkeleton() {
           </div>
           <div className={`flex-1 ${ORBITAL_PANEL}`}>
             <SectionLabel />
-            <RowsSkel />
+            <RowsSkel count={7} />
           </div>
         </div>
-        {/* Right column: Collections (Pinned is gated, so omitted). */}
+        {/* Right column: Pinned + Collections. */}
         <div className="flex flex-col gap-5">
+          <div className={ORBITAL_PANEL}>
+            <SectionLabel />
+            <RowsSkel count={5} />
+          </div>
           <div className={ORBITAL_PANEL}>
             <SectionLabel count />
             <CollListSkel />
@@ -474,10 +537,10 @@ const MC_PANEL = 'rounded-2xl border border-border bg-foreground/[0.02] p-5'
 
 function MissionControlSkeleton() {
   return (
-    <>
-      <header className="mb-5 space-y-2">
+    <div>
+      <header className="mb-5">
         <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-8 w-44" />
+        <Skeleton className="mt-1 h-8 w-44" />
       </header>
       {/* Pro: 2-up KPIs (Total w/ sparkline + Collections); the free-tier tile is dropped. */}
       <div className="mb-4 grid grid-cols-2 gap-3.5 lg:grid-cols-2">
@@ -497,9 +560,14 @@ function MissionControlSkeleton() {
           <Skeleton className="mt-1 h-6 w-12" />
         </div>
       </div>
+      {/* Pinned section */}
+      <div className={`${MC_PANEL} mb-4`}>
+        <SectionLabel />
+        <RowsSkel count={5} />
+      </div>
       {/* Day-to-day content first (Recent + Collections), analytics below. */}
       <div className="mb-4 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
-        <div className={MC_PANEL}><SectionLabel /><RowsSkel /></div>
+        <div className={MC_PANEL}><SectionLabel /><RowsSkel count={7} /></div>
         <div className={MC_PANEL}><SectionLabel count /><CollListSkel /></div>
       </div>
       <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
@@ -512,8 +580,8 @@ function MissionControlSkeleton() {
           <div className="flex justify-center py-2">
             <Skeleton className="size-32 rounded-full" />
           </div>
-          <div className="mt-4 flex flex-col gap-2">
-            {Array.from({ length: 4 }).map((_, i) => (
+          <div className="mt-4 flex flex-col gap-0.5">
+            {Array.from({ length: 7 }).map((_, i) => (
               <div key={i} className="flex items-center gap-2 px-2 py-1">
                 <Skeleton className="size-2 rounded-full" />
                 <Skeleton className="h-3 w-20" />
@@ -526,7 +594,7 @@ function MissionControlSkeleton() {
       <div className={`mt-4 ${MC_PANEL}`}>
         <AiUsageSkel skin="mission-control" />
       </div>
-    </>
+    </div>
   )
 }
 
@@ -536,29 +604,36 @@ const NEON_PANEL = 'rounded-lg border border-primary/30 bg-[color-mix(in_srgb,va
 function NeonGridSkeleton() {
   return (
     <div className="relative min-h-[70vh]">
-      <Head wide />
-      {/* Pro: 2-up cells (Total + Collections); the slots-left cell is dropped. */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
-        {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className={NEON_CELL}>
-            <Skeleton className="h-6 w-14" />
-            <Skeleton className="mt-1.5 h-3 w-20" />
-          </div>
-        ))}
-      </div>
-      <div className="grid items-start gap-4 lg:grid-cols-[1.3fr_1fr]">
-        <div className={NEON_PANEL}><SectionLabel /><RowsSkel /></div>
-        <div className={NEON_PANEL}>
+      <div className="relative z-10">
+        <Head wide />
+        {/* Pro: 2-up cells (Total + Collections); the slots-left cell is dropped. */}
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className={NEON_CELL}>
+              <Skeleton className="h-6 w-14" />
+              <Skeleton className="mt-1.5 h-3 w-20" />
+            </div>
+          ))}
+        </div>
+        {/* Pinned section */}
+        <div className={`${NEON_PANEL} mb-4`}>
           <SectionLabel />
-          <CollListSkel />
-          <div className="mt-5">
+          <RowsSkel count={5} />
+        </div>
+        <div className="grid items-start gap-4 lg:grid-cols-[1.3fr_1fr]">
+          <div className={NEON_PANEL}><SectionLabel /><RowsSkel count={7} /></div>
+          <div className={NEON_PANEL}>
             <SectionLabel />
-            <SegmentsSkel />
+            <CollListSkel />
+            <div className="mt-5">
+              <SectionLabel />
+              <SegmentsSkel />
+            </div>
           </div>
         </div>
-      </div>
-      <div className={`mt-6 ${NEON_PANEL}`}>
-        <AiUsageSkel skin="neon-grid" />
+        <div className={`mt-6 ${NEON_PANEL}`}>
+          <AiUsageSkel skin="neon-grid" />
+        </div>
       </div>
     </div>
   )
@@ -567,44 +642,62 @@ function NeonGridSkeleton() {
 interface HoloSkelProps {
   children: ReactNode
   className?: string
+  innerClassName?: string
 }
 
 // Holographic foil card chrome (mirrors HoloCard).
-function HoloSkel({ children, className }: HoloSkelProps) {
+function HoloSkel({ children, className, innerClassName }: HoloSkelProps) {
   return (
     <div className={`ds-holo-foil rounded-[20px] ${className ?? ''}`}>
-      <div className="ds-holo-inner rounded-[18.5px] p-[22px]">{children}</div>
+      <div className={`ds-holo-inner rounded-[18.5px] ${innerClassName ?? 'p-[22px]'}`}>{children}</div>
     </div>
   )
 }
 
 function HolographicSkeleton() {
   return (
-    <>
-      <header className="mb-6 space-y-2">
+    <div>
+      <header className="mb-6">
         <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-8 w-60" />
+        <Skeleton className="mt-1 h-8 w-60" />
       </header>
-      {/* Hero + a single Collections card (the vanity Favorites/slots cards are dropped). */}
+      {/* Slim hero (number + bar in one row) + a single one-line Collections card. */}
       <div className="mb-5 grid grid-cols-[1.6fr_1fr] gap-4">
-        <HoloSkel>
-          <Skeleton className="h-10 w-28" />
-          <Skeleton className="mt-1 h-3 w-40" />
-          <Skeleton className="mt-3 h-[7px] w-full rounded-full" />
+        <HoloSkel className="relative overflow-hidden" innerClassName="px-4 py-3 sm:px-5">
+          {/* number text-3xl leading-none + mt-1 + label text-[13px] — mirrored for scale-correct height. */}
+          <div className="flex h-full items-center gap-3 sm:gap-5">
+            <div className="shrink-0">
+              <TextSkel className="w-8 text-3xl font-extrabold leading-none" inset="inset-y-[12%]" />
+              <TextSkel className="mt-1 w-16 text-[13px]" inset="inset-y-[18%]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-[7px] w-full rounded-full" />
+              <TextSkel className="mt-2 w-20 text-[13px]" inset="inset-y-[18%]" />
+            </div>
+          </div>
         </HoloSkel>
+        <HoloSkel innerClassName="px-4 py-3 sm:px-5">
+          <div className="flex h-full items-baseline gap-2">
+            <TextSkel className="w-6 text-3xl font-extrabold leading-none" inset="inset-y-[12%]" />
+            <TextSkel className="w-14 text-[12.5px]" inset="inset-y-[18%]" />
+          </div>
+        </HoloSkel>
+      </div>
+      {/* Pinned section */}
+      <div className="mb-4">
         <HoloSkel>
-          <Skeleton className="h-8 w-12" />
-          <Skeleton className="mt-1 h-3 w-20" />
+          <SectionLabel />
+          <RowsSkel count={5} />
         </HoloSkel>
       </div>
       <div className="grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
-        <HoloSkel><SectionLabel /><RowsSkel /></HoloSkel>
+        <HoloSkel className="relative overflow-hidden"><SectionLabel /><RowsSkel count={7} /></HoloSkel>
         <HoloSkel><SectionLabel count /><CollListSkel /></HoloSkel>
       </div>
       <div className="mt-4">
         <HoloSkel><AiUsageSkel skin="holographic" /></HoloSkel>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -613,17 +706,17 @@ function HolographicSkeleton() {
 // classic dashboard.
 function ClassicSkeleton({ isPro }: SkinSkeletonProps) {
   return (
-    <div className="flex flex-col gap-4 sm:gap-6">
-      <div className="hidden space-y-2 sm:block">
+    <>
+      <div className="hidden sm:block">
         <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-4 w-56" />
+        <Skeleton className="mt-1 h-4 w-56" />
       </div>
       <StatsCardsSkeleton />
       <CollectionsGridSkeleton />
       <PinnedSkeleton />
       <RecentItemsSkeleton />
       {isPro && <ClassicAiUsageSkel />}
-    </div>
+    </>
   )
 }
 

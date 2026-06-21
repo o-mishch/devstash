@@ -14,10 +14,12 @@ interface HoloCardProps {
   children: ReactNode
   className?: string
   href?: string
+  /** Override the default inner padding (top widgets use a slimmer pad than content cards). */
+  innerClassName?: string
 }
 
-function HoloCard({ children, className, href }: HoloCardProps) {
-  const inner = <div className="ds-holo-inner rounded-[18.5px] p-[22px]">{children}</div>
+function HoloCard({ children, className, href, innerClassName }: HoloCardProps) {
+  const inner = <div className={`ds-holo-inner rounded-[18.5px] ${innerClassName ?? 'p-[22px]'}`}>{children}</div>
   if (href) {
     return (
       <Link href={href} prefetch={false} className={`ds-holo-foil block rounded-[20px] ${className ?? ''}`}>{inner}</Link>
@@ -45,21 +47,24 @@ export async function HolographicSkin(data: DashboardSkinData) {
           so those vanity cards are dropped. The hero already shows the total, leaving Collections as
           the one useful secondary count. */}
       <div className="mb-5 grid grid-cols-[1.6fr_1fr] gap-4">
-        <HoloCard className="relative overflow-hidden">
-          <div className="flex h-full flex-col justify-center p-1">
-            <TotalItemsReveal variant="pop">
-              <div className="text-4xl font-extrabold leading-none tracking-[-0.03em]">{stats.totalItems}</div>
-              <div className="mt-1 text-[13px] text-muted-foreground">{usageLabel(usage)}</div>
+        <HoloCard className="relative overflow-hidden" innerClassName="px-4 py-3 sm:px-5">
+          <div className="flex h-full items-center gap-3 sm:gap-5">
+            <TotalItemsReveal variant="pop" className="shrink-0">
+              <div className="text-3xl font-extrabold leading-none tracking-[-0.03em]">{stats.totalItems}</div>
+              <div className="mt-1 text-[13px] text-muted-foreground">items stashed</div>
             </TotalItemsReveal>
-            <div className="mt-3 h-[7px] overflow-hidden rounded-full bg-foreground/10">
-              <i className="block h-full rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-pink-500" style={{ width: `${usage.isPro ? 100 : usage.pct}%` }} />
+            <div className="min-w-0 flex-1">
+              <div className="h-[7px] overflow-hidden rounded-full bg-foreground/10">
+                <i className="block h-full rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-pink-500" style={{ width: `${usage.isPro ? 100 : usage.pct}%` }} />
+              </div>
+              <div className="mt-2 text-[13px] text-muted-foreground">{usageLabel(usage)}</div>
             </div>
           </div>
         </HoloCard>
-        <HoloCard href="/collections">
-          <div className="flex h-full flex-col justify-center">
+        <HoloCard href="/collections" innerClassName="px-4 py-3 sm:px-5">
+          <div className="flex h-full items-baseline gap-2">
             <div className="text-3xl font-extrabold leading-none">{collectionStats.totalCollections}</div>
-            <div className="mt-1 text-[12.5px] text-muted-foreground">Collections</div>
+            <div className="text-[12.5px] text-muted-foreground">Collections</div>
           </div>
         </HoloCard>
       </div>

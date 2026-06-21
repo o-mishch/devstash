@@ -36,9 +36,12 @@ export async function AuroraSkin(data: DashboardSkinData) {
       ? []
       : [{ icon: Zap, value: slotsLeftLabel(usage), label: 'Slots left', color: '#10b981', href: undefined as string | undefined }]),
   ]
-  // Centered stat cards — the value is large and centered so a lone Collections card reads as an
-  // intentional stat (it stretches to the hero's height) rather than a sparse box with a content gap.
-  const tileClass = 'ds-glass flex flex-col items-center justify-center gap-2 rounded-2xl p-6 text-center transition-transform hover:-translate-y-0.5'
+  // Slim horizontal stat cards — icon + value + label on one line, matched to the slimmed hero. A lone
+  // Collections card (Pro) centers its row; the free pair (Collections + Slots left) left-aligns.
+  const loneTile = tiles.length === 1
+  const tileClass = loneTile
+    ? 'ds-glass flex items-center justify-center gap-3 rounded-2xl px-5 py-3 text-center transition-transform hover:-translate-y-0.5'
+    : 'ds-glass flex items-center gap-3 rounded-2xl px-4 py-3 transition-transform hover:-translate-y-0.5'
 
   return (
     <div className="relative">
@@ -56,19 +59,18 @@ export async function AuroraSkin(data: DashboardSkinData) {
             (so the Slots tile pairs with Collections below it). Type distribution moved to its own
             full-width card below so the hero stays compact and the stat cards aren't oversized. */}
         <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
-          <div className={`ds-glass flex items-center gap-6 rounded-2xl p-6 ${isPro ? '' : 'col-span-2 lg:col-span-2'}`}>
+          <div className={`ds-glass flex items-center gap-4 rounded-2xl px-5 py-3 ${isPro ? '' : 'col-span-2 lg:col-span-2'}`}>
             <div
-              className="ds-ring relative grid size-[120px] shrink-0 place-items-center rounded-full"
+              className="ds-ring relative grid size-[64px] shrink-0 place-items-center rounded-full"
               style={{ '--ds-pct': usage.isPro ? 100 : usage.pct } as CSSProperties}
             >
               <TotalItemsReveal variant="pop" align="center" className="relative text-center">
-                <b className="block text-3xl font-extrabold">{stats.totalItems}</b>
-                <span className="text-[11px] text-muted-foreground">total items</span>
+                <b className="block text-xl font-extrabold leading-none">{stats.totalItems}</b>
               </TotalItemsReveal>
             </div>
             <div className="min-w-0">
-              <h3 className="text-base font-bold">{usageLabel(usage)}</h3>
-              <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+              <h3 className="text-sm font-bold sm:text-base">{usageLabel(usage)}</h3>
+              <p className="mt-1 hidden text-[13px] leading-snug text-muted-foreground sm:block">
                 {usage.isPro
                   ? 'You have unlimited items, files & AI with Pro.'
                   : `You're using ${usage.pct}% of your free tier. Upgrade to Pro for unlimited items, files & AI.`}
@@ -80,12 +82,12 @@ export async function AuroraSkin(data: DashboardSkinData) {
             const inner = (
               <>
                 <span
-                  className="grid size-10 place-items-center rounded-xl"
+                  className="grid size-9 shrink-0 place-items-center rounded-xl"
                   style={{ background: `color-mix(in srgb, ${t.color} 16%, transparent)`, color: t.color }}
                 >
-                  <t.icon className="size-[19px]" />
+                  <t.icon className="size-[18px]" />
                 </span>
-                <div className="text-4xl font-extrabold leading-none">{t.value}</div>
+                <div className="text-2xl font-extrabold leading-none">{t.value}</div>
                 <div className="text-[12.5px] text-muted-foreground">{t.label}</div>
               </>
             )

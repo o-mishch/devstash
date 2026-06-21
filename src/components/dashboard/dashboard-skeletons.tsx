@@ -71,7 +71,7 @@ export function PinnedSkeleton() {
     <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <SkeletonCardHeader icon={Pin} title="Pinned" />
       <CardContent>
-        <DashboardListSkeleton count={3} />
+        <DashboardListSkeleton count={5} />
       </CardContent>
     </Card>
   )
@@ -82,7 +82,7 @@ export function RecentItemsSkeleton() {
     <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <SkeletonCardHeader icon={History} title="Recent Items" />
       <CardContent>
-        <DashboardListSkeleton count={3} />
+        <DashboardListSkeleton count={7} />
       </CardContent>
     </Card>
   )

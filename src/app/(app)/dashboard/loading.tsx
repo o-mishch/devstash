@@ -10,16 +10,19 @@ import { DashboardSkinFallback } from '@/components/dashboard/skins/skeletons'
 // (it re-resolves from the DB + Pro gate), so a stale cookie only means a brief skeleton mismatch,
 // never wrong content. Falls back to the default skin on first ever load (no cookie yet).
 //
-// isPro is derived from the skin (there is no Pro cookie): a Pro-only skin only ever loads for a Pro
-// user — page.tsx downgrades a stored Pro skin to classic for free users — so the skeleton can assume
-// Pro. For the free skins (classic/aurora/editorial) Pro is unknown here, so the non-Pro layout is
-// assumed; page.tsx's own Suspense fallback carries the real flag for the streaming render, making any
-// mismatch a brief first-paint flash only.
+// isPro: a Pro-only skin only ever loads for a Pro user (page.tsx downgrades a stored Pro skin to
+// classic for free users), so those always assume Pro. The free skins (classic/aurora/editorial) can
+// be used by Pro users too and the skin can't reveal that, so we read the ds-pro cookie written by
+// AppUserFlagsInitializer to render the matching Pro/free layout. Until that cookie exists (first ever
+// load) we assume free; page.tsx's own Suspense fallback always carries the real flag, so any mismatch
+// is a brief first-paint flash only.
 export default async function DashboardLoading() {
-  const skin = normalizeUiSkin((await cookies()).get('ds-skin')?.value)
+  const cookieStore = await cookies()
+  const skin = normalizeUiSkin(cookieStore.get('ds-skin')?.value)
+  const isPro = isProSkin(skin) || cookieStore.get('ds-pro')?.value === '1'
   return (
     <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6" data-skin={skin}>
-      <DashboardSkinFallback skin={skin} isPro={isProSkin(skin)} />
+      <DashboardSkinFallback skin={skin} isPro={isPro} />
     </div>
   )
 }

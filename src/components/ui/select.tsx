@@ -90,7 +90,9 @@ function SelectContent({
         // default `absolute` strategy intermittently mis-computes against the transformed ancestor
         // and the popup falls back to an unpositioned full-width box; `fixed` is immune to that.
         positionMethod="fixed"
-        className="isolate z-50"
+        // z-[60] keeps the dropdown above the bottom sheet / drawer (z-50) so it paints over the
+        // content editor inside it, not behind. Matches the Popover convention (see popover.tsx).
+        className="isolate z-[60]"
       >
         <SelectPrimitive.Popup
           data-slot="select-content"
