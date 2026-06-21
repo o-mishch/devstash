@@ -52,6 +52,50 @@ export async function deleteFromS3(key: string): Promise<void> {
   }
 }
 
+export interface RangeTextRead {
+  text: string
+  // True when the object is larger than the BYTE window we pulled — i.e. we did not read the whole file.
+  // This is a byte-level signal, NOT a character-level one: the caller still char-bounds the decoded
+  // text to its parse window and must OR this flag with its own char-truncation result.
+  truncated: boolean
+}
+
+// Worst-case UTF-8 bytes per character — sizes the byte range so it always covers `maxChars` characters.
+const UTF8_MAX_BYTES_PER_CHAR = 4
+
+// Reads only the leading bytes of an S3 object needed to cover a `maxChars` parse window — a bounded
+// `Range: bytes=0-N` GET, never the whole object (Context7-verified AWS SDK v3: the Body is an
+// unconsumed stream that must be read exactly once; a `0-N` range on a smaller object simply returns the
+// available bytes, so no HEAD/size probe is needed). `truncated` is derived from the response's
+// `ContentRange` (`bytes 0-{end}/{total}`) — the object is bigger than what we pulled — with no second
+// request. Decodes once as UTF-8: a non-UTF-8 byte, or a multibyte char split at the chosen byte
+// boundary (the last char of the window), degrades to a replacement char — tolerated, since
+// `boundaryTruncate` trims back to the last newline and the parser drops any partial trailing line.
+export async function getTextFromS3(key: string, maxChars: number): Promise<RangeTextRead> {
+  const lastByte = maxChars * UTF8_MAX_BYTES_PER_CHAR - 1
+  const response = await getClient().send(
+    new GetObjectCommand({ Bucket: getBucket(), Key: key, Range: `bytes=0-${lastByte}` }),
+  )
+  if (!response.Body) throw new Error(`S3 object ${key} returned no body`)
+  // Consume the stream exactly once — an unconsumed body leaks the socket and cannot be re-read.
+  const text = await response.Body.transformToString('utf-8')
+
+  // Derive `truncated` (object bigger than the byte window) most-authoritative source first:
+  //   1. ContentRange `bytes 0-{end}/{total}` gives the real object size — definitive.
+  //   2. No range total, but ContentLength < the bytes we requested proves a short read → whole object.
+  //   3. Neither provable (no header, full-length read) → over-disclose: a feature that must never hide
+  //      a clipped source prefers a false "truncated" to a false "complete".
+  const requestedBytes = lastByte + 1
+  const pulledBytes = response.ContentLength ?? requestedBytes
+  const total = Number(response.ContentRange?.split('/').pop())
+  let truncated: boolean
+  if (Number.isFinite(total)) truncated = total > pulledBytes
+  else if (response.ContentLength !== undefined) truncated = response.ContentLength > requestedBytes
+  else truncated = true
+  log.info({ key, pulledBytes, truncated }, 'getTextFromS3 range read')
+  return { text, truncated }
+}
+
 export async function getSignedDownloadUrl(
   key: string,
   expiresIn = SIGNED_URL_TTL_SECONDS,

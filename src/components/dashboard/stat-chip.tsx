@@ -1,13 +1,21 @@
+import type { CSSProperties } from 'react'
 import type { LucideIcon } from 'lucide-react'
 
 // Responsive: two-up on mobile (so labels never truncate), even strip on sm+.
-// STAT_CHIP_BASE holds the sizing/layout so the loading skeleton can mirror the
-// chip exactly; STAT_CHIP_CLASS adds the `card-interactive` hover lift + focus ring
-// for the real clickable chips.
+// STAT_CHIP_BASE holds the sizing/layout — INCLUDING the 2px left-border gutter — so the loading
+// skeleton can mirror the chip exactly with no 1px shift on load; STAT_CHIP_CLASS adds the
+// `card-interactive` hover/press lift + focus ring and recolors that left border to the per-card
+// accent (dimmed at rest, brightening to full color on hover/press) for the real clickable chips.
 export const STAT_CHIP_BASE =
-  'flex min-w-0 grow basis-[calc(50%-0.25rem)] items-center gap-3 rounded-xl border bg-card px-3 py-2.5 sm:basis-0'
+  'flex min-w-0 grow basis-[calc(50%-0.25rem)] items-center gap-3 rounded-xl border border-l-2 bg-card px-3 py-2.5 sm:basis-0'
 
-export const STAT_CHIP_CLASS = `${STAT_CHIP_BASE} card-interactive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`
+export const STAT_CHIP_CLASS = `${STAT_CHIP_BASE} card-interactive border-l-[color-mix(in_oklab,var(--stat-accent),transparent_45%)] hover:border-l-[var(--stat-accent)] active:border-l-[var(--stat-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`
+
+// Feeds the per-card accent into STAT_CHIP_CLASS's left border via a CSS var. Apply to the chip's
+// root element alongside STAT_CHIP_CLASS.
+export function statAccentStyle(color: string): CSSProperties {
+  return { '--stat-accent': color } as CSSProperties
+}
 
 // Per-stat accent palette (distinct from the item-type colors) — one source of truth for the
 // dashboard stat strip, shared by the chips and the Total Items fan-out launcher.

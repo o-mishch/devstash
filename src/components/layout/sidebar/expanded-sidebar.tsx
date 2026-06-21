@@ -10,6 +10,7 @@ import {
   PanelLeft,
   Home,
   Archive,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -55,6 +56,19 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
       )}
 
       <ScrollArea className="flex-1 min-h-0 py-3 [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
+        {/* Brain Dump entry — visible on desktop sidebar + mobile drawer */}
+        <div className="space-y-0.5 px-2 pb-1">
+          <Link
+            href="/parse"
+            onClick={onClose}
+            prefetch={true}
+            className={sidebarLinkClass(pathname === '/parse' || pathname.startsWith('/parse/'))}
+          >
+            <Sparkles className="size-4 shrink-0" />
+            <span>Brain Dump</span>
+          </Link>
+        </div>
+        <Separator className="my-2 mx-4 w-auto" />
         {/* Mobile-only: home navigation at the top of the drawer */}
         {onClose && !onToggle && (
           <>

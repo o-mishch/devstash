@@ -7,6 +7,7 @@ import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-it
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { OrbitingCircles } from '@/components/ui/orbiting-circles'
 import { SkinWidget } from './skin-widget'
+import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import { computeUsage, typeColor, resolveSkinData, slotsLeftLabel, type DashboardSkinData } from './shared'
 
 // Orbital Core (Pro) — item-type constellation that genuinely orbits a glowing core. A single
@@ -84,8 +85,8 @@ export async function OrbitalSkin(data: DashboardSkinData) {
           })}
         </div>
 
-        <div className="flex-1 rounded-2xl border border-border bg-foreground/[0.02] p-5">
-          <SkinWidget icon={<History />} title="Recent">
+        <div className="flex-1 relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
+          <SkinWidget icon={<History />} title="Recent" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.orbital}>
             {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
           </SkinWidget>
         </div>
@@ -93,14 +94,14 @@ export async function OrbitalSkin(data: DashboardSkinData) {
 
       <div className="flex flex-col gap-5">
         {hasPinned && (
-          <div className="rounded-2xl border border-border bg-foreground/[0.02] p-5">
-            <SkinWidget icon={<Pin />} title="Pinned">
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
+            <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.orbital}>
               <DashboardPinnedItems initialItems={pinned} />
             </SkinWidget>
           </div>
         )}
-        <div className="rounded-2xl border border-border bg-foreground/[0.02] p-5">
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+        <div className="relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.orbital}>
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </div>
@@ -109,7 +110,7 @@ export async function OrbitalSkin(data: DashboardSkinData) {
 
       {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
       {isPro && (
-        <div className="mt-6 rounded-2xl border border-border bg-foreground/[0.02] p-5">
+        <div className="mt-6 relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
           <AiUsageWidget skin="orbital" />
         </div>
       )}

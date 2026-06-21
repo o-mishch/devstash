@@ -1,6 +1,6 @@
 import { authedRoute } from '@/lib/api/route'
 import { json, problem } from '@/lib/api/http'
-import { getAiUsage } from '@/lib/infra/rate-limit'
+import { getAiUsage, getBrainDumpUsage } from '@/lib/infra/rate-limit'
 
 // Read-only AI usage meter. Unlike the POST /ai/* routes (which delegate the Pro gate to
 // runProAiGeneration), this route does its own `isPro` 403 — and it carries NO `rateLimit` option:
@@ -9,6 +9,6 @@ import { getAiUsage } from '@/lib/infra/rate-limit'
 // session (IDOR-safe).
 export const GET = authedRoute({}, async ({ userId, isPro }) => {
   if (!isPro) return problem(403, 'This feature requires a Pro subscription.')
-  const features = await getAiUsage(userId)
-  return json({ features })
+  const [features, brainDump] = await Promise.all([getAiUsage(userId), getBrainDumpUsage(userId)])
+  return json({ features, brainDump })
 })

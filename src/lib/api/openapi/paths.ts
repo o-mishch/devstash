@@ -11,6 +11,7 @@ import {
   itemsQueryParam,
   togglePinnedInput,
   lightItemSchema,
+  fullItemSchema,
   itemsPageSchema,
   itemDetailsSchema,
   itemSavedDetailsSchema,
@@ -36,6 +37,17 @@ import {
   aiOptimizedPromptOutput,
   aiTagsOutput,
   aiUsageOutput,
+  brainDumpInput,
+  brainDumpJobCreatedSchema,
+  brainDumpJobSnapshotSchema,
+  brainDumpJobCollectionsInput,
+  brainDumpItemPatchInput,
+  brainDumpDraftItemSchema,
+  brainDumpCommitOutput,
+  brainDumpJobListSchema,
+  brainDumpSourceListSchema,
+  brainDumpJobIdParam,
+  brainDumpItemParams,
 } from '../schemas/ai'
 import { searchQueryParam, searchResultSchema } from '../schemas/search'
 import { getUploadUrlInput, deleteUploadQuery, uploadUrlResultSchema } from '../schemas/upload'
@@ -166,6 +178,18 @@ export const paths: ZodOpenApiPathsObject = {
     },
   },
   '/items/{id}': {
+    get: {
+      summary: 'Get a single item (powers the source deep-link drawer)',
+      requestParams: { path: idParam },
+      responses: {
+        200: {
+          description: 'The item',
+          content: { 'application/json': { schema: fullItemSchema } },
+        },
+        401: unauthorized,
+        404: problem('Item not found'),
+      },
+    },
     patch: {
       summary: 'Update an item',
       requestParams: { path: idParam },
@@ -445,6 +469,161 @@ export const paths: ZodOpenApiPathsObject = {
         403: problem('Pro subscription required'),
         422: problem('Validation failed'),
         429: rateLimited,
+      },
+    },
+  },
+  '/ai/brain-dump': {
+    get: {
+      summary: 'List the current user\'s in-progress brain dump jobs',
+      responses: {
+        200: {
+          description: 'In-progress parse jobs',
+          content: { 'application/json': { schema: brainDumpJobListSchema } },
+        },
+        401: unauthorized,
+      },
+    },
+    post: {
+      summary: 'Start a Brain Dump parse job — Pro, 1/hour',
+      requestBody: { content: { 'application/json': { schema: brainDumpInput } } },
+      responses: {
+        201: {
+          description: 'The created parse job',
+          content: { 'application/json': { schema: brainDumpJobCreatedSchema } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        422: problem('Validation failed'),
+        429: rateLimited,
+      },
+    },
+  },
+  '/ai/brain-dump/sources': {
+    get: {
+      summary: 'List eligible text file items for the "Select from my files" picker',
+      responses: {
+        200: {
+          description: 'Eligible source file items',
+          content: { 'application/json': { schema: brainDumpSourceListSchema } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+      },
+    },
+  },
+  '/ai/brain-dump/{jobId}': {
+    get: {
+      summary: 'Snapshot of a brain dump job (status, progress, drafts) — resume/poll',
+      requestParams: { path: brainDumpJobIdParam },
+      responses: {
+        200: {
+          description: 'The job snapshot',
+          content: { 'application/json': { schema: brainDumpJobSnapshotSchema } },
+        },
+        401: unauthorized,
+        404: problem('Parse job not found'),
+      },
+    },
+    patch: {
+      summary: 'Set the commit-time collection target (new-collection name + existing ids)',
+      requestParams: { path: brainDumpJobIdParam },
+      requestBody: { content: { 'application/json': { schema: brainDumpJobCollectionsInput } } },
+      responses: {
+        204: { description: 'Collection target updated' },
+        401: unauthorized,
+        404: problem('Parse job not found'),
+        422: problem('Validation failed'),
+      },
+    },
+    delete: {
+      summary: 'Discard a brain dump job (delete drafts + sourceText; keep the source item; cancel run if processing)',
+      requestParams: { path: brainDumpJobIdParam },
+      responses: {
+        204: { description: 'Job discarded' },
+        401: unauthorized,
+        404: problem('Parse job not found'),
+      },
+    },
+  },
+  '/ai/brain-dump/{jobId}/stream': {
+    get: {
+      summary: 'SSE stream of a brain dump job — snapshot replay then live drafts',
+      requestParams: { path: brainDumpJobIdParam },
+      responses: {
+        200: {
+          description: 'Server-sent events: snapshot, item, progress, done, error',
+          content: { 'text/event-stream': { schema: z.string() } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        404: problem('Parse job not found'),
+      },
+    },
+  },
+  '/ai/brain-dump/{jobId}/items/{itemId}': {
+    patch: {
+      summary: 'Edit or reclassify a draft item (drag → bucket)',
+      requestParams: { path: brainDumpItemParams },
+      requestBody: { content: { 'application/json': { schema: brainDumpItemPatchInput } } },
+      responses: {
+        200: {
+          description: 'The updated draft item',
+          content: { 'application/json': { schema: brainDumpDraftItemSchema } },
+        },
+        401: unauthorized,
+        404: problem('Draft item not found'),
+        422: problem('Validation failed'),
+      },
+    },
+    delete: {
+      summary: 'Discard a draft item',
+      requestParams: { path: brainDumpItemParams },
+      responses: {
+        204: { description: 'Draft item deleted' },
+        401: unauthorized,
+        404: problem('Draft item not found'),
+      },
+    },
+  },
+  '/ai/brain-dump/{jobId}/items/{itemId}/commit': {
+    post: {
+      summary: 'Commit a single draft into a real item (Save now)',
+      requestParams: { path: brainDumpItemParams },
+      responses: {
+        200: {
+          description: 'Number of items created (1, or 0 when the create failed)',
+          content: { 'application/json': { schema: brainDumpCommitOutput } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        404: problem('Draft item not found'),
+      },
+    },
+  },
+  '/ai/brain-dump/{jobId}/trash': {
+    delete: {
+      summary: 'Empty the trash — permanently delete all trashed drafts of a job',
+      requestParams: { path: brainDumpJobIdParam },
+      responses: {
+        204: { description: 'Trashed drafts deleted' },
+        401: unauthorized,
+        404: problem('Parse job not found'),
+      },
+    },
+  },
+  '/ai/brain-dump/{jobId}/commit': {
+    post: {
+      summary: 'Commit all drafts into real items and delete the job',
+      requestParams: { path: brainDumpJobIdParam },
+      responses: {
+        200: {
+          description: 'Number of items created',
+          content: { 'application/json': { schema: brainDumpCommitOutput } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        404: problem('Parse job not found'),
+        409: problem('Wait for parsing to finish before saving all items'),
       },
     },
   },

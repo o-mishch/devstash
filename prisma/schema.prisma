@@ -38,11 +38,13 @@ model User {
   createdAt                  DateTime              @default(now())
   updatedAt                  DateTime              @updatedAt
 
-  items       Item[]
-  collections Collection[]
-  itemTypes   ItemType[]
-  accounts    Account[]
-  sessions    Session[]
+  items        Item[]
+  collections  Collection[]
+  itemTypes    ItemType[]
+  accounts     Account[]
+  sessions     Session[]
+  aiParseJobs  AiParseJob[]
+  aiParseItems AiParseJobItem[]
 
   @@map("users")
 }
@@ -157,6 +159,8 @@ model Item {
   tags       Tag[]    @relation("ItemTags")
 
   collections ItemCollection[]
+  // Brain Dump parse jobs that reference this item as their source (SetNull on delete).
+  parseSources AiParseJob[] @relation("ItemParseSources")
 
   @@index([itemTypeId])
   @@index([userId, createdAt])
@@ -235,4 +239,76 @@ model Tag {
   items Item[] @relation("ItemTags")
 
   @@map("tags")
+}
+
+// ============================================
+// AI FILE SPLITTER — TEMPORARY STAGING TABLES
+// ============================================
+// One job per "brain dump" upload. `sourceText` holds the raw uploaded file while the AI streams
+// drafts; the row (and its items, via cascade) is DELETED on commit. These are draft/staging tables,
+// never long-lived storage.
+model AiParseJob {
+  id         String   @id @default(cuid())
+  status     String   @default("processing") // processing | completed | failed
+  progress   Int      @default(0) // 0-100 heuristic; determinate once the item count is known
+  sourceText String   @db.Text // raw upload; cleared with the row on commit
+  error      String?
+  // OpenAI background-run handle + replay cursor. The run lives on OpenAI's servers (background mode)
+  // so it survives our request ending; `streamCursor` is the last event `sequence_number` we fully
+  // processed at a clean line boundary, used as `starting_after` to resume without duplication.
+  openaiResponseId String?
+  streamCursor     Int?
+  // Collection target applied at commit. `collectionName` (seeded from the upload filename, editable)
+  // creates a new collection; `collectionIds` attaches to existing collections. Either, both, or
+  // neither — committed items join the union of both.
+  collectionName String?
+  collectionIds  String[] @default([])
+  // v1 source persistence: the durable stash Item this job was parsed from (a `note` for paste, a
+  // `file` for upload/select), always set at creation. Nullable only so `onDelete: SetNull` fires if
+  // the user later deletes the source item (job/drafts survive; re-parse is then disabled).
+  // `sourceName` is the display label (note title / file name); `truncated` records that the parse
+  // window was boundary-truncated because the source exceeded SPLIT_FILE_MAX_INPUT_CHARS (the stored
+  // source item itself is always full).
+  sourceItemId String?
+  sourceItem   Item?   @relation("ItemParseSources", fields: [sourceItemId], references: [id], onDelete: SetNull)
+  sourceName   String?
+  truncated    Boolean @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  userId String
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items  AiParseJobItem[]
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@map("ai_parse_jobs")
+}
+
+// One draft item produced by the splitter. `itemTypeName` is the BUCKET; dragging a card to another
+// bucket updates it before commit. `userId` is denormalized so item-level reads/writes are IDOR-safe
+// without a join through the job.
+model AiParseJobItem {
+  id           String   @id @default(cuid())
+  order        Int // generation order; drag updates ordering within a bucket
+  itemTypeName String // snippet | prompt | command | note | link | file | image
+  title        String
+  content      String?  @db.Text
+  url          String?
+  language     String?
+  description  String?  @db.Text
+  tags         String[]
+  // Soft-delete: a trashed draft moves to the board's Trash bucket instead of being removed. It is
+  // excluded from commit and can be restored (trashed=false) or permanently deleted (row removed).
+  trashed      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  jobId String
+  job   AiParseJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId String
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([userId])
+  @@map("ai_parse_job_items")
 }

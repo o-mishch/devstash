@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DevStash · AI File-to-Items Splitter — 10 concepts</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html,body{background:#070709;color:#e6e6ea}
+    ::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:99px}
+    @keyframes pop{from{opacity:0;transform:translateY(10px) scale(.95)}to{opacity:1;transform:none}}
+    .pop{animation:pop .42s cubic-bezier(.16,1,.3,1) both}
+    .leaving{animation:leave .26s ease forwards}
+    @keyframes leave{to{opacity:0;transform:scale(.9) translateX(12px);margin-bottom:-6px}}
+    @keyframes shiny{0%,90%,100%{background-position:calc(-100% - 120px) 0}30%,60%{background-position:calc(100% + 120px) 0}}
+    .shiny{--w:120px;color:#7c7c86;background:linear-gradient(90deg,transparent,#fff,transparent);background-size:var(--w) 100%;background-repeat:no-repeat;-webkit-background-clip:text;background-clip:text;animation:shiny 4s linear infinite}
+    @keyframes ring{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.85);opacity:0}}
+    .ring{animation:ring 2.4s ease-out infinite}
+    .beam-line{stroke-dasharray:4 6;animation:dash 1s linear infinite}@keyframes dash{to{stroke-dashoffset:-20}}
+    @keyframes beam{to{background-position:200% center}}
+    .receiving::after{content:'';position:absolute;inset:0;border-radius:1rem;padding:1.5px;background:linear-gradient(90deg,var(--c),#fff,var(--c));background-size:200% auto;animation:beam 1.4s linear infinite;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+    .fade-list{-webkit-mask:linear-gradient(to bottom,transparent,#000 10px,#000 calc(100% - 10px),transparent);mask:linear-gradient(to bottom,transparent,#000 10px,#000 calc(100% - 10px),transparent)}
+    [data-bucket].drag-over{outline:2px dashed rgba(139,92,246,.7);outline-offset:-3px;background:rgba(139,92,246,.05)}
+    .dragging{opacity:.35}
+    .progress-indet{background:linear-gradient(90deg,transparent,#8b5cf6,transparent);background-size:40% 100%;background-repeat:no-repeat;animation:indet 1.1s ease-in-out infinite}
+    @keyframes indet{0%{background-position:-40% 0}100%{background-position:140% 0}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .spin-slow{animation:spin 60s linear infinite}
+    .seg button{transition:all .15s}
+    .seg button.active{background:linear-gradient(90deg,#7c5cff,#4f7cff);color:#fff}
+    .item{cursor:grab}.item:active{cursor:grabbing}
+    @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+  </style>
+</head>
+<body class="font-sans antialiased">
+  <!-- SWITCHER -->
+  <div class="sticky top-0 z-30 border-b border-white/10 bg-[#070709]/85 backdrop-blur">
+    <div class="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3 px-4 py-3">
+      <span class="flex items-center gap-2 text-sm"><span class="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 text-xs font-bold text-white">D</span><b>AI File Splitter</b><span class="text-neutral-500">· 10 concepts</span></span>
+      <div class="seg flex flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[.03] p-1 text-xs font-medium text-neutral-300" id="seg"></div>
+      <div class="ml-auto flex items-center gap-2">
+        <button id="replay" class="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-neutral-300 hover:text-white">↻ Replay stream</button>
+        <button id="saveAll" disabled class="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">✓ Save all <span id="saveN" class="tabular-nums">0</span></button>
+      </div>
+    </div>
+    <div class="mx-auto flex max-w-[1500px] items-center gap-3 px-4 pb-2">
+      <span id="dot" class="size-2 animate-pulse rounded-full bg-violet-400"></span>
+      <span id="status" class="shiny text-xs font-semibold">AI is reading your file…</span>
+      <span class="text-xs text-neutral-500"><span id="total" class="tabular-nums text-neutral-300">0</span> items</span>
+      <div class="ml-2 h-1 flex-1 overflow-hidden rounded-full bg-white/5"><div id="bar" class="progress-indet h-full w-full"></div></div>
+      <span id="conceptDesc" class="hidden text-xs text-neutral-500 sm:inline"></span>
+    </div>
+  </div>
+
+  <div id="stage" class="mx-auto max-w-[1500px] px-4 py-5"></div>
+
+  <!-- DRAWER (editable draft) -->
+  <div id="scrim" class="fixed inset-0 z-40 hidden bg-black/50 backdrop-blur-sm"></div>
+  <aside id="drawer" class="fixed right-0 top-0 z-50 hidden h-full w-full max-w-md translate-x-full overflow-y-auto border-l border-white/10 bg-neutral-950 p-5 transition-transform duration-300">
+    <div class="mb-4 flex items-center justify-between">
+      <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">● Draft — not saved yet</span>
+      <button id="drawerClose" class="rounded-lg p-1 text-neutral-400 hover:bg-white/10 hover:text-white">✕</button>
+    </div>
+    <label class="mb-1 block text-xs text-neutral-400">Title</label>
+    <input id="dTitle" class="mb-3 w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm focus:border-violet-500/50" />
+    <label class="mb-1 block text-xs text-neutral-400">Type (bucket)</label>
+    <select id="dType" class="mb-3 w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm focus:border-violet-500/50"></select>
+    <div id="dContentWrap" class="hidden"><label class="mb-1 block text-xs text-neutral-400">Content</label>
+      <textarea id="dContent" rows="6" class="mb-3 w-full rounded-lg border border-white/10 bg-black/40 p-2 font-mono text-xs focus:border-violet-500/50"></textarea></div>
+    <div id="dUrlWrap" class="hidden"><label class="mb-1 block text-xs text-neutral-400">URL</label>
+      <input id="dUrl" class="mb-3 w-full rounded-lg border border-white/10 bg-black/40 p-2 font-mono text-xs focus:border-violet-500/50" /></div>
+    <div id="dLangWrap" class="hidden"><label class="mb-1 block text-xs text-neutral-400">Language</label>
+      <input id="dLang" class="mb-3 w-full rounded-lg border border-white/10 bg-black/40 p-2 font-mono text-xs focus:border-violet-500/50" /></div>
+    <label class="mb-1 block text-xs text-neutral-400">Description</label>
+    <textarea id="dDesc" rows="3" class="mb-3 w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm focus:border-violet-500/50"></textarea>
+    <label class="mb-1 block text-xs text-neutral-400">Tags (comma separated)</label>
+    <input id="dTags" class="mb-5 w-full rounded-lg border border-white/10 bg-black/40 p-2 text-sm focus:border-violet-500/50" />
+    <div class="flex gap-2">
+      <button id="dSave" class="flex-1 rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110">Apply changes</button>
+      <button id="dSaveItem" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20">Save item now</button>
+    </div>
+    <p class="mt-3 text-xs text-neutral-500">"Apply" updates the draft (PATCH). "Save item now" commits just this one → it leaves the board (hybrid commit). Neither spends AI budget.</p>
+  </aside>
+
+  <div id="toasts" class="fixed bottom-4 right-4 z-[60] flex flex-col gap-2"></div>
+
+<script>
+/* ===================== shared data ===================== */
+const TYPES=[
+  {key:'snippet',label:'Snippets',color:'#3b82f6',ic:'M16 18l6-6-6-6M8 6l-6 6 6 6'},
+  {key:'prompt', label:'Prompts', color:'#8b5cf6',ic:'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'},
+  {key:'command',label:'Commands',color:'#f97316',ic:'M4 17l6-6-6-6M12 19h8'},
+  {key:'note',   label:'Notes',   color:'#fde047',ic:'M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5zM15 3v6h6'},
+  {key:'link',   label:'Links',   color:'#10b981',ic:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5'},
+];
+const TM=Object.fromEntries(TYPES.map(t=>[t.key,t]));
+const ic=(d,c,s)=>`<svg class="${s||'size-4'}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const noproto=u=>String(u||'').replace(/^https?:\/\//,'');
+
+const MOCK=[
+  {itemTypeName:'note',title:'Project Atlas — overview',description:'Analytics rewrite. Cut dashboard p95 from 4s to <1s by Q3.',tags:['atlas','planning'],src:'# Project Atlas — analytics rewrite, cut p95 4s→1s by Q3'},
+  {itemTypeName:'command',title:'Run the dev stack',language:'bash',content:'docker compose up -d db redis\nnpm run dev',tags:['setup'],src:'  docker compose up -d db redis && npm run dev'},
+  {itemTypeName:'snippet',title:'Debounce hook',language:'ts',content:'export const useDebounced=(v,ms=300)=>{\n  const [d,setD]=useState(v); ...\n}',tags:['react','hooks'],src:'export const useDebounced = (v, ms=300) => { ... }'},
+  {itemTypeName:'link',title:'Neon branching docs',url:'https://neon.tech/docs/branching',tags:['db'],src:'see https://neon.tech/docs/branching for dev/prod branches'},
+  {itemTypeName:'prompt',title:'PR review assistant',content:'You are a senior reviewer. List bugs first, then simplifications.',tags:['ai'],src:'PR review prompt: "You are a senior reviewer…"'},
+  {itemTypeName:'snippet',title:'Line-clamp util',language:'css',content:'.clamp-2{display:-webkit-box;-webkit-line-clamp:2}',tags:['css','ui'],src:'.clamp-2 { -webkit-line-clamp: 2 }'},
+  {itemTypeName:'command',title:'Reset local DB',language:'bash',content:'npx prisma migrate reset --force',tags:['prisma'],src:'  npx prisma migrate reset --force'},
+  {itemTypeName:'note',title:'Open question: shard by tenant or region?',description:'Decide before the storage migration.',tags:['decisions'],src:'open q: shard by tenant or region? decide before migration'},
+  {itemTypeName:'link',title:'dnd-kit multiple lists',url:'https://dndkit.com/react/guides/multiple-sortable-lists',tags:['frontend'],src:'dnd: https://dndkit.com/react/guides/multiple-sortable-lists'},
+  {itemTypeName:'prompt',title:'Changelog summarizer',content:'Summarize merged PR titles into Added / Fixed / Changed.',tags:['release'],src:'changelog prompt: summarize PRs into Added/Fixed/Changed'},
+  {itemTypeName:'snippet',title:'fetchJSON helper',language:'ts',content:'export const fetchJSON=(u)=>fetch(u).then(r=>r.json())',tags:['util'],src:'export const fetchJSON = (u) => fetch(u).then(r=>r.json())'},
+  {itemTypeName:'note',title:'Standup 06/20',description:'Storage migration blocked on schema decision.',tags:['atlas'],src:'standup 06/20: storage migration blocked on schema'},
+  {itemTypeName:'snippet',title:'cn() classnames helper',language:'ts',content:'export const cn=(...a)=>twMerge(clsx(a))',tags:['util'],src:'export const cn = (...a) => twMerge(clsx(a))'},
+  {itemTypeName:'link',title:'Motion layout animations',url:'https://motion.dev/docs/react-layout-animations',tags:['ui'],src:'motion: https://motion.dev/docs/react-layout-animations'},
+];
+
+/* ===================== engine state ===================== */
+const stage=document.getElementById('stage');
+let drafts=[],nid=1,timer=null,dragId=null,active='neural',saved=0;
+
+/* ===================== shared card + actions ===================== */
+function card(d,opt={}){
+  const t=TM[d.itemTypeName];
+  const e=document.createElement('div');
+  e.className='item pop group/c relative rounded-lg border border-white/10 bg-white/[.03] p-2 transition hover:border-white/20';
+  e.draggable=true; e.dataset.id=d.id; e.dataset.type=d.itemTypeName; e.style.borderLeft='2px solid '+t.color;
+  e.innerHTML=`<div class="flex items-start gap-1.5">
+      <span class="mt-px shrink-0">${ic(t.ic,t.color,'size-3')}</span>
+      <span class="min-w-0 flex-1 ${opt.clamp?'truncate':''} text-[11px] font-semibold leading-tight">${esc(d.title)}</span>
+      <button class="save shrink-0 text-emerald-400/50 opacity-0 hover:text-emerald-400 group-hover/c:opacity-100" title="Save now">${ic('M5 12l5 5L20 7','currentColor','size-3')}</button>
+      <button class="del shrink-0 text-white/25 opacity-0 hover:text-white group-hover/c:opacity-100" title="Discard">${ic('M18 6 6 18M6 6l12 12','currentColor','size-3')}</button>
+    </div>
+    ${!opt.tiny&&d.content?`<pre class="mt-1 ml-4 max-h-12 overflow-hidden rounded bg-black/40 p-1.5 font-mono text-[9px] leading-snug text-white/50">${esc(d.content)}</pre>`:''}
+    ${!opt.tiny&&d.description?`<p class="mt-1 ml-4 line-clamp-2 text-[10px] leading-snug text-neutral-400">${esc(d.description)}</p>`:''}
+    ${!opt.tiny&&d.url?`<p class="mt-1 ml-4 truncate font-mono text-[9px] text-emerald-400/80">${esc(noproto(d.url))}</p>`:''}
+    ${!opt.tiny?`<div class="mt-1 ml-4 flex flex-wrap items-center gap-1">${d.language?`<span class="rounded bg-white/5 px-1 font-mono text-[9px] text-neutral-400">${esc(d.language)}</span>`:''}${(d.tags||[]).slice(0,3).map(x=>`<span class="rounded-full bg-white/5 px-1.5 text-[9px] text-white/40">#${esc(x)}</span>`).join('')}</div>`:''}`;
+  e.querySelector('.del').onclick=ev=>{ev.stopPropagation();discard(d.id);};
+  e.querySelector('.save').onclick=ev=>{ev.stopPropagation();saveOne(d.id);};
+  e.onclick=()=>openDrawer(d.id);
+  e.addEventListener('dragstart',()=>{dragId=d.id;e.classList.add('dragging');});
+  e.addEventListener('dragend',()=>e.classList.remove('dragging'));
+  return e;
+}
+function appendCard(d,opt){const l=stage.querySelector(`[data-bucket="${d.itemTypeName}"] .cards`);if(l){l.appendChild(card(d,opt));l.scrollTop=l.scrollHeight;}}
+function removeCardEl(id){const el=stage.querySelector(`.item[data-id="${id}"]`);if(el){el.classList.add('leaving');setTimeout(()=>el.remove(),240);}}
+
+function discard(id){drafts=drafts.filter(x=>x.id!==id);removeCardEl(id);counts();}
+function saveOne(id){const d=drafts.find(x=>x.id===id);if(!d)return;drafts=drafts.filter(x=>x.id!==id);saved++;removeCardEl(id);counts();toast(`Saved "${d.title.slice(0,28)}" → library`);}
+function move(id,to){const d=drafts.find(x=>x.id===id);if(!d||d.itemTypeName===to)return;d.itemTypeName=to;const old=stage.querySelector(`.item[data-id="${id}"]`);if(old)old.remove();CONCEPTS[active].add?.(d);counts();}
+
+function counts(){
+  document.getElementById('total').textContent=drafts.length;
+  document.getElementById('saveN').textContent=drafts.length;
+  document.getElementById('saveAll').disabled=drafts.length===0;
+  TYPES.forEach(t=>{const n=drafts.filter(d=>d.itemTypeName===t.key).length;stage.querySelectorAll(`[data-count="${t.key}"]`).forEach(b=>b.textContent=n);});
+  if(typeof CONCEPTS[active].onCounts==='function')CONCEPTS[active].onCounts();
+}
+function toast(msg){const t=document.createElement('div');t.className='pop rounded-lg border border-white/10 bg-neutral-900 px-3 py-2 text-xs text-neutral-200 shadow-xl';t.textContent='✓ '+msg;document.getElementById('toasts').appendChild(t);setTimeout(()=>{t.classList.add('leaving');setTimeout(()=>t.remove(),240);},2600);}
+
+/* ===================== drawer ===================== */
+let drawerId=null;
+function openDrawer(id){
+  const d=drafts.find(x=>x.id===id);if(!d)return;drawerId=id;
+  document.getElementById('dTitle').value=d.title||'';
+  const sel=document.getElementById('dType');sel.innerHTML=TYPES.map(t=>`<option value="${t.key}" ${t.key===d.itemTypeName?'selected':''}>${t.label}</option>`).join('');
+  const has=(k)=>({snippet:['content','lang'],command:['content','lang'],prompt:['content'],note:['desc'],link:['url']}[k]||[]);
+  const show=(wrap,on)=>document.getElementById(wrap).classList.toggle('hidden',!on);
+  const refl=()=>{const k=sel.value;const f=has(k);show('dContentWrap',f.includes('content'));show('dLangWrap',f.includes('lang'));show('dUrlWrap',f.includes('url'));};
+  sel.onchange=refl;refl();
+  document.getElementById('dContent').value=d.content||'';
+  document.getElementById('dUrl').value=d.url||'';
+  document.getElementById('dLang').value=d.language||'';
+  document.getElementById('dDesc').value=d.description||'';
+  document.getElementById('dTags').value=(d.tags||[]).join(', ');
+  document.getElementById('scrim').classList.remove('hidden');
+  const dr=document.getElementById('drawer');dr.classList.remove('hidden');requestAnimationFrame(()=>dr.classList.remove('translate-x-full'));
+}
+function closeDrawer(){const dr=document.getElementById('drawer');dr.classList.add('translate-x-full');document.getElementById('scrim').classList.add('hidden');setTimeout(()=>dr.classList.add('hidden'),300);drawerId=null;}
+document.getElementById('drawerClose').onclick=closeDrawer;
+document.getElementById('scrim').onclick=closeDrawer;
+document.getElementById('dSave').onclick=()=>{const d=drafts.find(x=>x.id===drawerId);if(!d)return;
+  const newType=document.getElementById('dType').value;const typeChanged=newType!==d.itemTypeName;
+  d.title=document.getElementById('dTitle').value;d.itemTypeName=newType;
+  d.content=document.getElementById('dContent').value;d.url=document.getElementById('dUrl').value;
+  d.language=document.getElementById('dLang').value;d.description=document.getElementById('dDesc').value;
+  d.tags=document.getElementById('dTags').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const old=stage.querySelector(`.item[data-id="${d.id}"]`);if(old)old.remove();CONCEPTS[active].add?.(d);counts();closeDrawer();toast('Draft updated');};
+document.getElementById('dSaveItem').onclick=()=>{const id=drawerId;closeDrawer();saveOne(id);};
+
+/* ===================== drag delegation ===================== */
+stage.addEventListener('dragover',e=>{const z=e.target.closest('[data-bucket]');if(z){e.preventDefault();z.classList.add('drag-over');}});
+stage.addEventListener('dragleave',e=>{const z=e.target.closest('[data-bucket]');if(z)z.classList.remove('drag-over');});
+stage.addEventListener('drop',e=>{const z=e.target.closest('[data-bucket]');if(z){e.preventDefault();z.classList.remove('drag-over');move(dragId,z.dataset.bucket);}});
+
+/* ===================== concept helpers ===================== */
+const bucketHeader=(t,extra='')=>`<div class="mb-2 flex items-center justify-between ${extra}"><div class="flex items-center gap-1.5"><span class="grid size-5 place-items-center rounded" style="background:${t.color}1a">${ic(t.ic,t.color,'size-3')}</span><span class="text-xs font-semibold">${t.label}</span></div><span data-count="${t.key}" class="rounded-full bg-white/5 px-1.5 py-0.5 text-[10px] tabular-nums text-neutral-400">0</span></div>`;
+
+/* ===================== 10 CONCEPTS ===================== */
+const CONCEPTS={
+  /* 1 — NEURAL CORE */
+  neural:{label:'Neural Core',desc:'AI core routes each item along a beam into radial bucket nodes.',mount(){
+    const POS=TYPES.map((_,i)=>{const a=(-90+i*72)*Math.PI/180;return{x:50+38*Math.cos(a),y:50+40*Math.sin(a)};});
+    this.POS=POS;
+    stage.innerHTML=`<div id="nstage" class="relative h-[640px] overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(ellipse_at_center,#11121a,#070709)]">
+      <svg id="beams" class="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">${TYPES.map((t,i)=>`<line id="beam-${t.key}" class="beam-line" x1="50" y1="50" x2="${POS[i].x}" y2="${POS[i].y}" stroke="${t.color}" stroke-width="0.4" opacity="0.25" vector-effect="non-scaling-stroke"/>`).join('')}</svg>
+      <svg id="dots" class="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      <div class="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"><div class="relative grid size-32 place-items-center">
+        <span class="ring absolute size-24 rounded-full border border-violet-500/40"></span><span class="ring absolute size-24 rounded-full border border-blue-500/40" style="animation-delay:1.2s"></span>
+        <div id="coreRing" class="grid size-28 place-items-center rounded-full" style="background:conic-gradient(#8b5cf6 0deg,#1f2030 0deg)"><div class="grid size-24 place-items-center rounded-full bg-neutral-950 text-center"><div><div id="coreN" class="text-2xl font-bold tabular-nums">0</div><div class="text-[10px] uppercase tracking-wide text-neutral-500">items</div></div></div></div>
+      </div></div>
+      ${TYPES.map((t,i)=>`<div data-bucket="${t.key}" class="absolute z-10 w-[210px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-neutral-950/90 p-2.5 backdrop-blur" style="left:${POS[i].x}%;top:${POS[i].y}%">${bucketHeader(t,'px-1')}<div class="cards fade-list flex max-h-[150px] flex-col gap-1.5 overflow-y-auto pr-1"></div></div>`).join('')}
+    </div>`;
+  },add(d){const i=TYPES.findIndex(t=>t.key===d.itemTypeName),p=this.POS[i],t=TM[d.itemTypeName];
+    const line=document.getElementById('beam-'+d.itemTypeName);if(line){line.setAttribute('opacity','0.9');setTimeout(()=>line.setAttribute('opacity','0.25'),450);}
+    const dots=document.getElementById('dots');const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');dot.setAttribute('r','0.7');dot.setAttribute('fill',t.color);dots.appendChild(dot);
+    const t0=performance.now();(function s(n){const k=Math.min(1,(n-t0)/400),x=50+(p.x-50)*k,y=50+(p.y-50)*k;dot.setAttribute('cx',x);dot.setAttribute('cy',y);if(k<1)requestAnimationFrame(s);else{dot.remove();appendCard(d,{clamp:true,tiny:true});}})(t0);
+  },onCounts(){const el=document.getElementById('coreN');if(el)el.textContent=drafts.length;const deg=Math.round((Math.min(drafts.length,MOCK.length)/MOCK.length)*360);const r=document.getElementById('coreRing');if(r)r.style.background=`conic-gradient(${done?'#10b981':'#8b5cf6'} ${deg}deg,#1f2030 ${deg}deg)`;}},
+
+  /* 2 — BENTO (dynamic masonry: each bucket grows with its item count, no cap) */
+  bento:{label:'Bento Buckets',desc:'Dynamic masonry — each bucket grows with its item count (no cap); the receiving box glows.',mount(){
+    stage.innerHTML=`<div class="columns-1 gap-3 sm:columns-2 lg:columns-3">${TYPES.map(t=>`<div data-bucket="${t.key}" class="bento relative mb-3 inline-block w-full break-inside-avoid rounded-2xl border border-white/10 bg-neutral-950 p-3 transition-all" style="--c:${t.color}">${bucketHeader(t)}<div class="cards flex flex-col gap-1.5"></div></div>`).join('')}</div>`;
+  },add(d){appendCard(d);const box=stage.querySelector(`[data-bucket="${d.itemTypeName}"]`);if(box){box.classList.add('receiving');setTimeout(()=>box.classList.remove('receiving'),1100);}}},
+
+  /* 3 — KANBAN */
+  kanban:{label:'Kanban Lanes',desc:'Five classic vertical lanes; drag cards between lanes.',mount(){
+    stage.innerHTML=`<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">${TYPES.map(t=>`<div data-bucket="${t.key}" class="flex min-h-[420px] flex-col rounded-2xl border border-white/10 bg-neutral-950 p-3">${bucketHeader(t)}<div class="cards flex flex-1 flex-col gap-2 overflow-y-auto pr-1"></div></div>`).join('')}</div>`;
+  },add(d){appendCard(d);}},
+
+  /* 4 — FACETS */
+  facets:{label:'Stream & Facets',desc:'Unified wall + bucket filter pills; drag a card onto a pill to reclassify.',filter:'all',mount(){
+    const self=this;self.filter='all';
+    stage.innerHTML=`<div id="facetbar" class="mb-3 flex flex-wrap items-center gap-2"></div><div data-wall class="grid max-h-[64vh] gap-3 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950 p-3" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))"></div>`;
+    const bar=document.getElementById('facetbar');
+    const mk=(k,label,color)=>{const b=document.createElement('button');b.className='pill inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-neutral-300 hover:text-white';b.dataset.key=k;b.innerHTML=`${k==='all'?'':`<span class="size-2 rounded-full" style="background:${color}"></span>`}${label} <span ${k==='all'?'id="fcount-all"':`data-count="${k}"`} class="rounded-full bg-black/20 px-1.5 tabular-nums">0</span>`;
+      b.onclick=()=>{self.filter=k;self.apply();};
+      if(k!=='all'){b.dataset.bucket=k;}
+      return b;};
+    bar.appendChild(mk('all','All'));TYPES.forEach(t=>bar.appendChild(mk(t.key,t.label,t.color)));
+    self.apply();
+  },add(d){const w=stage.querySelector('[data-wall]');const c=card(d);c.classList.add('card');w.appendChild(c);w.scrollTop=w.scrollHeight;this.apply();},
+  apply(){const f=this.filter;document.querySelectorAll('#facetbar .pill').forEach(p=>p.classList.toggle('active',p.dataset.key===f));document.querySelectorAll('#facetbar .pill').forEach(p=>{if(p.classList.contains('active')){p.style.background=p.dataset.key==='all'?'#8b5cf6':TM[p.dataset.key]?.color;p.style.color='#0a0a0a';}else{p.style.background='';p.style.color='';}});
+    stage.querySelectorAll('[data-wall] .item').forEach(c=>c.style.display=(f==='all'||c.dataset.type===f)?'':'none');},
+  onCounts(){const a=document.getElementById('fcount-all');if(a)a.textContent=drafts.length;}},
+
+  /* 5 — ORBIT */
+  orbit:{label:'Orbit Rings',desc:'Buckets as pods on a slowly rotating ring around the core.',mount(){
+    const POS=TYPES.map((_,i)=>{const a=(-90+i*72)*Math.PI/180;return{x:50+34*Math.cos(a),y:50+38*Math.sin(a)};});this.POS=POS;
+    stage.innerHTML=`<div class="relative h-[640px] overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(ellipse_at_center,#0e0f16,#070709)]">
+      <div class="spin-slow absolute left-1/2 top-1/2 size-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-white/10"></div>
+      <div class="spin-slow absolute left-1/2 top-1/2 size-[360px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-white/5" style="animation-direction:reverse"></div>
+      <div class="absolute left-1/2 top-1/2 z-10 grid size-24 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-violet-500/30 bg-neutral-950 text-center"><div><div class="text-2xl font-bold tabular-nums" id="orbN">0</div><div class="text-[10px] uppercase text-neutral-500">sorted</div></div></div>
+      ${TYPES.map((t,i)=>`<div data-bucket="${t.key}" class="absolute z-10 w-[200px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-neutral-950/90 p-2.5 backdrop-blur" style="left:${POS[i].x}%;top:${POS[i].y}%">${bucketHeader(t,'px-1')}<div class="cards fade-list flex max-h-[120px] flex-col gap-1.5 overflow-y-auto pr-1"></div></div>`).join('')}
+    </div>`;
+  },add(d){appendCard(d,{clamp:true,tiny:true});},onCounts(){const el=document.getElementById('orbN');if(el)el.textContent=drafts.length;}},
+
+  /* 6 — CONVEYOR */
+  conveyor:{label:'Conveyor Bins',desc:'Items emerge from the intake and drop into bins below.',mount(){
+    stage.innerHTML=`<div class="rounded-2xl border border-white/10 bg-neutral-950 p-4">
+      <div class="mb-4 flex items-center gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">${ic('M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z','#8b5cf6','size-5')}<span id="intake" class="shiny text-sm font-medium">Reading & classifying…</span></div>
+      <div class="grid grid-cols-5 gap-3">${TYPES.map(t=>`<div data-bucket="${t.key}" class="flex min-h-[380px] flex-col rounded-xl border border-dashed border-white/15 bg-black/20 p-2.5" style="border-top:2px solid ${t.color}">${bucketHeader(t)}<div class="cards flex flex-1 flex-col gap-2 overflow-y-auto pr-1"></div></div>`).join('')}</div>
+    </div>`;
+  },add(d){const intake=document.getElementById('intake');if(intake)intake.textContent='Filed: '+d.title;const bin=stage.querySelector(`[data-bucket="${d.itemTypeName}"]`);if(bin){bin.animate([{boxShadow:`0 0 0 0 ${TM[d.itemTypeName].color}00`},{boxShadow:`0 0 0 3px ${TM[d.itemTypeName].color}55`},{boxShadow:`0 0 0 0 ${TM[d.itemTypeName].color}00`}],{duration:600});}appendCard(d);}},
+
+  /* 7 — TRIAGE DECK */
+  triage:{label:'Triage Deck',desc:'One hero card at a time; the rest stack into a bucket strip.',mount(){
+    stage.innerHTML=`<div class="rounded-2xl border border-white/10 bg-neutral-950 p-5">
+      <div id="hero" class="mx-auto mb-5 grid h-56 max-w-lg place-items-center rounded-2xl border border-white/10 bg-gradient-to-br from-white/[.04] to-transparent text-center text-sm text-neutral-500">Waiting for first item…</div>
+      <div class="grid grid-cols-5 gap-3">${TYPES.map(t=>`<div data-bucket="${t.key}" class="flex flex-col rounded-xl border border-white/10 bg-black/20 p-2.5"><div class="mb-2 flex items-center justify-between"><span class="grid size-6 place-items-center rounded" style="background:${t.color}1a">${ic(t.ic,t.color,'size-3.5')}</span><span data-count="${t.key}" class="text-lg font-bold tabular-nums">0</span></div><div class="cards fade-list flex max-h-28 flex-col gap-1.5 overflow-y-auto pr-1"></div></div>`).join('')}</div>
+    </div>`;
+  },add(d){const t=TM[d.itemTypeName];const hero=document.getElementById('hero');if(hero){hero.className='pop mx-auto mb-5 max-w-lg rounded-2xl border p-5 text-left';hero.style.borderColor=t.color+'55';hero.innerHTML=`<div class="mb-2 flex items-center gap-2">${ic(t.ic,t.color,'size-4')}<span class="text-xs font-semibold uppercase tracking-wide" style="color:${t.color}">${t.label.replace(/s$/,'')}</span></div><h3 class="mb-2 text-base font-semibold">${esc(d.title)}</h3>${d.content?`<pre class="max-h-20 overflow-hidden rounded-lg bg-black/40 p-2 font-mono text-[11px] text-white/60">${esc(d.content)}</pre>`:''}${d.description?`<p class="text-xs text-neutral-400">${esc(d.description)}</p>`:''}${d.url?`<p class="font-mono text-xs text-emerald-400/80">${esc(noproto(d.url))}</p>`:''}`;}appendCard(d,{clamp:true,tiny:true});}},
+
+  /* 8 — TIMELINE */
+  timeline:{label:'Timeline Rail',desc:'Chronological detection rail with a side bucket index.',mount(){
+    stage.innerHTML=`<div class="grid gap-4 lg:grid-cols-[1fr_240px]">
+      <div class="rounded-2xl border border-white/10 bg-neutral-950 p-4"><div id="rail" class="relative max-h-[64vh] space-y-3 overflow-y-auto border-l border-white/10 pl-5"></div></div>
+      <div class="rounded-2xl border border-white/10 bg-neutral-950 p-4"><p class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Buckets</p><div class="flex flex-col gap-2">${TYPES.map(t=>`<div data-bucket="${t.key}" class="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-3 py-2"><span class="flex items-center gap-2 text-xs font-medium">${ic(t.ic,t.color,'size-3.5')}${t.label}</span><span data-count="${t.key}" class="text-sm font-bold tabular-nums">0</span></div>`).join('')}</div><p class="mt-3 text-[10px] text-neutral-600">drag a rail item onto a bucket to reclassify</p></div>
+    </div>`;
+  },add(d){const t=TM[d.itemTypeName];const rail=document.getElementById('rail');const row=card(d,{clamp:true});row.classList.add('relative');row.style.borderLeft='2px solid '+t.color;const dotmark=`<span class="absolute -left-[26px] top-3 size-2.5 rounded-full ring-4 ring-neutral-950" style="background:${t.color}"></span>`;row.insertAdjacentHTML('afterbegin',dotmark);rail.appendChild(row);rail.scrollTop=rail.scrollHeight;}},
+
+  /* 9 — COMMAND HUD */
+  hud:{label:'Command HUD',desc:'Log feed + central bucket grid + live gauges.',mount(){
+    stage.innerHTML=`<div class="grid gap-3 lg:grid-cols-[220px_1fr_220px]">
+      <div class="rounded-2xl border border-white/10 bg-neutral-950 p-3"><p class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Stream log</p><div id="log" class="flex max-h-[60vh] flex-col gap-1 overflow-y-auto font-mono text-[10px] text-neutral-400"></div></div>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">${TYPES.map(t=>`<div data-bucket="${t.key}" class="flex min-h-[190px] flex-col rounded-xl border border-white/10 bg-neutral-950 p-2.5">${bucketHeader(t)}<div class="cards fade-list flex flex-1 flex-col gap-1.5 overflow-y-auto pr-1"></div></div>`).join('')}</div>
+      <div class="rounded-2xl border border-white/10 bg-neutral-950 p-3"><p class="mb-3 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Distribution</p><div class="flex flex-col gap-3">${TYPES.map(t=>`<div><div class="mb-1 flex justify-between text-[10px]"><span style="color:${t.color}">${t.label}</span><span data-count="${t.key}" class="tabular-nums text-neutral-400">0</span></div><div class="h-1.5 overflow-hidden rounded-full bg-white/5"><div data-gauge="${t.key}" class="h-full rounded-full transition-all" style="width:0%;background:${t.color}"></div></div></div>`).join('')}</div></div>
+    </div>`;
+  },add(d){const t=TM[d.itemTypeName];const log=document.getElementById('log');if(log){const l=document.createElement('div');l.className='pop';l.innerHTML=`<span style="color:${t.color}">▸ ${t.key}</span> <span class="text-neutral-500">${esc(d.title.slice(0,22))}</span>`;log.appendChild(l);log.scrollTop=log.scrollHeight;}appendCard(d,{tiny:true,clamp:true});},
+  onCounts(){const max=Math.max(1,...TYPES.map(t=>drafts.filter(d=>d.itemTypeName===t.key).length));TYPES.forEach(t=>{const n=drafts.filter(d=>d.itemTypeName===t.key).length;const g=stage.querySelector(`[data-gauge="${t.key}"]`);if(g)g.style.width=(n/max*100)+'%';});}},
+
+  /* 10 — SPLIT PROVENANCE */
+  split:{label:'Split Provenance',desc:'Source document on the left highlights as items fill the buckets.',mount(){
+    stage.innerHTML=`<div class="grid gap-3 lg:grid-cols-2">
+      <div class="rounded-2xl border border-white/10 bg-neutral-950 p-4"><p class="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Source file · brain-dump.md</p><div id="doc" class="max-h-[64vh] space-y-1 overflow-y-auto font-mono text-[11px] leading-relaxed text-neutral-500"></div></div>
+      <div class="grid grid-cols-2 gap-3 self-start">${TYPES.map(t=>`<div data-bucket="${t.key}" class="flex min-h-[150px] flex-col rounded-xl border border-white/10 bg-neutral-950 p-2.5" style="--c:${t.color}">${bucketHeader(t)}<div class="cards fade-list flex flex-1 flex-col gap-1.5 overflow-y-auto pr-1"></div></div>`).join('')}</div>
+    </div>`;
+    const doc=document.getElementById('doc');doc.innerHTML=MOCK.map((m,i)=>`<div id="src-${i}" class="rounded px-1.5 py-0.5 transition">${esc(m.src)}</div>`).join('');
+    this.idx=0;
+  },add(d){const t=TM[d.itemTypeName];const line=document.getElementById('src-'+this.idx);if(line){line.style.background=t.color+'22';line.style.color='#e6e6ea';line.scrollIntoView({block:'nearest'});}this.idx++;appendCard(d,{clamp:true,tiny:true});}},
+};
+
+/* ===================== run ===================== */
+let done=false;
+// Display order — Bento Buckets is the chosen direction, shown first / default.
+const ORDER=['bento','neural','kanban','facets','orbit','conveyor','triage','timeline','hud','split'];
+function buildSeg(){const seg=document.getElementById('seg');seg.innerHTML=ORDER.map((k,i)=>`<button data-c="${k}" class="${i===0?'active':''} rounded-lg px-2.5 py-1.5">${i+1}. ${CONCEPTS[k].label}</button>`).join('');seg.querySelectorAll('button').forEach(b=>b.onclick=()=>activate(b.dataset.c));}
+function setStatus(){const s=document.getElementById('status'),dot=document.getElementById('dot'),bar=document.getElementById('bar');
+  if(done){s.className='text-xs font-semibold text-emerald-400';s.textContent='✓ Done — review & save';dot.className='size-2 rounded-full bg-emerald-400';bar.className='h-full rounded-full bg-emerald-500';bar.style.width='100%';}
+  else{s.className='shiny text-xs font-semibold';s.textContent='AI is reading your file…';dot.className='size-2 animate-pulse rounded-full bg-violet-400';bar.className='progress-indet h-full w-full';bar.style.width='';}
+  document.getElementById('conceptDesc').textContent=CONCEPTS[active].desc;document.getElementById('conceptDesc').classList.remove('hidden');}
+function stop(){if(timer){clearInterval(timer);timer=null;}}
+function activate(key){stop();active=key;drafts=[];nid=1;done=false;saved=0;
+  document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('active',b.dataset.c===key));
+  CONCEPTS[key].mount();counts();setStatus();play();}
+function play(){let i=0;timer=setInterval(()=>{if(i>=MOCK.length){stop();done=true;setStatus();counts();return;}const d={id:nid++,...MOCK[i]};drafts.push(d);CONCEPTS[active].add(d);counts();i++;},520);}
+document.getElementById('replay').onclick=()=>activate(active);
+document.getElementById('saveAll').onclick=()=>{const n=drafts.length;toast(`Committed ${n} items as a batch → library`);drafts=[];CONCEPTS[active].mount();counts();};
+buildSeg();activate(ORDER[0]);
+</script>
+</body>
+</html>

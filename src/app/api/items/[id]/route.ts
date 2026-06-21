@@ -2,13 +2,21 @@ import { authedRouteWithParams, type IdParam } from '@/lib/api/route'
 import { json, noContent, problem, parseOr422 } from '@/lib/api/http'
 import { updateItemInput } from '@/lib/api/schemas/items'
 import { ErrorMessage } from '@/lib/api/error-messages'
-import { getItemForAuth, updateItem, deleteItem } from '@/lib/db/items'
+import { getItemForAuth, getItemById, updateItem, deleteItem } from '@/lib/db/items'
 import { invalidateCollectionsCache, invalidateItemsCache } from '@/lib/infra/cache'
 import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 import { PRO_ITEM_TYPE_NAMES, PRO_ITEM_TYPE_NAMES_LABEL } from '@/lib/utils/constants'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'api-items' })
+
+// Single item by id (IDOR-scoped). Powers the source deep-link: opening /items/[type]?item=<id> fetches
+// the item and pops its detail drawer. Returns the LightItem shape the drawer is seeded with.
+export const GET = authedRouteWithParams<IdParam>({}, async ({ userId, params }) => {
+  const item = await getItemById(userId, params.id)
+  if (!item) return problem(404, ErrorMessage.ITEM_NOT_FOUND)
+  return json(item)
+})
 
 export const PATCH = authedRouteWithParams<IdParam>(
   { rateLimit: 'itemMutation' },

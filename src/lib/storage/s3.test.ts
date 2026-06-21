@@ -7,7 +7,9 @@ import {
   getSignedDownloadUrl,
   getSignedUrlExpiresAt,
   getPresignedPostCredential,
+  getTextFromS3,
 } from './s3'
+import { SPLIT_FILE_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 
 // Mock the AWS SDK
 const mockSend = vi.fn()
@@ -162,6 +164,69 @@ describe('s3 utility', () => {
       vi.setSystemTime(new Date('2024-06-01T12:00:00.000Z'))
 
       expect(getSignedUrlExpiresAt(60).toISOString()).toBe('2024-06-01T12:01:00.000Z')
+    })
+  })
+
+  describe('getTextFromS3', () => {
+    it('issues a bounded Range GET sized to the parse window and decodes once (never the whole object)', async () => {
+      const transformToString = vi.fn().mockResolvedValue('hello world')
+      mockSend.mockResolvedValueOnce({ Body: { transformToString }, ContentRange: 'bytes 0-99/11', ContentLength: 11 })
+
+      const result = await getTextFromS3('user/key.txt', SPLIT_FILE_MAX_INPUT_CHARS)
+
+      // Range upper bound = parse-window chars × 4 (worst-case UTF-8 bytes/char) − 1; whole object never requested.
+      expect(GetObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Key: 'user/key.txt',
+        Range: `bytes=0-${SPLIT_FILE_MAX_INPUT_CHARS * 4 - 1}`,
+      })
+      expect(transformToString).toHaveBeenCalledTimes(1) // consumed exactly once
+      expect(result).toEqual({ text: 'hello world', truncated: false })
+    })
+
+    it('marks truncated when the object is larger than the bytes pulled (from ContentRange total)', async () => {
+      const transformToString = vi.fn().mockResolvedValue('partial window')
+      // total (after the slash) exceeds the pulled ContentLength → truncated.
+      mockSend.mockResolvedValueOnce({
+        Body: { transformToString },
+        ContentRange: `bytes 0-${SPLIT_FILE_MAX_INPUT_CHARS * 4 - 1}/99999999`,
+        ContentLength: SPLIT_FILE_MAX_INPUT_CHARS * 4,
+      })
+
+      const result = await getTextFromS3('user/big.txt', SPLIT_FILE_MAX_INPUT_CHARS)
+      expect(result.truncated).toBe(true)
+    })
+
+    it('does NOT mark truncated when no ContentRange but a short ContentLength proves a whole-object read', async () => {
+      // A small .txt: no range total header, but ContentLength < the requested window → we read it all.
+      const transformToString = vi.fn().mockResolvedValue('short note')
+      mockSend.mockResolvedValueOnce({ Body: { transformToString }, ContentLength: 10 })
+
+      const result = await getTextFromS3('user/small.txt', SPLIT_FILE_MAX_INPUT_CHARS)
+      expect(result).toEqual({ text: 'short note', truncated: false })
+    })
+
+    it('does NOT mark truncated when ContentLength is exactly requestedBytes', async () => {
+      const transformToString = vi.fn().mockResolvedValue('exact window')
+      const requestedBytes = SPLIT_FILE_MAX_INPUT_CHARS * 4
+      mockSend.mockResolvedValueOnce({ Body: { transformToString }, ContentLength: requestedBytes })
+
+      const result = await getTextFromS3('user/exact.txt', SPLIT_FILE_MAX_INPUT_CHARS)
+      expect(result).toEqual({ text: 'exact window', truncated: false })
+    })
+
+    it('over-discloses (truncated) when neither ContentRange nor ContentLength can prove a whole read', async () => {
+      // No headers to prove we got the whole object → safe direction is to flag a possible clip.
+      const transformToString = vi.fn().mockResolvedValue('window of text')
+      mockSend.mockResolvedValueOnce({ Body: { transformToString } })
+
+      const result = await getTextFromS3('user/unknown.txt', SPLIT_FILE_MAX_INPUT_CHARS)
+      expect(result.truncated).toBe(true)
+    })
+
+    it('throws when the object has no body', async () => {
+      mockSend.mockResolvedValueOnce({ Body: undefined })
+      await expect(getTextFromS3('user/missing.txt', SPLIT_FILE_MAX_INPUT_CHARS)).rejects.toThrow()
     })
   })
 })

@@ -1,7 +1,9 @@
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { getTypeLabel, slugToTypeName } from '@/lib/utils'
 import { SYSTEM_TYPE_ORDER } from '@/lib/utils/constants'
 import { ItemsGrid } from '@/components/items/items-grid'
+import { ItemDeepLink } from '@/components/items/item-deep-link'
 
 interface ItemsPageProps {
   params: Promise<{ type: string }>
@@ -17,6 +19,9 @@ export default async function ItemsPage({ params }: ItemsPageProps) {
 
   return (
     <div className="app-page gap-6 p-6">
+      <Suspense fallback={null}>
+        <ItemDeepLink />
+      </Suspense>
       <ItemsGrid typeName={typeName} typeLabel={getTypeLabel(typeName)} />
     </div>
   )

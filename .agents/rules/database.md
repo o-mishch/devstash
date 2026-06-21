@@ -32,11 +32,12 @@ export async function getItemsByType(userId: string, type: string) {
 ```
 
   Invalidate via the `invalidate*` helpers in `src/lib/infra/cache.ts` — they call `revalidateTag` wrapped in `after()`.
-- **Exception — auth/security freshness reads:** Do not cache DB helpers that gate authentication,
-  credential/email verification, password state, token-confirmation decisions, or mutation collision
-  checks. These reads must reflect the latest committed security state. Keep them in `src/lib/db/`, keep
-  the Prisma access centralized, and add a short comment explaining why the helper is intentionally
-  uncached when the freshness requirement is not obvious.
+- **Exception — auth/security freshness reads and draft/streaming tables:** Do not cache DB helpers that
+  gate authentication, credential/email verification, password state, token-confirmation decisions,
+  mutation collision checks, or interact with draft/streaming tables (e.g. parse jobs/drafts). These
+  reads/writes must reflect the latest committed state. Keep them in `src/lib/db/`, keep the Prisma
+  access centralized, and add a short comment explaining why the helper is intentionally uncached when
+  the freshness requirement is not obvious.
 - Always use `prisma migrate dev` for schema changes (not `db push`)
 - Run `prisma migrate status` before committing to verify migrations are in sync
 - Production deployments must run `prisma migrate deploy` before the app starts

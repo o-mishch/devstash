@@ -6,6 +6,7 @@ import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-it
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { SkinWidget } from './skin-widget'
+import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import { computeUsage, usageLabel, slotsLeftLabel, resolveSkinData, type DashboardSkinData } from './shared'
 
 const SP_CARD =
@@ -85,7 +86,7 @@ export async function SpatialSkin(data: DashboardSkinData) {
         <section className={`${SP_CARD} mb-5 p-6`}>
           <div className={SP_SHEEN} />
           <div className="relative">
-            <SkinWidget icon={<Pin />} title="Pinned">
+            <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.spatial}>
               <DashboardPinnedItems initialItems={pinned} />
             </SkinWidget>
           </div>
@@ -96,7 +97,7 @@ export async function SpatialSkin(data: DashboardSkinData) {
         <section className={`${SP_CARD} p-6`}>
           <div className={SP_SHEEN} />
           <div className="relative">
-            <SkinWidget icon={<Folder />} title="Collections">
+            <SkinWidget icon={<Folder />} title="Collections" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.spatial}>
               <DashboardCollectionsList collections={collections} />
             </SkinWidget>
           </div>
@@ -104,7 +105,7 @@ export async function SpatialSkin(data: DashboardSkinData) {
         <section className={`${SP_CARD} p-6`}>
           <div className={SP_SHEEN} />
           <div className="relative">
-            <SkinWidget icon={<History />} title="Recent items">
+            <SkinWidget icon={<History />} title="Recent items" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.spatial}>
               {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
             </SkinWidget>
           </div>

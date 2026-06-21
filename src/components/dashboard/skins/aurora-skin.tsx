@@ -9,6 +9,7 @@ import { DotPattern } from '@/components/ui/dot-pattern'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { cn } from '@/lib/utils'
 import { SkinWidget } from './skin-widget'
+import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import {
   computeUsage,
   usageLabel,
@@ -106,13 +107,13 @@ export async function AuroraSkin(data: DashboardSkinData) {
         <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
           <div className="flex flex-col gap-4">
             <section className="ds-glass rounded-2xl p-5">
-              <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+              <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.aurora}>
                 <CollectionsGrid collections={collections} />
               </SkinWidget>
             </section>
             {hasPinned && (
               <section className="ds-glass rounded-2xl p-5">
-                <SkinWidget icon={<Pin />} title="Pinned">
+                <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.aurora}>
                   <DashboardPinnedItems initialItems={pinned} />
                 </SkinWidget>
               </section>
@@ -121,7 +122,7 @@ export async function AuroraSkin(data: DashboardSkinData) {
 
           {hasRecent && (
             <section className="ds-glass rounded-2xl p-5">
-              <SkinWidget icon={<History />} title="Recent items">
+              <SkinWidget icon={<History />} title="Recent items" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.aurora}>
                 <DashboardRecentItems firstPage={recent} />
               </SkinWidget>
             </section>

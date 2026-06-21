@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { ChevronDown, type LucideIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
@@ -11,6 +11,9 @@ interface DashboardWidgetProps {
   title: string
   children: ReactNode
   headerAction?: ReactNode
+  // Left-border accent color. When set (e.g. the dominant item-type color of the widget's contents),
+  // it overrides the default token-based accent. Falls back to the neutral accent when omitted.
+  accentColor?: string
 }
 
 // The classic dashboard widget shell: a collapsible Card with an icon + title header. Widgets render
@@ -21,6 +24,7 @@ export function DashboardWidget({
   title,
   children,
   headerAction,
+  accentColor,
 }: DashboardWidgetProps) {
   const [isOpen, setIsOpen] = useState(true)
 
@@ -30,7 +34,19 @@ export function DashboardWidget({
           dims the item cards inside it, whereas a background/border change leaves the inner cards
           (which paint on top with their own backgrounds) untouched. So the group highlights while its
           inner cards stay unaffected. */}
-      <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent transition-colors hover:border-l-primary hover:bg-accent/50">
+      <Card
+        className={cn(
+          'bg-[var(--muted,var(--background))] border-l-2 transition-colors hover:bg-accent/50 active:bg-accent/50',
+          // The left border is visible at rest but dimmed, and brightens to its full color on
+          // hover/press (press = touch, where there is no hover). With a dominant item-type color the
+          // rest/active pair is that color dimmed → full; without one it stays the neutral accent →
+          // primary token, like the Collections/AI Usage widgets.
+          accentColor
+            ? 'border-l-[color-mix(in_oklab,var(--widget-accent),transparent_45%)] hover:border-l-[var(--widget-accent)] active:border-l-[var(--widget-accent)]'
+            : 'border-l-accent hover:border-l-primary active:border-l-primary'
+        )}
+        style={accentColor ? ({ '--widget-accent': accentColor } as CSSProperties) : undefined}
+      >
         <CardHeader className="group relative pb-3">
           {/* Full-header click target: covers the entire header so a click anywhere toggles the
               section. The visible row sits above it (pointer-events-none) and passes clicks through;

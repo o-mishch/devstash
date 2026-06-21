@@ -1,5 +1,12 @@
 import { z } from 'zod'
 import { itemAiFileMetadataSchema, trimOptionalAiField } from '@/lib/ai/item-context'
+import {
+  SPLIT_FILE_MIN_INPUT_CHARS,
+  SPLIT_FILE_MAX_PASTE_BYTES,
+  SPLIT_FILE_TITLE_MAX_CHARS,
+  ITEM_DESCRIPTION_MAX_CHARS,
+  COLLECTION_NAME_MAX_CHARS,
+} from '@/lib/utils/constants'
 
 // Request/response schemas for the AI endpoints (oRPC `oc.route()` wrappers stripped — bare Zod).
 // The inputs keep their `.transform()` (trim/clamp) + `.refine()` (require some signal) so the route
@@ -12,7 +19,6 @@ import { itemAiFileMetadataSchema, trimOptionalAiField } from '@/lib/ai/item-con
 
 const DESCRIPTION_MAX_INPUT_CHARS = 6000
 const TAGS_MAX_INPUT_CHARS = 4000
-const COLLECTION_NAME_MAX_CHARS = 100
 
 export const generateDescriptionInput = z
   .object({
@@ -100,4 +106,144 @@ const aiFeatureUsageSchema = z.object({
   resetAt: z.number(),
 })
 
-export const aiUsageOutput = z.object({ features: z.array(aiFeatureUsageSchema) }).meta({ id: 'AiUsage' })
+// `features` = the four 1:1 per-feature meters; `brainDump` is the Brain Dump quota, surfaced
+// separately (its `aiBrainDump` key is intentionally NOT in AI_RATE_LIMIT_KEYS, so it never joins the
+// 4-up grid). Both come from the non-consuming `getRemaining` read and fail open.
+export const aiUsageOutput = z
+  .object({ features: z.array(aiFeatureUsageSchema), brainDump: aiFeatureUsageSchema })
+  .meta({ id: 'AiUsage' })
+
+// ── AI File Splitter ("Brain Dump") ──────────────────────────────────────────────────────────────
+
+// v1 create payload — exactly one of:
+//   • `text` (paste): the **full** pasted text, NOT clamped (the server stores it whole as a `note` and
+//     slices the 50k parse window itself). Bounded by SPLIT_FILE_MAX_PASTE_BYTES (~1 MB) so the note
+//     stays under the platform request-body limit — over it is a 422 with "upload as a file" guidance.
+//   • `sourceItemId` (upload/select): an existing `file`/`note` item to reuse; the server re-validates
+//     ownership + text eligibility before reading it.
+export const brainDumpInput = z
+  .object({
+    text: z.string().optional(),
+    sourceItemId: z.string().trim().min(1).optional(),
+  })
+  // Presence-based (not truthiness): an empty-string `text` is still "provided" and must fail the
+  // one-of, so a stray `{ text: '', sourceItemId }` can't slip through as a sourceItemId-only request.
+  .refine((data) => (data.text !== undefined) !== (data.sourceItemId !== undefined), {
+    message: 'Provide exactly one of text (paste) or sourceItemId.',
+  })
+  // Char-length short-circuit: chars <= bytes always, so if char length exceeds the byte cap, the byte length
+  // definitely does, allowing us to reject early without allocating an encoded copy of a huge body to measure it.
+  .refine(
+    (data) =>
+      data.text === undefined ||
+      (data.text.length <= SPLIT_FILE_MAX_PASTE_BYTES &&
+        new TextEncoder().encode(data.text).length <= SPLIT_FILE_MAX_PASTE_BYTES),
+    { message: 'This paste is very large — upload it as a file instead.' },
+  )
+  .refine(
+    (data) => data.text === undefined || data.text.replace(/\s/g, '').length >= SPLIT_FILE_MIN_INPUT_CHARS,
+    { message: `Provide at least ${SPLIT_FILE_MIN_INPUT_CHARS} characters of text to split.` },
+  )
+
+// One draft item on the review board. `itemTypeName` is the bucket; the editable fields mirror the
+// columns of `AiParseJobItem`. Shared by the snapshot + SSE `item` event payloads.
+export const brainDumpDraftItemSchema = z
+  .object({
+    id: z.string(),
+    order: z.number(),
+    itemTypeName: z.string(),
+    title: z.string(),
+    content: z.string().nullable().optional(),
+    url: z.string().nullable().optional(),
+    language: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+    tags: z.array(z.string()),
+    // true when the draft sits in the board's Trash bucket (soft-deleted; excluded from commit).
+    trashed: z.boolean(),
+  })
+  .meta({ id: 'BrainDumpDraftItem' })
+
+// POST /ai/brain-dump → the created job id (+ source label / parse-window truncation for the toast).
+export const brainDumpJobCreatedSchema = z
+  .object({
+    jobId: z.string(),
+    sourceName: z.string().nullable(),
+    // The parse window was boundary-truncated (the stored source is still full) — drives the toast notice.
+    truncated: z.boolean(),
+  })
+  .meta({ id: 'BrainDumpJobCreated' })
+
+// GET /ai/brain-dump/{jobId} → the full DB snapshot used to seed/resume the board on (re)connect.
+export const brainDumpJobSnapshotSchema = z
+  .object({
+    status: z.enum(['processing', 'completed', 'failed']),
+    progress: z.number(),
+    error: z.string().nullable().optional(),
+    // Commit-time collection target: a new-collection name (default from source name) + existing ids.
+    collectionName: z.string().nullable(),
+    collectionIds: z.array(z.string()),
+    // v1 source persistence — for the review header's source deep-link + parse-window truncation notice.
+    // `sourceItemId`/`sourceItemType` are null if the user deleted the source item (onDelete: SetNull).
+    sourceItemId: z.string().nullable(),
+    sourceItemType: z.string().nullable(),
+    sourceName: z.string().nullable(),
+    truncated: z.boolean(),
+    items: z.array(brainDumpDraftItemSchema),
+  })
+  .meta({ id: 'BrainDumpJobSnapshot' })
+
+// GET /ai/brain-dump/sources → eligible text `file` items for the "Select from my files" picker.
+export const brainDumpSourceSchema = z
+  .object({ itemId: z.string(), name: z.string(), sizeBytes: z.number().nullable() })
+  .meta({ id: 'BrainDumpSource' })
+
+export const brainDumpSourceListSchema = z.object({ sources: z.array(brainDumpSourceSchema) }).meta({ id: 'BrainDumpSourceList' })
+
+// PATCH /ai/brain-dump/{jobId} — set the commit-time collection target. Both optional; at least one.
+export const brainDumpJobCollectionsInput = z
+  .object({
+    collectionName: z.string().max(COLLECTION_NAME_MAX_CHARS).nullable().optional(),
+    collectionIds: z.array(z.string()).max(50).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' })
+
+// PATCH a draft: re-classify (drag → bucket), re-order, or edit fields. All optional; at least one.
+// `itemTypeName` is constrained to the five text buckets the board exposes — `file`/`image` need an
+// uploaded binary, so a draft can never be reclassified into one and committed as a broken item.
+export const brainDumpItemPatchInput = z
+  .object({
+    itemTypeName: z.enum(['snippet', 'command', 'prompt', 'note', 'link']).optional(),
+    order: z.number().optional(),
+    title: z.string().min(1).max(SPLIT_FILE_TITLE_MAX_CHARS).optional(),
+    content: z.string().nullable().optional(),
+    url: z.string().nullable().optional(),
+    language: z.string().nullable().optional(),
+    description: z.string().max(ITEM_DESCRIPTION_MAX_CHARS).nullable().optional(),
+    tags: z.array(z.string()).max(5).optional(),
+    // Soft-delete toggle: true → Trash bucket, false → restore.
+    trashed: z.boolean().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' })
+
+// POST /ai/brain-dump/{jobId}/commit → number of real items created (job deleted only on full success).
+export const brainDumpCommitOutput = z
+  .object({ created: z.number(), total: z.number() })
+  .meta({ id: 'BrainDumpCommit' })
+
+// GET /ai/brain-dump → the user's in-progress jobs (entry-card badge + /parse index).
+export const brainDumpJobSummarySchema = z
+  .object({
+    id: z.string(),
+    status: z.enum(['processing', 'completed', 'failed']),
+    progress: z.number(),
+    itemCount: z.number(),
+    sourceName: z.string().nullable(),
+    createdAt: z.string(),
+  })
+  .meta({ id: 'BrainDumpJobSummary' })
+
+export const brainDumpJobListSchema = z.object({ jobs: z.array(brainDumpJobSummarySchema) }).meta({ id: 'BrainDumpJobList' })
+
+// Path params for the per-job and per-draft split routes.
+export const brainDumpJobIdParam = z.object({ jobId: z.string() })
+export const brainDumpItemParams = z.object({ jobId: z.string(), itemId: z.string() })

@@ -66,6 +66,9 @@ function DashboardListSkeleton({ count = 3 }: { count?: number }) {
   )
 }
 
+// The loaded Pinned/Recent widgets tint their left border with the dominant item-type color, which
+// can't be known before the data arrives — so the skeleton intentionally uses the neutral `accent`
+// border. The hue settles once content loads; the 2px gutter width matches so only the color resolves.
 export function PinnedSkeleton() {
   return (
     <Card className="bg-[var(--muted,var(--background))] border-l-2 border-l-accent">

@@ -3,6 +3,10 @@ export const ITEMS_PAGE_SIZE = 20
 export const FREE_TIER_ITEM_LIMIT = 50
 export const FREE_TIER_COLLECTION_LIMIT = 3
 
+// Max length of a collection name (mirrors `collectionFormSchema`); used to clamp the brain-dump
+// default-collection name seeded from the upload filename.
+export const COLLECTION_NAME_MAX_CHARS = 100
+
 export const THEME_STORAGE_KEY = 'theme'
 
 // Max characters of code sent to the AI explain model. The client warns when the item exceeds this
@@ -15,6 +19,27 @@ export const OPTIMIZE_MAX_INPUT_CHARS = 8000
 
 // `content` has no DB max-length, so the optimize parser clamps the model output to this explicit cap.
 export const OPTIMIZE_MAX_OUTPUT_CHARS = 8000
+
+// AI File Splitter ("Brain Dump"). The whole uploaded file is sent to the model in one shot, so the
+// input is bounded to keep cost/latency predictable. The client truncates to a boundary and warns;
+// the route rejects anything longer with a 422.
+export const SPLIT_FILE_MAX_INPUT_CHARS = 50_000
+// Below this many non-blank characters there is nothing worth splitting — reject client + server.
+export const SPLIT_FILE_MIN_INPUT_CHARS = 20
+// v1 paste body cap (~1 MB), client + server. A paste's full text transits the POST body so the note
+// can be stored whole; this bounds per-request memory and keeps the note under the platform body limit
+// (Next.js/Vercel) so it is never silently clipped. Over-cap → 422 "upload as a file instead".
+export const SPLIT_FILE_MAX_PASTE_BYTES = 1 * 1024 * 1024
+// Hard ceiling on drafts emitted per job — bounds the board, the DB writes, and the token budget.
+export const SPLIT_FILE_MAX_ITEMS = 100
+// Hard cap on a draft title's stored length — single source of truth for the splitter parser and the
+// draft-patch schema (the prompt asks the model for <= 80, but we accept and clamp up to this).
+export const SPLIT_FILE_TITLE_MAX_CHARS = 200
+// Allowed upload extensions for the splitter (plain text only — we read the raw text client-side).
+export const SPLIT_FILE_ALLOWED_EXTS = new Set(['txt', 'md'])
+// Reserved tag applied to every persisted Brain Dump source item (note for paste, file for
+// upload/select). Makes sources findable + re-parsable and is surfaced in the persistence notice.
+export const BRAIN_DUMP_SOURCE_TAG = 'brain-dump'
 
 // Per-user hourly cap applied to every AI feature (Explain, Optimize, Description, Tags). Single
 // source of truth: `rate-limit.ts` (server-only) imports this for its `ai*` keys, and the AI
@@ -66,6 +91,24 @@ export const SYSTEM_TYPE_COLORS: Record<string, string> = {
   file:    '#6b7280',
   image:   '#ec4899',
   link:    '#10b981',
+}
+
+// Returns the accent color of the most common item type in a list (e.g. mostly notes → yellow),
+// or null for an empty list. Ties resolve by SYSTEM_TYPE_ORDER so the result is deterministic.
+export function dominantTypeColor(typeNames: string[]): string | null {
+  if (typeNames.length === 0) return null
+
+  const counts = typeNames.reduce<Record<string, number>>((acc, name) => {
+    acc[name] = (acc[name] ?? 0) + 1
+    return acc
+  }, {})
+
+  const winner = Object.keys(counts).reduce((best, name) => {
+    if (counts[name] !== counts[best]) return counts[name] > counts[best] ? name : best
+    return SYSTEM_TYPE_ORDER.indexOf(name) < SYSTEM_TYPE_ORDER.indexOf(best) ? name : best
+  })
+
+  return SYSTEM_TYPE_COLORS[winner] ?? null
 }
 
 // Maps type name → Lucide icon name (key in ICON_MAP from item-type-icon.tsx)

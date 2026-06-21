@@ -8,6 +8,7 @@ import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { BorderBeam } from '@/components/ui/border-beam'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { SkinWidget } from './skin-widget'
+import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import { computeUsage, usageLabel, resolveSkinData, type DashboardSkinData } from './shared'
 
 interface HoloCardProps {
@@ -72,7 +73,7 @@ export async function HolographicSkin(data: DashboardSkinData) {
       {hasPinned && (
         <div className="mb-4">
           <HoloCard>
-            <SkinWidget icon={<Pin />} title="Pinned">
+            <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.holographic}>
               <DashboardPinnedItems initialItems={pinned} />
             </SkinWidget>
           </HoloCard>
@@ -81,13 +82,13 @@ export async function HolographicSkin(data: DashboardSkinData) {
 
       <div className="grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <HoloCard className="relative overflow-hidden">
-          <SkinWidget icon={<History />} title="Recent items">
+          <SkinWidget icon={<History />} title="Recent items" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.holographic}>
             {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
           </SkinWidget>
           <BorderBeam size={120} duration={10} className="motion-reduce:hidden" />
         </HoloCard>
         <HoloCard>
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.holographic}>
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </HoloCard>

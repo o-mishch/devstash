@@ -12,9 +12,10 @@ import {
   MissionControlHeatmap,
 } from './mission-control/charts-island'
 import { SkinWidget } from './skin-widget'
+import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import { computeUsage, typeColor, resolveSkinData, type DashboardSkinData } from './shared'
 
-const MC_PANEL = 'rounded-2xl border border-border bg-foreground/[0.02] p-5'
+const MC_PANEL = 'relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5'
 
 // Mission Control (Pro) — analytics cockpit: activity heatmap, by-type donut, KPI sparklines.
 // The only skin that consumes the activity series (fetched conditionally in page.tsx).
@@ -60,7 +61,7 @@ export async function MissionControlSkin(data: DashboardSkinData) {
           useful data lands above the fold. */}
       {hasPinned && (
         <div className={`${MC_PANEL} mb-4`}>
-          <SkinWidget icon={<Pin />} title="Pinned">
+          <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
             <DashboardPinnedItems initialItems={pinned} />
           </SkinWidget>
         </div>
@@ -68,12 +69,12 @@ export async function MissionControlSkin(data: DashboardSkinData) {
 
       <div className="mb-4 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className={MC_PANEL}>
-          <SkinWidget icon={<History />} title="Recent items">
+          <SkinWidget icon={<History />} title="Recent items" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
             {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
           </SkinWidget>
         </div>
         <div className={MC_PANEL}>
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </div>
@@ -83,12 +84,12 @@ export async function MissionControlSkin(data: DashboardSkinData) {
           it's exploratory data, not the daily task. */}
       <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
         <div className={MC_PANEL}>
-          <SkinWidget icon={<CalendarRange />} title="Activity · last 12 weeks">
+          <SkinWidget icon={<CalendarRange />} title="Activity · last 12 weeks" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
             <MissionControlHeatmap activity={activity} />
           </SkinWidget>
         </div>
         <div className={MC_PANEL}>
-          <SkinWidget icon={<PieIcon />} title="By type">
+          <SkinWidget icon={<PieIcon />} title="By type" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
             <MissionControlDonut distribution={distribution} />
             <div className="mt-4 flex flex-col gap-0.5">
               {legend.map((d) => (

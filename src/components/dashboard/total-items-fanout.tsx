@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { Package } from 'lucide-react'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
-import { StatChipBody, STAT_CHIP_CLASS, STAT_COLORS } from './stat-chip'
+import { StatChipBody, statAccentStyle, STAT_CHIP_CLASS, STAT_COLORS } from './stat-chip'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { SYSTEM_TYPE_ORDER, SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants'
 import { getTypeLabel } from '@/lib/utils/format'
@@ -225,6 +225,7 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
         ref={launcherRef}
         type="button"
         className={`${STAT_CHIP_CLASS} relative z-50 w-full`}
+        style={statAccentStyle(STAT_COLORS.total)}
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => (open ? closeFan() : openFan())}

@@ -14,6 +14,7 @@ interface SkinWidgetProps {
   headerClassName?: string
   contentClassName?: string
   children: ReactNode
+  headerWrapperClassName?: string
 }
 
 // A skin-agnostic collapsible dashboard widget: the header doubles as the toggle (chevron +
@@ -29,25 +30,36 @@ export function SkinWidget({
   headerClassName,
   contentClassName,
   children,
+  headerWrapperClassName,
 }: SkinWidgetProps) {
   const [open, setOpen] = useState(true)
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger
-        aria-label={`Toggle ${title} section`}
-        className={cn(
-          'flex w-full items-center gap-2.5 text-[13px] font-bold uppercase tracking-[0.06em] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
-          headerClassName,
-        )}
-      >
-        {icon && <span className="inline-flex text-primary [&_svg]:size-[15px]">{icon}</span>}
-        {title}
-        {typeof count === 'number' && (
-          <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal">{count}</span>
-        )}
-        <ChevronDown className={cn('ml-auto size-4 shrink-0 transition-transform duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]', !open && '-rotate-90')} />
-      </CollapsibleTrigger>
+      <div className={cn("group relative", headerWrapperClassName || '-mx-2 px-2 py-1.5 rounded-md')}>
+        <CollapsibleTrigger
+          aria-label={`Toggle ${title} section`}
+          className="absolute inset-0 z-10 rounded-[inherit] outline-none transition-all hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <div
+          className={cn(
+            'pointer-events-none relative flex w-full items-center gap-2.5 text-[13px] font-bold uppercase tracking-[0.06em] text-muted-foreground transition-colors group-hover:text-foreground',
+            headerClassName,
+          )}
+        >
+          {icon && <span className="inline-flex text-primary [&_svg]:size-[15px]">{icon}</span>}
+          {title}
+          {typeof count === 'number' && (
+            <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal">{count}</span>
+          )}
+          <ChevronDown
+            className={cn(
+              'ml-auto size-4 shrink-0 transition-transform duration-700 ease-[cubic-bezier(0.4,0,0.2,1)]',
+              !open && '-rotate-90',
+            )}
+          />
+        </div>
+      </div>
       {/* The header↔content gap (pt-3.5) lives INSIDE the collapsible panel so it animates with the
           height instead of snapping — otherwise a toggled header margin would jump 14px while the
           body is still tweening. */}

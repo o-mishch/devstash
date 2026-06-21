@@ -10,6 +10,7 @@ vi.mock('@/lib/infra/rate-limit', () => ({
   checkRateLimit: vi.fn(),
   deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
   getAiUsage: vi.fn(),
+  getBrainDumpUsage: vi.fn(),
 }))
 vi.mock('@/lib/ai/description-generation', () => ({
   runProAiGeneration: vi.fn(),
@@ -22,7 +23,7 @@ vi.mock('@/lib/db/items', () => ({ getItemExplainContext: vi.fn() }))
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { runProAiGeneration, runOpenAiCompletion } from '@/lib/ai/description-generation'
-import { getAiUsage } from '@/lib/infra/rate-limit'
+import { getAiUsage, getBrainDumpUsage } from '@/lib/infra/rate-limit'
 import { getItemExplainContext } from '@/lib/db/items'
 import { EXPLAIN_MAX_INPUT_CHARS, OPTIMIZE_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 
@@ -39,6 +40,7 @@ const mockRun = runProAiGeneration as ReturnType<typeof vi.fn>
 const mockCompletion = runOpenAiCompletion as ReturnType<typeof vi.fn>
 const mockGetContext = getItemExplainContext as ReturnType<typeof vi.fn>
 const mockGetAiUsage = getAiUsage as ReturnType<typeof vi.fn>
+const mockGetBrainDumpUsage = getBrainDumpUsage as ReturnType<typeof vi.fn>
 
 // Capture the `execute` callback the route hands to runProAiGeneration so the route's own DB read,
 // null-content guard, and content truncation (which the full mock above would otherwise skip) are
@@ -292,12 +294,15 @@ describe('GET /ai/usage', () => {
     expect(mockGetAiUsage).not.toHaveBeenCalled()
   })
 
-  it('returns 200 with the per-feature usage, read for the session userId (IDOR-safe)', async () => {
+  it('returns 200 with the per-feature usage + brain-dump quota, read for the session userId (IDOR-safe)', async () => {
     const features = [{ key: 'aiOptimize', limit: 20, remaining: 13, resetAt: 0 }]
+    const brainDump = { key: 'aiBrainDump', limit: 1, remaining: 1, resetAt: 0 }
     mockGetAiUsage.mockResolvedValue(features)
+    mockGetBrainDumpUsage.mockResolvedValue(brainDump)
     const res = await USAGE(getReq())
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ features })
+    expect(await res.json()).toEqual({ features, brainDump })
     expect(mockGetAiUsage).toHaveBeenCalledWith('user-1')
+    expect(mockGetBrainDumpUsage).toHaveBeenCalledWith('user-1')
   })
 })

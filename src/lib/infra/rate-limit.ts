@@ -25,6 +25,7 @@ export type RateLimitKey =
   | 'aiDescription'
   | 'aiExplain'
   | 'aiOptimize'
+  | 'aiBrainDump'
   | 'stripeCheckout'
   | 'stripePortal'
   | 'stripeSubscription'
@@ -58,6 +59,7 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   aiDescription:        { attempts: AI_FEATURE_HOURLY_LIMIT, window: '1 h' }, // keyed by userId — OpenAI usage
   aiExplain:            { attempts: AI_FEATURE_HOURLY_LIMIT, window: '1 h' }, // keyed by userId — OpenAI usage (code explanations)
   aiOptimize:           { attempts: AI_FEATURE_HOURLY_LIMIT, window: '1 h' }, // keyed by userId — OpenAI usage (prompt optimization)
+  aiBrainDump:          { attempts: 1, window: '1 h' }, // keyed by userId — heavy streaming split (Brain Dump), 1 per hour
   stripeCheckout:       { attempts: 10, window: '1 h'  }, // keyed by userId — Stripe Checkout sessions
   stripePortal:         { attempts: 20, window: '1 h'  }, // keyed by userId — Billing Portal sessions
   stripeSubscription:   { attempts: 10, window: '1 h'  }, // keyed by userId — cancel / reactivate
@@ -124,6 +126,20 @@ export interface RateLimitResult {
 export async function checkRateLimit(key: RateLimitKey, identifier: string): Promise<RateLimitResult> {
   const { success, retryAfter } = await check(key, identifier)
   return { success, retryAfter }
+}
+
+const rateLimitLog = logger.child({ tag: 'rate-limit' })
+
+/** Resets the full usage counter for the window (i.e. refunds all consumed tokens in the current window). */
+export async function resetRateLimit(key: RateLimitKey, identifier: string): Promise<void> {
+  try {
+    const l = getLimiters()
+    if (!l) return
+    // WARNING: Upstash resetUsedTokens zeroes the entire window (all consumed tokens), not just one decrement.
+    await l[key].resetUsedTokens(identifier)
+  } catch (err) {
+    rateLimitLog.warn({ key, identifier, err }, 'rate-limit reset failed')
+  }
 }
 
 export async function getActionIP(): Promise<string> {
@@ -209,5 +225,33 @@ export async function getAiUsage(userId: string): Promise<AiFeatureUsage[]> {
   } catch (err) {
     aiUsageLog.warn({ userId, err }, 'ai usage read failed — failing open with full budget')
     return AI_RATE_LIMIT_KEYS.map(fullBudget)
+  }
+}
+
+// Brain Dump (`aiBrainDump`) quota, read WITHOUT consuming a token. Surfaced separately from the 4-up
+// `features` grid (its key is intentionally not in AI_RATE_LIMIT_KEYS). Same key shape as a feature
+// meter (`key` is a free string here) so the dashboard Bulk-parse card reuses the meter treatment.
+// Always fails OPEN (full budget) — it is observability, never enforcement.
+export interface BrainDumpUsage {
+  key: string
+  limit: number
+  remaining: number
+  resetAt: number
+}
+
+export async function getBrainDumpUsage(userId: string): Promise<BrainDumpUsage> {
+  const limit = LIMIT_CONFIG.aiBrainDump.attempts
+  const fullOpen: BrainDumpUsage = { key: 'aiBrainDump', limit, remaining: limit, resetAt: 0 }
+  try {
+    const l = getLimiters()
+    if (!l) {
+      aiUsageLog.debug({ userId }, 'brain-dump usage read skipped — no limiters, failing open')
+      return fullOpen
+    }
+    const { remaining, reset } = await l.aiBrainDump.getRemaining(userId)
+    return { key: 'aiBrainDump', limit, remaining, resetAt: reset }
+  } catch (err) {
+    aiUsageLog.warn({ userId, err }, 'brain-dump usage read failed — failing open with full budget')
+    return fullOpen
   }
 }

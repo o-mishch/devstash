@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockLimit = vi.fn()
 const mockGetRemaining = vi.fn()
+const mockResetUsedTokens = vi.fn()
 
 vi.mock('@upstash/ratelimit', () => {
   // Regular function (not an arrow) so `new Ratelimit(...)` in getLimiters can construct it; the
   // static `slidingWindow` is required because getLimiters passes its result to the constructor.
   const Ratelimit = vi.fn(function () {
-    return { limit: mockLimit, getRemaining: mockGetRemaining }
+    return { limit: mockLimit, getRemaining: mockGetRemaining, resetUsedTokens: mockResetUsedTokens }
   }) as unknown as { (): unknown; slidingWindow: ReturnType<typeof vi.fn> }
   Ratelimit.slidingWindow = vi.fn(() => 'sliding-window')
   return { Ratelimit }
@@ -20,7 +21,7 @@ import { Ratelimit } from '@upstash/ratelimit'
 // read path in getAiUsage. The other describes pass via the fail-open fallback and don't need it.
 function reapplyRatelimitImpl(): void {
   vi.mocked(Ratelimit).mockImplementation(function () {
-    return { limit: mockLimit, getRemaining: mockGetRemaining } as unknown as Ratelimit
+    return { limit: mockLimit, getRemaining: mockGetRemaining, resetUsedTokens: mockResetUsedTokens } as unknown as Ratelimit
   })
 }
 
@@ -34,7 +35,9 @@ import {
   rateLimitAction,
   withRateLimit,
   resetRateLimitersForTests,
+  resetRateLimit,
   getAiUsage,
+  getBrainDumpUsage,
   AI_RATE_LIMIT_KEYS,
 } from '@/lib/infra/rate-limit'
 import { AI_FEATURE_HOURLY_LIMIT } from '@/lib/utils/constants'
@@ -88,6 +91,23 @@ describe('rateLimitAction', () => {
   })
 })
 
+describe('aiSplitFile rate-limit config', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.unstubAllEnvs()
+    resetRateLimitersForTests()
+    mockGetRedis.mockReturnValue({})
+    reapplyRatelimitImpl()
+    mockLimit.mockResolvedValue({ success: true, remaining: 0, reset: Date.now() + 3_600_000 })
+  })
+
+  it('registers aiBrainDump as 1 attempt per hour (the only attempts:1 bucket)', async () => {
+    // Building the limiters runs slidingWindow(attempts, window) for every key; assert the split key.
+    await rateLimitAction('aiBrainDump', 'user-1')
+    expect(Ratelimit.slidingWindow).toHaveBeenCalledWith(1, '1 h')
+  })
+})
+
 describe('getAiUsage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -137,6 +157,65 @@ describe('getAiUsage', () => {
     const usage = await getAiUsage('user-1')
 
     expect(usage.every((u) => u.remaining === AI_FEATURE_HOURLY_LIMIT && u.resetAt === 0)).toBe(true)
+  })
+})
+
+// The Brain Dump quota is surfaced separately from the four per-feature meters (it is NOT in
+// AI_RATE_LIMIT_KEYS); its read must also never consume the 1/hr token and must fail open.
+describe('getBrainDumpUsage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.unstubAllEnvs()
+    resetRateLimitersForTests()
+    mockGetRedis.mockReturnValue({})
+    reapplyRatelimitImpl()
+  })
+
+  it('reads the aiBrainDump budget non-consumingly (1/hr) via getRemaining', async () => {
+    const reset = Date.now() + 3_600_000
+    mockGetRemaining.mockResolvedValue({ remaining: 0, reset })
+
+    const usage = await getBrainDumpUsage('user-1')
+
+    expect(usage.key).toBe('aiBrainDump')
+    expect(usage.limit).toBe(1) // the only attempts:1 bucket
+    expect(usage.remaining).toBe(0)
+    expect(usage.resetAt).toBe(reset)
+    expect(mockGetRemaining).toHaveBeenCalledWith('user-1')
+    // Must NEVER spend the token — `limit()` is the consuming call and stays untouched on the read path.
+    expect(mockLimit).not.toHaveBeenCalled()
+  })
+
+  it('fails open with full budget when limiters are unavailable', async () => {
+    mockGetRedis.mockReturnValue(null)
+
+    const usage = await getBrainDumpUsage('user-1')
+
+    expect(usage).toEqual({ key: 'aiBrainDump', limit: 1, remaining: 1, resetAt: 0 })
+    expect(mockGetRemaining).not.toHaveBeenCalled()
+  })
+
+  it('fails open with full budget when the read throws', async () => {
+    mockGetRemaining.mockRejectedValue(new Error('redis down'))
+
+    const usage = await getBrainDumpUsage('user-1')
+
+    expect(usage).toEqual({ key: 'aiBrainDump', limit: 1, remaining: 1, resetAt: 0 })
+  })
+})
+
+describe('resetRateLimit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetRateLimitersForTests()
+    reapplyRatelimitImpl()
+    mockGetRedis.mockReturnValue({})
+    mockResetUsedTokens.mockResolvedValue(undefined)
+  })
+
+  it('calls resetUsedTokens on the keyed limiter', async () => {
+    await resetRateLimit('aiBrainDump', 'user-1')
+    expect(mockResetUsedTokens).toHaveBeenCalledWith('user-1')
   })
 })
 

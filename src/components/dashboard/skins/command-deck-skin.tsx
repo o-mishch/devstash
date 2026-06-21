@@ -5,12 +5,13 @@ import { DashboardCollectionsList } from '@/components/dashboard/dashboard-colle
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
-import { AnimatedGridPattern } from '@/components/ui/animated-grid-pattern'
+import { RetroGrid } from '@/components/ui/retro-grid'
 import { cn } from '@/lib/utils'
 import { SkinWidget } from './skin-widget'
+import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import { computeUsage, slotsLeftLabel, resolveSkinData, TypeDistributionSegments, type DashboardSkinData } from './shared'
 
-const HUD_PANEL = 'rounded-lg border border-border bg-foreground/[0.015] p-5'
+const HUD_PANEL = 'relative overflow-hidden rounded-lg border border-border bg-foreground/[0.015] p-5'
 
 // Command Deck (Pro) — HUD/terminal readouts with corner brackets and a segmented type bar.
 export async function CommandDeckSkin(data: DashboardSkinData) {
@@ -40,15 +41,13 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
       : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'
 
   return (
-    // overflow-hidden clips the AnimatedGridPattern's intentional bleed (h-[160%] pushed up via
-    // inset-y-[-30%]). Without it the pattern's bottom 30% overflows the skin root and — since
-    // neither app-page nor <main> clips vertically — inflates the document past <main>, leaving a
-    // tall empty (dot-grid-less) band below the content on mobile.
+    // overflow-hidden clips the RetroGrid's perspective bleed. The grid sits at the top as a faint
+    // HUD horizon, radial-masked so it fades out below the header and away from center.
     <div className="relative overflow-hidden">
-      <AnimatedGridPattern
-        numSquares={24}
-        maxOpacity={0.06}
-        className={cn('inset-x-0 inset-y-[-30%] h-[160%] [mask-image:radial-gradient(60%_60%_at_50%_0%,#000,transparent)]')}
+      <RetroGrid
+        className={cn('inset-x-0 bottom-auto top-0 h-[42vh] [mask-image:radial-gradient(70%_70%_at_50%_0%,#000,transparent)]')}
+        opacity={0.14}
+        angle={70}
       />
       <div className="relative font-mono">
         <header className="mb-6">
@@ -90,7 +89,7 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
         </div>
 
         <div className={`${HUD_PANEL} mb-6`}>
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['command-deck']}>
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </div>
@@ -98,14 +97,14 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
         <div className="mb-6 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
           {hasPinned && (
             <div className={HUD_PANEL}>
-              <SkinWidget icon={<Pin />} title="Pinned">
+              <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['command-deck']}>
                 <DashboardPinnedItems initialItems={pinned} />
               </SkinWidget>
             </div>
           )}
           {hasRecent && (
             <div className={HUD_PANEL}>
-              <SkinWidget icon={<History />} title="Recent records">
+              <SkinWidget icon={<History />} title="Recent records" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['command-deck']}>
                 <DashboardRecentItems firstPage={recent} />
               </SkinWidget>
             </div>
@@ -113,8 +112,8 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
         </div>
 
         {/* Type distribution — analytics, below the content lists. */}
-        <div className="mb-6 rounded-lg border border-border bg-foreground/[0.015] p-5">
-          <SkinWidget icon={<BarChart3 />} title="Type distribution">
+        <div className="mb-6 relative overflow-hidden rounded-lg border border-border bg-foreground/[0.015] p-5">
+          <SkinWidget icon={<BarChart3 />} title="Type distribution" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['command-deck']}>
             <TypeDistributionSegments distribution={distribution} />
           </SkinWidget>
         </div>

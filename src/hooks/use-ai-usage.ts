@@ -16,12 +16,18 @@ export type AiFeatureUsage = components['schemas']['AiUsage']['features'][number
 
 const POLL_MS = 60_000
 
-// Polls every 60s while any feature is counting down, but stops entirely once every feature is back
-// at full budget — nothing is sliding, so there is no reason to keep hitting Redis. A mutation
-// invalidation wakes it again. `query.state.data` is the last `{ features }` payload.
-function usageRefetchInterval(query: { state: { data?: { features: AiFeatureUsage[] } } }): number | false {
-  const features = query.state.data?.features
-  if (features && features.every((f) => f.remaining >= f.limit)) return false
+// Polls every 60s while any meter is counting down, but stops entirely once every meter — the four
+// per-feature budgets AND the Brain Dump (`brainDump`) quota — is back at full budget, since nothing
+// is sliding. A mutation invalidation wakes it again. `query.state.data` is the last AiUsage payload.
+interface UsagePollData {
+  features?: AiFeatureUsage[]
+  brainDump?: AiFeatureUsage
+}
+function usageRefetchInterval(query: { state: { data?: UsagePollData } }): number | false {
+  const data = query.state.data
+  if (!data) return POLL_MS
+  const meters = [...(data.features ?? []), ...(data.brainDump ? [data.brainDump] : [])]
+  if (meters.length > 0 && meters.every((m) => m.remaining >= m.limit)) return false
   return POLL_MS
 }
 
@@ -64,6 +70,7 @@ export type AiMutationPath =
   | '/ai/tags'
   | '/ai/description'
   | '/ai/collection-description'
+  | '/ai/brain-dump'
 
 type JsonBody<T> = T extends { content: { 'application/json': infer B } } ? B : never
 type Json200<T> = T extends { responses: { 200: { content: { 'application/json': infer D } } } } ? D : never

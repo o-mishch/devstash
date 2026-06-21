@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createItemSchema, itemMutationSchema } from '@/lib/utils/validators'
+import type { FullItem } from '@/types/item'
 
 // Request/response schemas for the items endpoints (oRPC `oc.route()` wrappers stripped — bare Zod).
 // Route handlers parse path params, query, and body from their OWN sources, so each becomes a
@@ -109,3 +110,36 @@ export const itemContentSchema = z
     language: z.string().nullable(),
   })
   .meta({ id: 'ItemContent' })
+
+// Mirrors FullItem (src/types/item.ts) = LightItem & ItemDetails & ItemContent — the whole drawer
+// shape returned by GET /items/{id}. Defined standalone (not `.extend`) so it gets its own clean $ref
+// component and the generated client types every field the deep-link drawer reads.
+export const fullItemSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    createdAt: z.coerce.date<Date>(),
+    itemType: slimItemTypeSchema,
+    descriptionPreview: z.string().nullable(),
+    contentPreview: z.string().nullable(),
+    url: z.string().nullable(),
+    tags: z.array(z.string()),
+    fileName: z.string().nullable(),
+    fileSize: z.number().nullable(),
+    isFavorite: z.boolean(),
+    isPinned: z.boolean(),
+    description: z.string().nullable(),
+    updatedAt: z.coerce.date<Date>(),
+    collections: z.array(z.object({ id: z.string(), name: z.string() })),
+    content: z.string().nullable(),
+    language: z.string().nullable(),
+  })
+  .meta({ id: 'FullItem' })
+
+// Compile-time drift guard: `fullItemSchema` must expose exactly `FullItem`'s keys, so a new field on
+// FullItem (or its ITEM_SELECT source) can't silently go missing from the GET /items/{id} wire shape.
+// Keys only — the date fields differ by VALUE type (Date in the schema infer vs string on the client
+// FullItem, §6.4 Option A), which is intentional and not drift. Erased at build except a 1-byte const.
+type ExactKeys<A, B> = [keyof A] extends [keyof B] ? ([keyof B] extends [keyof A] ? true : false) : false
+const _fullItemSchemaMatchesFullItem: ExactKeys<z.infer<typeof fullItemSchema>, FullItem> = true
+void _fullItemSchemaMatchesFullItem
