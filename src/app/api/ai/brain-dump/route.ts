@@ -12,7 +12,7 @@ import {
 import { createItem, deleteItem } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/infra/cache'
 import { BRAIN_DUMP_SOURCE_TAG, SPLIT_FILE_MIN_INPUT_CHARS, COLLECTION_NAME_MAX_CHARS } from '@/lib/utils/constants'
-import { deriveSourceLabel } from '@/lib/utils/derive-source-label'
+import { deriveSourceLabel, deriveCollectionName } from '@/lib/utils/derive-source-label'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'ai-brain-dump' })
@@ -22,11 +22,6 @@ export const GET = authedRoute({}, async ({ userId }) => {
   const jobs = await listActiveParseJobs(userId)
   return json({ jobs })
 })
-
-// Seeds the default new-collection name from the source label, dropping a trailing extension.
-function deriveCollectionName(sourceName: string | null): string | null {
-  return sourceName?.replace(/\.[^.]+$/, '').trim() || null
-}
 
 // Starts a "Brain Dump" split. **Gate-first:** validate (422) → Pro (403) → 1/hr budget (429) BEFORE
 // persisting any source item or job, so a refused request never orphans a note (paste) and never spends

@@ -54,6 +54,25 @@ export function useCreateBrainDumpJob() {
   )
 }
 
+/** Re-reads an existing job's durable source and starts a fresh, separately metered parse job. */
+export function useReparseBrainDumpJob() {
+  const runAi = useAiMutation()
+  return useCallback(
+    async (jobId: string): Promise<CreateBrainDumpResult> => {
+      const { data, error, response } = await runAi(
+        '/ai/brain-dump/{jobId}/re-parse',
+        {},
+        { path: { jobId } },
+      )
+      if (error || !data) {
+        return { ok: false, message: error?.message ?? 'Failed to re-parse the source.', status: response?.status }
+      }
+      return { ok: true, jobId: data.jobId, sourceName: data.sourceName, truncated: data.truncated }
+    },
+    [runAi],
+  )
+}
+
 /** Lists the user's eligible text `file` items for the "Select from my files" picker (Pro-gated by caller). */
 export function useBrainDumpSources(enabled: boolean) {
   return $api.useQuery('get', '/ai/brain-dump/sources', {}, { enabled, staleTime: 30_000 })

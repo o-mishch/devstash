@@ -121,6 +121,15 @@ export async function createParseJob(userId: string, input: CreateParseJobInput)
   return job.id
 }
 
+/** Returns the durable source id for an owned parse job; null covers foreign/missing jobs and deleted sources. */
+export async function getParseJobSourceItemId(userId: string, jobId: string): Promise<string | null> {
+  const job = await prisma.aiParseJob.findFirst({
+    where: { id: jobId, userId },
+    select: { sourceItemId: true },
+  })
+  return job?.sourceItemId ?? null
+}
+
 // ── v1 source persistence ─────────────────────────────────────────────────────────────────────────
 
 // The minimal source-item fields the parse route needs to read a job's source text (IDOR-scoped read).

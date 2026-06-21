@@ -41,6 +41,9 @@ export function ParseJobList() {
                 {job.status}
               </Badge>
             </div>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              {job.sourceName ?? 'Unknown source'}
+            </p>
             <Progress value={job.progress} className="mt-2 h-1" />
           </div>
           <ArrowRight className="size-4 shrink-0 text-muted-foreground" />

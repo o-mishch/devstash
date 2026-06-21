@@ -46,6 +46,8 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
   const { openPrompt } = useUpgradePromptStore()
   const { data: activeJobs } = useActiveBrainDumpJobs()
   const awaitingReview = activeJobs?.jobs.length ?? 0
+  // De-duped so repeated re-parses of the same source don't repeat the name in the tooltip.
+  const pendingSourceNames = [...new Set(activeJobs?.jobs.map((job) => job.sourceName ?? 'Unknown source') ?? [])]
 
   const [mode, setMode] = useState<Mode>('paste')
   const [text, setText] = useState('')
@@ -150,9 +152,18 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               Brain Dump
               {awaitingReview > 0 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  {awaitingReview} awaiting review
-                </Badge>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Badge variant="secondary" className="text-[10px]">
+                        {awaitingReview} awaiting review
+                      </Badge>
+                    }
+                  />
+                  <TooltipContent className="max-w-[260px]">
+                    {pendingSourceNames.join(', ')}
+                  </TooltipContent>
+                </Tooltip>
               )}
             </h2>
             <p className="text-xs text-muted-foreground">

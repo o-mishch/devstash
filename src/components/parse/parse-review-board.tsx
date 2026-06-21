@@ -19,6 +19,7 @@ import {
   useCommitBrainDumpJob,
   useEmptyBrainDumpTrash,
   useDiscardBrainDumpJob,
+  useReparseBrainDumpJob,
   type BrainDumpDraftItem,
 } from '@/hooks/use-brain-dump'
 import { ParseProgress } from '@/components/parse/parse-progress'
@@ -87,8 +88,10 @@ export function ParseReviewBoard({
   const commitJob = useCommitBrainDumpJob()
   const emptyTrash = useEmptyBrainDumpTrash()
   const discardJob = useDiscardBrainDumpJob()
+  const reparseJob = useReparseBrainDumpJob()
   const [committing, setCommitting] = useState(false)
   const [discarding, setDiscarding] = useState(false)
+  const [reparsing, setReparsing] = useState(false)
   const [columns, setColumns] = useState<Columns>(emptyColumns)
   // Number of draft patches/deletes in flight (drag reclassify + per-card trash/restore/delete). Empty
   // Trash is blocked while > 0 so a still-uncommitted restore can't be deleted out from under the user.
@@ -203,6 +206,23 @@ export function ParseReviewBoard({
     router.push('/parse')
   }
 
+  const reparse = async () => {
+    setReparsing(true)
+    try {
+      const result = await reparseJob(jobId)
+      if (!result.ok || !result.jobId) {
+        toast.error(result.message ?? 'Could not re-parse the source')
+        return
+      }
+      toast.success('Started a fresh parse job')
+      router.push(`/parse/${result.jobId}`)
+    } catch {
+      toast.error('Could not reach the server. Check your connection and try again.')
+    } finally {
+      setReparsing(false)
+    }
+  }
+
   const onEmptyTrash = async () => {
     const trashedIds = columns.trash
     if (trashedIds.length === 0) return
@@ -230,9 +250,11 @@ export function ParseReviewBoard({
         error={stream.error}
         committing={committing}
         discarding={discarding}
+        reparsing={reparsing}
         onResume={stream.resume}
         onCommitAll={commitAll}
         onDiscard={discard}
+        onReparse={reparse}
       />
 
       <ParseCollectionTarget

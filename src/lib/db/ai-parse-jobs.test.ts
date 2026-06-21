@@ -31,6 +31,7 @@ import {
   emptyJobTrash,
   updateJobCollections,
   createParseJob,
+  getParseJobSourceItemId,
   deleteJob,
   getSourceText,
   listParseSourceCandidates,
@@ -526,6 +527,22 @@ describe('createParseJob', () => {
         }),
       }),
     )
+  })
+})
+
+describe('getParseJobSourceItemId', () => {
+  it('returns the durable source id from an IDOR-scoped job read', async () => {
+    mockJob.findFirst.mockResolvedValue({ sourceItemId: 'note-1' })
+    expect(await getParseJobSourceItemId('user-1', 'job-1')).toBe('note-1')
+    expect(mockJob.findFirst).toHaveBeenCalledWith({
+      where: { id: 'job-1', userId: 'user-1' },
+      select: { sourceItemId: true },
+    })
+  })
+
+  it('returns null for a foreign job or deleted source', async () => {
+    mockJob.findFirst.mockResolvedValue(null)
+    expect(await getParseJobSourceItemId('user-1', 'foreign')).toBeNull()
   })
 })
 

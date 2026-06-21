@@ -560,6 +560,24 @@ export const paths: ZodOpenApiPathsObject = {
       },
     },
   },
+  '/ai/brain-dump/{jobId}/re-parse': {
+    post: {
+      summary: "Re-parse a job's durable source into a fresh job - Pro, 1/hour",
+      requestParams: { path: brainDumpJobIdParam },
+      responses: {
+        201: {
+          description: 'The newly created parse job',
+          content: { 'application/json': { schema: brainDumpJobCreatedSchema } },
+        },
+        401: unauthorized,
+        403: problem('Pro subscription required'),
+        404: problem('Original job or source not found'),
+        422: problem('Source is unavailable for parsing'),
+        429: rateLimited,
+        500: problem('Parse job creation failed'),
+      },
+    },
+  },
   '/ai/brain-dump/{jobId}/items/{itemId}': {
     patch: {
       summary: 'Edit or reclassify a draft item (drag → bucket)',

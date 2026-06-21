@@ -71,18 +71,31 @@ export type AiMutationPath =
   | '/ai/description'
   | '/ai/collection-description'
   | '/ai/brain-dump'
+  | '/ai/brain-dump/{jobId}/re-parse'
 
 type JsonBody<T> = T extends { content: { 'application/json': infer B } } ? B : never
-type Json200<T> = T extends { responses: { 200: { content: { 'application/json': infer D } } } } ? D : never
+type JsonSuccess<T> = T extends { responses: infer R }
+  ? R extends { 200: { content: { 'application/json': infer D } } }
+    ? D
+    : R extends { 201: { content: { 'application/json': infer D } } }
+      ? D
+      : never
+  : never
 
 export type AiMutationBody<P extends AiMutationPath> = JsonBody<paths[P]['post']['requestBody']>
-export type AiMutationData<P extends AiMutationPath> = Json200<paths[P]['post']>
+export type AiMutationData<P extends AiMutationPath> = JsonSuccess<paths[P]['post']>
 
 // Discriminated union (like openapi-fetch's FetchResponse) so `if (error) …` narrows `data` to
 // defined in the success branch.
 export type AiMutationResult<P extends AiMutationPath> =
   | { data: AiMutationData<P>; error?: undefined; response: Response }
   | { data?: undefined; error: { message: string }; response: Response }
+
+type AiMutationParamsArgs<P extends AiMutationPath> = paths[P]['post'] extends {
+  parameters: { path: infer PathParams }
+}
+  ? [params: { path: PathParams }]
+  : []
 
 /**
  * POSTs an AI mutation and ALWAYS invalidates `/ai/usage` afterwards — on success, error, or 429 —
@@ -93,12 +106,13 @@ export async function runAiMutation<P extends AiMutationPath>(
   path: P,
   body: AiMutationBody<P>,
   invalidate: () => void,
+  ...paramsArgs: AiMutationParamsArgs<P>
 ): Promise<AiMutationResult<P>> {
   try {
     // `api.POST` is overloaded per concrete path; `P` is a generic union member, so the body and
     // return type can't collapse to one overload. Both are derived from the same `paths` type, so
     // the cast is sound — the runtime path + body are exactly what the route contract expects.
-    return (await api.POST(path as AiMutationPath, { body } as never)) as AiMutationResult<P>
+    return (await api.POST(path as AiMutationPath, { body, params: paramsArgs[0] } as never)) as AiMutationResult<P>
   } finally {
     invalidate()
   }
@@ -108,10 +122,11 @@ export async function runAiMutation<P extends AiMutationPath>(
 export function useAiMutation(): <P extends AiMutationPath>(
   path: P,
   body: AiMutationBody<P>,
+  ...paramsArgs: AiMutationParamsArgs<P>
 ) => Promise<AiMutationResult<P>> {
   const invalidate = useInvalidateAiUsage()
   return useCallback(
-    (path, body) => runAiMutation(path, body, invalidate),
+    (path, body, ...paramsArgs) => runAiMutation(path, body, invalidate, ...paramsArgs),
     [invalidate],
   )
 }

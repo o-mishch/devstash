@@ -245,5 +245,6 @@ export const brainDumpJobSummarySchema = z
 export const brainDumpJobListSchema = z.object({ jobs: z.array(brainDumpJobSummarySchema) }).meta({ id: 'BrainDumpJobList' })
 
 // Path params for the per-job and per-draft split routes.
-export const brainDumpJobIdParam = z.object({ jobId: z.string() })
+export const brainDumpJobIdParam = z.object({ jobId: z.string().min(1) })
+export type BrainDumpJobIdParam = z.infer<typeof brainDumpJobIdParam>
 export const brainDumpItemParams = z.object({ jobId: z.string(), itemId: z.string() })

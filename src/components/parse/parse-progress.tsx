@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2, RotateCw, Save, Sparkles, CheckCircle2, AlertTriangle, Trash2, type LucideIcon } from 'lucide-react'
+import { Loader2, RotateCw, Save, Sparkles, CheckCircle2, AlertTriangle, Trash2, RefreshCw, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -39,9 +39,11 @@ interface ParseProgressProps {
   error: string | null
   committing: boolean
   discarding: boolean
+  reparsing: boolean
   onResume: () => void
   onCommitAll: () => void
   onDiscard: () => void
+  onReparse: () => void
 }
 
 export function ParseProgress({
@@ -51,11 +53,14 @@ export function ParseProgress({
   error,
   committing,
   discarding,
+  reparsing,
   onResume,
   onCommitAll,
   onDiscard,
+  onReparse,
 }: ParseProgressProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [reparseOpen, setReparseOpen] = useState(false)
   const isStreaming = phase === 'streaming'
   const done = phase === 'completed'
   const failed = phase === 'failed'
@@ -91,6 +96,38 @@ export function ParseProgress({
               <RotateCw className="size-4" /> Resume parsing
             </Button>
           )}
+          <Dialog open={reparseOpen} onOpenChange={setReparseOpen}>
+            <DialogTrigger
+              render={
+                <Button variant="outline" size="sm" disabled={reparsing || isStreaming}>
+                  {reparsing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                  Re-parse
+                </Button>
+              }
+            />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Re-parse this source?</DialogTitle>
+                <DialogDescription>
+                  This starts a separate parse job from the saved source and uses a new hourly Brain Dump token.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" size="sm" onClick={() => setReparseOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setReparseOpen(false)
+                    onReparse()
+                  }}
+                >
+                  Use token and re-parse
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
             <DialogTrigger
               render={
