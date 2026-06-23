@@ -12,7 +12,7 @@ export default function CollectionsLoading() {
         <Skeleton className="h-8 w-24 rounded-md" />
       </div>
 
-      <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="app-grid card-grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {Array.from({ length: 6 }, (_, i) => (
           <CollectionCardSkeleton key={i} />
         ))}

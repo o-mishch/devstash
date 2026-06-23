@@ -14,6 +14,7 @@ interface CopyButtonProps {
   stopPropagation?: boolean
   title?: string
   text?: string
+  textClassName?: string
   isRestricted?: boolean
   restrictedDescription?: string
   onUpgrade?: () => void
@@ -26,6 +27,7 @@ export function CopyButton({
   stopPropagation = false,
   title = 'Copy',
   text,
+  textClassName = 'hidden sm:inline',
   isRestricted = false,
   restrictedDescription = 'Copying download links requires a Pro plan.',
   onUpgrade,
@@ -50,7 +52,7 @@ export function CopyButton({
   return (
     <Button size={text ? 'sm' : 'icon'} variant="ghost" className={cn(!text && 'size-7', className)} onClick={handleClick} title={title}>
       {showError ? <XCircle className={cn(iconClassName, 'text-destructive')} /> : isCopied ? <Check className={cn(iconClassName, 'text-green-400')} /> : <Copy className={iconClassName} />}
-      {text ? <span className="hidden sm:inline">{text}</span> : null}
+      {text ? <span className={textClassName}>{text}</span> : null}
     </Button>
   )
 }

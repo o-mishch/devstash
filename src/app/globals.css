@@ -233,6 +233,101 @@
         @apply relative z-0 cursor-pointer shadow-sm transition-all duration-200 hover:z-10 hover:-translate-y-1 hover:bg-foreground/5 hover:shadow-md active:z-10 active:-translate-y-1 active:bg-foreground/5 active:shadow-md;
         touch-action: manipulation;
     }
+    /* A draggable card whose whole surface is the drag source (no separate grip
+       handle) — e.g. the Brain Dump draft cards. On a touch screen the browser
+       claims a press+move as a scroll gesture and fires `pointercancel` before
+       the sensor's hold-to-drag delay elapses, so the drag never starts. Setting
+       `touch-action: none` yields the gesture to the pointer sensor so a 250ms
+       hold begins a drag. Overrides the `touch-action: manipulation` these cards
+       also inherit from `card-interactive` (so it must win the cascade). The
+       trade-off (chosen): a finger landing on a card can't scroll the page from
+       there — scrolling starts from bucket gaps/headers instead. */
+    .draggable-card {
+        touch-action: none;
+    }
+    /* ── Unified card design system ───────────────────────────────────────────
+       Every card/widget in the app shares one look: an always-on colored LEFT
+       border (no layout shift — it is present at rest and only intensifies on
+       hover) plus a hover highlight. The accent color comes from --card-accent
+       (set inline per item-type on item cards; falls back to the theme primary
+       on neutral widgets). Layer cards with `card-surface` for the static look,
+       add `card-hover` (or the existing `card-interactive`) for the hover lift,
+       and put `group` on the card so `card-icon` children grow on hover. */
+    .card-surface {
+        border-left-width: 3px;
+        border-left-color: color-mix(in srgb, var(--card-accent, var(--primary)) 60%, transparent);
+        transition: border-color 200ms, background-color 200ms, box-shadow 200ms;
+    }
+    /* Hover affordance for non-clickable container widgets (panels/sections):
+       brighten the accent border + a faint surface lift. Clickable rows keep
+       using card-interactive (translate/shadow); this is the lighter variant. */
+    .card-hover {
+        transition: border-color 200ms, background-color 200ms, box-shadow 200ms;
+    }
+    @media (hover: hover) {
+        .card-surface:hover,
+        .card-hover:hover {
+            border-left-color: var(--card-accent, var(--primary));
+            background-color: color-mix(in srgb, var(--foreground) 4%, transparent);
+        }
+    }
+    /* Icon-grow on card hover: an icon tagged `card-icon` scales up slightly when
+       its enclosing card is hovered. Both triggers are covered so the effect is
+       app-wide with no per-card wiring: `.card-interactive` (on every clickable
+       card/row) and an explicit `.group` (on container widgets). The shared
+       ItemTypeIcon / ItemIconWrapper carry `card-icon`, so most cards get this
+       for free. transform-origin stays centered. */
+    .card-icon {
+        transition: transform 200ms ease-out;
+    }
+    @media (hover: hover) {
+        .card-interactive:hover .card-icon,
+        .group:hover .card-icon,
+        button:hover .card-icon,
+        a:hover .card-icon {
+            transform: scale(1.12);
+        }
+    }
+
+    /* ── Elevation tiers (nesting legibility) ─────────────────────────────────
+       A nested card/widget/input must read as DISTINCT from its container so the
+       containment hierarchy is obvious. Each tier lifts the surface a step:
+       deeper = brighter fill + stronger border. Apply the tier matching the
+       nesting depth (a top-level widget = tier-1; a card inside it = tier-2; a
+       card inside THAT = tier-3). `card-input` is the recessed fill for inputs
+       sitting inside a widget, so a field never blends into its panel.
+       color-mix on --foreground keeps it theme-adaptive (light + dark). */
+    .card-tier-1 {
+        background-color: color-mix(in srgb, var(--foreground) 3%, var(--card));
+        border-color: color-mix(in srgb, var(--foreground) 10%, transparent);
+    }
+    .card-tier-2 {
+        background-color: color-mix(in srgb, var(--foreground) 7%, var(--card));
+        border-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+    }
+    .card-tier-3 {
+        background-color: color-mix(in srgb, var(--foreground) 11%, var(--card));
+        border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
+    }
+    @media (hover: hover) {
+        .card-tier-1:hover { background-color: color-mix(in srgb, var(--foreground) 6%, var(--card)); }
+        .card-tier-2:hover { background-color: color-mix(in srgb, var(--foreground) 10%, var(--card)); }
+        .card-tier-3:hover { background-color: color-mix(in srgb, var(--foreground) 14%, var(--card)); }
+    }
+    /* Inputs nested inside a widget: a recessed, slightly inset fill so the field
+       is visually separate from the panel it sits in (highlights on focus). */
+    .card-input {
+        background-color: color-mix(in srgb, var(--foreground) 4%, var(--background));
+        border-color: color-mix(in srgb, var(--foreground) 14%, transparent);
+        transition: border-color 200ms, background-color 200ms, box-shadow 200ms;
+    }
+    @media (hover: hover) {
+        .card-input:hover { border-color: color-mix(in srgb, var(--foreground) 22%, transparent); }
+    }
+    .card-input:focus-within {
+        border-color: var(--card-accent, var(--primary));
+        background-color: var(--background);
+    }
     /* Reserve space above/below cards so hover lift + shadow aren't clipped */
     .card-grid {
         @apply overflow-visible pt-1 pb-1;

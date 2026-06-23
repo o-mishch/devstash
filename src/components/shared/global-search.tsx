@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useMemo } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
 import { useRouter } from 'next/navigation'
 import { Search, X } from 'lucide-react'
@@ -11,10 +11,8 @@ import {
   CommandGroup,
   CommandItem,
 } from '@/components/ui/command'
-import { useItemsStore } from '@/stores/items'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import type { SidebarCollection } from '@/types/collection'
-import { searchResultToLightItem, isSearchResultItem } from '@/types/item'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { itemCountLabel } from '@/lib/utils/format'
 
@@ -29,8 +27,6 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
 
-  const storeItems = useItemsStore((state) => state.items)
-  const items = useMemo(() => Array.from(storeItems.values()), [storeItems])
   const { openDrawer, closeDrawer } = useItemDrawerStore()
   const router = useRouter()
 
@@ -38,7 +34,7 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useGlobalSearchShortcuts({ inputRef, containerRef, setOpen, closeDrawer })
-  const { loading, displayItems, displayCollections } = useGlobalSearch(query, items, collections)
+  const { loading, displayItems, displayCollections } = useGlobalSearch(query, collections)
 
   const handleSelect = useCallback((type: 'item' | 'collection', id: string) => {
     setOpen(false)
@@ -46,18 +42,16 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
     inputRef.current?.blur()
 
     if (type === 'item') {
-      const storeItem = items.find(i => i.id === id)
-      const displayHit = displayItems.find(i => i.id === id)
-      const item = storeItem ?? (displayHit && isSearchResultItem(displayHit)
-        ? searchResultToLightItem(displayHit)
-        : displayHit ?? undefined)
-      if (item && 'tags' in item) {
+      // displayItems merges the local TanStack cache with remote hits — both full LightItems now,
+      // so the drawer opens fully hydrated (fileName/fileSize/url) regardless of which source won.
+      const item = displayItems.find(i => i.id === id)
+      if (item) {
         openDrawer(item)
       }
     } else {
       router.push(`/collections/${id}`)
     }
-  }, [router, displayItems, items, openDrawer])
+  }, [router, displayItems, openDrawer])
 
   const hasQuery = query.trim().length > 0
   const hasResults = displayItems.length > 0 || displayCollections.length > 0

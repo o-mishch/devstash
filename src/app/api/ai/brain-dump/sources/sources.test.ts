@@ -16,8 +16,11 @@ const mockSession = getCachedSession as ReturnType<typeof vi.fn>
 const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 const mockList = listParseSourceCandidates as ReturnType<typeof vi.fn>
 
-function getReq(): NextRequest {
-  return new NextRequest('http://localhost/api/ai/brain-dump/sources')
+function getReq(type?: string): NextRequest {
+  const url = type
+    ? `http://localhost/api/ai/brain-dump/sources?type=${type}`
+    : 'http://localhost/api/ai/brain-dump/sources'
+  return new NextRequest(url)
 }
 
 beforeEach(() => {
@@ -41,12 +44,35 @@ describe('GET /ai/brain-dump/sources', () => {
     expect(mockList).not.toHaveBeenCalled()
   })
 
-  it('returns the user\'s eligible sources, scoped to the session userId', async () => {
+  it('defaults to listing file sources, scoped to the session userId', async () => {
     const sources = [{ itemId: 'f1', name: 'notes.md', sizeBytes: 12 }]
     mockList.mockResolvedValue(sources)
     const res = await GET(getReq())
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ sources })
-    expect(mockList).toHaveBeenCalledWith('user-1')
+    expect(mockList).toHaveBeenCalledWith('user-1', 'file')
+  })
+
+  it('lists note sources when ?type=note', async () => {
+    // A note source has no byte size on disk → sizeBytes is null (the realistic note shape).
+    const sources = [{ itemId: 'n1', name: 'Project ideas', sizeBytes: null }]
+    mockList.mockResolvedValue(sources)
+    const res = await GET(getReq('note'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ sources })
+    expect(mockList).toHaveBeenCalledWith('user-1', 'note')
+  })
+
+  it('returns 422 for an unknown source type', async () => {
+    const res = await GET(getReq('image'))
+    expect(res.status).toBe(422)
+    expect(mockList).not.toHaveBeenCalled()
+  })
+
+  it('validates the query before the Pro gate: a non-Pro user with a bad query gets 422, not 403', async () => {
+    mockPro.mockResolvedValue(false)
+    const res = await GET(getReq('image'))
+    expect(res.status).toBe(422)
+    expect(mockList).not.toHaveBeenCalled()
   })
 })

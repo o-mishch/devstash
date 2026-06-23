@@ -7,9 +7,9 @@ import type { LucideIcon } from 'lucide-react'
 // `card-interactive` hover/press lift + focus ring and recolors that left border to the per-card
 // accent (dimmed at rest, brightening to full color on hover/press) for the real clickable chips.
 export const STAT_CHIP_BASE =
-  'flex min-w-0 grow basis-[calc(50%-0.25rem)] items-center gap-3 rounded-xl border border-l-2 bg-card px-3 py-2.5 sm:basis-0'
+  'flex min-w-0 grow basis-[calc(50%-0.25rem)] items-center gap-3 rounded-xl border border-l-2 bg-card px-3 py-2 sm:basis-0'
 
-export const STAT_CHIP_CLASS = `${STAT_CHIP_BASE} card-interactive border-l-[color-mix(in_oklab,var(--stat-accent),transparent_45%)] hover:border-l-[var(--stat-accent)] active:border-l-[var(--stat-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`
+export const STAT_CHIP_CLASS = `${STAT_CHIP_BASE} group/chip card-interactive border-l-[color-mix(in_oklab,var(--stat-accent),transparent_45%)] hover:border-l-[var(--stat-accent)] active:border-l-[var(--stat-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`
 
 // Feeds the per-card accent into STAT_CHIP_CLASS's left border via a CSS var. Apply to the chip's
 // root element alongside STAT_CHIP_CLASS.
@@ -37,10 +37,10 @@ export function StatChipBody({ icon: Icon, value, label, color }: StatChipBodyPr
   return (
     <>
       <span
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg"
+        className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover/chip:scale-105"
         style={{ backgroundColor: `${color}1f` }}
       >
-        <Icon className="size-5" style={{ color }} aria-hidden="true" />
+        <Icon className="size-[18px]" style={{ color }} aria-hidden="true" />
       </span>
       <div className="min-w-0 text-left">
         <p className="text-lg font-semibold leading-none tabular-nums">{value}</p>

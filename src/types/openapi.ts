@@ -538,6 +538,8 @@ export interface paths {
                         tags?: string[];
                         /** @default [] */
                         collectionIds?: string[];
+                        /** @enum {string} */
+                        itemTypeName?: "snippet" | "prompt" | "command" | "note";
                     };
                 };
             };
@@ -1974,17 +1976,19 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the current user's in-progress brain dump jobs */
+        /** List the current user's brain dump jobs — active by default, History (closed) with ?history=1 */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    history?: "0" | "1" | "true" | "false";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description In-progress parse jobs */
+                /** @description Active parse jobs, or the closed History list when ?history=1 */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1995,6 +1999,15 @@ export interface paths {
                 };
                 /** @description Not authenticated */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Validation failed */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2082,10 +2095,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List eligible text file items for the "Select from my files" picker */
+        /** List eligible stash items (text files or brain-dump notes) for the source picker */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    type?: "file" | "note";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -2399,6 +2414,15 @@ export interface paths {
                         "application/json": components["schemas"]["Problem"];
                     };
                 };
+                /** @description Only a completed job can be re-parsed */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
                 /** @description Source is unavailable for parsing */
                 422: {
                     headers: {
@@ -2574,15 +2598,19 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BrainDumpItemCommitInput"];
+                };
+            };
             responses: {
-                /** @description Number of items created (1, or 0 when the create failed) */
+                /** @description Commit outcome: items created (0/1), whether the job auto-closed, and whether the client must confirm creating the pending collection */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["BrainDumpCommit"];
+                        "application/json": components["schemas"]["BrainDumpItemCommit"];
                     };
                 };
                 /** @description Not authenticated */
@@ -2605,6 +2633,15 @@ export interface paths {
                 };
                 /** @description Draft item not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Validation failed */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -5367,6 +5404,9 @@ export interface webhooks {
 }
 export interface components {
     schemas: {
+        BrainDumpItemCommitInput: {
+            confirmCreateCollection?: boolean;
+        };
         /** @description See the full object: https://docs.stripe.com/api/checkout/sessions/object */
         StripeCheckoutSessionPayload: {
             id: string;
@@ -5616,11 +5656,16 @@ export interface components {
         BrainDumpJobSummary: {
             id: string;
             /** @enum {string} */
-            status: "processing" | "completed" | "failed";
+            status: "processing" | "completed" | "failed" | "closed";
             progress: number;
             itemCount: number;
             sourceName: string | null;
+            collectionName: string | null;
             createdAt: string;
+            committedCount?: number;
+            committedByType?: {
+                [key: string]: number;
+            } | null;
         };
         BrainDumpJobCreated: {
             jobId: string;
@@ -5637,9 +5682,13 @@ export interface components {
         };
         BrainDumpJobSnapshot: {
             /** @enum {string} */
-            status: "processing" | "completed" | "failed";
+            status: "processing" | "completed" | "failed" | "closed";
             progress: number;
             error?: string | null;
+            committedCount?: number;
+            committedByType?: {
+                [key: string]: number;
+            } | null;
             collectionName: string | null;
             collectionIds: string[];
             sourceItemId: string | null;
@@ -5659,20 +5708,24 @@ export interface components {
             description?: string | null;
             tags: string[];
             trashed: boolean;
+            duplicateOf?: {
+                id: string;
+                title: string;
+                itemTypeName: string;
+            } | null;
+        };
+        BrainDumpItemCommit: {
+            created: number;
+            autoClosed: boolean;
+            needsCollectionConfirm: boolean;
         };
         BrainDumpCommit: {
             created: number;
             total: number;
+            closed: boolean;
         };
         SearchResult: {
-            items: {
-                id: string;
-                title: string;
-                itemType: {
-                    name: string;
-                };
-                descriptionPreview: string | null;
-            }[];
+            items: components["schemas"]["LightItem"][];
             collections: {
                 id: string;
                 name: string;

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
+// `after` runs the abandoned-job sweep post-response; stub it to a no-op so the handler doesn't register
+// a real callback outside a request scope in tests.
+vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }))
 vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
 vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
 vi.mock('@/lib/infra/rate-limit', () => ({
@@ -10,19 +13,22 @@ vi.mock('@/lib/infra/rate-limit', () => ({
 }))
 vi.mock('@/lib/db/ai-parse-jobs', () => ({
   createParseJob: vi.fn(),
-  getParseJobSourceItemId: vi.fn(),
+  getReparseEligibility: vi.fn(),
   getSourceItemForParse: vi.fn(),
   getSourceText: vi.fn(),
+  sweepAbandonedParseJobs: vi.fn(),
 }))
 
+import { after } from 'next/server'
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit, resetRateLimit } from '@/lib/infra/rate-limit'
 import {
   createParseJob,
-  getParseJobSourceItemId,
+  getReparseEligibility,
   getSourceItemForParse,
   getSourceText,
+  sweepAbandonedParseJobs,
 } from '@/lib/db/ai-parse-jobs'
 import { POST } from './route'
 
@@ -31,7 +37,7 @@ const mockIsPro = vi.mocked(getCachedVerifiedProAccess)
 const mockRateLimit = vi.mocked(checkRateLimit)
 const mockResetRateLimit = vi.mocked(resetRateLimit)
 const mockCreate = vi.mocked(createParseJob)
-const mockJobSourceId = vi.mocked(getParseJobSourceItemId)
+const mockEligibility = vi.mocked(getReparseEligibility)
 const mockSourceItem = vi.mocked(getSourceItemForParse)
 const mockSourceText = vi.mocked(getSourceText)
 
@@ -51,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: '2099-01-01' })
   mockIsPro.mockResolvedValue(true)
-  mockJobSourceId.mockResolvedValue('note-1')
+  mockEligibility.mockResolvedValue({ status: 'completed', sourceItemId: 'note-1' })
   mockSourceItem.mockResolvedValue(source)
   mockSourceText.mockResolvedValue(read)
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
@@ -61,26 +67,42 @@ beforeEach(() => {
 describe('POST /ai/brain-dump/{jobId}/re-parse', () => {
   it('returns 422 for an empty path parameter before reading the original job', async () => {
     expect((await POST(request(), emptyJobCtx)).status).toBe(422)
-    expect(mockJobSourceId).not.toHaveBeenCalled()
+    expect(mockEligibility).not.toHaveBeenCalled()
   })
 
   it('returns 401 before reading the original job when signed out', async () => {
     mockSession.mockResolvedValue(null)
     expect((await POST(request(), ctx)).status).toBe(401)
-    expect(mockJobSourceId).not.toHaveBeenCalled()
+    expect(mockEligibility).not.toHaveBeenCalled()
   })
 
   it('returns 403 before reading or spending quota when not Pro', async () => {
     mockIsPro.mockResolvedValue(false)
     expect((await POST(request(), ctx)).status).toBe(403)
-    expect(mockJobSourceId).not.toHaveBeenCalled()
+    expect(mockEligibility).not.toHaveBeenCalled()
     expect(mockRateLimit).not.toHaveBeenCalled()
   })
 
   it('returns 404 for a foreign or missing original job without spending quota', async () => {
-    mockJobSourceId.mockResolvedValue(null)
+    mockEligibility.mockResolvedValue(null)
     expect((await POST(request(), ctx)).status).toBe(404)
-    expect(mockJobSourceId).toHaveBeenCalledWith('user-1', 'job-1')
+    expect(mockEligibility).toHaveBeenCalledWith('user-1', 'job-1')
+    expect(mockRateLimit).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 for every non-completed original status (re-parse is completed-only) without spending quota', async () => {
+    // beforeEach already provides a Pro session; only the eligibility status varies per iteration.
+    for (const status of ['processing', 'failed', 'closed'] as const) {
+      mockEligibility.mockResolvedValue({ status, sourceItemId: 'note-1' })
+      expect((await POST(request(), ctx)).status).toBe(409)
+    }
+    expect(mockRateLimit).not.toHaveBeenCalled()
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 when a completed job has lost its source item (SetNull)', async () => {
+    mockEligibility.mockResolvedValue({ status: 'completed', sourceItemId: null })
+    expect((await POST(request(), ctx)).status).toBe(404)
     expect(mockRateLimit).not.toHaveBeenCalled()
   })
 
@@ -123,6 +145,8 @@ describe('POST /ai/brain-dump/{jobId}/re-parse', () => {
       truncated: true,
       collectionName: 'project',
     })
+    // Re-parse is a create handler, so it registers the lazy abandoned-job sweep like POST/GET /brain-dump.
+    expect(after).toHaveBeenCalledWith(sweepAbandonedParseJobs)
   })
 
   it('refunds the hourly token when fresh-job creation fails', async () => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useTransition } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { api } from '@/lib/api/client'
@@ -9,26 +9,24 @@ interface ResendVerificationButtonProps {
   email: string
 }
 
+const RESEND_ERROR = 'Failed to send verification email. Please try again later.'
+
 export function ResendVerificationButton({ email }: ResendVerificationButtonProps) {
   const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-
-  function handleResend() {
-    startTransition(async () => {
+  const resendMutation = useMutation({
+    mutationFn: async () => {
       const { error } = await api.POST('/auth/resend-verification', { body: { email } })
-      if (!error) {
-        router.push('/sign-in?resent=1')
-      } else {
-        toast.error(error.message || 'Failed to send verification email. Please try again later.')
-      }
-    })
-  }
+      if (error) throw new Error(error.message || RESEND_ERROR)
+    },
+    onSuccess: () => router.push('/sign-in?resent=1'),
+    onError: (error: Error) => toast.error(error.message || RESEND_ERROR),
+  })
 
   return (
     <button
       type="button"
-      onClick={handleResend}
-      disabled={isPending}
+      onClick={() => resendMutation.mutate()}
+      disabled={resendMutation.isPending}
       className="text-sm text-primary underline-offset-4 hover:underline disabled:opacity-50"
     >
       Resend verification email

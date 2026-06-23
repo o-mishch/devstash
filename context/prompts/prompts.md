@@ -1,3 +1,7 @@
+Get recommendations and best practices from context7
+
+
+
 ## Playwright MCP Prompt
 
 ```text
@@ -82,7 +86,6 @@ map with the existing codebase.
 The goal is to implement the solution 100% complient with recommendations and best practices 
 
 
-Get recommendations and best practices from context7
 
 write short enough consolidated prompt for ai agent
 

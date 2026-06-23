@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { Textarea } from '@/components/ui/textarea'
-import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR, languagesForItemType } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
@@ -59,10 +59,24 @@ interface LanguageInputProps {
   onChange: (val: string) => void
   placeholder?: string
   className?: string
+  // Restricts the dropdown to the languages valid for this item type: `command` → the shell/CLI set,
+  // `snippet` → the full list minus that set. Omitted → the full Monaco list (no filtering).
+  itemType?: string
+  // 'fill' (default) stretches the trigger + label to fill its container with the chevron pushed to
+  // the far edge — the full-width field used in the item forms. 'fit' sizes the trigger to its content
+  // (no flex-1 / justify-between) so it reads as a compact pill, matching the drawer's item-type Select.
+  fit?: boolean
 }
 
-export function LanguageInput({ id, value, onChange, placeholder = "Select language...", className }: LanguageInputProps) {
-  const monacoLanguages = useMonacoLanguageList()
+export function LanguageInput({ id, value, onChange, placeholder = "Select language...", className, itemType, fit }: LanguageInputProps) {
+  const allLanguages = useMonacoLanguageList()
+  // Memoized so the per-type filter only re-runs when the list or item type actually changes — not on
+  // every render (e.g. opening/typing in the popover). React Compiler also memoizes, but this keeps the
+  // intent explicit and the dependency narrow.
+  const monacoLanguages = useMemo(
+    () => (itemType ? languagesForItemType(itemType, allLanguages) : allLanguages),
+    [itemType, allLanguages],
+  )
   const [open, setOpen] = useState(false)
 
   return (
@@ -77,14 +91,14 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className={cn("w-full justify-between font-normal h-9", className)}
+            className={cn(fit ? "justify-start font-normal" : "w-full justify-between font-normal h-9", className)}
           />
         }
       >
-        <span className={cn("truncate flex-1 text-left", !value && "text-muted-foreground")}>
+        <span className={cn("truncate text-left", !fit && "flex-1", !value && "text-muted-foreground")}>
           {value ? monacoLanguages.find((lang) => lang === value) || value : placeholder}
         </span>
-        <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+        <ChevronsUpDown className={cn("size-4 shrink-0 opacity-50", !fit && "ml-2")} />
       </PopoverTrigger>
       {/* initialFocus: on touch/pen, do NOT move focus into the popup on open. Otherwise the
           search CommandInput auto-focuses, which pops the mobile soft keyboard; the bottom-sheet

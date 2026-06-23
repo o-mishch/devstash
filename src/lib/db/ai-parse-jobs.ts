@@ -1,6 +1,7 @@
 import 'server-only'
-import type { Prisma } from '@/generated/prisma/client'
+import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/lib/infra/prisma'
+import { getRedis } from '@/lib/infra/redis'
 import { logger } from '@/lib/infra/pino'
 import { createItem, type CreateItemInput } from '@/lib/db/items'
 import { getTextFromS3 } from '@/lib/storage/s3'
@@ -10,8 +11,11 @@ import {
   SPLIT_FILE_ALLOWED_EXTS,
   ITEM_TYPES_WITH_CONTENT,
   ITEM_TYPES_WITH_LANGUAGE,
+  PARSE_JOB_TTL_MS,
+  BRAIN_DUMP_SOURCE_TAG,
 } from '@/lib/utils/constants'
-import { brainDumpProgress, type BrainDumpDraft } from '@/lib/ai/brain-dump'
+import { brainDumpProgress, type BrainDumpDraft, type BrainDumpFailureReason } from '@/lib/ai/brain-dump'
+import { findDuplicateMatches, type DuplicateMatch } from '@/lib/db/parse-dedup'
 
 // Data access for the AI File Splitter staging tables (`AiParseJob` + `AiParseJobItem`). These are
 // short-lived draft/staging rows: a job is created on upload, items are appended live as the model
@@ -21,7 +25,94 @@ import { brainDumpProgress, type BrainDumpDraft } from '@/lib/ai/brain-dump'
 
 const log = logger.child({ tag: 'ai-parse-jobs' })
 
-export type ParseJobStatus = 'processing' | 'completed' | 'failed'
+// v2.5 status model: `processing` (also the resumable interrupted state), `completed` (in review),
+// `failed` (not-resumable, rich detail), `closed` (post-commit history stub — terminal, never resumed
+// or re-parsed). See note 7 in the feature doc.
+export type ParseJobStatus = 'processing' | 'completed' | 'failed' | 'closed'
+
+// Per-type commit tally stamped onto a closed job ({ snippet: 3, note: 2 }). Stored in the
+// `committedByType Json?` column; merged additively on each late trash-bucket commit.
+export type CommittedByType = Record<string, number>
+
+// Coerces the `committedByType` Json column to a plain `{ type: count }` record. Only this module ever
+// writes the column (always as an object), but the Prisma `Json` type is `unknown`-shaped — a defensive
+// guard keeps a stray array/scalar from corrupting the tally instead of trusting an `as` cast.
+function asCommittedByType(value: Prisma.JsonValue | null): CommittedByType {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as CommittedByType
+}
+
+// Sums a list of committed draft types into a per-type tally, folded onto an existing base tally (the
+// running `committedByType` map) so late trash-commits accumulate rather than overwrite.
+function tallyByType(base: CommittedByType, types: string[]): CommittedByType {
+  const next: CommittedByType = { ...base }
+  types.forEach((type) => {
+    next[type] = (next[type] ?? 0) + 1
+  })
+  return next
+}
+
+// Read-merge-write the running stub stats (`committedCount` + `committedByType`) onto the job matched by
+// `where`, in one atomic step so the scalar and the map can't drift (note 7). `extraData` carries any
+// other fields written in the SAME update (e.g. the close demote: `status`/`sourceText`). The single
+// `where`-scoped `findFirst`→`updateMany` is the shared body behind every stats path: per-item commit
+// bump, "Save all" close, self-heal close, and late closed-job trash-commit merge.
+//
+// Concurrency: the bulk save-now fan-out fires several per-item commits at this same row at once. The map
+// is an unavoidable read-modify-write, so the whole bump runs under `Serializable` with a P2034 retry —
+// without it (Postgres' Read Committed default) two concurrent bumps both read the same base and write
+// base+1, losing an increment. `committedCount` additionally uses atomic `increment` so the scalar is
+// always exact even before the serialization guard kicks in. Returns the new total (so callers can confirm
+// the row was matched), or null when nothing matched `where`.
+async function bumpCommittedStats(
+  where: Prisma.AiParseJobWhereInput,
+  types: string[],
+  extraData: Prisma.AiParseJobUpdateManyMutationInput = {},
+): Promise<number | null> {
+  const MAX_RETRIES = 5
+  let retries = 0
+  for (;;) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const job = await tx.aiParseJob.findFirst({
+            where,
+            select: { committedCount: true, committedByType: true },
+          })
+          if (!job) return null
+          // With no committed types there's no per-type tally to merge — write only `extraData` (e.g. the
+          // close demote's status/sourceText). Keeping the map out of the write set avoids a redundant
+          // rewrite that would widen the conflict window against a concurrent late increment.
+          const data: Prisma.AiParseJobUpdateManyMutationInput = { ...extraData }
+          if (types.length > 0) {
+            data.committedCount = { increment: types.length }
+            data.committedByType = tallyByType(asCommittedByType(job.committedByType), types)
+          }
+          await tx.aiParseJob.updateMany({ where, data })
+          return job.committedCount + types.length
+        },
+        { isolationLevel: 'Serializable' },
+      )
+    } catch (error) {
+      // P2034 = serialization conflict; retry a bounded number of times, then surface to the caller. The
+      // bulk save-now fan-out aims several bumps at this one row, so back off with a little jitter before
+      // retrying — an immediate tight retry against a hot row just thrashes the same conflict.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034' && ++retries < MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, retries * 15 + Math.floor(Math.random() * 15)))
+        continue
+      }
+      throw error
+    }
+  }
+}
+
+// Records the just-committed types onto an IN-REVIEW job's running tally as each per-item "Save now"
+// lands, so a job committed draft-by-draft carries an accurate total by the time it closes (instead of
+// only the final draft being counted). Scoped to `status != 'closed'` so it never touches a history stub.
+async function recordInReviewCommit(userId: string, jobId: string, types: string[]): Promise<void> {
+  if (types.length === 0) return
+  await bumpCommittedStats({ id: jobId, userId, status: { not: 'closed' } }, types)
+}
 
 // Browser-facing draft shape (matches `splitDraftItemSchema`). `order` drives board ordering.
 export interface ParseDraftItemDTO {
@@ -35,6 +126,10 @@ export interface ParseDraftItemDTO {
   description: string | null
   tags: string[]
   trashed: boolean
+  // Advisory de-dup: the committed stash item this draft appears to duplicate (id for the deep-link,
+  // title for the badge), or null/absent when it's unique. Set only on the snapshot read (board seed);
+  // never persisted, never blocks commit.
+  duplicateOf?: DuplicateMatch | null
 }
 
 export interface ParseJobSnapshot {
@@ -52,6 +147,9 @@ export interface ParseJobSnapshot {
   sourceItemType: string | null
   sourceName: string | null
   truncated: boolean
+  // Closed-job history stub stats (0/null until the job is closed).
+  committedCount: number
+  committedByType: CommittedByType | null
   items: ParseDraftItemDTO[]
 }
 
@@ -64,14 +162,21 @@ export interface ParseJobRunState {
   itemCount: number
 }
 
-// One row in the in-progress list (entry-card badge + /parse index).
+// One row in the in-progress list (entry-card badge + /parse index) or the History list. For a closed
+// (history) row, `committedCount`/`committedByType` carry the stub stats and `itemCount` is the leftover
+// trash count.
 export interface ParseJobSummary {
   id: string
   status: ParseJobStatus
   progress: number
   itemCount: number
   sourceName: string | null
+  // The job's commit-time "New collection" name (defaults to the source filename); the list card labels
+  // the row with this over `sourceName` so it matches the collection the saved items will join.
+  collectionName: string | null
   createdAt: string
+  committedCount?: number
+  committedByType?: CommittedByType | null
 }
 
 const DRAFT_SELECT = {
@@ -128,6 +233,26 @@ export async function getParseJobSourceItemId(userId: string, jobId: string): Pr
     select: { sourceItemId: true },
   })
   return job?.sourceItemId ?? null
+}
+
+export interface ReparseEligibility {
+  status: ParseJobStatus
+  sourceItemId: string | null
+}
+
+/**
+ * The per-job Re-parse button (v1.5) is `completed`-ONLY: a `processing` job is still streaming, a
+ * `failed`/`closed` job is handled by the status-independent parse-from-stash on the source item instead.
+ * Returns the job's status + source id (IDOR-scoped) so the route can 404 a foreign/missing job and 409 a
+ * non-`completed` one. Null when the job isn't the user's.
+ */
+export async function getReparseEligibility(userId: string, jobId: string): Promise<ReparseEligibility | null> {
+  const job = await prisma.aiParseJob.findFirst({
+    where: { id: jobId, userId },
+    select: { status: true, sourceItemId: true },
+  })
+  if (!job) return null
+  return { status: job.status as ParseJobStatus, sourceItemId: job.sourceItemId }
 }
 
 // ── v1 source persistence ─────────────────────────────────────────────────────────────────────────
@@ -208,12 +333,44 @@ export interface ParseSourceCandidate {
   sizeBytes: number | null
 }
 
-/** Lists eligible text `file` items for the "Select from my files" picker (IDOR-scoped). */
-export async function listParseSourceCandidates(userId: string): Promise<ParseSourceCandidate[]> {
+/** Which durable stash items the picker lists: eligible text `file`s, or `brain-dump`-tagged `note`s. */
+export type ParseSourceKind = 'file' | 'note'
+
+/**
+ * Lists eligible durable stash items for the "Select from my stash" picker (IDOR-scoped). Both kinds
+ * require the `brain-dump` tag, so the picker lists only sources explicitly marked for parsing (the
+ * feature tags its own uploads/paste-notes; a user can tag any item to opt it in):
+ * - `file` — text `file` items ending in `.txt`/`.md` and tagged `brain-dump` ("My files" tab).
+ * - `note` — `note` items tagged `brain-dump` ("Notes" tab), so a note marked for parsing (incl. a
+ *   prior paste source the feature itself tagged) can be re-dumped. `sizeBytes` is the content length.
+ */
+export async function listParseSourceCandidates(
+  userId: string,
+  kind: ParseSourceKind = 'file',
+): Promise<ParseSourceCandidate[]> {
+  if (kind === 'note') {
+    const rows = await prisma.item.findMany({
+      where: {
+        userId,
+        itemType: { name: 'note' },
+        tags: { some: { name: BRAIN_DUMP_SOURCE_TAG } },
+      },
+      select: { id: true, title: true, content: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+    return rows.map((row) => ({
+      itemId: row.id,
+      name: row.title || 'Untitled note',
+      sizeBytes: row.content ? Buffer.byteLength(row.content, 'utf8') : null,
+    }))
+  }
+
   const rows = await prisma.item.findMany({
     where: {
       userId,
       itemType: { name: 'file' },
+      tags: { some: { name: BRAIN_DUMP_SOURCE_TAG } },
       OR: [
         { fileName: { endsWith: '.txt', mode: 'insensitive' } },
         { fileName: { endsWith: '.md', mode: 'insensitive' } },
@@ -247,6 +404,124 @@ export async function deleteJob(userId: string, jobId: string): Promise<DeleteJo
   return { openaiResponseId: job.status === 'processing' ? job.openaiResponseId : null }
 }
 
+// Hard cap on jobs purged per opportunistic sweep — keeps the lazy `after()` cleanup bounded so it
+// never turns a single job-list/create request into a large delete. Stragglers are caught next sweep.
+const PARSE_JOB_SWEEP_LIMIT = 50
+
+// Global cooldown between opportunistic sweeps. The sweep fires from every job-list/create request, so
+// without this a polled endpoint would run one global scan+delete per request. A Redis `SET NX EX`
+// guard lets at most one sweep proceed per window, decoupling sweep frequency from request volume.
+const PARSE_JOB_SWEEP_COOLDOWN_SECONDS = 300
+const PARSE_JOB_SWEEP_LOCK_KEY = 'parse-job-sweep:cooldown'
+
+// In-process fallback throttle: the last time this server instance ran (or claimed) a sweep. Guards the
+// Redis-unavailable path so a polled endpoint can't run one global scan+delete per request even when the
+// distributed cooldown is gone. Per-instance only (resets on cold start), which is fine for a backstop.
+let lastSweepClaimMs = 0
+
+// Claims the sweep cooldown: returns true if this caller won the window (and should sweep), false if a
+// recent sweep already holds it. When Redis is unavailable it falls back to an in-process timestamp guard
+// (still throttled per instance) instead of failing fully open, since the always-mounted dashboard widget
+// polls the job list.
+async function claimSweepWindow(now: number): Promise<boolean> {
+  const redis = getRedis()
+  if (!redis) {
+    if (now - lastSweepClaimMs < PARSE_JOB_SWEEP_COOLDOWN_SECONDS * 1000) return false
+    lastSweepClaimMs = now
+    return true
+  }
+  try {
+    const won = await redis.set(PARSE_JOB_SWEEP_LOCK_KEY, '1', { nx: true, ex: PARSE_JOB_SWEEP_COOLDOWN_SECONDS })
+    return won === 'OK'
+  } catch (err) {
+    // Redis is flapping — fall through to the SAME in-process timestamp guard the no-Redis branch uses so
+    // the cooldown still applies during an outage (otherwise every request would run a full global scan).
+    if (now - lastSweepClaimMs < PARSE_JOB_SWEEP_COOLDOWN_SECONDS * 1000) return false
+    lastSweepClaimMs = now
+    log.warn({ err }, 'parse-job sweep cooldown check failed — proceeding under in-process throttle')
+    return true
+  }
+}
+
+// Pure cutoff: the `updatedAt` threshold below which a job is considered abandoned. Anything last
+// touched before `now - ttlMs` is stale. Exported for direct unit testing of the cutoff math.
+export function parseJobAbandonCutoff(now: number, ttlMs: number = PARSE_JOB_TTL_MS): Date {
+  return new Date(now - ttlMs)
+}
+
+export interface SweepAbandonedResult {
+  swept: number
+}
+
+/**
+ * Opportunistic GLOBAL purge of abandoned parse jobs (run via `after()` on job-list/create, not a
+ * cron): deletes every job whose last activity (`updatedAt`) predates the 24 h cutoff — removing the
+ * job + its drafts (cascade) + `sourceText`, while **keeping the durable source item** (the FK is
+ * SetNull, exactly like manual Discard). Bounded by PARSE_JOB_SWEEP_LIMIT per run, and self-throttled
+ * to one run per PARSE_JOB_SWEEP_COOLDOWN_SECONDS via a Redis cooldown so request volume can't amplify
+ * it. Not user-scoped: this is a maintenance backstop, so it is intentionally global (the only such
+ * helper here). Best-effort: any failure is logged and swallowed so it never breaks the triggering request.
+ */
+export async function sweepAbandonedParseJobs(now: number = Date.now()): Promise<SweepAbandonedResult> {
+  try {
+    if (!(await claimSweepWindow(now))) return { swept: 0 }
+    const cutoff = parseJobAbandonCutoff(now)
+    // Exclude `closed` (committed history) — never auto-purged. The exclusion is BY STATUS, not
+    // `updatedAt`, so a late trash-commit refreshing a closed job's `updatedAt` is harmless.
+    const stalePredicate: Prisma.AiParseJobWhereInput = {
+      updatedAt: { lt: cutoff },
+      status: { not: 'closed' },
+    }
+    const stale = await prisma.aiParseJob.findMany({
+      where: stalePredicate,
+      select: { id: true },
+      take: PARSE_JOB_SWEEP_LIMIT,
+    })
+    if (stale.length === 0) return { swept: 0 }
+    // deleteMany on the selected ids — drafts cascade, sourceText goes with the row, the source item is
+    // kept (onDelete: SetNull). No OpenAI cancel: a 24 h-stale background run is long gone. TOCTOU guard:
+    // the WHERE RE-ASSERTS the staleness predicate (not just `id IN […]`), so a job resumed/committed/
+    // closed in the findMany→deleteMany window no longer matches and is skipped atomically — we never
+    // delete just-revived work.
+    const result = await prisma.aiParseJob.deleteMany({
+      where: { AND: [{ id: { in: stale.map((job) => job.id) } }, stalePredicate] },
+    })
+    const skipped = stale.length - result.count
+    if (skipped > 0) log.info({ skipped, cutoff: cutoff.toISOString() }, 'parse-job sweep skipped revived jobs (TOCTOU)')
+    log.info({ swept: result.count, cutoff: cutoff.toISOString() }, 'abandoned parse jobs swept')
+    return { swept: result.count }
+  } catch (err) {
+    log.error({ err }, 'abandoned parse-job sweep failed')
+    return { swept: 0 }
+  }
+}
+
+/**
+ * Self-heal a close-pending job. The close write (set `closed` + clear `sourceText` + stamp stats) runs
+ * AFTER the per-draft commits, so a crash in between leaves a `completed`/`failed` job with zero
+ * non-trashed drafts — implicit close-pending. Any read that observes that shape completes the close
+ * idempotently (`closeJob` is scoped to `status != 'closed'`, so a concurrent read is a no-op). No lost
+ * drafts, no stuck job. The committed types are already gone (their drafts were deleted) AND each per-item
+ * commit recorded itself on the running tally via `recordInReviewCommit`, so the close stamped here passes
+ * no new types — `closeJob` reads and preserves the already-accumulated `committedCount`/`committedByType`,
+ * giving a healed job an accurate total. Returns true when it healed (caller re-reads status).
+ */
+async function healClosePending(
+  userId: string,
+  jobId: string,
+  status: string,
+  nonTrashedCount: number,
+): Promise<boolean> {
+  // Close-pending self-heal is `completed`-ONLY. A `failed` job with zero non-trashed drafts is NOT
+  // close-pending — it must stay reachable so the user can see its remediation detail; auto-closing it
+  // would clear `sourceText` and drop it from the active list, destroying that detail.
+  if (status !== 'completed') return false
+  if (nonTrashedCount > 0) return false
+  const total = await closeJob(userId, jobId, [])
+  if (total !== null) log.info({ userId, jobId, committedCount: total }, 'parse job close self-healed')
+  return total !== null
+}
+
 /** IDOR-scoped: only returns the job when it belongs to the session user. */
 export async function getParseJobSnapshot(userId: string, jobId: string): Promise<ParseJobSnapshot | null> {
   const job = await prisma.aiParseJob.findFirst({
@@ -255,6 +530,8 @@ export async function getParseJobSnapshot(userId: string, jobId: string): Promis
       status: true,
       progress: true,
       error: true,
+      committedCount: true,
+      committedByType: true,
       collectionName: true,
       collectionIds: true,
       sourceItemId: true,
@@ -267,17 +544,44 @@ export async function getParseJobSnapshot(userId: string, jobId: string): Promis
     },
   })
   if (!job) return null
+
+  // Self-heal a close-pending job (in-review with zero non-trashed drafts) before building the snapshot.
+  // The heal writes `status='closed'` + clears `sourceText` and preserves the already-accumulated
+  // `committedCount`/`committedByType` (it closes with no new types). Rather than re-running the whole
+  // builder against the just-closed row, we mutate the in-memory `job` to that closed shape and continue —
+  // `committedCount`/`committedByType` are already what the heal preserves, `sourceText` isn't part of the
+  // snapshot, and a `closed` status drops it out of the de-dup branch below (only trash remains).
+  const nonTrashed = job.items.filter((item) => !item.trashed)
+  if (await healClosePending(userId, jobId, job.status, nonTrashed.length)) {
+    job.status = 'closed'
+  }
+
+  // Advisory de-dup, batched once per snapshot load: flag drafts that duplicate an existing stash item.
+  // Only non-trashed drafts are checked (a trashed draft won't commit, so a badge would be noise), and
+  // only on a committable job — `completed` OR `failed` (both let the user commit partials); skips
+  // `processing` (wasted work on the hot stream-seed path) and `closed` (only trashed drafts remain). The
+  // job's own source item is excluded so paste/select drafts don't all match their source text.
+  const committable = job.status === 'completed' || job.status === 'failed'
+  const checkable = committable ? nonTrashed : []
+  const duplicates = await findDuplicateMatches(userId, checkable, job.sourceItemId)
+  const items: ParseDraftItemDTO[] = job.items.map((item) => ({
+    ...item,
+    duplicateOf: duplicates.get(item.id) ?? null,
+  }))
+
   return {
     status: job.status as ParseJobStatus,
     progress: job.progress,
     error: job.error,
+    committedCount: job.committedCount,
+    committedByType: job.committedByType ? asCommittedByType(job.committedByType) : null,
     collectionName: job.collectionName,
     collectionIds: job.collectionIds,
     sourceItemId: job.sourceItemId,
     sourceItemType: job.sourceItem?.itemType.name ?? null,
     sourceName: job.sourceName,
     truncated: job.truncated,
-    items: job.items,
+    items,
   }
 }
 
@@ -303,13 +607,34 @@ export async function getParseJobRunState(userId: string, jobId: string): Promis
   }
 }
 
-/** Lists jobs awaiting review (in-progress or completed with committable drafts) for badge + /parse index. */
+/**
+ * Lists jobs awaiting review for the badge + /parse index: `processing` (always), `failed` (always, so a
+ * failed job stays reachable after its toast is gone — its remediation detail and committable partials
+ * must remain visible even with zero drafts), and `completed` that still has a committable (non-trashed)
+ * draft. `closed` is excluded (it lives in the History list). A `completed` job with ONLY trashed drafts is
+ * close-pending; this read self-heals it to `closed` (so it drops out of the active list) before returning.
+ * `failed` is NEVER self-healed — it is a terminal review state, not close-pending.
+ */
 export async function listActiveParseJobs(userId: string): Promise<ParseJobSummary[]> {
+  // Self-heal pass: complete the close of any `completed` job left with zero non-trashed drafts, so it
+  // doesn't linger in the active list. Bounded to the user's own jobs; cheap (a count + conditional write).
+  // `failed` is excluded — it stays reachable with its remediation rather than being closed.
+  const pending = await prisma.aiParseJob.findMany({
+    where: {
+      userId,
+      status: 'completed',
+      items: { none: { trashed: false } },
+    },
+    select: { id: true },
+  })
+  await Promise.all(pending.map((job) => closeJob(userId, job.id, [])))
+
   const jobs = await prisma.aiParseJob.findMany({
     where: {
       userId,
       OR: [
         { status: 'processing' },
+        { status: 'failed' },
         { status: 'completed', items: { some: { trashed: false } } },
       ],
     },
@@ -318,6 +643,7 @@ export async function listActiveParseJobs(userId: string): Promise<ParseJobSumma
       status: true,
       progress: true,
       sourceName: true,
+      collectionName: true,
       createdAt: true,
       // Count only the committable (non-trashed) drafts so the badge reflects what will be saved.
       _count: { select: { items: { where: { trashed: false } } } },
@@ -330,7 +656,43 @@ export async function listActiveParseJobs(userId: string): Promise<ParseJobSumma
     progress: job.progress,
     itemCount: job._count.items,
     sourceName: job.sourceName,
+    collectionName: job.collectionName,
     createdAt: job.createdAt.toISOString(),
+  }))
+}
+
+/**
+ * Lists the user's `closed` history jobs (post-commit stubs) for the /parse "History" section, newest
+ * first, paginated by `take`. IDOR-scoped. Each row carries the stub stats (`committedCount`/
+ * `committedByType`) for the history label and `itemCount` = leftover trashed drafts still committable.
+ */
+export async function listClosedParseJobs(userId: string, take: number = 50): Promise<ParseJobSummary[]> {
+  const jobs = await prisma.aiParseJob.findMany({
+    where: { userId, status: 'closed' },
+    select: {
+      id: true,
+      status: true,
+      progress: true,
+      sourceName: true,
+      collectionName: true,
+      createdAt: true,
+      committedCount: true,
+      committedByType: true,
+      _count: { select: { items: { where: { trashed: true } } } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take,
+  })
+  return jobs.map((job) => ({
+    id: job.id,
+    status: job.status as ParseJobStatus,
+    progress: job.progress,
+    itemCount: job._count.items,
+    sourceName: job.sourceName,
+    collectionName: job.collectionName,
+    createdAt: job.createdAt.toISOString(),
+    committedCount: job.committedCount,
+    committedByType: job.committedByType ? asCommittedByType(job.committedByType) : null,
   }))
 }
 
@@ -359,10 +721,10 @@ export async function appendDraftsAndAdvance(
   cursor: number | null,
 ): Promise<ParseDraftItemDTO[]> {
   if (drafts.length === 0) {
+    // Empty batch (a boundary that produced no item) — just advance the cursor. One statement, so no
+    // transaction is needed.
     if (cursor !== null) {
-      await prisma.$transaction(async (tx) => {
-        await tx.aiParseJob.updateMany({ where: { id: jobId, userId }, data: { streamCursor: cursor } })
-      })
+      await prisma.aiParseJob.updateMany({ where: { id: jobId, userId }, data: { streamCursor: cursor } })
     }
     return []
   }
@@ -398,14 +760,25 @@ export async function appendDraftsAndAdvance(
   })
 }
 
+// Optional structured failure passed when `status === 'failed'`: the category drives the rich detail +
+// remediation written to `error`; the stream route composes the human-readable string via
+// `buildFailureDetail`. `failureReason` is also logged (structured) for observability.
+export interface FinishJobFailure {
+  reason: BrainDumpFailureReason
+}
+
 export async function finishJob(
   userId: string,
   jobId: string,
   status: Extract<ParseJobStatus, 'completed' | 'failed'>,
+  // The rich, human-readable detail for a `failed` job (built by `buildFailureDetail`), or undefined for
+  // a clean finish. Stored verbatim in the free-text `error` column; the board renders it.
   error?: string,
   // Set when the run ended `incomplete` (OpenAI `max_output_tokens`): the job is terminal-completed but
   // its tail was never parsed, so we reuse the `truncated` flag to disclose the partial result.
   truncated?: boolean,
+  // The failure category, logged structurally so a `failed` transition is queryable (per observability).
+  failure?: FinishJobFailure,
 ): Promise<void> {
   const progress = status === 'completed' ? 100 : undefined
   await prisma.aiParseJob.updateMany({
@@ -417,7 +790,11 @@ export async function finishJob(
       ...(truncated ? { truncated: true } : {}),
     },
   })
-  log.info({ userId, jobId, status, truncated: Boolean(truncated) }, 'parse job finished')
+  if (status === 'failed') {
+    log.warn({ userId, jobId, failureReason: failure?.reason ?? 'unknown' }, 'parse job failed')
+  } else {
+    log.info({ userId, jobId, status, truncated: Boolean(truncated) }, 'parse job finished')
+  }
 }
 
 export interface UpdateJobCollectionsInput {
@@ -523,6 +900,15 @@ function draftToItemInput(draft: ParseDraftItemDTO, collectionIds: string[]): Cr
   }
 }
 
+/** Whether the job has a pending new-collection name that hasn't been materialized into a collection yet. */
+async function hasPendingNewCollection(userId: string, jobId: string): Promise<boolean> {
+  const job = await prisma.aiParseJob.findFirst({
+    where: { id: jobId, userId },
+    select: { collectionName: true },
+  })
+  return Boolean(job?.collectionName?.trim())
+}
+
 /**
  * Resolves the collection ids to attach when committing drafts (per-item "Save now" and the batch
  * "Save all"): the job's selected existing collections plus, the first time it runs with a pending
@@ -534,8 +920,16 @@ function draftToItemInput(draft: ParseDraftItemDTO, collectionIds: string[]): Cr
  * so it affects 0 rows. Exactly one caller sees `count === 1` and creates the collection; the rest see
  * `count === 0` and reuse the persisted id. No duplicate is ever created. IDOR-scoped; returns null
  * when the job isn't the user's.
+ *
+ * When `skipNewCollection` is true, the new-collection name is NOT created — only the existing
+ * `collectionIds` are returned (the per-item "Save now" cancel path: commit the item with no new
+ * collection). The pending name stays on the job for a later "Save all" to materialize.
  */
-async function resolveJobCollectionIds(userId: string, jobId: string): Promise<string[] | null> {
+async function resolveJobCollectionIds(
+  userId: string,
+  jobId: string,
+  skipNewCollection: boolean = false,
+): Promise<string[] | null> {
   const job = await prisma.aiParseJob.findFirst({
     where: { id: jobId, userId },
     select: { collectionName: true, collectionIds: true },
@@ -543,7 +937,7 @@ async function resolveJobCollectionIds(userId: string, jobId: string): Promise<s
   if (!job) return null
 
   const newName = job.collectionName?.trim()
-  if (!newName) return job.collectionIds
+  if (!newName || skipNewCollection) return job.collectionIds
 
   // Claim → create → persist in ONE transaction so the claimed row stays locked until the new id is
   // written. A concurrent caller that loses the claim blocks on the row and only re-reads after this
@@ -574,55 +968,199 @@ async function resolveJobCollectionIds(userId: string, jobId: string): Promise<s
 }
 
 /**
- * Shared commit core for per-item "Save now" (one draft) and batch "Save all" (a job's drafts):
- * creates a real item from each draft sequentially — keeps log/connection pressure bounded and order
- * deterministic — attaching the already-resolved collection target, then **immediately deletes that
- * draft** so a crash mid-batch can only ever leave the single in-flight draft re-committable (never the
- * whole batch) and a retry resumes from where it stopped. A failed `createItem` keeps its draft (not
- * deleted, not counted) so the user can retry it. Returns how many items were actually created.
- * Residual: the create+delete of one draft isn't a single transaction (`createItem` owns its own
- * writes), so a crash in that narrow window can duplicate at most one item on retry — an accepted bound.
+ * Shared commit core for per-item "Save now" (one draft) and batch "Save all" (a job's drafts): for
+ * each draft, **delete-guards-create** inside ONE interactive `$transaction` — delete the draft row
+ * first, and only if that delete removed a row (`count === 1`) create the real item on the same `tx`.
+ * A 0-row delete means another tab/commit already took this draft, so we skip and create nothing — this
+ * is what kills the double-commit race without a lock: two concurrent commits of the same draft can't
+ * both see `count === 1`, so the item is created at most once. The whole pair is atomic, so a crash
+ * mid-draft commits both the delete and the create or neither (no duplicate on retry, no orphaned draft).
+ *
+ * The batch still iterates draft-by-draft (sequential, deterministic order, bounded connection pressure)
+ * so a per-draft failure — `createItem` returning null, e.g. a bad type — leaves that draft committable
+ * while the rest succeed. A null `createItem` throws here to roll its own transaction back (the draft is
+ * NOT deleted) and is caught so the batch continues. Returns the count created plus the list of committed
+ * draft types (for the closed-job per-type stub stats).
  */
-async function commitDrafts(userId: string, collectionIds: string[], drafts: ParseDraftItemDTO[]): Promise<number> {
-  let created = 0
+interface CommitDraftsResult {
+  created: number
+  committedTypes: string[]
+}
+
+// Sentinel thrown to roll the per-draft tx back when `createItem` returns null (an EXPECTED skip — e.g. an
+// unresolved item type — not a DB fault). Compared by identity below so the expected skip is logged at
+// `warn` while a genuine Prisma reject (a different thrown value) is logged at `error`. Identity comparison,
+// not `instanceof`/`error.name` routing.
+const DRAFT_COMMIT_SKIP = new Error('createItem returned null')
+
+async function commitDrafts(
+  userId: string,
+  jobId: string,
+  collectionIds: string[],
+  drafts: ParseDraftItemDTO[],
+): Promise<CommitDraftsResult> {
+  const committedTypes: string[] = []
+  // Awaits per draft (interactive tx + sequential ordering), so `for...of`.
   for (const draft of drafts) {
-    const item = await createItem(userId, draftToItemInput(draft, collectionIds))
-    if (!item) continue // createItem failed — keep the draft so the user can retry.
-    await prisma.aiParseJobItem.deleteMany({ where: { id: draft.id, userId } })
-    created += 1
+    // A `link` draft with no URL would commit as a URL-typed item with a null `url` (a broken link item),
+    // since `url` is free-text-nullable on the draft and `createItem` flips `contentType` to URL for the
+    // `link` type. Skip it — don't delete, don't create — so the draft stays committable and the user can
+    // add a URL (or reclassify it) before saving.
+    if (draft.itemTypeName === 'link' && !draft.url?.trim()) {
+      log.warn({ userId, draftId: draft.id }, 'parse draft commit skipped — link draft has no url, draft kept')
+      continue
+    }
+    try {
+      const item = await prisma.$transaction(async (tx) => {
+        // Scope the delete to the addressed job too (not just userId), matching the other draft helpers
+        // and guarding against a draft from a different job ever slipping into this batch.
+        const removed = await tx.aiParseJobItem.deleteMany({ where: { id: draft.id, jobId, userId } })
+        // Lost the race for this draft (already committed/deleted elsewhere) — create nothing.
+        if (removed.count === 0) return null
+        const made = await createItem(userId, draftToItemInput(draft, collectionIds), tx)
+        // createItem couldn't build the item (e.g. unresolved type) — throw the sentinel to roll back the
+        // delete so the draft survives and stays committable. Caught below as the expected skip (warn).
+        if (!made) throw DRAFT_COMMIT_SKIP
+        return made
+      })
+      if (item) committedTypes.push(draft.itemTypeName)
+    } catch (err) {
+      // The expected null-type skip vs a genuine DB fault: the sentinel keeps the draft committable by
+      // design (warn); anything else is a real fault that also left the draft uncommitted (error).
+      if (err === DRAFT_COMMIT_SKIP) {
+        log.warn({ userId, draftId: draft.id }, 'parse draft commit skipped — unresolved type, draft kept')
+      } else {
+        log.error({ userId, draftId: draft.id, err }, 'parse draft commit failed — draft kept')
+      }
+    }
   }
-  return created
+  return { created: committedTypes.length, committedTypes }
+}
+
+/**
+ * Demotes a committed job to the terminal `closed` history stub: sets `status='closed'`, clears
+ * `sourceText` (the parse window is no longer needed — matches Discard's lifecycle but keeps the row),
+ * and merges the just-committed types into the running per-type tally (`committedByType` + the
+ * `committedCount` total). Trashed drafts are intentionally kept so a closed job still shows its Trash
+ * bucket. Idempotent and self-healing: scoped to `status != 'closed'` so a concurrent/duplicate close
+ * is a no-op, and callable on a `completed` job that has zero non-trashed drafts left (the close-pending
+ * shape a crash-after-commit leaves behind). Returns the new running total, or null if nothing to close.
+ */
+async function closeJob(userId: string, jobId: string, committedTypes: string[]): Promise<number | null> {
+  // The demote and the final stats merge run in one tx so a closed job never lands with a status set but
+  // its stats unstamped. `committedTypes` is the LAST batch only (per-item commits already recorded their
+  // own as they landed, via `recordInReviewCommit`); for "Save all" it's the whole batch (recorded here).
+  return bumpCommittedStats({ id: jobId, userId, status: { not: 'closed' } }, committedTypes, {
+    status: 'closed',
+    sourceText: '',
+  })
+}
+
+/**
+ * Merges a late trash-bucket commit's types into an ALREADY-closed job's stub stats (the closed board
+ * lets the user still commit trashed drafts). Additive `committedByType` + `committedCount`, scoped to
+ * `status='closed'`. No status change — the job stays closed. Returns the new total, or null if the job
+ * isn't a closed job of this user.
+ */
+async function mergeClosedJobStats(userId: string, jobId: string, committedTypes: string[]): Promise<number | null> {
+  if (committedTypes.length === 0) return null
+  return bumpCommittedStats({ id: jobId, userId, status: 'closed' }, committedTypes)
+}
+
+// Per-item "Save now" outcome. `needsCollectionConfirm` true means the commit was HELD (item NOT saved)
+// because the job has a pending new collection and the caller hasn't decided yet — the client shows the
+// confirm dialog then re-commits. Otherwise `created` is 0 or 1 and `autoClosed` is true when this commit
+// drained the last non-trashed draft (→ dashboard redirect). `null` = draft wasn't the user's/committable.
+export interface CommitDraftItemResult {
+  created: number
+  autoClosed: boolean
+  needsCollectionConfirm: boolean
+}
+
+// `confirmCreateCollection`: undefined → ask first if a new collection is pending (return needs-confirm);
+// true → create + attach it; false → commit WITHOUT the new collection (the cancel path) but attach
+// existing ids. Ignored when the job has no pending new collection.
+export interface CommitDraftItemOptions {
+  confirmCreateCollection?: boolean
 }
 
 /**
  * Commits a single draft into a real item (per-item "Save now"), attaching it to the job's resolved
- * collection target — the same union the batch commit uses. `commitDrafts` creates the item then deletes
- * that draft (the job and its other drafts survive). IDOR-scoped: returns null when the draft isn't the
- * user's or is trashed. Spends no AI budget. Returns 1 when created, 0 when createItem failed (draft kept).
+ * collection target. `commitDrafts` deletes the draft and creates the item atomically. IDOR-scoped:
+ * returns null when the draft isn't the user's/committable.
+ *
+ * Collection-confirm gate: if the job has a pending (uncreated) new collection and the caller passed no
+ * `confirmCreateCollection`, the commit is HELD and `needsCollectionConfirm` is returned so the client can
+ * prompt. `true` creates+attaches it; `false` commits with only the existing collection ids.
+ *
+ * v2.5 lifecycle: after a successful in-review commit that drains the last non-trashed draft, the job
+ * auto-closes (demote to `closed`, stamp stats) and `autoClosed` is set (→ dashboard redirect). A commit
+ * on an already-`closed` job (its Trash bucket stays committable) instead MERGES its type into the stub
+ * stats. Spends no AI budget.
  */
-export async function commitDraftItem(userId: string, jobId: string, itemId: string): Promise<number | null> {
+export async function commitDraftItem(
+  userId: string,
+  jobId: string,
+  itemId: string,
+  options: CommitDraftItemOptions = {},
+): Promise<CommitDraftItemResult | null> {
+  // The job status decides the post-commit path: in-review job → maybe auto-close; closed job → merge stats.
+  const job = await prisma.aiParseJob.findFirst({ where: { id: jobId, userId }, select: { status: true } })
+  if (!job) return null
+  // On a `closed` job the only remaining drafts are the TRASHED ones, and the closed board lets the user
+  // still commit them — so don't constrain `trashed` there. On an in-review job a trashed draft must not
+  // commit (the user moved it to Trash), so require `trashed: false`.
   const draft = await prisma.aiParseJobItem.findFirst({
-    where: { id: itemId, jobId, userId, trashed: false },
+    where: { id: itemId, jobId, userId, ...(job.status === 'closed' ? {} : { trashed: false }) },
     select: DRAFT_SELECT,
   })
   if (!draft) return null
 
-  const collectionIds = (await resolveJobCollectionIds(userId, jobId)) ?? []
-  const created = await commitDrafts(userId, collectionIds, [draft])
-  if (created === 0) return 0 // createItem failed — commitDrafts kept the draft so the user can retry.
+  // Collection-confirm gate: ask before silently materializing the job's pending new collection.
+  if (options.confirmCreateCollection === undefined && (await hasPendingNewCollection(userId, jobId))) {
+    return { created: 0, autoClosed: false, needsCollectionConfirm: true }
+  }
+  // confirm === false → commit without creating the new collection (cancel path); true/no-pending → normal.
+  const skipNewCollection = options.confirmCreateCollection === false
+  const collectionIds = (await resolveJobCollectionIds(userId, jobId, skipNewCollection)) ?? []
+  const { created, committedTypes } = await commitDrafts(userId, jobId, collectionIds, [draft])
+  if (created === 0) return { created: 0, autoClosed: false, needsCollectionConfirm: false } // kept for retry.
 
-  log.info({ userId, jobId, itemId, collections: collectionIds.length }, 'parse draft committed')
-  return created
+  if (job.status === 'closed') {
+    await mergeClosedJobStats(userId, jobId, committedTypes)
+    log.info({ userId, jobId, itemId }, 'parse draft committed (closed job — stats merged)')
+    return { created, autoClosed: false, needsCollectionConfirm: false }
+  }
+
+  // In-review job: record this commit on the running tally immediately so the eventual close carries an
+  // accurate total even when the user saved the drafts one at a time (not just the final draft's type).
+  await recordInReviewCommit(userId, jobId, committedTypes)
+
+  // If this drained the last non-trashed draft, complete the close now. The stats are already recorded
+  // above, so `closeJob` only stamps the demote (status/sourceText) — no types passed, no double-count.
+  const remaining = await prisma.aiParseJobItem.count({ where: { jobId, userId, trashed: false } })
+  let autoClosed = false
+  if (remaining === 0) {
+    const total = await closeJob(userId, jobId, [])
+    autoClosed = total !== null
+    if (autoClosed) log.info({ userId, jobId, committedCount: total }, 'parse job auto-closed (last draft committed)')
+  }
+  log.info({ userId, jobId, itemId, collections: collectionIds.length, autoClosed }, 'parse draft committed')
+  return { created, autoClosed, needsCollectionConfirm: false }
 }
 
 export type CommitJobResult =
   | { kind: 'not_found' }
   | { kind: 'still_processing' }
-  | { kind: 'done'; created: number; total: number }
+  // `closed` is true when every committable draft was saved and the job was demoted to the history stub.
+  | { kind: 'done'; created: number; total: number; closed: boolean }
 
 /**
- * Commits every draft of a job into real items via `createItem`, then deletes the job (cascading its
- * drafts). IDOR-scoped. Spends no AI budget. The caller invalidates the items cache.
+ * Commits every non-trashed draft of a job into real items, then — when all of them saved — demotes the
+ * job to the terminal `closed` history stub (v2.5: NOT a delete). The trashed drafts are kept so the
+ * closed job still shows its Trash bucket. On a partial failure (some drafts couldn't be created) the
+ * job stays `completed`/`failed` so the user can retry the survivors. IDOR-scoped. Spends no AI budget.
+ * The caller invalidates the items cache. Rejects `processing` (still streaming) and `closed` (terminal).
  */
 export async function commitJob(userId: string, jobId: string): Promise<CommitJobResult> {
   const job = await prisma.aiParseJob.findFirst({
@@ -637,20 +1175,42 @@ export async function commitJob(userId: string, jobId: string): Promise<CommitJo
   })
   if (!job) return { kind: 'not_found' }
   if (job.status === 'processing') return { kind: 'still_processing' }
+  // A closed job has no committable (non-trashed) drafts; "Save all" doesn't apply — treat as a no-op done.
+  if (job.status === 'closed') return { kind: 'done', created: 0, total: 0, closed: true }
+
+  // No committable drafts (e.g. a race drained them, or a self-heal is pending): close to history without
+  // resolving collections first — otherwise the pending new collection would be materialized for a job
+  // that saved nothing, leaving a stray empty collection. A `failed` job is NEVER auto-closed here,
+  // though: it must stay reachable with its remediation + `sourceText`, so an empty "Save all" is a no-op.
+  if (job.items.length === 0) {
+    if (job.status === 'failed') return { kind: 'done', created: 0, total: 0, closed: false }
+    const total = await closeJob(userId, jobId, [])
+    return { kind: 'done', created: 0, total: 0, closed: total !== null }
+  }
 
   // Resolve the commit-time collection target (existing ids + a once-created new collection), shared
   // with per-item "Save now" so the two paths never create duplicate collections. `createItem`
   // re-validates each id against the user, so the stored existing ids are IDOR-safe at attach time.
   const targetCollectionIds = (await resolveJobCollectionIds(userId, jobId)) ?? []
 
-  const created = await commitDrafts(userId, targetCollectionIds, job.items)
+  const { created, committedTypes } = await commitDrafts(userId, jobId, targetCollectionIds, job.items)
 
-  // Remove the job (discarding any trashed drafts) only when every committable draft was saved —
-  // commitDrafts already deleted each committed draft. On a partial failure the failed drafts remain,
-  // so we keep the job for the user to retry rather than deleting (and losing) them.
+  // Demote to the `closed` history stub only when every committable draft was saved — commitDrafts
+  // already deleted each committed draft, so only trashed drafts remain (kept). On a partial failure the
+  // unsaved drafts remain and the job stays in review for the user to retry rather than closing early.
+  let closed = false
   if (created === job.items.length) {
-    await prisma.aiParseJob.deleteMany({ where: { id: jobId, userId } })
+    const total = await closeJob(userId, jobId, committedTypes)
+    closed = total !== null
+  } else {
+    // Partial failure: the job stays in review, but the drafts that DID commit must still land on the
+    // running tally — otherwise they're saved-and-deleted yet uncounted, and the final history stats
+    // (stamped when the survivors are later committed) undercount by this batch.
+    await recordInReviewCommit(userId, jobId, committedTypes)
   }
-  log.info({ userId, jobId, created, total: job.items.length, collections: targetCollectionIds.length }, 'parse job committed')
-  return { kind: 'done', created, total: job.items.length }
+  log.info(
+    { userId, jobId, created, total: job.items.length, collections: targetCollectionIds.length, closed },
+    'parse job committed',
+  )
+  return { kind: 'done', created, total: job.items.length, closed }
 }

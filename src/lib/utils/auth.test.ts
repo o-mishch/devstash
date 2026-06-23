@@ -75,36 +75,36 @@ describe('outboundEmailEnabled', () => {
 describe('pickLinkedEmailForPrimary', () => {
   it('returns undefined when no linked accounts have an email', () => {
     expect(pickLinkedEmailForPrimary([
-      { provider: 'google', email: null },
-      { provider: 'github', email: null },
+      { id: 'acc-1', provider: 'google', email: null },
+      { id: 'acc-2', provider: 'github', email: null },
     ])).toBeUndefined()
   })
 
   it('returns the only linked email', () => {
     expect(pickLinkedEmailForPrimary([
-      { provider: 'google', email: 'user@gmail.com' },
-      { provider: 'github', email: null },
+      { id: 'acc-1', provider: 'google', email: 'user@gmail.com' },
+      { id: 'acc-2', provider: 'github', email: null },
     ])).toBe('user@gmail.com')
   })
 
   it('prefers providers in SUPPORTED_OAUTH_PROVIDERS order', () => {
     expect(pickLinkedEmailForPrimary([
-      { provider: 'google', email: 'g@example.com' },
-      { provider: 'github', email: 'gh@example.com' },
+      { id: 'acc-1', provider: 'google', email: 'g@example.com' },
+      { id: 'acc-2', provider: 'github', email: 'gh@example.com' },
     ])).toBe('gh@example.com')
   })
 
   it('breaks ties on the same provider by locale email sort', () => {
     expect(pickLinkedEmailForPrimary([
-      { provider: 'google', email: 'z@example.com' },
-      { provider: 'google', email: 'a@example.com' },
+      { id: 'acc-1', provider: 'google', email: 'z@example.com' },
+      { id: 'acc-2', provider: 'google', email: 'a@example.com' },
     ])).toBe('a@example.com')
   })
 
   it('sorts unknown providers after supported ones', () => {
     expect(pickLinkedEmailForPrimary([
-      { provider: 'unknown', email: 'u@example.com' },
-      { provider: 'github', email: 'gh@example.com' },
+      { id: 'acc-1', provider: 'unknown', email: 'u@example.com' },
+      { id: 'acc-2', provider: 'github', email: 'gh@example.com' },
     ])).toBe('gh@example.com')
   })
 })

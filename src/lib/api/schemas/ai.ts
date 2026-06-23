@@ -160,6 +160,13 @@ export const brainDumpDraftItemSchema = z
     tags: z.array(z.string()),
     // true when the draft sits in the board's Trash bucket (soft-deleted; excluded from commit).
     trashed: z.boolean(),
+    // Advisory de-dup: the committed stash item this draft appears to duplicate (id for the deep-link,
+    // title for the badge), or null when unique. Computed server-side on the snapshot read; the card
+    // shows a non-blocking "possible duplicate" badge. Never blocks commit.
+    duplicateOf: z
+      .object({ id: z.string(), title: z.string(), itemTypeName: z.string() })
+      .nullable()
+      .optional(),
   })
   .meta({ id: 'BrainDumpDraftItem' })
 
@@ -176,9 +183,14 @@ export const brainDumpJobCreatedSchema = z
 // GET /ai/brain-dump/{jobId} → the full DB snapshot used to seed/resume the board on (re)connect.
 export const brainDumpJobSnapshotSchema = z
   .object({
-    status: z.enum(['processing', 'completed', 'failed']),
+    // `closed` (post-commit history stub) drives the board's read-only History mode (Trash bucket only).
+    status: z.enum(['processing', 'completed', 'failed', 'closed']),
     progress: z.number(),
     error: z.string().nullable().optional(),
+    // Closed-job stub stats (null/absent for in-review jobs): total committed + per-type breakdown, shown
+    // in the History banner.
+    committedCount: z.number().optional(),
+    committedByType: z.record(z.string(), z.number()).nullable().optional(),
     // Commit-time collection target: a new-collection name (default from source name) + existing ids.
     collectionName: z.string().nullable(),
     collectionIds: z.array(z.string()),
@@ -192,7 +204,13 @@ export const brainDumpJobSnapshotSchema = z
   })
   .meta({ id: 'BrainDumpJobSnapshot' })
 
-// GET /ai/brain-dump/sources → eligible text `file` items for the "Select from my files" picker.
+// GET /ai/brain-dump/sources?type= → which durable stash items the picker lists: eligible text
+// `file`s ("My files") or `brain-dump`-tagged `note`s ("Notes"). Defaults to `file`.
+export const brainDumpSourceQuery = z.object({
+  type: z.enum(['file', 'note']).default('file'),
+})
+
+// GET /ai/brain-dump/sources → an eligible source item for the "Select from my stash" picker.
 export const brainDumpSourceSchema = z
   .object({ itemId: z.string(), name: z.string(), sizeBytes: z.number().nullable() })
   .meta({ id: 'BrainDumpSource' })
@@ -225,26 +243,67 @@ export const brainDumpItemPatchInput = z
   })
   .refine((data) => Object.keys(data).length > 0, { message: 'No fields to update.' })
 
-// POST /ai/brain-dump/{jobId}/commit → number of real items created (job deleted only on full success).
+// POST /ai/brain-dump/{jobId}/commit ("Save all") → items created + whether the job was demoted to the
+// `closed` history stub (every committable draft saved). `closed` drives the dashboard redirect + toast.
 export const brainDumpCommitOutput = z
-  .object({ created: z.number(), total: z.number() })
+  .object({ created: z.number(), total: z.number(), closed: z.boolean() })
   .meta({ id: 'BrainDumpCommit' })
 
-// GET /ai/brain-dump → the user's in-progress jobs (entry-card badge + /parse index).
+// POST /ai/brain-dump/{jobId}/items/{itemId}/commit body — per-item "Save now". `confirmCreateCollection`
+// gates the silent auto-creation of the job's pending new collection: the per-item path shows a confirm
+// dialog first, and only re-POSTs with the flag true once the user accepts (cancel commits with no
+// collection). Absent/false on a job with no pending new collection → no-op (nothing to create).
+export const brainDumpItemCommitInput = z
+  .object({ confirmCreateCollection: z.boolean().optional() })
+  .meta({ id: 'BrainDumpItemCommitInput' })
+
+// POST /ai/brain-dump/{jobId}/items/{itemId}/commit → items created (0 or 1), whether this commit
+// auto-closed the job (last committable draft) for the dashboard redirect, and whether the commit needs
+// the user to confirm creating the job's pending new collection before it can attach it.
+export const brainDumpItemCommitOutput = z
+  .object({
+    created: z.number(),
+    autoClosed: z.boolean(),
+    // True when the commit was held back pending collection-create confirmation (the item was NOT saved
+    // yet); the client shows the dialog then re-POSTs with `confirmCreateCollection: true`.
+    needsCollectionConfirm: z.boolean(),
+  })
+  .meta({ id: 'BrainDumpItemCommit' })
+
+// GET /ai/brain-dump → the user's in-progress jobs (entry-card badge + /parse index). The status enum
+// includes `closed` because the same summary shape feeds the History list (GET ?history=1).
 export const brainDumpJobSummarySchema = z
   .object({
     id: z.string(),
-    status: z.enum(['processing', 'completed', 'failed']),
+    status: z.enum(['processing', 'completed', 'failed', 'closed']),
     progress: z.number(),
     itemCount: z.number(),
     sourceName: z.string().nullable(),
+    // The job's commit-time "New collection" name (defaults to the source filename, user-editable). The
+    // list card prefers it over `sourceName` so the card label matches the collection the items will join.
+    collectionName: z.string().nullable(),
     createdAt: z.string(),
+    // Closed-job history stub stats (null/absent on active jobs): total committed + per-type breakdown.
+    committedCount: z.number().optional(),
+    committedByType: z.record(z.string(), z.number()).nullable().optional(),
   })
   .meta({ id: 'BrainDumpJobSummary' })
 
 export const brainDumpJobListSchema = z.object({ jobs: z.array(brainDumpJobSummarySchema) }).meta({ id: 'BrainDumpJobList' })
 
+// GET /ai/brain-dump?history=1 → the History list (closed jobs) instead of the active list. Absent →
+// active jobs (processing/completed/failed with committable drafts). Query params arrive as strings;
+// map the literal '1'/'true' explicitly (mirrors `downloadQueryParse` — never `z.coerce.boolean`, which
+// would turn 'false'/'0' into true).
+export const brainDumpListQuery = z.object({
+  history: z
+    .enum(['1', 'true', '0', 'false'])
+    .optional()
+    .transform((v) => v === '1' || v === 'true'),
+})
+
 // Path params for the per-job and per-draft split routes.
 export const brainDumpJobIdParam = z.object({ jobId: z.string().min(1) })
 export type BrainDumpJobIdParam = z.infer<typeof brainDumpJobIdParam>
-export const brainDumpItemParams = z.object({ jobId: z.string(), itemId: z.string() })
+export const brainDumpItemParams = z.object({ jobId: z.string().min(1), itemId: z.string().min(1) })
+export type BrainDumpItemParams = z.infer<typeof brainDumpItemParams>

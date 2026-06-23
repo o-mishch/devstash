@@ -30,8 +30,6 @@ export const SPLIT_FILE_MIN_INPUT_CHARS = 20
 // can be stored whole; this bounds per-request memory and keeps the note under the platform body limit
 // (Next.js/Vercel) so it is never silently clipped. Over-cap → 422 "upload as a file instead".
 export const SPLIT_FILE_MAX_PASTE_BYTES = 1 * 1024 * 1024
-// Hard ceiling on drafts emitted per job — bounds the board, the DB writes, and the token budget.
-export const SPLIT_FILE_MAX_ITEMS = 100
 // Hard cap on a draft title's stored length — single source of truth for the splitter parser and the
 // draft-patch schema (the prompt asks the model for <= 80, but we accept and clamp up to this).
 export const SPLIT_FILE_TITLE_MAX_CHARS = 200
@@ -40,6 +38,10 @@ export const SPLIT_FILE_ALLOWED_EXTS = new Set(['txt', 'md'])
 // Reserved tag applied to every persisted Brain Dump source item (note for paste, file for
 // upload/select). Makes sources findable + re-parsable and is surfaced in the persistence notice.
 export const BRAIN_DUMP_SOURCE_TAG = 'brain-dump'
+
+// Abandoned-job TTL: a parse job untouched for this long is purged (job + drafts + sourceText, keeping
+// the durable source item) by the opportunistic lazy sweep on job-list/create. 24 hours of inactivity.
+export const PARSE_JOB_TTL_MS = 24 * 60 * 60 * 1000
 
 // Per-user hourly cap applied to every AI feature (Explain, Optimize, Description, Tags). Single
 // source of truth: `rate-limit.ts` (server-only) imports this for its `ai*` keys, and the AI
@@ -68,6 +70,84 @@ export type OAuthProvider = (typeof SUPPORTED_OAUTH_PROVIDERS)[number]
 
 export const ITEM_TYPES_WITH_CONTENT = new Set(['snippet', 'command', 'prompt', 'note'])
 export const ITEM_TYPES_WITH_LANGUAGE = new Set(['snippet', 'command'])
+
+// Curated shell/CLI language set that defines the `command` ↔ `snippet` boundary. A `command`'s
+// language picker is restricted to this set; a `snippet`'s picker is the full Monaco list MINUS this
+// set (computed, never hand-maintained). It is also the AI disambiguator: a draft whose language is in
+// this set is a terminal-runnable command, one outside it is source you'd paste into a file.
+// Membership is a superset of Monaco language IDs: the synonyms ('sh','shell','zsh') feed the AI
+// disambiguator/remap (free-text), while the Monaco IDs ('bash','fish','powershell','bat','dockerfile',
+// 'makefile') are what the picker filter actually matches. DOS batch is Monaco's 'bat' (there is no
+// 'cmd' id), so it is not listed here.
+export const COMMAND_LANGUAGES = new Set([
+  'bash',
+  'sh',
+  'shell',
+  'zsh',
+  'fish',
+  'powershell',
+  'bat',
+  'dockerfile',
+  'makefile',
+])
+
+// Filters the full Monaco language list down to the set valid for an item type: `command` → the
+// shell/CLI set, `snippet` → everything else (the full list minus the shell set). Any other type has
+// no language picker, so the full list passes through unchanged. Uses the same `isShellLanguage`
+// predicate as the remap/AI layer (defined below) so the picker and enforcement never disagree.
+export function languagesForItemType(itemType: string, allLanguages: string[]): string[] {
+  if (itemType === 'command') {
+    return allLanguages.filter((lang) => isShellLanguage(lang))
+  }
+  if (itemType === 'snippet') {
+    return allLanguages.filter((lang) => !isShellLanguage(lang))
+  }
+  return allLanguages
+}
+
+// The four text-compatible item types a committed item may be re-typed among (v3 live type change).
+// `link` is excluded (lossy — flips contentType TEXT↔URL); `file`/`image` need an uploaded binary. This
+// is the server-side allow-list for PATCH /items/{id}'s itemTypeName.
+export const TEXT_ITEM_TYPE_NAMES = new Set(['snippet', 'prompt', 'command', 'note'])
+
+// Generic shell synonyms that normalize to "bash" when an item becomes a `command` — covers both
+// non-pickable aliases ("shell","shellscript","console") and the spec's listed synonyms ("sh","zsh").
+const SHELL_SYNONYMS_TO_BASH = new Set(['shell', 'shellscript', 'console', 'terminal', 'sh', 'zsh'])
+
+// Single source of truth for "is this a shell/CLI language" — the curated command set plus the generic
+// synonyms that aren't distinct command languages ("shellscript"/"console"/"terminal"). Used by the
+// language picker (languagesForItemType), the snippet-clear branch of remapLanguageForType, and the AI
+// disambiguator so all three partition the language space identically (e.g. a "console"-tagged value
+// reads as shell on the picker, the →snippet and the →command paths alike).
+export function isShellLanguage(language: string): boolean {
+  const lang = language.toLowerCase()
+  return COMMAND_LANGUAGES.has(lang) || SHELL_SYNONYMS_TO_BASH.has(lang)
+}
+
+/**
+ * Best-effort language remap when an item is re-typed (v3). Returns the language to keep for
+ * `targetType`, or null to clear it:
+ * - target has no language (prompt/note) → always null.
+ * - target is `command`: a generic shell synonym (e.g. "shell"/"sh"/"zsh") normalizes to "bash"; a
+ *   distinct shell language already in the command set (e.g. "fish"/"powershell"/"dockerfile") is kept;
+ *   anything else (a programming language) → clear.
+ * - target is `snippet`: a shell language is not a valid snippet language → clear; otherwise keep.
+ * Empty/absent language stays null. Pure — unit-tested directly.
+ */
+export function remapLanguageForType(language: string | null | undefined, targetType: string): string | null {
+  const trimmed = language?.trim() || null
+  const lang = trimmed?.toLowerCase() ?? null
+  if (!ITEM_TYPES_WITH_LANGUAGE.has(targetType)) return null
+  if (!lang) return null
+  if (targetType === 'command') {
+    if (SHELL_SYNONYMS_TO_BASH.has(lang)) return 'bash'
+    if (COMMAND_LANGUAGES.has(lang)) return lang
+    return null
+  }
+  // targetType === 'snippet': a shell language is not a valid snippet language → clear. A kept
+  // language is returned as the user typed it (preserve casing) rather than the lowercased copy.
+  return isShellLanguage(lang) ? null : trimmed
+}
 export const ITEM_TYPES_WITH_CODE_EDITOR = new Set(['snippet', 'command'])
 export const ITEM_TYPES_WITH_MARKDOWN_EDITOR = new Set(['prompt', 'note'])
 // AI prompt optimization is gated strictly to `prompt` — the markdown editor is shared with `note`,

@@ -12,6 +12,12 @@ vi.mock('@/lib/ai/brain-dump', () => ({
   resumeBackgroundBrainDump: vi.fn(),
   consumeBrainDumpStream: vi.fn(),
   brainDumpProgress: (n: number) => Math.min(95, n * 3),
+  // Stand-in that surfaces the reason-specific copy the route assertions look for ("What to do:",
+  // "safety filter"), so the route's failed-branch composition is exercised without the real builder.
+  buildFailureDetail: (detail: { reason: string }, persisted: number) =>
+    detail.reason === 'content_filter'
+      ? `Blocked by the safety filter. ${persisted} saved. What to do: edit the source.`
+      : `Run failed. ${persisted} saved. What to do: retry.`,
 }))
 vi.mock('@/lib/db/ai-parse-jobs', () => ({
   getParseJobSnapshot: vi.fn(),
@@ -44,6 +50,13 @@ const mockRedis = getRedis as ReturnType<typeof vi.fn>
 const ctx = { params: Promise.resolve({ jobId: 'job-1' }) }
 function req(resume = false): NextRequest {
   return new NextRequest(`http://localhost/api/ai/brain-dump/job-1/stream${resume ? '?resume=1' : ''}`)
+}
+// Native EventSource auto-reconnect carries no query param — it re-sends the last `id:` it saw as the
+// `Last-Event-ID` header. The route must treat that as a resume too.
+function reqWithLastEventId(id: string): NextRequest {
+  return new NextRequest('http://localhost/api/ai/brain-dump/job-1/stream', {
+    headers: { 'Last-Event-ID': id },
+  })
 }
 
 interface SseEvent {
@@ -134,13 +147,29 @@ describe('GET /ai/brain-dump/{jobId}/stream', () => {
     expect(events.map((e) => e.event)).toContain('done')
   })
 
-  it('finishes failed and emits an error when the run fails', async () => {
+  it('finishes failed with rich detail + remediation and emits the reason on a model error', async () => {
     mockSnapshot.mockResolvedValue(processingSnap)
     mockRunState.mockResolvedValue(freshRun)
-    mockConsume.mockResolvedValue({ status: 'failed', emitted: 0 })
+    mockConsume.mockResolvedValue({ status: 'failed', emitted: 0, failure: { reason: 'model_error', message: 'boom' } })
     const events = await readSse(await GET(req(), ctx))
-    expect(mockFinish).toHaveBeenCalledWith('user-1', 'job-1', 'failed', 'Generation failed.')
-    expect(events.find((e) => e.event === 'error')?.data).toEqual({ message: 'Generation failed.' })
+    // finishJob gets the composed human-readable detail (not a bare "Generation failed."), the truncated
+    // flag undefined, and the structured failure reason for the log.
+    expect(mockFinish).toHaveBeenCalledWith(
+      'user-1', 'job-1', 'failed', expect.stringContaining('What to do:'), undefined, { reason: 'model_error' },
+    )
+    const errEvent = events.find((e) => e.event === 'error')?.data as { message: string; reason: string }
+    expect(errEvent.reason).toBe('model_error')
+    expect(errEvent.message).toContain('What to do:')
+  })
+
+  it('content_filter maps to failed (not truncated-complete) with its remediation', async () => {
+    mockSnapshot.mockResolvedValue(processingSnap)
+    mockRunState.mockResolvedValue(freshRun)
+    mockConsume.mockResolvedValue({ status: 'failed', emitted: 1, failure: { reason: 'content_filter', message: null } })
+    await readSse(await GET(req(), ctx))
+    expect(mockFinish).toHaveBeenCalledWith(
+      'user-1', 'job-1', 'failed', expect.stringContaining('safety filter'), undefined, { reason: 'content_filter' },
+    )
   })
 
   it('finishes completed-but-truncated and discloses it when the run is token-capped (incomplete)', async () => {
@@ -176,6 +205,22 @@ describe('GET /ai/brain-dump/{jobId}/stream', () => {
     await readSse(await GET(req(true), ctx))
     expect(mockResume).toHaveBeenCalledWith(expect.anything(), 'resp-1', 7, expect.anything())
     expect(mockStart).not.toHaveBeenCalled()
+  })
+
+  it('resumes from the stored cursor when the browser reconnects with a Last-Event-ID header', async () => {
+    mockSnapshot.mockResolvedValue(processingSnap)
+    mockRunState.mockResolvedValue(interruptedRun)
+    await readSse(await GET(reqWithLastEventId('3'), ctx))
+    expect(mockResume).toHaveBeenCalledWith(expect.anything(), 'resp-1', 7, expect.anything())
+    expect(mockStart).not.toHaveBeenCalled()
+  })
+
+  it('tags the snapshot frame with a retry directive and an id so native reconnect has a Last-Event-ID', async () => {
+    mockSnapshot.mockResolvedValue({ ...processingSnap, status: 'completed' })
+    const raw = await (await GET(req(), ctx)).text()
+    const snapshotBlock = raw.split('\n\n').find((block) => block.includes('event: snapshot')) ?? ''
+    expect(snapshotBlock).toContain('retry: 3000')
+    expect(snapshotBlock).toContain('id: 0')
   })
 
   it('releases the single-flight lock after the run', async () => {

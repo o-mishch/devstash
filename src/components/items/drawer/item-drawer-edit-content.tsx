@@ -1,21 +1,25 @@
 'use client'
 
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { X, Check } from 'lucide-react'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { LanguageInput } from '@/components/shared/item-content-input'
 import { ItemFormFields } from '@/components/items/item-form-fields'
 import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog'
-import { useUpdateItem } from '@/hooks/use-update-item'
+import { useUpdateItem, type TextItemTypeName } from '@/hooks/use-update-item'
+import type { UpdateItemInput } from '@/lib/utils/validators'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
 import { useRegisterSheetClose, type SheetCloseRef } from '@/hooks/use-register-sheet-close'
 import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
-import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL, TEXT_ITEM_TYPE_NAMES, SYSTEM_TYPE_ORDER, remapLanguageForType } from '@/lib/utils/constants'
+import { cn, getTypeLabel, ACTIONBAR_LABEL_CLASS, ACTIONBAR_BUTTON_CLASS } from '@/lib/utils'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import type { FullItem } from '@/types/item'
@@ -46,13 +50,59 @@ interface ItemDrawerEditContentProps {
    * Sheet reads it on Esc/backdrop so those paths also go through the dirty guard.
    */
   sheetCloseRef?: SheetCloseRef
+  /**
+   * When provided, Save calls this instead of the real-item `useUpdateItem` flow — letting a
+   * non-`Item` consumer (the Brain Dump draft drawer) reuse this exact edit form while routing the
+   * write to its own endpoint. The override owns its success toast / cache update / close; this
+   * component only awaits it so the Save button shows the saving state. `onSave` is not called in
+   * override mode.
+   */
+  onSubmitOverride?: (payload: UpdateItemInput) => Promise<void>
+  /**
+   * Hide the Created/Updated "Details" footer. The Brain Dump draft drawer sets this false — a draft is
+   * not a saved item, so its timestamps are not meaningful. Defaults to shown for the real item drawer.
+   */
+  showDetailsSection?: boolean
+  /**
+   * Override the primary save button's label. The Brain Dump draft drawer passes "Save draft" (a draft
+   * is staged, not a committed item). Defaults to "Save" for the real item drawer.
+   */
+  saveLabel?: string
+  /**
+   * When set, a tooltip is shown on the primary save button (the Brain Dump draft drawer uses it to
+   * clarify "Save draft" vs "Commit"). Omitted for the real item drawer, which renders no save tooltip.
+   */
+  saveTooltip?: string
+  /**
+   * Extra action buttons rendered right-aligned in the action bar, after Cancel/Save. The Brain Dump
+   * draft drawer injects Delete (→ trash) and Commit (→ live item) here. `disabled` mirrors the saving
+   * state so the extras lock during a save.
+   */
+  renderExtraActions?: (state: { disabled: boolean }) => ReactNode
 }
 
-export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel, sheetCloseRef }: ItemDrawerEditContentProps) {
+// The four text types, in canonical order, rendered as the type-switch options.
+const TEXT_TYPE_OPTIONS = SYSTEM_TYPE_ORDER.filter((name) => TEXT_ITEM_TYPE_NAMES.has(name))
+
+export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions }: ItemDrawerEditContentProps) {
   const { itemType } = item
-  const typeName = itemType.name
+  const committedType = itemType.name
   const updateItem = useUpdateItem()
 
+  // Staged type change: switching the picker updates this local state only — nothing is persisted until
+  // Save, which sends `itemTypeName` alongside the other field edits. The type switcher is offered only
+  // when the item is already one of the four text types (for file/image/link its absence IS the boundary).
+  const canSwitchType = TEXT_ITEM_TYPE_NAMES.has(committedType)
+  const [pendingType, setPendingType] = useState(committedType)
+  const typeName = pendingType
+  const typeChanged = pendingType !== committedType
+
+  // The drawer header icon + accent color follow the PENDING type so a staged switch is reflected
+  // before Save (both `ItemIconWrapper` and the `--item-color` var key off `itemType.name`).
+  const headerItemType = useMemo(() => ({ ...itemType, name: pendingType }), [itemType, pendingType])
+
+  // The whole edit form re-derives from the pending type (language picker filter, content editor, the
+  // per-type fields), so a staged switch is reflected live without persisting.
   const formSchema = useMemo(() => createDrawerFormSchema(typeName), [typeName])
 
   const form = useForm<DrawerFormValues>({
@@ -70,9 +120,51 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
 
   const watchedLanguage = useWatch({ control: form.control, name: 'language' })
   const saving = form.formState.isSubmitting
-  const isDirty = form.formState.isDirty
+
+  // The language a staged switch dropped (lossy), captured at switch time so the inline warning reflects
+  // the value actually being cleared — including one the user edited before switching, not the stale
+  // committed `item.language`. null when the switch kept (or remapped) the language.
+  const [clearedLanguage, setClearedLanguage] = useState<string | null>(null)
+
+  // The language as it stood the moment the user first switched away from the committed type, so an
+  // A→B→A round-trip restores their in-progress edit rather than the stale committed `item.language`.
+  const languageBeforeSwitchRef = useRef(item.language ?? '')
+
+  // Switching the type re-derives the language for the new type (shell→bash on →command, cleared on
+  // →note, etc.) so the visible field matches what Save will persist — staged, no network.
+  const handleTypeChange = (next: string | null) => {
+    if (!next || next === pendingType) return
+    // Leaving the committed type: snapshot the current language so a later return can restore an edit
+    // the user made before switching, not just the committed default.
+    if (pendingType === committedType) {
+      languageBeforeSwitchRef.current = form.getValues('language') ?? ''
+    }
+    setPendingType(next)
+    // Returning to the original type (A→B→A): restore the snapshotted language. If it matches the
+    // committed value, resetField clears the dirty/lossy state; if the user had edited it, keep it dirty.
+    if (next === committedType) {
+      setClearedLanguage(null)
+      const restored = languageBeforeSwitchRef.current
+      if (restored.trim() === (item.language ?? '').trim()) {
+        form.resetField('language')
+      } else {
+        form.setValue('language', restored, { shouldDirty: true })
+      }
+      return
+    }
+    const current = form.getValues('language')?.trim() || null
+    const remapped = remapLanguageForType(current, next)
+    setClearedLanguage(current && remapped === null ? current : null)
+    form.setValue('language', remapped ?? '', { shouldDirty: true })
+  }
+
+  // The pending switch dropped the current language (lossy) — surfaced as an inline note before Save.
+  const languageWillClear = typeChanged && clearedLanguage !== null
 
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(typeName)
+
+  // A staged type change counts as a dirty edit too, so Cancel/close runs the unsaved guard.
+  const isDirty = form.formState.isDirty || typeChanged
 
   // X button closes the whole drawer; Cancel returns to view mode. Both need
   // the same dirty guard, so a ref tracks which action to run on confirm.
@@ -93,25 +185,51 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
 
   const handleSubmit = form.handleSubmit(async (data: DrawerFormValues) => {
     const tagArray = parseTagString(data.tags)
-    await updateItem(
-      item,
-      {
-        title: data.title.trim(),
-        description: data.description?.trim() || null,
-        content: data.content || null,
-        url: data.url?.trim() || null,
-        language: data.language?.trim() || null,
-        tags: tagArray,
-        collectionIds: data.collectionIds,
-      },
-      { onSave },
-    )
+    const payload: UpdateItemInput = {
+      title: data.title.trim(),
+      description: data.description?.trim() || null,
+      content: data.content || null,
+      url: data.url?.trim() || null,
+      language: data.language?.trim() || null,
+      tags: tagArray,
+      collectionIds: data.collectionIds,
+      // Persist the staged type change with the rest of the edits (omitted when unchanged).
+      ...(typeChanged ? { itemTypeName: pendingType as TextItemTypeName } : {}),
+    }
+    // Brain Dump draft reuse: route the save to the draft endpoint instead of the real-item flow.
+    if (onSubmitOverride) {
+      await onSubmitOverride(payload)
+      return
+    }
+    await updateItem(item, payload, { onSave })
   })
+
+  // Save is disabled when there's nothing to save (no field edit + no staged type change), so a no-op
+  // save can't run. The TooltipTrigger sits on a span wrapper, not the Button — a disabled Button has
+  // `pointer-events:none` and would never fire hover, so the explanatory "No changes to save" tooltip
+  // would be unreachable on the very state it explains. When dirty, the tooltip falls back to the
+  // consumer's `saveTooltip` (the draft drawer's copy); the real item drawer passes none, so the
+  // editable button shows no tooltip.
+  const saveButton = (
+    <Button size="sm" onClick={handleSubmit} disabled={saving || !isDirty} className={cn(ACTIONBAR_BUTTON_CLASS, 'max-sm:w-full')} aria-label={saveLabel}>
+      <Check className="size-4" />
+      <span className={ACTIONBAR_LABEL_CLASS}>{saving ? 'Saving…' : saveLabel}</span>
+    </Button>
+  )
+  const saveButtonTooltip = !isDirty ? 'No changes to save' : saveTooltip
+  const saveAction = saveButtonTooltip ? (
+    <Tooltip>
+      <TooltipTrigger render={<span className="inline-flex max-sm:flex-1">{saveButton}</span>} />
+      <TooltipContent>{saveButtonTooltip}</TooltipContent>
+    </Tooltip>
+  ) : (
+    saveButton
+  )
 
   return (
     <>
       <DrawerLayout
-        itemType={itemType}
+        itemType={headerItemType}
         onClose={() => guardedAction(onClose)}
         titleArea={
           <>
@@ -128,8 +246,28 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
                 <p className="absolute -bottom-5 left-0 text-red-500 text-[10px]">{form.formState.errors.title.message}</p>
               )}
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 max-sm:mt-1">
-              <Badge variant="secondary" className="capitalize">{typeName}</Badge>
+            <div className="mt-1.5 flex flex-nowrap items-center gap-1.5 max-sm:mt-1">
+              {canSwitchType ? (
+                <Select value={pendingType} onValueChange={handleTypeChange}>
+                  <SelectTrigger size="sm" className="h-7 w-auto gap-1.5 rounded-full px-2.5 text-xs capitalize">
+                    <SelectValue />
+                  </SelectTrigger>
+                  {/* alignItemWithTrigger={false}: a plain dropdown-below-trigger with the smooth
+                      fade/zoom/slide open, matching the create-item dialog's type picker. */}
+                  <SelectContent alignItemWithTrigger={false}>
+                    {TEXT_TYPE_OPTIONS.map((name) => (
+                      <SelectItem key={name} value={name} className="capitalize">
+                        <ItemTypeIcon typeName={name} className="size-3.5" />
+                        {getTypeLabel(name)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium capitalize text-secondary-foreground">
+                  {typeName}
+                </span>
+              )}
               {showLanguage && (
                 <div className="relative">
                   <Controller
@@ -141,7 +279,13 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
                         value={field.value || ''}
                         onChange={field.onChange}
                         placeholder="Language"
-                        className="h-5 touch:h-5 w-32 rounded-full border-border px-2.5 py-0.5 text-xs shadow-none transition-colors hover:bg-accent/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        itemType={typeName}
+                        fit
+                        // Match the item-type Select trigger sitting beside it: same h-7 content-sized
+                        // box, gap/padding, text-xs, and corner radius. The sm SelectTrigger renders at
+                        // rounded-[min(var(--radius-md),10px)] (its size variant overrides rounded-full),
+                        // so use that exact radius here instead of rounded-full to get the same shape.
+                        className="h-7 touch:h-7 w-auto gap-1.5 rounded-[min(var(--radius-md),10px)] border-border bg-background px-2.5 py-0 text-xs capitalize shadow-none transition-colors dark:bg-input/30 dark:hover:bg-input/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                       />
                     )}
                   />
@@ -151,20 +295,33 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
                 </div>
               )}
             </div>
+            {languageWillClear && (
+              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                Language “{clearedLanguage}” will be cleared when you save as {getTypeLabel(pendingType)}.
+              </p>
+            )}
           </>
         }
         actionArea={
+          // Tooltips (the optional Save tooltip + any the consumer renders in `renderExtraActions`, e.g.
+          // the draft drawer's Commit) are scoped by the single TooltipProvider in DrawerLayout.
           <>
             {/* touch:h-11 matches the view action bar's height (its Delete button is a 44px
-                touch target), so the content editor sits at the same vertical position in both modes. */}
-            <Button variant="outline" size="sm" onClick={() => guardedAction(onCancel)} disabled={saving} className="touch:h-11">
+                touch target), so the content editor sits at the same vertical position in both modes.
+                max-sm:flex-1 lets the buttons share the row evenly on mobile so a dense bar (the draft
+                drawer's Cancel · Save draft · Delete · Commit) wraps into a balanced 2×2 instead of
+                clipping or right-floating its last buttons. */}
+            <Button variant="outline" size="sm" onClick={() => guardedAction(onCancel)} disabled={saving} className={ACTIONBAR_BUTTON_CLASS} aria-label="Cancel">
               <X className="size-4" />
-              Cancel
+              <span className={ACTIONBAR_LABEL_CLASS}>Cancel</span>
             </Button>
-            <Button size="sm" onClick={handleSubmit} disabled={saving} className="touch:h-11">
-              <Check className="size-4" />
-              {saving ? 'Saving…' : 'Save'}
-            </Button>
+            {saveAction}
+            {/* Consumer-injected extras (Brain Dump draft: Delete → trash, Commit → live item).
+                ml-auto floats them to the right edge when there's space; at narrow widths the
+                container query collapses all buttons to icon-only so they all fit on one row. */}
+            {renderExtraActions && (
+              <div className="flex items-center gap-0.5 ml-auto max-sm:contents">{renderExtraActions({ disabled: saving })}</div>
+            )}
           </>
         }
       >
@@ -180,7 +337,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
           variant="drawer"
         />
 
-        <DrawerDetailsSection item={item} />
+        {showDetailsSection && <DrawerDetailsSection item={item} />}
       </DrawerLayout>
       <UnsavedChangesDialog
         open={confirmOpen}

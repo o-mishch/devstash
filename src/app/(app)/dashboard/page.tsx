@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 import { DashboardSkinShell } from '@/components/dashboard/dashboard-content'
 import { DashboardSkinFallback } from '@/components/dashboard/skins/skeletons'
+import { ItemDeepLink } from '@/components/items/item-deep-link'
 
 // Skins that render a type-distribution viz (bars/segments/donut). Others (classic, spatial,
 // holographic) never read the distribution, so the query is skipped for them.
@@ -104,6 +105,9 @@ export default async function DashboardPage(props: {
 
   return (
     <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6" data-skin={skin}>
+      <Suspense fallback={null}>
+        <ItemDeepLink />
+      </Suspense>
       <Suspense fallback={<DashboardSkinFallback skin={skin} isPro={isPro} />}>
         <DashboardSkinShell
           skin={skin}

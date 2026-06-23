@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { PanelRight, Star, Settings } from 'lucide-react'
+import { PanelRight, Star, Settings, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -29,14 +29,34 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
   return (
     <TooltipProvider delay={300}>
       <div className="flex h-full flex-col items-center py-2 overflow-hidden">
-        <Button variant="ghost" size="icon" onClick={onToggle} className="mb-2 text-muted-foreground">
-          <PanelRight className="size-4" />
+        <Button variant="ghost" size="icon" onClick={onToggle} className="group mb-2 text-muted-foreground">
+          <PanelRight className="size-4 card-icon" />
         </Button>
 
         <Separator className="mb-2 w-8" />
 
         <ScrollArea className="flex-1 min-h-0 w-full [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
           <div className="flex flex-col items-center gap-1 px-2">
+            <Tooltip>
+              <TooltipTrigger render={<span />}>
+                <Link
+                  href="/parse"
+                  prefetch={true}
+                  className={cn(
+                    'group flex size-11 items-center justify-center rounded-lg transition-colors',
+                    pathname === '/parse' || pathname.startsWith('/parse/')
+                      ? 'bg-foreground/10 text-foreground'
+                      : 'hover:bg-foreground/5'
+                  )}
+                >
+                  <Sparkles className="size-4 shrink-0 card-icon" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">Brain Dump</TooltipContent>
+            </Tooltip>
+
+            <Separator className="my-1 w-8" />
+
             {sidebarData.itemTypes.map((t) => {
               const typeHref = getTypeHref(t.name)
               const isCurrentPage = pathname === typeHref
@@ -58,7 +78,7 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
                       showUpgradePrompt: openPrompt,
                     })}
                     className={cn(
-                      'flex size-11 items-center justify-center rounded-lg transition-colors',
+                      'group flex size-11 items-center justify-center rounded-lg transition-colors',
                       isCurrentPage
                         ? 'bg-foreground/10 text-foreground'
                         : 'hover:bg-foreground/5'

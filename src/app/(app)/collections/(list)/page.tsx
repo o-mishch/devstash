@@ -7,11 +7,13 @@ import { CollectionCreateDialog } from '@/components/dashboard/collection-create
 import { Button } from '@/components/ui/button'
 import { ArrowRight } from 'lucide-react'
 import type { CollectionWithTypes } from '@/types/collection'
+import CollectionsLoading from './loading'
 
 type CollectionComparator = (a: CollectionWithTypes, b: CollectionWithTypes) => number
 
 interface CollectionsPageSearchParams {
   sort?: string
+  skeleton?: string
 }
 
 interface CollectionsPageProps {
@@ -19,10 +21,13 @@ interface CollectionsPageProps {
 }
 
 export default async function CollectionsPage({ searchParams }: CollectionsPageProps) {
+  const { sort = 'recent', skeleton } = await searchParams
+
+  // `?skeleton=true` preview: render the same skeleton loading.tsx shows.
+  if (skeleton === 'true') return <CollectionsLoading />
+
   const userId = await getCurrentUserId()
   const collections = userId ? await getAllCollections(userId) : []
-  
-  const { sort = 'recent' } = await searchParams
 
   // Favorites stay pinned to the top in every mode; the chosen sort orders within each group.
   // 'recent' (default) needs no re-sort — getAllCollections already returns favorites-first, updatedAt desc.

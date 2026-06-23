@@ -1,15 +1,14 @@
-import Link from 'next/link'
 import { Pin, History, BarChart3, Folder } from 'lucide-react'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
+import { BrainDumpWidget } from '@/components/dashboard/brain-dump-widget'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { RetroGrid } from '@/components/ui/retro-grid'
 import { cn } from '@/lib/utils'
 import { SkinWidget } from './skin-widget'
-import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
-import { computeUsage, slotsLeftLabel, resolveSkinData, TypeDistributionSegments, type DashboardSkinData } from './shared'
+import { computeUsage, resolveSkinData, MaybeLink, TypeDistributionSegments, type DashboardSkinData } from './shared'
 
 const HUD_PANEL = 'relative overflow-hidden rounded-lg border border-border bg-foreground/[0.015] p-5'
 
@@ -30,15 +29,15 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
     { label: 'Collections', value: String(collectionStats.totalCollections).padStart(2, '0'), pct: 40, sub: `${collectionStats.favoriteCollections} favorite`, href: '/collections' as string | undefined },
     ...(isPro
       ? []
-      : [{ label: 'Slots Left', value: slotsLeftLabel(usage), pct: 70, sub: 'all changes saved', href: undefined as string | undefined }]),
+      : [{ label: 'Slots Left', value: String(usage.slotsLeft), pct: 70, sub: 'all changes saved', href: undefined as string | undefined }]),
   ]
   const cellClass = 'ds-hud-cell relative rounded-md border border-primary/20 bg-gradient-to-b from-primary/[0.04] to-foreground/[0.015] px-[18px] py-3'
-  // Pro is a clean 2-up (Total + Collections). Free has 3 cells; the odd last (Slots Left) spans the
-  // full row on the 2-col grid so it is never orphaned, resolving to its own column at lg.
-  const cellGridCols =
-    cells.length === 2
-      ? 'lg:grid-cols-2'
-      : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'
+  // Pro: Total + Collections stay compact and Brain Dump takes a wide cell (spans 2 of a 4-col track),
+  // replacing the standalone banner. Free has 3 cells; the odd last (Slots Left) spans the full row on
+  // the 2-col grid so it is never orphaned, resolving to its own column at lg.
+  const cellGridCols = isPro
+    ? 'lg:grid-cols-4'
+    : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'
 
   return (
     // overflow-hidden clips the RetroGrid's perspective bleed. The grid sits at the top as a faint
@@ -74,22 +73,22 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
                 </div>
               </>
             )
-            if (c.href) {
-              return <Link key={c.label} href={c.href} prefetch={false} className={`${cellClass} block transition-colors hover:bg-primary/[0.08]`}>{inner}</Link>
-            }
             if (c.label === 'Total Items') {
               return (
-                <div key={c.label} className={`${cellClass} transition-colors hover:bg-primary/[0.08]`}>
+                <div key={c.label} className={`${cellClass} card-interactive`}>
                   <TotalItemsReveal variant="terminal" className="block w-full">{inner}</TotalItemsReveal>
                 </div>
               )
             }
-            return <div key={c.label} className={cellClass}>{inner}</div>
+            return (
+              <MaybeLink key={c.label} href={c.href} className={c.href ? `${cellClass} card-interactive block` : cellClass}>{inner}</MaybeLink>
+            )
           })}
+          {isPro && <BrainDumpWidget skin="command-deck" className="col-span-2" />}
         </div>
 
         <div className={`${HUD_PANEL} mb-6`}>
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['command-deck']}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="command-deck">
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </div>
@@ -97,14 +96,14 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
         <div className="mb-6 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
           {hasPinned && (
             <div className={HUD_PANEL}>
-              <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['command-deck']}>
+              <SkinWidget icon={<Pin />} title="Pinned" skin="command-deck">
                 <DashboardPinnedItems initialItems={pinned} />
               </SkinWidget>
             </div>
           )}
           {hasRecent && (
             <div className={HUD_PANEL}>
-              <SkinWidget icon={<History />} title="Recent records" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['command-deck']}>
+              <SkinWidget icon={<History />} title="Recent records" skin="command-deck">
                 <DashboardRecentItems firstPage={recent} />
               </SkinWidget>
             </div>
@@ -113,7 +112,7 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
 
         {/* Type distribution — analytics, below the content lists. */}
         <div className="mb-6 relative overflow-hidden rounded-lg border border-border bg-foreground/[0.015] p-5">
-          <SkinWidget icon={<BarChart3 />} title="Type distribution" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['command-deck']}>
+          <SkinWidget icon={<BarChart3 />} title="Type distribution" skin="command-deck">
             <TypeDistributionSegments distribution={distribution} />
           </SkinWidget>
         </div>

@@ -1,10 +1,11 @@
 import 'server-only'
 
 import { cacheTag, cacheLife } from 'next/cache'
-import { prisma } from '@/lib/infra/prisma'
+import { prisma, type PrismaTransactionClient } from '@/lib/infra/prisma'
 import { CacheTags } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
-import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEMS_PAGE_SIZE, compareBySystemTypeOrder, remapLanguageForType } from '@/lib/utils/constants'
+import type { UpdateItemInput } from '@/lib/utils/validators'
 import type { FullItem, ItemDetails, ItemSavedDetails, ItemContent, ItemStats, ItemTypeDistribution, DashboardActivityDay, SidebarItemType, LightItem, ItemsPage } from '@/types/item'
 import { Prisma, ContentType } from '@/generated/prisma/client'
 
@@ -113,7 +114,7 @@ interface TextPreview {
 
 // $queryRaw needed: Prisma has no equivalent for LEFT() in SELECT;
 // prevents full description/content text travelling Neon→Vercel on every list page.
-async function fetchTextPreviews(ids: string[]): Promise<Map<string, TextPreview>> {
+export async function fetchTextPreviews(ids: string[]): Promise<Map<string, TextPreview>> {
   if (ids.length === 0) return new Map()
   const rows = await prisma.$queryRaw<Array<{ id: string; dp: string | null; cp: string | null }>>`
     SELECT id, LEFT(description, 150) AS dp, LEFT(content, 150) AS cp
@@ -417,13 +418,25 @@ export interface CreateItemInput {
   imageHeight?: number | null
 }
 
-export async function createItem(userId: string, data: CreateItemInput): Promise<LightItem | null> {
+export async function createItem(
+  userId: string,
+  data: CreateItemInput,
+  // v2.5 atomic commit: when a caller (e.g. `commitDrafts`) needs the item creation to run inside its
+  // own interactive `$transaction`, it passes that transaction client. Writes run on `tx`; the cached
+  // type/collection reads stay on the module client (they don't need transactional isolation and a
+  // cached `'use cache'` read can't run on `tx`). Defaults to the module `prisma` so all other callers
+  // are untouched. `PrismaTransactionClient` is derived from the extended client, so both the module
+  // `prisma` default and a `tx` from `prisma.$transaction(async (tx) => …)` satisfy it.
+  tx: PrismaTransactionClient = prisma,
+): Promise<LightItem | null> {
   const start = Date.now()
   // system types are cached for 1 day — avoids a DB round trip on every item creation
   const systemTypes = await getSystemItemTypes()
   const itemType =
     systemTypes.find((t) => t.name === data.itemTypeName) ??
-    (await prisma.itemType.findFirst({ where: { name: data.itemTypeName, userId } }))
+    // Read on `tx` so a custom-typed create inside an interactive transaction sees its own writes and
+    // stays consistent (defaults to the module client for all non-tx callers).
+    (await tx.itemType.findFirst({ where: { name: data.itemTypeName, userId } }))
 
   if (!itemType) {
     log.warn({ userId, itemTypeName: data.itemTypeName }, 'DB: createItem: itemType not found')
@@ -436,7 +449,7 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
 
   const validCollectionIds = await getValidCollectionIds(userId, data.collectionIds)
 
-  const created = await prisma.item.create({
+  const created = await tx.item.create({
     data: {
       userId,
       itemTypeId: itemType.id,
@@ -467,19 +480,33 @@ export async function createItem(userId: string, data: CreateItemInput): Promise
   return toLightItem(created)
 }
 
-export interface UpdateItemInput {
-  title: string
-  description: string | null
-  content: string | null
-  url: string | null
+// `UpdateItemInput` is the inferred shape of `itemMutationSchema` (the PATCH /items/{id} body) — reused
+// from validators rather than re-declared so the schema stays the single source of truth (it already
+// carries the v3 `itemTypeName` allow-list). Imported at the top of this module.
+// Resolved target of a v3 live type change: the system ItemType id to connect + the remapped language.
+interface ItemTypeChange {
+  itemTypeId: string
   language: string | null
-  tags: string[]
-  collectionIds: string[]
 }
 
 export async function updateItem(userId: string, itemId: string, data: UpdateItemInput): Promise<ItemSavedDetails | null> {
   const start = Date.now()
   const validCollectionIds = await getValidCollectionIds(userId, data.collectionIds)
+
+  // v3 live type change: when a new (text) type is requested, resolve its system ItemType and patch
+  // `itemTypeId`; `contentType` stays TEXT (all four are text types). The schema already allow-lists
+  // itemTypeName to {snippet,prompt,command,note}; resolving against system types is the final guard.
+  // Language is best-effort remapped for the new type (e.g. shell→bash on →command, cleared on →note).
+  let typeChange: ItemTypeChange | null = null
+  if (data.itemTypeName !== undefined) {
+    const systemTypes = await getSystemItemTypes()
+    const target = systemTypes.find((t) => t.name === data.itemTypeName)
+    if (!target) {
+      log.warn({ userId, itemId, itemTypeName: data.itemTypeName }, 'DB: updateItem: target type not found')
+      return null
+    }
+    typeChange = { itemTypeId: target.id, language: remapLanguageForType(data.language, data.itemTypeName) }
+  }
 
   try {
     const updated = await prisma.item.update({
@@ -489,7 +516,9 @@ export async function updateItem(userId: string, itemId: string, data: UpdateIte
         description: data.description,
         content: data.content,
         url: data.url,
-        language: data.language,
+        // On a type change the remapped language wins over the raw client value.
+        language: typeChange ? typeChange.language : data.language,
+        ...(typeChange ? { itemType: { connect: { id: typeChange.itemTypeId } } } : {}),
         tags: {
           set: [],
           connectOrCreate: buildTagsConnectOrCreate(data.tags),

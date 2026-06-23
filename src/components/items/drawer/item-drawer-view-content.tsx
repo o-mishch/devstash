@@ -18,8 +18,7 @@ import { useDirtyGuard } from '@/hooks/use-dirty-guard'
 import { useRegisterSheetClose, type SheetCloseRef } from '@/hooks/use-register-sheet-close'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_PROMPT_OPTIMIZE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
-import { useProDownloadSrc } from '@/hooks/use-pro-download-src'
-import { clearSignedDownloadUrlCache, markPreviewFailed, isPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/lib/api/signed-download-cache'
+import { useProDownloadSrc, useDownloadSrcActions, markPreviewFailed, isPreviewFailed } from '@/hooks/use-pro-download-src'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useRestrictedDownload } from '@/hooks/use-restricted-download'
@@ -33,6 +32,7 @@ interface FileSectionProps {
 function FileSectionContent({ item }: FileSectionProps) {
   const { closeDrawer } = useItemDrawerStore()
   const { isPro } = useAppUserFlagsStore()
+  const { refresh } = useDownloadSrcActions()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const [imageError, setImageError] = useState(false)
   const [isImageReloading, setIsImageReloading] = useState(false)
@@ -64,9 +64,7 @@ function FileSectionContent({ item }: FileSectionProps) {
     setImageError(false)
     setLoadedSrc(null)
 
-    clearSignedDownloadUrlCache(item.id)
-
-    const freshImageUrl = await fetchSignedDownloadUrl(item.id, true)
+    const freshImageUrl = await refresh(item.id, true)
     if (freshImageUrl) {
       // Keep isImageReloading true — the skeleton + spinning icon stay over the unchanged box until
       // the <img> actually finishes downloading (onLoad clears it), so the placeholder never resizes
@@ -140,7 +138,7 @@ function FileSectionContent({ item }: FileSectionProps) {
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted px-3 py-2.5">
+    <div className="flex items-center gap-3 rounded-lg border border-border bg-muted px-3 py-2.5 transition-colors hover:bg-muted/60 hover:border-border/80">
       <FileIcon className="size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{item.fileName ?? '—'}</p>

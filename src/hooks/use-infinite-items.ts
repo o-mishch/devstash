@@ -1,11 +1,18 @@
-import { useMemo } from 'react'
-import { useInfiniteQuery, useQueryClient, type InfiniteData, type Query } from '@tanstack/react-query'
+import { useCallback, useMemo } from 'react'
+import {
+  infiniteQueryOptions,
+  useInfiniteQuery,
+  useQueryClient,
+  type InfiniteData,
+  type Query,
+} from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
+import { itemDetailQueryKey } from '@/hooks/use-item-detail'
+import { useInvalidate } from '@/hooks/use-cache-invalidation'
+import { queryKeys } from '@/lib/api/query-keys'
 import type { FetchItemsQuery, ItemsPage, LightItem } from '@/types/item'
 
-function itemsQueryKey(fetchParams: FetchItemsQuery) {
-  return ['items', JSON.stringify(fetchParams)]
-}
+const itemsQueryKey = queryKeys.items.list
 
 /** Merges `patch` into the item matching `id` across every page, leaving the rest untouched. */
 export function mapItemInPages(
@@ -34,13 +41,45 @@ function prependToPage(old: InfiniteData<ItemsPage> | undefined, item: LightItem
   }
 }
 
+// Items discovered via global search live in `queryKeys.items.searchSlot` — a dedicated slot in the
+// ['items'] namespace that no component subscribes to (useInfiniteItems only requests genuine
+// FetchItemsQuery variants), so it never renders in a list or affects pagination. readItemsFromCache (which
+// scans every ['items'] entry) picks it up, so a search-fetched item joins the local-first search corpus
+// and stays consistent with the broad ['items'] updaters below (patch / favorite / remove all match
+// queryKeys.items.root). See the registry for why its {type:'search'} params are safe for the predicates.
+const SEARCH_RESULTS_CAP = 50
+
+/** Persists remote global-search hits into the items cache so they're reused by local-first search. */
+export function useSeedSearchResultsCache() {
+  const queryClient = useQueryClient()
+  return useCallback(
+    (items: LightItem[]) => {
+      if (items.length === 0) return
+      // No generic needed — queryKeys.items.searchSlot is DataTag-branded, so `old` infers as
+      // InfiniteData<ItemsPage> | undefined (v5 tagged keys).
+      queryClient.setQueryData(queryKeys.items.searchSlot, (old) => {
+        const byId = new Map((old?.pages[0]?.items ?? []).map((i) => [i.id, i]))
+        // Delete-before-set so a re-seen item moves to the tail; otherwise Map keeps its original
+        // position and slice(-CAP) could evict a freshly-relevant hit before older ones.
+        items.forEach((i) => {
+          byId.delete(i.id)
+          byId.set(i.id, i)
+        })
+        const merged = Array.from(byId.values()).slice(-SEARCH_RESULTS_CAP)
+        return { pages: [{ items: merged, nextCursor: null, hasMore: false }], pageParams: [null] }
+      })
+    },
+    [queryClient],
+  )
+}
+
 export function usePrependItem() {
   const queryClient = useQueryClient()
   return async (item: LightItem, collectionIds?: string[]) => {
-    await queryClient.cancelQueries({ queryKey: ['items'] })
+    await queryClient.cancelQueries({ queryKey: queryKeys.items.root })
     queryClient.setQueriesData<InfiniteData<ItemsPage>>(
       {
-        queryKey: ['items'],
+        queryKey: queryKeys.items.root,
         predicate: (query: Query) => {
           const raw = query.queryKey[1]
           if (typeof raw !== 'string') return false
@@ -66,14 +105,15 @@ export function usePrependItem() {
  */
 export function useToggleFavoriteInCache() {
   const queryClient = useQueryClient()
+  const invalidate = useInvalidate()
   return (item: LightItem, next: boolean) => {
     queryClient.setQueriesData<InfiniteData<ItemsPage>>(
-      { queryKey: ['items'] },
+      { queryKey: queryKeys.items.root },
       (old) => mapItemInPages(old, item.id, { isFavorite: next })
     )
     queryClient.setQueriesData<InfiniteData<ItemsPage>>(
       {
-        queryKey: ['items'],
+        queryKey: queryKeys.items.root,
         predicate: (query: Query) => {
           const raw = query.queryKey[1]
           if (typeof raw !== 'string') return false
@@ -95,29 +135,31 @@ export function useToggleFavoriteInCache() {
         }
       }
     )
-    void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
+    invalidate('items', { refetchType: 'none' })
   }
 }
 
 export function usePatchItem() {
   const queryClient = useQueryClient()
+  const invalidate = useInvalidate()
   return (id: string, patch: Partial<LightItem>) => {
     queryClient.setQueriesData<InfiniteData<ItemsPage>>(
-      { queryKey: ['items'] },
+      { queryKey: queryKeys.items.root },
       (old) => mapItemInPages(old, id, patch)
     )
     // refetchType: 'none' avoids an immediate refetch that would race against the
     // server-side revalidateTag (which runs via after() — deferred post-response).
     // Data will be refetched on next navigation/focus when the cache is truly stale.
-    void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
+    invalidate('items', { refetchType: 'none' })
   }
 }
 
 export function useRemoveItem() {
   const queryClient = useQueryClient()
+  const invalidate = useInvalidate()
   return (id: string) => {
     queryClient.setQueriesData<InfiniteData<ItemsPage>>(
-      { queryKey: ['items'] },
+      { queryKey: queryKeys.items.root },
       (old) => {
         if (!old) return old
         return {
@@ -129,7 +171,9 @@ export function useRemoveItem() {
         }
       }
     )
-    void queryClient.invalidateQueries({ queryKey: ['items'], refetchType: 'none' })
+    invalidate('items', { refetchType: 'none' })
+    // Drop the cached full-item detail so a stale copy can't be re-opened in the drawer after deletion.
+    queryClient.removeQueries({ queryKey: itemDetailQueryKey(id) })
   }
 }
 
@@ -137,7 +181,7 @@ export function useReplaceItem() {
   const queryClient = useQueryClient()
   return (tempId: string, realItem: LightItem) => {
     queryClient.setQueriesData<InfiniteData<ItemsPage>>(
-      { queryKey: ['items'] },
+      { queryKey: queryKeys.items.root },
       (old) => {
         if (!old) return old
         return {
@@ -154,11 +198,10 @@ export function useReplaceItem() {
 
 // Invalidates every cached items query. Pass 'none' to mark stale WITHOUT an immediate refetch
 // (avoids racing the server-side revalidateTag that runs via after() — same rationale as usePatchItem
-// / useRemoveItem). Omit it for a normal invalidate-and-refetch.
+// / useRemoveItem). Omit it for a normal invalidate-and-refetch. Thin alias over the central registry.
 export function useInvalidateItems() {
-  const queryClient = useQueryClient()
-  return (refetchType?: 'none') =>
-    void queryClient.invalidateQueries({ queryKey: ['items'], ...(refetchType && { refetchType }) })
+  const invalidate = useInvalidate()
+  return (refetchType?: 'none') => invalidate('items', refetchType ? { refetchType } : undefined)
 }
 
 /**
@@ -172,7 +215,7 @@ export function useSyncItemCollections() {
     if (removedCollectionIds.length > 0) {
       queryClient.setQueriesData<InfiniteData<ItemsPage>>(
         {
-          queryKey: ['items'],
+          queryKey: queryKeys.items.root,
           predicate: (query: Query) => {
             const raw = query.queryKey[1]
             if (typeof raw !== 'string') return false
@@ -195,7 +238,7 @@ export function useSyncItemCollections() {
     if (addedCollectionIds.length > 0) {
       queryClient.setQueriesData<InfiniteData<ItemsPage>>(
         {
-          queryKey: ['items'],
+          queryKey: queryKeys.items.root,
           predicate: (query: Query) => {
             const raw = query.queryKey[1]
             if (typeof raw !== 'string') return false
@@ -209,11 +252,13 @@ export function useSyncItemCollections() {
   }
 }
 
-export function useInfiniteItems(
-  fetchParams: FetchItemsQuery,
-  initialData?: ItemsPage
-) {
-  const query = useInfiniteQuery({
+// Typed, reusable infinite-query options for an items list variant. Co-locates the key (from the central
+// registry), the fetcher, and the pagination config in one `infiniteQueryOptions` object — so it's shared
+// by `useInfiniteQuery` here and any future `prefetchQuery`/`ensureQueryData`, and the helper tags the key
+// with `InfiniteData<ItemsPage>`. The custom `['items', …]` key shape is kept deliberately (it's the
+// namespace every optimistic updater + readItemsFromCache + searchSlot match on) — not openapi's $api key.
+export function itemsInfiniteOptions(fetchParams: FetchItemsQuery, initialData?: ItemsPage) {
+  return infiniteQueryOptions({
     queryKey: itemsQueryKey(fetchParams),
     queryFn: async ({ pageParam }) => {
       const { data, error } = await api.GET('/items', {
@@ -224,8 +269,17 @@ export function useInfiniteItems(
     },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? null,
+    // Surface a hard list-load failure via the central QueryCache onError handler (opt-in per query).
+    meta: { errorMessage: 'Failed to load items' },
     ...(initialData && { initialData: { pages: [initialData], pageParams: [null] } }),
   })
+}
+
+export function useInfiniteItems(
+  fetchParams: FetchItemsQuery,
+  initialData?: ItemsPage
+) {
+  const query = useInfiniteQuery(itemsInfiniteOptions(fetchParams, initialData))
 
   const items: LightItem[] = useMemo(() => {
     const flat = query.data?.pages.flatMap(page => page.items) ?? []

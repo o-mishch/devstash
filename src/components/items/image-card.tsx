@@ -11,8 +11,7 @@ import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { getDownloadUrl } from '@/lib/utils/url'
-import { useProDownloadSrc } from '@/hooks/use-pro-download-src'
-import { clearSignedDownloadUrlCache, markPreviewFailed, getSignedDownloadUrl as fetchSignedDownloadUrl } from '@/lib/api/signed-download-cache'
+import { useProDownloadSrc, useDownloadSrcActions, markPreviewFailed } from '@/hooks/use-pro-download-src'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { LightItem } from '@/types/item'
 
@@ -24,6 +23,7 @@ interface ImageCardProps {
 export function ImageCard({ item, priority = false }: ImageCardProps) {
   const { openDrawer } = useItemDrawerStore()
   const { isPro } = useAppUserFlagsStore()
+  const { refresh } = useDownloadSrcActions()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
   const [error, setError] = useState(false)
@@ -53,9 +53,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
     setError(false)
     setLoadedSrc(null)
 
-    clearSignedDownloadUrlCache(item.id)
-
-    const freshUrl = await fetchSignedDownloadUrl(item.id, true)
+    const freshUrl = await refresh(item.id, true)
     if (freshUrl) {
       // Keep isReloading true — the icon keeps spinning over the unchanged skeleton until the
       // <Image> actually finishes downloading (onLoad clears it). Don't stop here, or the UI would

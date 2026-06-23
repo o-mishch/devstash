@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import Link from 'next/link'
 import { Folder, Star } from 'lucide-react'
 import type { CollectionWithTypes } from '@/types/collection'
@@ -23,13 +24,14 @@ export function DashboardCollectionsList({ collections }: DashboardCollectionsLi
             key={c.id}
             href={`/collections/${c.id}`}
             prefetch={false}
-            className="flex items-center gap-3 rounded-xl border border-border bg-card/40 px-3 py-2.5 transition-colors hover:bg-foreground/5"
+            className="card-interactive flex items-center gap-3 rounded-xl border border-l-2 border-border border-l-[var(--card-accent)] bg-card/40 px-3 py-2.5"
+            style={{ '--card-accent': color } as CSSProperties}
           >
             <span
               className="grid size-9 shrink-0 place-items-center rounded-lg"
               style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
             >
-              <Folder className="size-4" />
+              <Folder className="card-icon size-4" />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">

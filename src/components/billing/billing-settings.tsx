@@ -4,7 +4,7 @@ import {
   checkoutNotificationFromSearchParams,
   type SettingsCheckoutSearchParams,
 } from '@/lib/billing/checkout/checkout-return-params'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { CollapsibleCard } from '@/components/shared/collapsible-card'
 import { Badge } from '@/components/ui/badge'
 import { getUserUsageStats } from '@/lib/db/usage'
 import { loadBillingPageContext } from '@/lib/billing/sync/user-billing-state'
@@ -96,23 +96,20 @@ export async function BillingSettings({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="size-5 text-muted-foreground" />
-            Billing & Usage
-          </CardTitle>
-          <Badge variant={isPro ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
-            {isPro ? 'Pro' : 'Free'}
-          </Badge>
-        </div>
-        <CardDescription>
-          Manage your subscription and view your current usage
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent className="space-y-6">
+    // Same widget rules as the rest of the app: accent left border + hover + collapse. The async data
+    // fetch stays in this server component; only the collapse toggle (CollapsibleCard) is client, with
+    // the server-rendered body passed through as children.
+    <CollapsibleCard
+      title="Billing & Usage"
+      icon={<CreditCard />}
+      subtitle="Manage your subscription and view your current usage"
+      headerExtra={
+        <Badge variant={isPro ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
+          {isPro ? 'Pro' : 'Free'}
+        </Badge>
+      }
+    >
+      <div className="space-y-6">
         <BillingCheckoutNotification notification={checkoutNotification} />
         {billingUnavailable && (
           <BillingAlert textSize="xs">{BILLING_UNAVAILABLE_MESSAGE}</BillingAlert>
@@ -121,7 +118,7 @@ export async function BillingSettings({
           <BillingAlert textSize="xs">{billingIssueMessage}</BillingAlert>
         )}
         {billingBody}
-      </CardContent>
-    </Card>
+      </div>
+    </CollapsibleCard>
   )
 }

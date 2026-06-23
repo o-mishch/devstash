@@ -26,6 +26,15 @@ function createPrismaClient() {
 
 type ExtendedPrismaClient = ReturnType<typeof createPrismaClient>
 
+// The interactive-transaction client this extended `prisma` yields inside `$transaction(async (tx) => …)`.
+// Derived from the extended client (not the base `Prisma.TransactionClient`) so a helper accepting `tx`
+// — e.g. `createItem(userId, data, tx)` — type-checks against both the callback `tx` and the module
+// `prisma` default. Equivalent to the extended client minus the top-level-only methods.
+export type PrismaTransactionClient = Omit<
+  ExtendedPrismaClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>
+
 // Reuse client across hot reloads in development
 const globalForPrisma = globalThis as unknown as { prisma?: ExtendedPrismaClient }
 export const prisma = globalForPrisma.prisma ?? createPrismaClient()

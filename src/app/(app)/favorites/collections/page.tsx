@@ -1,9 +1,17 @@
 import { getCurrentUserId } from '@/lib/session'
 import { getFavoriteCollections } from '@/lib/db/collections'
 import { FavoriteCollectionRow } from '@/components/favorites/favorite-collection-row'
+import { FavoritesListSkeleton } from '@/components/favorites/favorites-list-skeleton'
 import { FavoritesEmpty } from '@/components/favorites/favorites-empty'
 
-export default async function FavoriteCollectionsPage() {
+interface FavoriteCollectionsPageProps {
+  searchParams: Promise<{ skeleton?: string }>
+}
+
+export default async function FavoriteCollectionsPage({ searchParams }: FavoriteCollectionsPageProps) {
+  // `?skeleton=true` preview: render the same skeleton loading.tsx shows.
+  if ((await searchParams).skeleton === 'true') return <FavoritesListSkeleton />
+
   const userId = await getCurrentUserId()
   const favoriteCollections = userId ? await getFavoriteCollections(userId) : []
 

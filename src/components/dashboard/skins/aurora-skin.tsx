@@ -1,20 +1,19 @@
 import type { CSSProperties } from 'react'
-import Link from 'next/link'
 import { Folder, Pin, History, Zap } from 'lucide-react'
 import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
+import { BrainDumpWidget } from '@/components/dashboard/brain-dump-widget'
 import { DotPattern } from '@/components/ui/dot-pattern'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { cn } from '@/lib/utils'
 import { SkinWidget } from './skin-widget'
-import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import {
   computeUsage,
   usageLabel,
-  slotsLeftLabel,
   resolveSkinData,
+  MaybeLink,
   TypeDistributionBars,
   type DashboardSkinData,
 } from './shared'
@@ -35,7 +34,7 @@ export async function AuroraSkin(data: DashboardSkinData) {
     { icon: Folder, value: collectionStats.totalCollections, label: 'Collections', color: 'var(--primary)', href: '/collections' as string | undefined },
     ...(isPro
       ? []
-      : [{ icon: Zap, value: slotsLeftLabel(usage), label: 'Slots left', color: '#10b981', href: undefined as string | undefined }]),
+      : [{ icon: Zap, value: String(usage.slotsLeft), label: 'Slots left', color: '#10b981', href: undefined as string | undefined }]),
   ]
   // Slim horizontal stat cards — icon + value + label on one line, matched to the slimmed hero. A lone
   // Collections card (Pro) centers its row; the free pair (Collections + Slots left) left-aligns.
@@ -58,8 +57,9 @@ export async function AuroraSkin(data: DashboardSkinData) {
 
         {/* Top: total-items hero + Collections stat, balanced 2-up. The hero is full-width for free
             (so the Slots tile pairs with Collections below it). Type distribution moved to its own
-            full-width card below so the hero stays compact and the stat cards aren't oversized. */}
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
+            full-width card below so the hero stays compact and the stat cards aren't oversized. Pro
+            widens to 4 cols so Brain Dump occupies a wide 2-col cell beside the hero + Collections. */}
+        <div className={`mb-6 grid grid-cols-2 gap-4 ${isPro ? 'lg:grid-cols-4' : 'lg:grid-cols-2'}`}>
           <div className={`ds-glass flex items-center gap-4 rounded-2xl px-5 py-3 ${isPro ? '' : 'col-span-2 lg:col-span-2'}`}>
             <div
               className="ds-ring relative grid size-[64px] shrink-0 place-items-center rounded-full"
@@ -92,12 +92,12 @@ export async function AuroraSkin(data: DashboardSkinData) {
                 <div className="text-[12.5px] text-muted-foreground">{t.label}</div>
               </>
             )
-            return t.href ? (
-              <Link key={t.label} href={t.href} prefetch={false} className={tileClass}>{inner}</Link>
-            ) : (
-              <div key={t.label} className={tileClass}>{inner}</div>
+            return (
+              <MaybeLink key={t.label} href={t.href} className={tileClass}>{inner}</MaybeLink>
             )
           })}
+
+          {isPro && <BrainDumpWidget skin="aurora" className="col-span-2" />}
         </div>
 
         <div className="ds-glass mb-6 rounded-2xl p-5">
@@ -107,13 +107,13 @@ export async function AuroraSkin(data: DashboardSkinData) {
         <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
           <div className="flex flex-col gap-4">
             <section className="ds-glass rounded-2xl p-5">
-              <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.aurora}>
+              <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="aurora">
                 <CollectionsGrid collections={collections} />
               </SkinWidget>
             </section>
             {hasPinned && (
               <section className="ds-glass rounded-2xl p-5">
-                <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.aurora}>
+                <SkinWidget icon={<Pin />} title="Pinned" skin="aurora">
                   <DashboardPinnedItems initialItems={pinned} />
                 </SkinWidget>
               </section>
@@ -122,7 +122,7 @@ export async function AuroraSkin(data: DashboardSkinData) {
 
           {hasRecent && (
             <section className="ds-glass rounded-2xl p-5">
-              <SkinWidget icon={<History />} title="Recent items" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.aurora}>
+              <SkinWidget icon={<History />} title="Recent items" skin="aurora">
                 <DashboardRecentItems firstPage={recent} />
               </SkinWidget>
             </section>

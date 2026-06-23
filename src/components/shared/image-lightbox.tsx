@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { X, Loader2 } from 'lucide-react'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
-import { getSignedDownloadUrl } from '@/lib/api/signed-download-cache'
+import { useDownloadSrcActions } from '@/hooks/use-pro-download-src'
 
 interface ImageLightboxProps {
   open: boolean
@@ -27,6 +27,7 @@ interface ImageLightboxProps {
 // For SVGs: renders the existing preview src at full viewport size — no fetch needed.
 export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isSvg = false }: ImageLightboxProps) {
   const { isPro } = useAppUserFlagsStore()
+  const { ensure } = useDownloadSrcActions()
   const [fullsizeUrl, setFullsizeUrl] = useState<string | null>(null)
   const [isFetchingUrl, setIsFetchingUrl] = useState(false)
   const [isImageLoading, setIsImageLoading] = useState(false)
@@ -46,27 +47,22 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isS
 
     let active = true
 
-    getSignedDownloadUrl(itemId, false)
-      .then((url) => {
-        if (!active) return
-        setIsFetchingUrl(false)
-        if (url) {
-          setFullsizeUrl(url)
-          setIsImageLoading(true)
-        } else {
-          setHasError(true)
-        }
-      })
-      .catch(() => {
-        if (!active) return
-        setIsFetchingUrl(false)
+    // ensure() resolves to the cached signed URL or fetches it once, and never rejects (null on failure).
+    ensure(itemId, false).then((url) => {
+      if (!active) return
+      setIsFetchingUrl(false)
+      if (url) {
+        setFullsizeUrl(url)
+        setIsImageLoading(true)
+      } else {
         setHasError(true)
-      })
+      }
+    })
 
     return () => {
       active = false
     }
-  }, [open, itemId, isPro, isSvg])
+  }, [open, itemId, isPro, isSvg, ensure])
 
   const showFullsize = !!fullsizeUrl && !hasError
   const showLoading = isFetchingUrl || (showFullsize && isImageLoading)

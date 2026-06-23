@@ -93,6 +93,9 @@ export const itemMutationSchema = z.object({
   language: z.string().trim().optional().nullable().transform((v) => v || null),
   tags: z.array(z.string().trim().min(1)).default([]),
   collectionIds: z.array(z.string()).default([]),
+  // v3 live type change: optionally re-type an item among the four text types. Server-side allow-list
+  // (link/file/image rejected — lossy). Omit to leave the type unchanged.
+  itemTypeName: z.enum(['snippet', 'prompt', 'command', 'note']).optional(),
 })
 
 export type UpdateItemInput = z.infer<typeof itemMutationSchema>

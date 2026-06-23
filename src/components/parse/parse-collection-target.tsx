@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useUpdateBrainDumpJobCollections } from '@/hooks/use-brain-dump'
+import { CollapsibleCard } from '@/components/shared/collapsible-card'
 import { CollectionSelector } from '@/components/shared/collection-selector'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -44,19 +45,20 @@ export function ParseCollectionTarget({ jobId, collections, initialName, initial
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-3 sm:p-4">
-      <div className="flex items-center gap-2">
-        <FolderPlus className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">Save to collection</h3>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Saved items are added to a new collection and/or any existing collections you pick.
-      </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+    <CollapsibleCard
+      title="Save to collection"
+      icon={<FolderPlus />}
+      subtitle="Saved items are added to a new collection and/or any existing collections you pick."
+      // Mirror the board's bento buckets: a translucent muted fill instead of the opaque tier-1 card
+      // surface. Important modifiers override `card-tier-1`'s background (same @layer, defined later).
+      className="bg-muted/20! hover:bg-muted/40!"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="parse-collection-name">New collection</Label>
           <Input
             id="parse-collection-name"
+            className="card-input"
             value={name}
             onChange={(event) => setName(event.target.value)}
             onBlur={persistName}
@@ -72,6 +74,6 @@ export function ParseCollectionTarget({ jobId, collections, initialName, initial
           )}
         </div>
       </div>
-    </div>
+    </CollapsibleCard>
   )
 }

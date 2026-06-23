@@ -5,10 +5,10 @@ import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-it
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
+import { BrainDumpWidget } from '@/components/dashboard/brain-dump-widget'
 import { BorderBeam } from '@/components/ui/border-beam'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { SkinWidget } from './skin-widget'
-import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import { computeUsage, usageLabel, resolveSkinData, type DashboardSkinData } from './shared'
 
 interface HoloCardProps {
@@ -46,8 +46,8 @@ export async function HolographicSkin(data: DashboardSkinData) {
 
       {/* Favorites + fav. collections are reachable from the header/sidebar star and Collections nav,
           so those vanity cards are dropped. The hero already shows the total, leaving Collections as
-          the one useful secondary count. */}
-      <div className="mb-5 grid grid-cols-[1.6fr_1fr] gap-4">
+          the one useful secondary count. Pro adds a wide Brain Dump cell as the third, widest track. */}
+      <div className={`mb-5 grid grid-cols-1 gap-4 ${isPro ? 'sm:grid-cols-[1.4fr_1fr_1.6fr]' : 'sm:grid-cols-[1.6fr_1fr]'}`}>
         <HoloCard className="relative overflow-hidden" innerClassName="px-4 py-3 sm:px-5">
           <div className="flex h-full items-center gap-3 sm:gap-5">
             <TotalItemsReveal variant="pop" className="shrink-0">
@@ -68,12 +68,13 @@ export async function HolographicSkin(data: DashboardSkinData) {
             <div className="text-[12.5px] text-muted-foreground">Collections</div>
           </div>
         </HoloCard>
+        {isPro && <BrainDumpWidget skin="holographic" />}
       </div>
 
       {hasPinned && (
         <div className="mb-4">
           <HoloCard>
-            <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.holographic}>
+            <SkinWidget icon={<Pin />} title="Pinned" skin="holographic">
               <DashboardPinnedItems initialItems={pinned} />
             </SkinWidget>
           </HoloCard>
@@ -82,13 +83,13 @@ export async function HolographicSkin(data: DashboardSkinData) {
 
       <div className="grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <HoloCard className="relative overflow-hidden">
-          <SkinWidget icon={<History />} title="Recent items" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.holographic}>
+          <SkinWidget icon={<History />} title="Recent items" skin="holographic">
             {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
           </SkinWidget>
           <BorderBeam size={120} duration={10} className="motion-reduce:hidden" />
         </HoloCard>
         <HoloCard>
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.holographic}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="holographic">
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </HoloCard>

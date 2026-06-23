@@ -249,10 +249,18 @@ model Tag {
 // never long-lived storage.
 model AiParseJob {
   id         String   @id @default(cuid())
-  status     String   @default("processing") // processing | completed | failed
+  status     String   @default("processing") // processing | completed | failed | closed
   progress   Int      @default(0) // 0-100 heuristic; determinate once the item count is known
-  sourceText String   @db.Text // raw upload; cleared with the row on commit
+  sourceText String   @db.Text // raw upload; cleared with the row on commit (and on close)
   error      String?
+  // v2.5 commit history (status='closed'): denormalized stub stats stamped when the job is committed
+  // (every committable draft saved) and merged on each late trash-bucket commit. `committedCount` is
+  // the running total of saved items; `committedByType` is the per-type breakdown ({snippet:3,note:2}),
+  // null until first close. Purely additive — null/0 for any job that has never closed.
+  // `committedCount` is intentionally kept (not derived from `committedByType`) as a cheap queryable
+  // scalar — both are written in the same commit/close transaction so they cannot drift.
+  committedCount  Int   @default(0)
+  committedByType Json?
   // OpenAI background-run handle + replay cursor. The run lives on OpenAI's servers (background mode)
   // so it survives our request ending; `streamCursor` is the last event `sequence_number` we fully
   // processed at a clean line boundary, used as `starting_after` to resume without duplication.

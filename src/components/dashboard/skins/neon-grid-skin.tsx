@@ -1,15 +1,14 @@
-import Link from 'next/link'
 import { History, Folder, Pin } from 'lucide-react'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
+import { BrainDumpWidget } from '@/components/dashboard/brain-dump-widget'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { RetroGrid } from '@/components/ui/retro-grid'
 import { cn } from '@/lib/utils'
 import { SkinWidget } from './skin-widget'
-import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
-import { computeUsage, resolveSkinData, slotsLeftLabel, TypeDistributionSegments, type DashboardSkinData } from './shared'
+import { computeUsage, resolveSkinData, MaybeLink, TypeDistributionSegments, type DashboardSkinData } from './shared'
 
 const NEON_CELL = 'rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] px-4 py-3 backdrop-blur'
 const NEON_PANEL = 'relative z-10 overflow-hidden rounded-lg border border-primary/30 bg-[color-mix(in_srgb,var(--card)_55%,transparent)] p-5 backdrop-blur'
@@ -30,13 +29,14 @@ export async function NeonGridSkin(data: DashboardSkinData) {
     { value: String(collectionStats.totalCollections).padStart(2, '0'), label: 'collections', color: '#ec4899', href: '/collections' as string | undefined },
     ...(isPro
       ? []
-      : [{ value: slotsLeftLabel(usage), label: 'slots left', color: '#22d3ee', href: undefined as string | undefined }]),
+      : [{ value: String(usage.slotsLeft), label: 'slots left', color: '#22d3ee', href: undefined as string | undefined }]),
   ]
-  // Pro is a clean 2-up (Total + Collections). Free has 3 cells; the odd last (slots left) spans the
-  // full row on the 2-col grid so it is never orphaned, resolving to its own column at lg.
+  // Pro is Total + Collections beside a wide 2-col Brain Dump cell (4-col track). Free has 3 cells;
+  // the odd last (slots left) spans the full row on the 2-col grid so it is never orphaned, resolving
+  // to its own column at lg.
   const cellGridCols =
     cells.length === 2
-      ? 'lg:grid-cols-2'
+      ? 'lg:grid-cols-4'
       : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'
 
   return (
@@ -60,9 +60,6 @@ export async function NeonGridSkin(data: DashboardSkinData) {
                 <div className="mt-1.5 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{c.label}</div>
               </>
             )
-            if (c.href) {
-              return <Link key={c.label} href={c.href} prefetch={false} className={`${NEON_CELL} block transition-transform hover:-translate-y-0.5`} style={style}>{inner}</Link>
-            }
             if (c.label === 'total items') {
               return (
                 <div key={c.label} className={`${NEON_CELL} transition-transform hover:-translate-y-0.5`} style={style}>
@@ -70,13 +67,17 @@ export async function NeonGridSkin(data: DashboardSkinData) {
                 </div>
               )
             }
-            return <div key={c.label} className={NEON_CELL} style={style}>{inner}</div>
+            return (
+              <MaybeLink key={c.label} href={c.href} className={c.href ? `${NEON_CELL} block transition-transform hover:-translate-y-0.5` : NEON_CELL} style={style}>{inner}</MaybeLink>
+            )
           })}
+
+          {isPro && <BrainDumpWidget skin="neon-grid" className="col-span-2" />}
         </div>
 
         {hasPinned && (
           <div className={`${NEON_PANEL} mb-4`}>
-            <SkinWidget icon={<Pin />} title="Pinned" headerClassName="font-mono tracking-[0.1em] text-primary" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['neon-grid']}>
+            <SkinWidget icon={<Pin />} title="Pinned" headerClassName="font-mono tracking-[0.1em] text-primary" skin="neon-grid">
               <DashboardPinnedItems initialItems={pinned} />
             </SkinWidget>
           </div>
@@ -84,12 +85,12 @@ export async function NeonGridSkin(data: DashboardSkinData) {
 
         <div className="grid items-start gap-4 lg:grid-cols-[1.3fr_1fr] [&>*]:min-w-0">
           <div className={NEON_PANEL}>
-            <SkinWidget title="Recent records" headerClassName="font-mono tracking-[0.1em] text-primary" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['neon-grid']}>
+            <SkinWidget title="Recent records" headerClassName="font-mono tracking-[0.1em] text-primary" skin="neon-grid">
               {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
             </SkinWidget>
           </div>
           <div className={NEON_PANEL}>
-            <SkinWidget icon={<Folder />} title="Collections" headerClassName="font-mono tracking-[0.1em] text-primary" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['neon-grid']}>
+            <SkinWidget icon={<Folder />} title="Collections" headerClassName="font-mono tracking-[0.1em] text-primary" skin="neon-grid">
               <DashboardCollectionsList collections={collections} />
             </SkinWidget>
             <div className="mt-5">

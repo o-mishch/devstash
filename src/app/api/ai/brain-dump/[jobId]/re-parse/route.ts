@@ -1,12 +1,14 @@
+import { after } from 'next/server'
 import { authedRouteWithParams, rateLimited } from '@/lib/api/route'
 import { json, parseOr422, problem } from '@/lib/api/http'
 import { brainDumpJobIdParam, type BrainDumpJobIdParam } from '@/lib/api/schemas/ai'
 import { checkRateLimit, resetRateLimit } from '@/lib/infra/rate-limit'
 import {
   createParseJob,
-  getParseJobSourceItemId,
+  getReparseEligibility,
   getSourceItemForParse,
   getSourceText,
+  sweepAbandonedParseJobs,
 } from '@/lib/db/ai-parse-jobs'
 import { SPLIT_FILE_MIN_INPUT_CHARS } from '@/lib/utils/constants'
 import { deriveCollectionName } from '@/lib/utils/derive-source-label'
@@ -21,7 +23,14 @@ export const POST = authedRouteWithParams<BrainDumpJobIdParam>({}, async ({ user
   if (!isPro) return problem(403, 'This feature requires a Pro subscription.')
 
   const { jobId: originalJobId } = parsedParams.data
-  const sourceItemId = await getParseJobSourceItemId(userId, originalJobId)
+  // Re-parse is `completed`-only: a `processing` job is still streaming; a `failed`/`closed` job uses the
+  // status-independent parse-from-stash on the source item instead (it's the retry path for those).
+  const eligibility = await getReparseEligibility(userId, originalJobId)
+  if (!eligibility) return problem(404, 'The original parse job was not found.')
+  if (eligibility.status !== 'completed') {
+    return problem(409, 'Only a completed parse job can be re-parsed. Use “Parse with Brain Dump” on the source item instead.')
+  }
+  const sourceItemId = eligibility.sourceItemId
   if (!sourceItemId) return problem(404, 'The original parse job or its source was not found.')
 
   const source = await getSourceItemForParse(userId, sourceItemId)
@@ -50,6 +59,9 @@ export const POST = authedRouteWithParams<BrainDumpJobIdParam>({}, async ({ user
       collectionName: deriveCollectionName(read.sourceName),
     })
     log.info({ userId, jobId, sourceItemId, truncated: read.truncated }, 'brain-dump re-parse started')
+    // Lazy abandoned-job cleanup backstop (no cron) — re-parse is a create handler too, so it registers
+    // the same after()-sweep as POST/GET /brain-dump.
+    after(sweepAbandonedParseJobs)
     return json({ jobId, sourceName: read.sourceName, truncated: read.truncated }, 201)
   } catch (err) {
     await resetRateLimit('aiBrainDump', userId)

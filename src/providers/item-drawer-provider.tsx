@@ -1,34 +1,61 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { Suspense, useCallback, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useItemDrawerStore } from '@/stores/item-drawer'
-import { useItemsStore } from '@/stores/items'
+import { useItemUrlParamSync } from '@/hooks/use-item-url-param-sync'
+import { useCacheItemDetail } from '@/hooks/use-item-detail'
 import { ItemDetailDrawer } from '@/components/items/drawer/item-detail-drawer'
 import type { WithChildren } from '@/types/common'
 import type { FullItem } from '@/types/item'
 
+// Keeps `?item=<id>` in the URL in sync with the drawer open state (shared `useItemUrlParamSync`):
+// - drawer opens (any source) → pushes `?item=<id>` so the URL is shareable/bookmarkable
+// - drawer closes → clears `?item` while preserving other query params
+// - page loads with `?item=<id>` → ItemDeepLink fetches and opens the drawer; URL persists until close
+// - browser Back removes `?item` while the drawer is open → close the drawer (URL→store direction below),
+//   so backing out of a deep-linked item returns to the prior page with the drawer dismissed.
+// Must live inside a Suspense boundary because useSearchParams opts the subtree into client rendering.
+function ItemDrawerUrlSync() {
+  const searchParams = useSearchParams()
+  const { isOpen, selectedItemId } = useItemDrawerStore()
+  useItemUrlParamSync(isOpen, selectedItemId ?? '')
+
+  // URL → store: the store→URL sync above is one-directional, so a browser Back (which pops `?item=<id>`
+  // off the URL without touching the store) would otherwise leave the drawer open over the prior page.
+  // Close the drawer only on a genuine *transition* — when the URL param was matching the open item and
+  // then stops matching (the Back). Tracking the transition (not the bare current value) avoids closing
+  // during the open transient, where the param hasn't yet caught up to a just-opened drawer.
+  const urlItemId = searchParams.get('item')
+  const prevMatched = useRef(false)
+  useEffect(() => {
+    const matched = isOpen && selectedItemId !== null && urlItemId === selectedItemId
+    if (prevMatched.current && !matched && isOpen) {
+      useItemDrawerStore.getState().closeDrawer()
+    }
+    prevMatched.current = matched
+  }, [isOpen, selectedItemId, urlItemId])
+
+  return null
+}
+
 export function ItemDrawerProvider({ children }: WithChildren) {
   const { isOpen, item: openItem } = useItemDrawerStore()
-  const { updateItem, removeItem } = useItemsStore()
-  const fullItemCache = useRef<Map<string, FullItem>>(new Map())
+  const cacheItemDetail = useCacheItemDetail()
 
+  // Seed the shared item-detail caches once the drawer has assembled the full item from its progressive
+  // /details + /content reads, so a later deep-link / preview / list-open of the same item is served from
+  // cache. (Saves seed the caches in useUpdateItem; deletes drop them in useRemoveItem.)
   const handleFullItemFetched = useCallback((item: FullItem) => {
-    fullItemCache.current.set(item.id, item)
-  }, [])
-
-  const handleItemSaved = useCallback((updated: FullItem) => {
-    fullItemCache.current.set(updated.id, updated)
-    updateItem(updated)
-  }, [updateItem])
-
-  const handleItemDeleted = useCallback((id: string) => {
-    fullItemCache.current.delete(id)
-    removeItem(id)
-  }, [removeItem])
+    cacheItemDetail(item)
+  }, [cacheItemDetail])
 
   return (
     <>
       {children}
+      <Suspense fallback={null}>
+        <ItemDrawerUrlSync />
+      </Suspense>
       <ItemDetailDrawer
         item={openItem}
         open={isOpen}
@@ -36,8 +63,6 @@ export function ItemDrawerProvider({ children }: WithChildren) {
           if (!newOpen) useItemDrawerStore.getState().closeDrawer()
         }}
         onFullItemFetched={handleFullItemFetched}
-        onItemSaved={handleItemSaved}
-        onItemDeleted={handleItemDeleted}
       />
     </>
   )

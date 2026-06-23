@@ -2,7 +2,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/lib/infra/prisma', () => ({
   prisma: {
-    item: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn(), create: vi.fn() },
+    item: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     itemType: { findFirst: vi.fn(), findMany: vi.fn() },
     collection: { findMany: vi.fn() },
     $queryRaw: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock('@/lib/infra/cache', () => ({
 
 import { prisma } from '@/lib/infra/prisma'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
-import { createItem, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem, getItemTypeDistribution, getDashboardActivity } from './items'
+import { createItem, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem, getItemTypeDistribution, getDashboardActivity, updateItem } from './items'
 
 const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>
 const mockItemFindFirst = prisma.item.findFirst as ReturnType<typeof vi.fn>
@@ -36,6 +36,7 @@ const mockItemFindMany = prisma.item.findMany as ReturnType<typeof vi.fn>
 const mockItemCreate = prisma.item.create as ReturnType<typeof vi.fn>
 const mockGroupBy = prisma.item.groupBy as ReturnType<typeof vi.fn>
 const mockDeleteMany = prisma.item.deleteMany as ReturnType<typeof vi.fn>
+const mockItemUpdate = prisma.item.update as ReturnType<typeof vi.fn>
 const mockQueryRaw = prisma.$queryRaw as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
@@ -287,6 +288,52 @@ describe('createItem', () => {
     expect(call.select.tags).toEqual({ select: { name: true } })
     expect(result?.tags).toEqual(['ui', 'screenshot'])
   })
+
+  it('runs the write on the passed transaction client, keeping cached reads on the module client', async () => {
+    // System type resolves via the cached getSystemItemTypes() read (module client).
+    mockFindMany.mockResolvedValue([
+      { id: 'type-snippet', name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true, userId: null },
+    ])
+    const txCreate = vi.fn().mockResolvedValue({
+      id: 'item-tx',
+      title: 'In tx',
+      createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      isFavorite: false,
+      isPinned: false,
+      itemType: { name: 'snippet' },
+      tags: [],
+    })
+    const txFindFirst = vi.fn()
+    const tx = { item: { create: txCreate }, itemType: { findFirst: txFindFirst } } as never
+
+    const result = await createItem(
+      'user-1',
+      {
+        title: 'In tx',
+        description: null,
+        content: 'const x = 1',
+        url: null,
+        fileUrl: null,
+        fileName: null,
+        fileSize: null,
+        language: 'ts',
+        tags: [],
+        itemTypeName: 'snippet',
+        collectionIds: [],
+      },
+      tx,
+    )
+
+    // The write must go to the transaction client — never the module prisma client, which would break
+    // commitDrafts' delete-guards-create atomicity.
+    expect(txCreate).toHaveBeenCalledTimes(1)
+    expect(mockItemCreate).not.toHaveBeenCalled()
+    // The cached system-type read stays on the module client (a 'use cache' read can't run on tx), and
+    // since the type resolved there the tx fallback findFirst is never hit.
+    expect(mockFindMany).toHaveBeenCalled()
+    expect(txFindFirst).not.toHaveBeenCalled()
+    expect(result?.title).toBe('In tx')
+  })
 })
 
 describe('getDownloadItem', () => {
@@ -313,6 +360,65 @@ describe('getDownloadItem', () => {
       },
     })
     expect(result).toEqual(row)
+  })
+})
+
+// ── updateItem live type change (v3) ─────────────────────────────────────────
+
+describe('updateItem — live type change', () => {
+  const systemTypes = [
+    { id: 'type-snippet', name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true, userId: null },
+    { id: 'type-command', name: 'command', icon: 'Terminal', color: '#f97316', isSystem: true, userId: null },
+    { id: 'type-note', name: 'note', icon: 'StickyNote', color: '#fde047', isSystem: true, userId: null },
+  ]
+  const updatedRow = { id: 'item-1', updatedAt: new Date('2024-01-01T00:00:00.000Z'), tags: [], collections: [] }
+
+  const baseInput = {
+    title: 'T',
+    description: null,
+    content: null,
+    url: null,
+    tags: [],
+    collectionIds: [],
+  }
+
+  it('connects the resolved system itemTypeId and remaps the language (snippet→command keeps a shell lang)', async () => {
+    mockFindMany.mockResolvedValue(systemTypes)
+    mockItemUpdate.mockResolvedValue(updatedRow)
+
+    await updateItem('user-1', 'item-1', { ...baseInput, language: 'zsh', itemTypeName: 'command' })
+
+    const call = mockItemUpdate.mock.calls[0][0]
+    expect(call.where).toEqual({ id: 'item-1', userId: 'user-1' })
+    expect(call.data.itemType).toEqual({ connect: { id: 'type-command' } })
+    // shell synonym normalizes to bash for a command
+    expect(call.data.language).toBe('bash')
+  })
+
+  it('clears the language when remapping has no sensible target (→note)', async () => {
+    mockFindMany.mockResolvedValue(systemTypes)
+    mockItemUpdate.mockResolvedValue(updatedRow)
+
+    await updateItem('user-1', 'item-1', { ...baseInput, language: 'python', itemTypeName: 'note' })
+
+    const call = mockItemUpdate.mock.calls[0][0]
+    expect(call.data.itemType).toEqual({ connect: { id: 'type-note' } })
+    expect(call.data.language).toBeNull()
+  })
+
+  it('returns null without updating when the target system type is missing', async () => {
+    mockFindMany.mockResolvedValue([systemTypes[0]]) // only snippet known
+    const result = await updateItem('user-1', 'item-1', { ...baseInput, language: null, itemTypeName: 'command' })
+    expect(result).toBeNull()
+    expect(mockItemUpdate).not.toHaveBeenCalled()
+  })
+
+  it('leaves itemType untouched and passes the raw language when itemTypeName is omitted', async () => {
+    mockItemUpdate.mockResolvedValue(updatedRow)
+    await updateItem('user-1', 'item-1', { ...baseInput, language: 'python' })
+    const call = mockItemUpdate.mock.calls[0][0]
+    expect(call.data.itemType).toBeUndefined()
+    expect(call.data.language).toBe('python')
   })
 })
 

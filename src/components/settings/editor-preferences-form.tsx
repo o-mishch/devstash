@@ -19,14 +19,14 @@ import {
 } from '@/types/editor-preferences'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { CollapsibleCard } from '@/components/shared/collapsible-card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { startThemeTransition, type TransitionEventCoords } from '@/lib/dom/theme-transition'
-import { Crown, RotateCcw } from 'lucide-react'
+import { Crown, RotateCcw, LayoutDashboard, Palette, Settings2 } from 'lucide-react'
 import { DarkLightSwitch } from '@/components/shared/dark-light-switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
@@ -121,14 +121,12 @@ export function EditorPreferencesForm() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Dashboard Skin</CardTitle>
-          <CardDescription>
-            Choose how your dashboard is laid out. Pro skins unlock bolder, data-rich layouts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <CollapsibleCard
+        title="Dashboard Skin"
+        icon={<LayoutDashboard />}
+        subtitle="Choose how your dashboard is laid out. Pro skins unlock bolder, data-rich layouts."
+      >
+        <div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
             {UI_SKIN_OPTIONS.map((skin) => {
               const isActive = store.uiSkin === skin.value
@@ -168,17 +166,15 @@ export function EditorPreferencesForm() {
               )
             })}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </CollapsibleCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">App Theme</CardTitle>
-          <CardDescription>
-            Choose the global color palette and mode for the application.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <CollapsibleCard
+        title="App Theme"
+        icon={<Palette />}
+        subtitle="Choose the global color palette and mode for the application."
+        bodyClassName="space-y-6"
+      >
           <div className="max-h-[256px] overflow-y-auto pr-1">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
             {APP_THEME_OPTIONS.map((theme) => {
@@ -231,17 +227,14 @@ export function EditorPreferencesForm() {
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Editor Settings</CardTitle>
-          <CardDescription>
-            Customize your editing experience. Changes are saved automatically.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <CollapsibleCard
+        title="Editor Settings"
+        icon={<Settings2 />}
+        subtitle="Customize your editing experience. Changes are saved automatically."
+        bodyClassName="space-y-6"
+      >
           <PreferenceRow title="Editor Theme" description="Controls syntax highlighting and the editor background">
             <TooltipProvider>
               <div className="flex w-full sm:w-auto rounded-md border border-border overflow-hidden">
@@ -322,8 +315,7 @@ export function EditorPreferencesForm() {
               onCheckedChange={(checked) => updatePreference('minimap', checked)}
             />
           </PreferenceRow>
-        </CardContent>
-      </Card>
+      </CollapsibleCard>
     </div>
   )
 }

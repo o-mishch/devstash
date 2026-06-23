@@ -2,14 +2,12 @@
 
 import { Sparkles, Lightbulb, Tag, AlignLeft, Gauge, type LucideIcon } from 'lucide-react'
 import type { UiSkin } from '@/types/ui-skins'
-import { SKIN_HEADER_WRAPPER_CLASS } from '@/components/dashboard/skins/skin-header'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NumberTicker } from '@/components/ui/number-ticker'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { useAiUsage, type AiFeatureUsage } from '@/hooks/use-ai-usage'
 import { formatRenewIn } from '@/lib/utils/format'
 import { DashboardWidget } from '@/components/dashboard/dashboard-widget'
-import { BulkParseCard, BulkParseCardSkeleton } from '@/components/dashboard/bulk-parse-card'
 import { SkinWidget } from './skins/skin-widget'
 import { cn } from '@/lib/utils'
 
@@ -82,24 +80,12 @@ export function AiUsageWidget({ skin }: AiUsageWidgetProps) {
   if (isError && !data) return null
 
   const cards = (
-    <div className="flex flex-col gap-2.5">
-      <div className="grid grid-cols-2 gap-2.5 @md:grid-cols-4">
-        {isLoading || !data
-          ? Array.from({ length: 4 }, (_, i) => <UsageMeterSkeleton key={i} treatment={treatment} />)
-          : data.features.map((feature) => (
-              <UsageMeter key={feature.key} feature={feature} treatment={treatment} />
-            ))}
-      </div>
-      {isLoading || !data ? (
-        <BulkParseCardSkeleton treatment={treatment} />
-      ) : (
-        <BulkParseCard
-          remaining={data.brainDump.remaining}
-          limit={data.brainDump.limit}
-          resetAt={data.brainDump.resetAt}
-          treatment={treatment}
-        />
-      )}
+    <div className="grid grid-cols-2 gap-2.5 @md:grid-cols-4">
+      {isLoading || !data
+        ? Array.from({ length: 4 }, (_, i) => <UsageMeterSkeleton key={i} treatment={treatment} />)
+        : data.features.map((feature) => (
+            <UsageMeter key={feature.key} feature={feature} treatment={treatment} />
+          ))}
     </div>
   )
 
@@ -123,7 +109,7 @@ export function AiUsageWidget({ skin }: AiUsageWidgetProps) {
         icon={<Gauge />}
         title="AI Usage"
         headerClassName={SKIN_HEADER_CLASS[skin]}
-        headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS[skin]}
+        skin={skin}
       >
         {cards}
       </SkinWidget>
@@ -161,7 +147,7 @@ function UsageMeter({ feature, treatment }: UsageMeterProps) {
           />
         }
       >
-        <Icon className="size-4 shrink-0 text-primary" />
+        <Icon className="card-icon size-4 shrink-0 text-primary" />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-2">
             <span className="truncate text-xs font-medium text-muted-foreground">{meta.label}</span>

@@ -73,12 +73,6 @@ export function usageLabel(usage: SkinUsage): string {
   return `${usage.slotsLeft} of ${usage.limit} free slots left`
 }
 
-// "Slots left" = how many more items fit under the free-tier cap. Only the free-tier upgrade cards
-// surface this stat (Pro skins drop it for the AI Usage section), so the caller is always non-Pro.
-export function slotsLeftLabel(usage: SkinUsage): string {
-  return String(usage.slotsLeft)
-}
-
 export function typeColor(name: string): string {
   return SYSTEM_TYPE_COLORS[name] ?? 'var(--primary)'
 }
@@ -149,34 +143,30 @@ export function TypeDistributionSegments({ distribution }: TypeDistributionSegme
   )
 }
 
-interface SkinSectionHeaderProps {
-  icon?: ReactNode
-  title: string
-  count?: number
-  action?: ReactNode
-  /** When set, the action renders as a real link to this route. */
-  actionHref?: string
-  className?: string
-}
-
-/** Shared uppercase section label used by the non-classic skins. */
-export function SkinSectionHeader({ icon, title, count, action, actionHref, className }: SkinSectionHeaderProps) {
-  return (
-    <div className={cn('mb-3.5 flex items-center gap-2.5 text-[13px] font-bold uppercase tracking-[0.06em] text-muted-foreground', className)}>
-      {icon && <span className="inline-flex text-primary [&_svg]:size-[15px]">{icon}</span>}
-      {title}
-      {typeof count === 'number' && (
-        <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-[11px] normal-case tracking-normal">{count}</span>
-      )}
-      {action && actionHref && (
-        <Link href={actionHref} prefetch={false} className="ml-auto text-xs font-medium normal-case tracking-normal text-primary hover:underline">
-          {action}
-        </Link>
-      )}
-    </div>
-  )
-}
-
 export function withItemColor(name: string): CSSProperties {
   return { '--item-color': typeColor(name) } as CSSProperties
+}
+
+interface MaybeLinkProps {
+  href?: string
+  className?: string
+  style?: CSSProperties
+  children: ReactNode
+}
+
+/** Stat-tile wrapper: a real `<Link>` when `href` is set, otherwise a plain `<div>`. Collapses the
+    `href ? <Link> : <div>` ternary the bento/HUD/neon skins repeat around their tile inner markup. */
+export function MaybeLink({ href, className, style, children }: MaybeLinkProps) {
+  if (href) {
+    return (
+      <Link href={href} prefetch={false} className={className} style={style}>
+        {children}
+      </Link>
+    )
+  }
+  return (
+    <div className={className} style={style}>
+      {children}
+    </div>
+  )
 }

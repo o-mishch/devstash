@@ -4,16 +4,22 @@ import { useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
+import type { UiSkin } from '@/types/ui-skins'
+import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 
 interface SkinWidgetProps {
   icon?: ReactNode
   title: string
   count?: number
-  /** Matches the per-skin SkinSectionHeader className (font/color/tracking) so the toggle header
+  /** Matches the per-skin header className (font/color/tracking) so the toggle header
       keeps each skin's identity. */
   headerClassName?: string
   contentClassName?: string
   children: ReactNode
+  /** When set (and `headerWrapperClassName` is not), the wrapper class is resolved from
+      `SKIN_HEADER_WRAPPER_CLASS[skin]` so call sites pass `skin` instead of the lookup. */
+  skin?: UiSkin
+  /** Explicit override; takes precedence over the `skin` lookup. */
   headerWrapperClassName?: string
 }
 
@@ -21,8 +27,8 @@ interface SkinWidgetProps {
 // full-width click target), content collapses below it. The skin keeps its own panel chrome around
 // this — the component owns only the header row + collapsible body, so it drops into any skin's
 // panel (glass, HUD, foil, neon) unchanged. State is in-session only (default open), never persisted
-// — matching the dashboard's collapse-persistence removal. Replaces SkinSectionHeader where a
-// widget should collapse; inline "View all →" actions are dropped (the header is now the control).
+// — matching the dashboard's collapse-persistence removal. The header doubles as the collapse control,
+// so inline "View all →" actions are dropped.
 export function SkinWidget({
   icon,
   title,
@@ -30,13 +36,15 @@ export function SkinWidget({
   headerClassName,
   contentClassName,
   children,
+  skin,
   headerWrapperClassName,
 }: SkinWidgetProps) {
   const [open, setOpen] = useState(true)
+  const wrapperClass = headerWrapperClassName ?? (skin ? SKIN_HEADER_WRAPPER_CLASS[skin] : undefined)
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <div className={cn("group relative", headerWrapperClassName || '-mx-2 px-2 py-1.5 rounded-md')}>
+      <div className={cn("group relative", wrapperClass || '-mx-2 px-2 py-1.5 rounded-md')}>
         <CollapsibleTrigger
           aria-label={`Toggle ${title} section`}
           className="absolute inset-0 z-10 rounded-[inherit] outline-none transition-all hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring"

@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 import { authedRouteWithParams } from '@/lib/api/route'
 import { problem } from '@/lib/api/http'
 import { getOpenAIClient } from '@/lib/ai/openai'
-import { startBackgroundBrainDump, resumeBackgroundBrainDump, consumeBrainDumpStream, brainDumpProgress } from '@/lib/ai/brain-dump'
+import {
+  startBackgroundBrainDump,
+  resumeBackgroundBrainDump,
+  consumeBrainDumpStream,
+  brainDumpProgress,
+  buildFailureDetail,
+} from '@/lib/ai/brain-dump'
 import {
   getParseJobSnapshot,
   getParseJobRunState,
@@ -24,10 +30,24 @@ export const maxDuration = 60
 // Node runtime (default) — SSE + the OpenAI streaming SDK are not edge-compatible. No
 // `dynamic = 'force-dynamic'`: it's incompatible with this project's `cacheComponents`, and the route
 // is already dynamic (it reads the session, request signal, and query params).
+// Vercel Hobby ceiling is 60 s. The background OpenAI run (store: true) survives the cutoff; the
+// client detects the drop via a server heartbeat and auto-reconnects from the stored cursor.
 
 const log = logger.child({ tag: 'ai-brain-dump-stream' })
 
 const SPLIT_LOCK_NS = 'split-lock'
+
+// Reconnect delay (ms) handed to the browser via the SSE `retry:` field. Native EventSource waits this
+// long before auto-reconnecting after a drop (e.g. the 60 s Vercel cutoff), re-sending `Last-Event-ID`.
+const SSE_RETRY_MS = 3000
+
+interface SendOptions {
+  // Emitted as the SSE `id:` field. The browser echoes the last id it saw as the `Last-Event-ID` header on
+  // its native auto-reconnect, which the route reads to resume the background run from the DB cursor.
+  id?: number
+  // Emitted as the SSE `retry:` field (reconnect delay). Sent once, folded into the first frame.
+  retry?: number
+}
 
 interface JobIdParam {
   jobId: string
@@ -42,16 +62,25 @@ export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro,
   const snapshot = await getParseJobSnapshot(userId, jobId)
   if (!snapshot) return problem(404, 'Parse job not found.')
 
-  const resume = request.nextUrl.searchParams.get('resume') === '1'
+  // Native EventSource auto-reconnect re-sends the last `id:` it saw as the `Last-Event-ID` header — treat
+  // that as a resume (continue the background run from the stored cursor). `?resume=1` covers the manual
+  // paths (the Resume CTA and the watchdog-forced rebuild), where a freshly-constructed EventSource sends
+  // no header. Either way the cursor is server-side (DB), so the client value is just a resume signal.
+  const resume =
+    request.nextUrl.searchParams.get('resume') === '1' || request.headers.get('last-event-id') !== null
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let active = true
-      const send = (event: string, data: unknown): void => {
+      const send = (event: string, data: unknown, opts?: SendOptions): void => {
         if (!active) return
+        let frame = ''
+        if (opts?.retry !== undefined) frame += `retry: ${opts.retry}\n`
+        if (opts?.id !== undefined) frame += `id: ${opts.id}\n`
+        frame += `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
         try {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+          controller.enqueue(encoder.encode(frame))
         } catch {
           active = false // client went away; stop enqueuing
         }
@@ -65,8 +94,10 @@ export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro,
         }
       }
 
-      // 1. Replay the persisted snapshot (refresh-resume of saved drafts).
-      send('snapshot', snapshot)
+      // 1. Replay the persisted snapshot (refresh-resume of saved drafts). The first frame carries the
+      //    server-driven reconnect delay (`retry:`) and an initial `id:` (current draft count) so the
+      //    browser always has a `Last-Event-ID` to re-send even if the pipe drops before any item streams.
+      send('snapshot', snapshot, { retry: SSE_RETRY_MS, id: snapshot.items.length })
       if (snapshot.status !== 'processing') {
         send('done', { status: snapshot.status })
         close()
@@ -110,7 +141,7 @@ export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro,
       // 3. Single-flight lock — a second live reader just gets the snapshot (no double-generate).
       const redis = getRedis()
       const lockKey = `${SPLIT_LOCK_NS}:${jobId}`
-      const acquired = redis ? await redis.set(lockKey, '1', { nx: true, ex: 70 }) : null
+      const acquired = redis ? await redis.set(lockKey, '1', { nx: true, ex: maxDuration + 10 }) : null
       if (!acquired) {
         if (!redis) {
           send('error', { message: 'Generation is temporarily unavailable. Please try again.' })
@@ -120,6 +151,12 @@ export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro,
         close()
         return
       }
+
+      // Keep-alive: send a heartbeat every 15 s so the client can detect a dead pipe quickly
+      // (native TCP timeout can take minutes). The client resets its watchdog on every heartbeat.
+      const heartbeatInterval = setInterval(() => {
+        send('heartbeat', {})
+      }, 15_000)
 
       try {
         // 4. Open the background event stream — start it fresh or resume from the cursor.
@@ -144,7 +181,9 @@ export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro,
               // crash can never leave a persisted draft ahead of the cursor (which would duplicate on
               // resume). Emit over SSE only after the batch is durably saved.
               const saved = await appendDraftsAndAdvance(userId, jobId, drafts, startOrder, cursor)
-              saved.forEach((row) => send('item', row))
+              // `id:` = the draft's order, so the browser's native auto-reconnect re-sends it as
+              // `Last-Event-ID` and the route resumes the background run from the stored cursor.
+              saved.forEach((row) => send('item', row, { id: row.order }))
               if (saved.length > 0) {
                 const count = startOrder + saved.length
                 send('progress', { progress: brainDumpProgress(count), count })
@@ -163,8 +202,14 @@ export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro,
           await finishJob(userId, jobId, 'completed', undefined, true)
           send('done', { status: 'completed', truncated: true })
         } else if (result.status === 'failed') {
-          await finishJob(userId, jobId, 'failed', 'Generation failed.')
-          send('error', { message: 'Generation failed.' })
+          // Rich `failed` detail: total drafts persisted across (re)connects = startOrder + this run's
+          // emitted. A content_filter/model-error failure keeps those partials committable; we write a
+          // human-readable description + remediation and never offer a re-parse on a failed job.
+          const draftsPersisted = runState.itemCount + result.emitted
+          const failure = result.failure ?? { reason: 'model_error' as const, message: null }
+          const detail = buildFailureDetail(failure, draftsPersisted)
+          await finishJob(userId, jobId, 'failed', detail, undefined, { reason: failure.reason })
+          send('error', { message: detail, reason: failure.reason })
         } else {
           // detached without a throw — leave the job processing so it can be resumed.
           send('done', { status: 'processing' })
@@ -183,6 +228,7 @@ export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro,
           send('error', { message: 'Generation failed.' })
         }
       } finally {
+        clearInterval(heartbeatInterval)
         if (redis) await redis.del(lockKey)
         close()
       }
@@ -191,9 +237,14 @@ export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro,
 
   return new NextResponse(stream, {
     headers: {
-      'Content-Type': 'text/event-stream',
+      // EventSource strictly requires `text/event-stream`; the explicit charset is the spec-blessed option.
+      'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      // Disable reverse-proxy buffering (nginx and compatible layers) so heartbeat/item frames flush
+      // immediately instead of being batched — without this a buffering proxy can withhold the heartbeat
+      // and defeat the client's fast dead-pipe detection.
+      'X-Accel-Buffering': 'no',
     },
   })
 })

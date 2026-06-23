@@ -121,6 +121,7 @@ export function ItemFormFields({
             value={field.value || ''}
             onChange={field.onChange}
             placeholder="Select language..."
+            itemType={itemType}
           />
         )}
       />

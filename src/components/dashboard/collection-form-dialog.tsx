@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -89,21 +90,28 @@ export function CollectionFormDialog({
     }
   }, [open, form])
 
+  // The submit routes through useMutation for a single pending source. `onSubmitAction` (openapi-fetch)
+  // never throws — it resolves `{ error, response }` — so the success/403/error branching stays in
+  // onSuccess on the result rather than onError.
+  const submitMutation = useMutation({
+    mutationFn: (data: FormValues) => onSubmitAction(data),
+    onSuccess: ({ error, response }) => {
+      if (!error) {
+        toast.success(successMessage)
+        handleOpenChange(false, true)
+        router.refresh()
+        return
+      }
+      if (response.status === 403) {
+        toast.warning(error.message || 'Upgrade to Pro to continue.')
+      } else {
+        toast.error(error.message || 'Failed to save collection')
+      }
+    },
+  })
+
   async function onSubmit(data: FormValues) {
-    const { error, response } = await onSubmitAction(data)
-
-    if (!error) {
-      toast.success(successMessage)
-      handleOpenChange(false, true)
-      router.refresh()
-      return
-    }
-
-    if (response.status === 403) {
-      toast.warning(error.message || 'Upgrade to Pro to continue.')
-    } else {
-      toast.error(error.message || 'Failed to save collection')
-    }
+    await submitMutation.mutateAsync(data)
   }
 
   const triggerEl = trigger ? (
@@ -143,7 +151,7 @@ export function CollectionFormDialog({
               <FormDialogFooter
                 submitText={submitText}
                 onCancel={() => handleOpenChange(false)}
-                isPending={form.formState.isSubmitting}
+                isPending={submitMutation.isPending}
               />
             </form>
           ) : (
@@ -155,7 +163,7 @@ export function CollectionFormDialog({
                 mobile
                 submitText={submitText}
                 onCancel={() => handleOpenChange(false)}
-                isPending={form.formState.isSubmitting}
+                isPending={submitMutation.isPending}
                 className="shrink-0 pt-2"
               />
             </form>

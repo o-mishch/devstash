@@ -30,9 +30,9 @@ interface EmailRowProps {
 
 function EmailRow({ email, alsoMovesPrimaryEmail, canUnlink, verificationDisabled, onChanged, onRemoved }: EmailRowProps) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="card-surface card-hover group flex flex-col gap-3 rounded-lg border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-2.5 text-sm min-w-0">
-        <Mail className="size-4 shrink-0 text-muted-foreground" />
+        <Mail className="card-icon size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <span>Email &amp; Password</span>
           <p className="text-xs text-muted-foreground truncate">{email}</p>
@@ -63,9 +63,9 @@ function ProviderAccountRow({ account, canUnlink, onUnlinked }: ProviderAccountR
   const label = PROVIDER_LABELS[account.provider] ?? account.provider
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+    <div className="card-surface card-hover group flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
       <div className="flex items-center gap-2.5 text-sm min-w-0">
-        <span className="text-muted-foreground shrink-0"><ProviderIcon provider={account.provider} className="size-4" /></span>
+        <span className="text-muted-foreground shrink-0"><ProviderIcon provider={account.provider} className="card-icon size-4" /></span>
         <div className="min-w-0">
           <span>{label}</span>
           {account.email && (
@@ -103,9 +103,9 @@ function AddProviderRow({ provider }: AddProviderRowProps) {
   const action = linkWithProviderAction.bind(null, provider)
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2.5">
+    <div className="card-hover group flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2.5">
       <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-        <ProviderIcon provider={provider} className="size-4 shrink-0" />
+        <ProviderIcon provider={provider} className="card-icon size-4 shrink-0" />
         <span>Add {label}</span>
       </div>
       <form action={action}>
@@ -147,9 +147,9 @@ export function ConnectedAccounts({ verificationDisabled }: ConnectedAccountsPro
           onRemoved={removeCredentialLogin}
         />
       ) : (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2.5">
+        <div className="card-hover group flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2.5">
           <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-            <Mail className="size-4 shrink-0" />
+            <Mail className="card-icon size-4 shrink-0" />
             <span>Email &amp; Password</span>
           </div>
           <SetPasswordDialog

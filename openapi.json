@@ -683,6 +683,15 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "itemTypeName": {
+                    "type": "string",
+                    "enum": [
+                      "snippet",
+                      "prompt",
+                      "command",
+                      "note"
+                    ]
                   }
                 },
                 "required": [
@@ -2196,10 +2205,25 @@
     },
     "/ai/brain-dump": {
       "get": {
-        "summary": "List the current user's in-progress brain dump jobs",
+        "summary": "List the current user's brain dump jobs — active by default, History (closed) with ?history=1",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "history",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1",
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "In-progress parse jobs",
+            "description": "Active parse jobs, or the closed History list when ?history=1",
             "content": {
               "application/json": {
                 "schema": {
@@ -2210,6 +2234,16 @@
           },
           "401": {
             "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -2296,7 +2330,21 @@
     },
     "/ai/brain-dump/sources": {
       "get": {
-        "summary": "List eligible text file items for the \"Select from my files\" picker",
+        "summary": "List eligible stash items (text files or brain-dump notes) for the source picker",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "default": "file",
+              "type": "string",
+              "enum": [
+                "file",
+                "note"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Eligible source file items",
@@ -2609,6 +2657,16 @@
               }
             }
           },
+          "409": {
+            "description": "Only a completed job can be re-parsed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Source is unavailable for parsing",
             "content": {
@@ -2650,7 +2708,8 @@
             "in": "path",
             "name": "jobId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           },
@@ -2658,7 +2717,8 @@
             "in": "path",
             "name": "itemId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -2793,7 +2853,8 @@
             "in": "path",
             "name": "jobId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           },
@@ -2801,7 +2862,8 @@
             "in": "path",
             "name": "itemId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -2841,7 +2903,8 @@
             "in": "path",
             "name": "jobId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           },
@@ -2849,18 +2912,28 @@
             "in": "path",
             "name": "itemId",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrainDumpItemCommitInput"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Number of items created (1, or 0 when the create failed)",
+            "description": "Commit outcome: items created (0/1), whether the job auto-closed, and whether the client must confirm creating the pending collection",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BrainDumpCommit"
+                  "$ref": "#/components/schemas/BrainDumpItemCommit"
                 }
               }
             }
@@ -2887,6 +2960,16 @@
           },
           "404": {
             "description": "Draft item not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -6197,6 +6280,14 @@
   },
   "components": {
     "schemas": {
+      "BrainDumpItemCommitInput": {
+        "type": "object",
+        "properties": {
+          "confirmCreateCollection": {
+            "type": "boolean"
+          }
+        }
+      },
       "StripeCheckoutSessionPayload": {
         "type": "object",
         "properties": {
@@ -7402,7 +7493,8 @@
             "enum": [
               "processing",
               "completed",
-              "failed"
+              "failed",
+              "closed"
             ]
           },
           "progress": {
@@ -7421,8 +7513,37 @@
               }
             ]
           },
+          "collectionName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "createdAt": {
             "type": "string"
+          },
+          "committedCount": {
+            "type": "number"
+          },
+          "committedByType": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "number"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -7431,6 +7552,7 @@
           "progress",
           "itemCount",
           "sourceName",
+          "collectionName",
           "createdAt"
         ],
         "additionalProperties": false
@@ -7512,7 +7634,8 @@
             "enum": [
               "processing",
               "completed",
-              "failed"
+              "failed",
+              "closed"
             ]
           },
           "progress": {
@@ -7522,6 +7645,25 @@
             "anyOf": [
               {
                 "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "committedCount": {
+            "type": "number"
+          },
+          "committedByType": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "number"
+                }
               },
               {
                 "type": "null"
@@ -7660,6 +7802,33 @@
           },
           "trashed": {
             "type": "boolean"
+          },
+          "duplicateOf": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "itemTypeName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "title",
+                  "itemTypeName"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -7672,6 +7841,26 @@
         ],
         "additionalProperties": false
       },
+      "BrainDumpItemCommit": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "number"
+          },
+          "autoClosed": {
+            "type": "boolean"
+          },
+          "needsCollectionConfirm": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "created",
+          "autoClosed",
+          "needsCollectionConfirm"
+        ],
+        "additionalProperties": false
+      },
       "BrainDumpCommit": {
         "type": "object",
         "properties": {
@@ -7680,11 +7869,15 @@
           },
           "total": {
             "type": "number"
+          },
+          "closed": {
+            "type": "boolean"
           }
         },
         "required": [
           "created",
-          "total"
+          "total",
+          "closed"
         ],
         "additionalProperties": false
       },
@@ -7694,44 +7887,7 @@
           "items": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "itemType": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "name"
-                  ],
-                  "additionalProperties": false
-                },
-                "descriptionPreview": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "id",
-                "title",
-                "itemType",
-                "descriptionPreview"
-              ],
-              "additionalProperties": false
+              "$ref": "#/components/schemas/LightItem"
             }
           },
           "collections": {

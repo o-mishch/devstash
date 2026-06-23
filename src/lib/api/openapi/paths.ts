@@ -44,8 +44,12 @@ import {
   brainDumpItemPatchInput,
   brainDumpDraftItemSchema,
   brainDumpCommitOutput,
+  brainDumpItemCommitInput,
+  brainDumpItemCommitOutput,
   brainDumpJobListSchema,
+  brainDumpListQuery,
   brainDumpSourceListSchema,
+  brainDumpSourceQuery,
   brainDumpJobIdParam,
   brainDumpItemParams,
 } from '../schemas/ai'
@@ -474,13 +478,15 @@ export const paths: ZodOpenApiPathsObject = {
   },
   '/ai/brain-dump': {
     get: {
-      summary: 'List the current user\'s in-progress brain dump jobs',
+      summary: 'List the current user\'s brain dump jobs — active by default, History (closed) with ?history=1',
+      requestParams: { query: brainDumpListQuery },
       responses: {
         200: {
-          description: 'In-progress parse jobs',
+          description: 'Active parse jobs, or the closed History list when ?history=1',
           content: { 'application/json': { schema: brainDumpJobListSchema } },
         },
         401: unauthorized,
+        422: problem('Validation failed'),
       },
     },
     post: {
@@ -500,7 +506,8 @@ export const paths: ZodOpenApiPathsObject = {
   },
   '/ai/brain-dump/sources': {
     get: {
-      summary: 'List eligible text file items for the "Select from my files" picker',
+      summary: 'List eligible stash items (text files or brain-dump notes) for the source picker',
+      requestParams: { query: brainDumpSourceQuery },
       responses: {
         200: {
           description: 'Eligible source file items',
@@ -572,6 +579,7 @@ export const paths: ZodOpenApiPathsObject = {
         401: unauthorized,
         403: problem('Pro subscription required'),
         404: problem('Original job or source not found'),
+        409: problem('Only a completed job can be re-parsed'),
         422: problem('Source is unavailable for parsing'),
         429: rateLimited,
         500: problem('Parse job creation failed'),
@@ -607,14 +615,17 @@ export const paths: ZodOpenApiPathsObject = {
     post: {
       summary: 'Commit a single draft into a real item (Save now)',
       requestParams: { path: brainDumpItemParams },
+      requestBody: { content: { 'application/json': { schema: brainDumpItemCommitInput } } },
       responses: {
         200: {
-          description: 'Number of items created (1, or 0 when the create failed)',
-          content: { 'application/json': { schema: brainDumpCommitOutput } },
+          description:
+            'Commit outcome: items created (0/1), whether the job auto-closed, and whether the client must confirm creating the pending collection',
+          content: { 'application/json': { schema: brainDumpItemCommitOutput } },
         },
         401: unauthorized,
         403: problem('Pro subscription required'),
         404: problem('Draft item not found'),
+        422: problem('Validation failed'),
       },
     },
   },

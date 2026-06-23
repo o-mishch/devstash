@@ -3,6 +3,7 @@ import { CollectionsGrid } from '@/components/dashboard/collections-grid'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
+import { BrainDumpWidget } from '@/components/dashboard/brain-dump-widget'
 import { getTypeHref } from '@/components/layout/sidebar/utils'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import { SkinWidget } from './skin-widget'
@@ -52,6 +53,7 @@ export async function EditorialSkin(data: DashboardSkinData) {
       <div className="h-px bg-border" />
 
       <div className="my-7 grid grid-cols-2 gap-4 sm:gap-8">
+        {isPro && <BrainDumpWidget skin="editorial" className="col-span-2" />}
         {figures.map((f) => {
           const inner = (
             <>

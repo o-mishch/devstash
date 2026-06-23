@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { api, $api } from '@/lib/api/client'
+import { useInvalidate } from '@/hooks/use-cache-invalidation'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
 import type { components, paths } from '@/types/openapi'
 
@@ -48,17 +49,14 @@ export function useAiUsage() {
 }
 
 /**
- * The single place that touches `queryClient` for the AI-usage cache. Returns a fire-and-forget
- * invalidator; with the default `refetchType: 'active'` it is a true no-op when the widget is
- * unmounted (nothing active to refetch), so callers can invoke it unconditionally.
+ * AI-usage cache invalidator — a thin alias over the central registry (`invalidate('aiUsage')`), which
+ * derives the same `['get', '/ai/usage']` key from `queryKeys.aiUsage()`. Fire-and-forget; with the
+ * default `refetchType: 'active'` it is a true no-op when the widget is unmounted, so callers can invoke
+ * it unconditionally.
  */
 export function useInvalidateAiUsage(): () => void {
-  const queryClient = useQueryClient()
-  return useCallback(() => {
-    // Same `init` (omitted) as `useAiUsage`, so the `[method, path]` key matches exactly.
-    const { queryKey } = $api.queryOptions('get', AI_USAGE_PATH)
-    void queryClient.invalidateQueries({ queryKey })
-  }, [queryClient])
+  const invalidate = useInvalidate()
+  return useCallback(() => invalidate('aiUsage'), [invalidate])
 }
 
 // ── AI mutation wrapper ─────────────────────────────────────────────────────────────────────────
@@ -97,36 +95,51 @@ type AiMutationParamsArgs<P extends AiMutationPath> = paths[P]['post'] extends {
   ? [params: { path: PathParams }]
   : []
 
-/**
- * POSTs an AI mutation and ALWAYS invalidates `/ai/usage` afterwards — on success, error, or 429 —
- * so the meter reflects the just-spent token. `invalidate` is fire-and-forget (not awaited), so an
- * AI mutation never stays pending on the meter refetch.
- */
-export async function runAiMutation<P extends AiMutationPath>(
-  path: P,
-  body: AiMutationBody<P>,
-  invalidate: () => void,
-  ...paramsArgs: AiMutationParamsArgs<P>
-): Promise<AiMutationResult<P>> {
-  try {
-    // `api.POST` is overloaded per concrete path; `P` is a generic union member, so the body and
-    // return type can't collapse to one overload. Both are derived from the same `paths` type, so
-    // the cast is sound — the runtime path + body are exactly what the route contract expects.
-    return (await api.POST(path as AiMutationPath, { body, params: paramsArgs[0] } as never)) as AiMutationResult<P>
-  } finally {
-    invalidate()
-  }
+// The `body` argument: the endpoint's JSON request body, or `undefined` for a body-less endpoint
+// (e.g. `…/re-parse`, which carries only its `jobId` path segment). Collapsing `never` → `undefined`
+// lets callers pass `undefined` for a body-less path instead of inventing a value for a `never` param.
+type AiMutationBodyArg<P extends AiMutationPath> = [AiMutationBody<P>] extends [never]
+  ? undefined
+  : AiMutationBody<P>
+
+// Variables for the single AI useMutation. `P` is erased to the union here (the mutation is created once,
+// not per call); the generic per-call signature is restored at the `useAiMutation` boundary below.
+interface AiMutationVariables {
+  path: AiMutationPath
+  body: unknown
+  // The per-path `{ path: … }` params arg; erased to `unknown` here and cast at the `api.POST` boundary.
+  params?: unknown
 }
 
-/** Hook form of `runAiMutation` with the `/ai/usage` invalidation pre-bound. */
+/**
+ * Hook form of an AI mutation backed by `useMutation`, with the `/ai/usage` meter invalidation pre-bound
+ * in `onSettled` — so the meter refetches after success, error, or 429, reflecting the just-spent token.
+ * `invalidate` is fire-and-forget, so the AI mutation never stays pending on the meter refetch. The
+ * returned function keeps the generic per-call signature `(path, body, ...params) => AiMutationResult<P>`;
+ * the mutationFn never throws (openapi-fetch resolves `{ data, error }`), so consumers branch on the result.
+ */
 export function useAiMutation(): <P extends AiMutationPath>(
   path: P,
-  body: AiMutationBody<P>,
+  body: AiMutationBodyArg<P>,
   ...paramsArgs: AiMutationParamsArgs<P>
 ) => Promise<AiMutationResult<P>> {
   const invalidate = useInvalidateAiUsage()
+  const { mutateAsync } = useMutation({
+    mutationFn: async ({ path, body, params }: AiMutationVariables): Promise<AiMutationResult<AiMutationPath>> => {
+      // `api.POST` is overloaded per concrete path; the union-typed `path` here can't collapse to one
+      // overload. Both are derived from the same `paths` type, so the cast is sound — the runtime path +
+      // body are exactly what the route contract expects.
+      return (await api.POST(path, { body, params } as never)) as AiMutationResult<AiMutationPath>
+    },
+    onSettled: () => invalidate(),
+  })
   return useCallback(
-    (path, body, ...paramsArgs) => runAiMutation(path, body, invalidate, ...paramsArgs),
-    [invalidate],
+    <P extends AiMutationPath>(
+      path: P,
+      body: AiMutationBodyArg<P>,
+      ...paramsArgs: AiMutationParamsArgs<P>
+    ): Promise<AiMutationResult<P>> =>
+      mutateAsync({ path, body, params: paramsArgs[0] }) as Promise<AiMutationResult<P>>,
+    [mutateAsync],
   )
 }

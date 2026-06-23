@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useMutation } from '@tanstack/react-query'
 
 import {
   Dialog,
@@ -27,7 +28,6 @@ interface CollectionDeleteDialogProps {
 
 export function CollectionDeleteDialog({ collection: activeCollection, trigger, open: controlledOpen, onOpenChange, onSuccess }: CollectionDeleteDialogProps) {
   const router = useRouter()
-  const [isDeleting, setIsDeleting] = useState(false)
   const lastNonNullCollection = useLastNonNull(activeCollection)
   const displayCollection = lastNonNullCollection || EMPTY_COLLECTION
 
@@ -36,27 +36,28 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
     onOpenChange,
   })
 
-  async function handleDelete() {
-    if (!displayCollection.id) return
-    setIsDeleting(true)
-    try {
-      const { error } = await api.DELETE('/collections/{id}', { params: { path: { id: displayCollection.id } } })
-      if (!error) {
-        toast.success('Collection deleted')
-        handleOpenChange(false)
-        if (onSuccess) {
-          onSuccess()
-        } else {
-          router.refresh()
-        }
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await api.DELETE('/collections/{id}', { params: { path: { id } } })
+      if (error) throw new Error(error.message || 'Failed to delete collection')
+    },
+    onSuccess: () => {
+      toast.success('Collection deleted')
+      handleOpenChange(false)
+      if (onSuccess) {
+        onSuccess()
       } else {
-        toast.error(error.message || 'Failed to delete collection')
+        router.refresh()
       }
-    } catch {
-      toast.error('Failed to delete collection')
-    } finally {
-      setIsDeleting(false)
-    }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete collection')
+    },
+  })
+
+  function handleDelete() {
+    if (!displayCollection.id) return
+    deleteMutation.mutate(displayCollection.id)
   }
 
   const triggerEl = trigger ? (
@@ -80,7 +81,7 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
           <DestructiveDialogFooter
             onCancel={() => handleOpenChange(false)}
             onConfirm={handleDelete}
-            isPending={isDeleting}
+            isPending={deleteMutation.isPending}
             confirmText="Delete Collection"
           />
         </DialogContent>

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import { toast } from 'sonner'
@@ -29,23 +30,24 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
-  const [isPending, startTransition] = useTransition()
 
-  function handleDelete() {
-    startTransition(async () => {
-      useEditorPreferencesStore.getState().setPreferences(DEFAULT_EDITOR_PREFERENCES)
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
       const { error } = await api.DELETE('/profile', { body: { password: hasPassword ? password : undefined } })
-      if (error) {
-        toast.error(error.message || 'Failed to delete account. Please try again.')
-        return
-      }
+      if (error) throw new Error(error.message || 'Failed to delete account. Please try again.')
+    },
+    onSuccess: () => {
       // Clear user-scoped client state so the deleted account's emails (PII) don't linger in the
-      // module-global store for the next sign-in on this device.
+      // module-global store for the next sign-in on this device. Editor prefs reset here too — never
+      // before the DELETE resolves, so a failed delete (wrong password) doesn't wipe a live user's prefs.
+      useEditorPreferencesStore.getState().setPreferences(DEFAULT_EDITOR_PREFERENCES)
       useProfileEmailsStore.getState().reset()
       router.push('/')
       router.refresh()
-    })
-  }
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to delete account. Please try again.'),
+  })
+  const isPending = deleteMutation.isPending
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen)
@@ -84,7 +86,7 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
         )}
         <DestructiveDialogFooter
           onCancel={() => handleOpenChange(false)}
-          onConfirm={handleDelete}
+          onConfirm={() => deleteMutation.mutate()}
           isPending={isPending}
           confirmDisabled={hasPassword && !password.trim()}
           confirmText="Yes, Delete My Account"

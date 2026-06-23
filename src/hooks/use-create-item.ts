@@ -1,9 +1,9 @@
 'use client'
 
 import { toast } from 'sonner'
+import { useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
-import { useItemsStore } from '@/stores/items'
-import { seedPreviewCache, clearSignedDownloadUrlCache } from '@/lib/api/signed-download-cache'
+import { useDownloadSrcActions } from '@/hooks/use-pro-download-src'
 import { usePrependItem, useReplaceItem, useRemoveItem, useInvalidateItems } from '@/hooks/use-infinite-items'
 import type { CreateItemInput } from '@/lib/utils/validators'
 import type { LightItem } from '@/types/item'
@@ -19,52 +19,66 @@ interface CreateItemOptions {
   optimisticFileSize?: number | null
 }
 
+interface CreateItemVariables {
+  payload: CreateItemPayload
+  options?: CreateItemOptions
+}
+
 export function useCreateItem() {
   const prependItem = usePrependItem()
   const replaceItem = useReplaceItem()
   const tqRemoveItem = useRemoveItem()
   const invalidateItems = useInvalidateItems()
-  const { updateItem, removeItem } = useItemsStore()
+  const { seed: seedPreviewCache, clear: clearDownloadSrcCache } = useDownloadSrcActions()
 
-  return async (payload: CreateItemPayload, options?: CreateItemOptions): Promise<void> => {
-    const tempId = crypto.randomUUID()
-    const tempItem: LightItem = {
-      id: tempId,
-      title: payload.title,
-      createdAt: new Date().toISOString(),
-      itemType: { name: payload.itemTypeName },
-      descriptionPreview: payload.description ?? null,
-      contentPreview: payload.content ?? null,
-      url: payload.url ?? null,
-      tags: payload.tags ?? [],
-      fileName: options?.optimisticFileName ?? null,
-      fileSize: options?.optimisticFileSize ?? null,
-      isFavorite: false,
-      isPinned: false,
-    }
-
-    await prependItem(tempItem, payload.collectionIds)
-    updateItem(tempItem)
-    if (options?.localPreviewUrl) seedPreviewCache(tempId, options.localPreviewUrl)
-
-    // The caller resolves here — dialog closes while the API call continues in background.
-    void api.POST('/items', { body: payload }).then(({ data, error }) => {
-      if (!error) {
-        if (options?.localPreviewUrl) {
-          // Transfer the blob URL to the real ID before swapping the card — zero-flicker handoff.
-          clearSignedDownloadUrlCache(tempId)
-          seedPreviewCache(data.id, options.localPreviewUrl)
-        }
-        replaceItem(tempId, data)
-        removeItem(tempId)
-        updateItem(data)
-        invalidateItems('none')
-      } else {
-        tqRemoveItem(tempId)
-        removeItem(tempId)
-        options?.onRollback?.()
-        toast.error(error.message || 'Failed to create item')
+  // Fire-and-forget optimistic create as a useMutation: onMutate prepends the temp card (the caller
+  // resolves and the dialog closes immediately), onSuccess swaps in the real item, onError removes the
+  // temp card and rolls back. mutationFn throws on error so onError fires. The temp id flows via context.
+  const mutation = useMutation({
+    mutationFn: async ({ payload }: CreateItemVariables) => {
+      const { data, error } = await api.POST('/items', { body: payload })
+      if (error) throw new Error(error.message || 'Failed to create item')
+      return data
+    },
+    onMutate: async ({ payload, options }: CreateItemVariables) => {
+      const tempId = crypto.randomUUID()
+      const tempItem: LightItem = {
+        id: tempId,
+        title: payload.title,
+        createdAt: new Date().toISOString(),
+        itemType: { name: payload.itemTypeName },
+        descriptionPreview: payload.description ?? null,
+        contentPreview: payload.content ?? null,
+        url: payload.url ?? null,
+        tags: payload.tags ?? [],
+        fileName: options?.optimisticFileName ?? null,
+        fileSize: options?.optimisticFileSize ?? null,
+        isFavorite: false,
+        isPinned: false,
       }
-    })
+      await prependItem(tempItem, payload.collectionIds)
+      if (options?.localPreviewUrl) seedPreviewCache(tempId, options.localPreviewUrl)
+      return { tempId }
+    },
+    onSuccess: (data, { options }, { tempId }) => {
+      if (options?.localPreviewUrl) {
+        // Transfer the blob URL to the real ID before swapping the card — zero-flicker handoff.
+        clearDownloadSrcCache(tempId)
+        seedPreviewCache(data.id, options.localPreviewUrl)
+      }
+      replaceItem(tempId, data)
+      invalidateItems('none')
+    },
+    onError: (error: Error, { options }, context) => {
+      if (context?.tempId) tqRemoveItem(context.tempId)
+      options?.onRollback?.()
+      toast.error(error.message || 'Failed to create item')
+    },
+  })
+
+  // Preserve the original contract: resolve once the optimistic prepend is on screen while the POST runs
+  // in the background. `mutate` (not `mutateAsync`) is fire-and-forget — onSuccess/onError settle later.
+  return async (payload: CreateItemPayload, options?: CreateItemOptions): Promise<void> => {
+    mutation.mutate({ payload, options })
   }
 }

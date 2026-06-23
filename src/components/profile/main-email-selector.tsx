@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
@@ -33,13 +34,36 @@ interface MainEmailSelectorProps {
   onEmailChanged?: (email: string) => void
 }
 
+interface ChangeEmailVariables {
+  target: string
+  currentPassword?: string
+}
+
 export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, isPro, onEmailChanged }: MainEmailSelectorProps) {
   const [email, setEmail] = useState(currentEmail)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
   const [password, setPassword] = useState('')
-  const [isPending, startTransition] = useTransition()
   const router = useRouter()
 
+  const changeMutation = useMutation({
+    mutationFn: async ({ target, currentPassword }: ChangeEmailVariables) => {
+      const { error } = await api.PATCH('/profile/main-email', { body: { email: target, password: currentPassword } })
+      if (error) throw new Error(error.message || 'Failed to update email.')
+      return target
+    },
+    onSuccess: (target) => {
+      setEmail(target)
+      onEmailChanged?.(target)
+      // Close the confirm dialog only on success — on failure it stays open so the user can retry
+      // without re-selecting the target email from the dropdown.
+      setPendingEmail(null)
+      setPassword('')
+      toast.success(hasPassword ? 'Primary email updated.' : 'Display email updated.')
+      router.refresh()
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to update email.'),
+  })
+  const isPending = changeMutation.isPending
 
   function requestChange(newEmail: string) {
     if (newEmail === email) return
@@ -52,21 +76,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
   }
 
   function applyChange(target: string, currentPassword?: string) {
-    startTransition(async () => {
-      const { error } = await api.PATCH('/profile/main-email', { body: { email: target, password: currentPassword } })
-      if (!error) {
-        setEmail(target)
-        onEmailChanged?.(target)
-        // Close the confirm dialog only on success — on failure it stays open so the user can retry
-        // without re-selecting the target email from the dropdown.
-        setPendingEmail(null)
-        setPassword('')
-        toast.success(hasPassword ? 'Primary email updated.' : 'Display email updated.')
-        router.refresh()
-      } else {
-        toast.error(error.message || 'Failed to update email.')
-      }
-    })
+    changeMutation.mutate({ target, currentPassword })
   }
 
   function confirmChange() {

@@ -18,10 +18,15 @@ interface UseResizableOptions {
 
 interface UseResizableReturn {
   width: number
+  /** Resolved min/max px constraints — pass to useGrabHandleDrag for touch resize. */
+  minWidth: number
+  maxWidth: number
   dragging: boolean
   startResize: (e: ReactMouseEvent | MouseEvent) => void
   onMouseMove: (e: ReactMouseEvent | MouseEvent) => void
   onMouseUp: () => void
+  /** Set width directly (clamped to min/max). Used by touch resize on the grab handle. */
+  setWidth: (px: number) => void
 }
 
 export function useResizable({
@@ -70,6 +75,10 @@ export function useResizable({
   const max = vw - boundaryLeft - Math.round(vw * maxBoundaryGapVw)
   const width = Math.min(Math.max(rawWidth, min), max)
 
+  const setWidth = useCallback((px: number) => {
+    setRawWidth(Math.min(Math.max(px, min), max))
+  }, [min, max])
+
   const onMouseMove = useCallback((e: ReactMouseEvent | MouseEvent) => {
     if (!dragStart) return
     const deltaX = dragStart.x - e.clientX
@@ -84,5 +93,5 @@ export function useResizable({
     setDragStart({ x: e.clientX, initialWidth: width })
   }, [width])
 
-  return { width, dragging, startResize, onMouseMove, onMouseUp }
+  return { width, minWidth: min, maxWidth: max, dragging, startResize, onMouseMove, onMouseUp, setWidth }
 }

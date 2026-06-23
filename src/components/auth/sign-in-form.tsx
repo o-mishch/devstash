@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect, useActionState } from 'react'
+import { useState, useEffect } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -40,49 +41,55 @@ export function SignInForm({ successMessage }: SignInFormProps) {
   // Set when login is blocked on an unverified email — renders the resend banner below.
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
 
-  // React tracks the form's pending state through the action passed to `<form action>`.
-  const [, formAction, isPending] = useActionState(async (_prev: null, formData: FormData) => {
-    const { error } = await api.POST('/auth/login', {
-      body: {
-        email: String(formData.get('email') ?? ''),
-        password: String(formData.get('password') ?? ''),
-      },
-    })
+  // Login routes through useMutation for the pending state; `<form action>` triggers it. The mutationFn
+  // keeps the 3-way branching (success / 403-unverified-banner / error toast) and never throws, so the
+  // form action resolves cleanly either way.
+  const loginMutation = useMutation({
+    mutationFn: async (formData: FormData) => {
+      const { error } = await api.POST('/auth/login', {
+        body: {
+          email: String(formData.get('email') ?? ''),
+          password: String(formData.get('password') ?? ''),
+        },
+      })
 
-    if (!error) {
+      if (!error) {
+        setUnverifiedEmail(null)
+        toast.success('You successfully logged in.')
+        router.push('/dashboard')
+        return
+      }
+
+      // Only the 403 "email not verified" error carries a structured `data.email`; `'data' in error`
+      // narrows the error union to that member. Renders the resend banner below — no toast needed.
+      if ('data' in error && error.data) {
+        setUnverifiedEmail(error.data.email)
+        return
+      }
+
       setUnverifiedEmail(null)
-      toast.success('You successfully logged in.')
-      router.push('/dashboard')
-      return null
-    }
-
-    // Only the 403 "email not verified" error carries a structured `data.email`; `'data' in error`
-    // narrows the error union to that member. Renders the resend banner below — no toast needed.
-    if ('data' in error && error.data) {
-      setUnverifiedEmail(error.data.email)
-      return null
-    }
-
-    setUnverifiedEmail(null)
-    toast.error(error.message || 'Something went wrong. Please try again.')
-    return null
-  }, null)
+      toast.error(error.message || 'Something went wrong. Please try again.')
+    },
+  })
+  const formAction = (formData: FormData) => loginMutation.mutate(formData)
+  const isPending = loginMutation.isPending
 
   useEffect(() => {
     if (successMessage) toast.success(successMessage)
   }, [successMessage])
 
-  async function handleResend() {
-    if (!unverifiedEmail) return
-
-    const { error } = await api.POST('/auth/resend-verification', { body: { email: unverifiedEmail } })
-
-    if (!error) {
-      toast.success('Verification email sent. Check your inbox.')
-    } else {
-      toast.error(error.message || 'Failed to send verification email. Please try again later.')
-    }
-  }
+  const resendMutation = useMutation({
+    mutationFn: async () => {
+      // Throw rather than return early: a silent return would still fire onSuccess and toast "email sent"
+      // without a send. (Unreachable today — the trigger only renders inside the `unverifiedEmail` banner.)
+      if (!unverifiedEmail) throw new Error('No unverified email to resend to.')
+      const { error } = await api.POST('/auth/resend-verification', { body: { email: unverifiedEmail } })
+      if (error) throw new Error(error.message || 'Failed to send verification email. Please try again later.')
+    },
+    onSuccess: () => toast.success('Verification email sent. Check your inbox.'),
+    onError: (error: Error) =>
+      toast.error(error.message || 'Failed to send verification email. Please try again later.'),
+  })
 
   return (
     <div className="flex flex-col gap-4">
@@ -93,7 +100,7 @@ export function SignInForm({ successMessage }: SignInFormProps) {
             Please check your inbox or{' '}
             <button
               type="button"
-              onClick={handleResend}
+              onClick={() => resendMutation.mutate()}
               className="text-primary underline-offset-4 hover:underline"
             >
               resend the verification email

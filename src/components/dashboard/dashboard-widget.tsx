@@ -36,7 +36,10 @@ export function DashboardWidget({
           inner cards stay unaffected. */}
       <Card
         className={cn(
-          'bg-[var(--muted,var(--background))] border-l-2 transition-colors hover:bg-accent/50 active:bg-accent/50',
+          // Translucent surface matching the Brain Dump bento buckets (bg-muted/20 → hover bg-muted/40):
+          // an alpha-channel background, not the `opacity` property, so it does NOT cascade to the inner
+          // item cards (see note above) while still reading as a light, see-through group surface.
+          'bg-muted/20 border-l-2 transition-colors hover:bg-muted/40 active:bg-muted/40',
           // The left border is visible at rest but dimmed, and brightens to its full color on
           // hover/press (press = touch, where there is no hover). With a dominant item-type color the
           // rest/active pair is that color dimmed → full; without one it stays the neutral accent →
@@ -63,7 +66,7 @@ export function DashboardWidget({
           />
           <div className="pointer-events-none relative flex w-full items-center justify-between gap-4">
             <CardTitle className="flex select-none items-center gap-1.5 text-sm font-semibold">
-              <Icon className="size-3.5 text-primary" />
+              <Icon className="size-3.5 text-primary card-icon" />
               {title}
               <ChevronDown
                 className={cn(

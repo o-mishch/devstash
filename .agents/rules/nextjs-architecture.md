@@ -18,6 +18,30 @@ description: Next.js architecture for DevStash — where each mutation/fetch goe
 - Server components by default; only use `'use client'` when needed (interactivity, hooks, browser APIs)
 - Dynamic routes for item/collection pages
 
+### `?skeleton=true` on every screen (required)
+
+Every page in the app **must** honor a `?skeleton=true` query param by rendering its loading skeleton instead of real content — a manual preview of the `loading.tsx` state (used to design/verify skeletons without throttling). This is a hard requirement for **all** routes, including dynamic ones (`/parse/[jobId]`, `/items/[type]`, `/collections/[id]`).
+
+**Pattern** (matches `dashboard/page.tsx`):
+
+```ts
+export default async function FooPage(props: {
+  searchParams: Promise<{ skeleton?: string }>   // (merge with the page's other params)
+}) {
+  const searchParams = await props.searchParams
+  const forceSkeleton = searchParams.skeleton === 'true'
+  // ...auth/redirect guards still run...
+  if (forceSkeleton) return <FooSkeleton />        // the SAME skeleton loading.tsx renders
+  // ...real data fetch + render...
+}
+```
+
+Rules:
+- The skeleton must be the **same** component the route's `loading.tsx` (or layout Suspense fallback) renders — never a second, divergent skeleton.
+- `forceSkeleton` is evaluated **after** the auth/ownership guards (`redirect('/sign-in')`, Pro gate) but **before** any heavy data fetch, so the preview never depends on real data and never leaks a protected page to a signed-out user.
+- A page that has no skeleton yet must get one (a reusable component, also wired into `loading.tsx`) — "no skeleton" is not an exemption.
+- Dynamic-segment pages are included: resolve the param, run guards, then branch on `forceSkeleton` before the snapshot/db read.
+
 ### Where each mutation / fetch goes
 
 | Situation                                                                                 | Use                                                                                                                     |
@@ -104,6 +128,7 @@ export async function createItem(formData: FormData) { ... }
 | `src/lib/api/openapi/**`      | `paths.ts` + `spec.ts` — pure schema declarations, no secrets                              |
 | `src/lib/api/http.ts`         | `json` / `noContent` / `problem` / `parseOr422` — pure Response builders                   |
 | `src/lib/api/client.ts`       | `api` + `$api` — browser route-handler client                                              |
+| `src/lib/api/query-keys.ts`   | TanStack Query key registry — client-only key factory over `$api`; never imported server-side |
 | `src/types/`                  | Type definitions only                                                                      |
 | `src/stores/`                 | Zustand stores — client state, no server imports                                           |
 | `src/hooks/`                  | React hooks — client-only by design                                                        |
@@ -145,6 +170,7 @@ import { getItems } from '@/lib/db/items'
   - `src/lib/api/schemas/**` **[C]** — bare Zod request/response schemas (browser-safe)
   - `src/lib/api/openapi/**` **[C]** — `paths.ts` + `spec.ts` (OpenAPI doc source)
   - `src/lib/api/client.ts` **[C]** — `api` + `$api` (browser route-handler client)
+  - `src/lib/api/query-keys.ts` **[C]** — central TanStack Query key registry (client-only; the FE mirror of the server `CacheTags` boundary — never cross-import)
   - `src/lib/editor/` **[C]** — editor themes and config
   - `src/lib/dom/` **[C]** — browser-effect helpers (View Transitions, DOM triggers); client-only, no secrets
   - `src/lib/utils/` **[C]** — shared constants, formatters, validators (no DB/Stripe)

@@ -5,10 +5,10 @@ import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-it
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
+import { BrainDumpWidget } from '@/components/dashboard/brain-dump-widget'
 import { OrbitingCircles } from '@/components/ui/orbiting-circles'
 import { SkinWidget } from './skin-widget'
-import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
-import { computeUsage, typeColor, resolveSkinData, slotsLeftLabel, type DashboardSkinData } from './shared'
+import { computeUsage, typeColor, resolveSkinData, MaybeLink, type DashboardSkinData } from './shared'
 
 // Orbital Core (Pro) — item-type constellation that genuinely orbits a glowing core. A single
 // OrbitingCircles ring keeps the nodes evenly spaced (no clustering) while they revolve; the
@@ -28,13 +28,18 @@ export async function OrbitalSkin(data: DashboardSkinData) {
   const kpis = [
     ...(isPro
       ? []
-      : [{ value: slotsLeftLabel(usage), label: 'slots left', href: undefined as string | undefined }]),
+      : [{ value: String(usage.slotsLeft), label: 'slots left', href: undefined as string | undefined }]),
     { value: String(collectionStats.totalCollections), label: 'collections', href: '/collections' as string | undefined },
   ]
   const kpiClass = 'rounded-2xl border border-border bg-foreground/[0.02] px-4 py-2.5'
 
   return (
     <div>
+    {isPro && (
+      <div className="mb-3">
+        <BrainDumpWidget skin="orbital" />
+      </div>
+    )}
     <div className="grid items-start gap-6 lg:grid-cols-[1.05fr_1fr] [&>*]:min-w-0">
       {/* Left column: the constellation stage with the KPI cards stacked beneath it.
           items-start (not stretch) keeps the stage at its own min-h-[460px] height instead of
@@ -77,16 +82,14 @@ export async function OrbitalSkin(data: DashboardSkinData) {
                 <div className="mt-0.5 text-[11.5px] text-muted-foreground">{k.label}</div>
               </>
             )
-            return k.href ? (
-              <Link key={k.label} href={k.href} prefetch={false} className={`${kpiClass} transition-colors hover:bg-foreground/5`}>{inner}</Link>
-            ) : (
-              <div key={k.label} className={kpiClass}>{inner}</div>
+            return (
+              <MaybeLink key={k.label} href={k.href} className={k.href ? `${kpiClass} transition-colors hover:bg-foreground/5` : kpiClass}>{inner}</MaybeLink>
             )
           })}
         </div>
 
         <div className="flex-1 relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
-          <SkinWidget icon={<History />} title="Recent" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.orbital}>
+          <SkinWidget icon={<History />} title="Recent" skin="orbital">
             {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
           </SkinWidget>
         </div>
@@ -95,13 +98,13 @@ export async function OrbitalSkin(data: DashboardSkinData) {
       <div className="flex flex-col gap-5">
         {hasPinned && (
           <div className="relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
-            <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.orbital}>
+            <SkinWidget icon={<Pin />} title="Pinned" skin="orbital">
               <DashboardPinnedItems initialItems={pinned} />
             </SkinWidget>
           </div>
         )}
         <div className="relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS.orbital}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="orbital">
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </div>

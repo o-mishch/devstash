@@ -47,8 +47,8 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
       {onToggle && (
         <>
           <div className="flex h-14 shrink-0 items-center px-3">
-            <Button variant="ghost" size="icon" onClick={onToggle} className="text-muted-foreground">
-              <PanelLeft className="size-4" />
+            <Button variant="ghost" size="icon" onClick={onToggle} className="group text-muted-foreground">
+              <PanelLeft className="size-4 card-icon" />
             </Button>
           </div>
           <Separator />
@@ -64,7 +64,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
             prefetch={true}
             className={sidebarLinkClass(pathname === '/parse' || pathname.startsWith('/parse/'))}
           >
-            <Sparkles className="size-4 shrink-0" />
+            <Sparkles className="size-4 shrink-0 card-icon" />
             <span>Brain Dump</span>
           </Link>
         </div>
@@ -79,7 +79,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                 prefetch={true}
                 className={sidebarLinkClass(pathname === '/dashboard')}
               >
-                <Home className="size-4 shrink-0" />
+                <Home className="size-4 shrink-0 card-icon" />
                 <span>Home</span>
               </Link>
               <Link
@@ -88,7 +88,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                 prefetch={true}
                 className={sidebarLinkClass(pathname === '/collections')}
               >
-                <Archive className="size-4 shrink-0" />
+                <Archive className="size-4 shrink-0 card-icon" />
                 <span>All Collections</span>
               </Link>
             </div>

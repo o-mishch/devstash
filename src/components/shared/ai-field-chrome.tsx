@@ -104,12 +104,12 @@ export function AiSuggestionPanel({
   return (
     <div
       className={cn(
-        'rounded-lg border border-primary/30 bg-primary/[0.06] p-3 space-y-2 shadow-sm',
+        'card-surface card-hover group rounded-lg border border-primary/30 bg-primary/[0.06] p-3 space-y-2 shadow-sm',
         className
       )}
     >
       <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
-        <Sparkles className="size-3.5" />
+        <Sparkles className="card-icon size-3.5" />
         {label}
       </div>
       {children}

@@ -5,6 +5,7 @@ import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-it
 import { DashboardCollectionsList } from '@/components/dashboard/dashboard-collections-list'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
+import { BrainDumpWidget } from '@/components/dashboard/brain-dump-widget'
 import { TotalItemsReveal } from '@/components/dashboard/total-items-reveal'
 import {
   MissionControlDonut,
@@ -12,7 +13,6 @@ import {
   MissionControlHeatmap,
 } from './mission-control/charts-island'
 import { SkinWidget } from './skin-widget'
-import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
 import { computeUsage, typeColor, resolveSkinData, type DashboardSkinData } from './shared'
 
 const MC_PANEL = 'relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5'
@@ -35,9 +35,9 @@ export async function MissionControlSkin(data: DashboardSkinData) {
         <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">Dashboard</h1>
       </header>
 
-      {/* KPI strip — compact summary. Pro is unlimited, so the dead "Free tier used" tile is dropped
-          (the row reflows from 4-up to 3-up); free keeps it. */}
-      <div className={`mb-4 grid grid-cols-2 gap-3.5 ${isPro ? 'lg:grid-cols-2' : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'}`}>
+      {/* KPI strip — compact summary. Pro: Total + Collections stay compact and Brain Dump takes a wide
+          cell (spans 2 of a 4-col track), replacing the standalone banner. Free keeps the tier tile. */}
+      <div className={`mb-4 grid grid-cols-2 gap-3.5 ${isPro ? 'lg:grid-cols-4' : 'lg:grid-cols-3 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1'}`}>
         <div className="rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3">
           <TotalItemsReveal variant="pop">
             <div className="flex items-center justify-between text-xs text-muted-foreground">Total items<span className="text-primary">↑</span></div>
@@ -46,6 +46,7 @@ export async function MissionControlSkin(data: DashboardSkinData) {
           <MissionControlSparkline activity={activity} />
         </div>
         <KpiCard label="Collections" value={collectionStats.totalCollections} sub={`${collectionStats.favoriteCollections} favorite`} href="/collections" />
+        {isPro && <BrainDumpWidget skin="mission-control" className="col-span-2" />}
         {!isPro && (
           <div className="rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3">
             <div className="flex items-center justify-between text-xs text-muted-foreground">Free tier used<span className="text-violet-400">{`${usage.pct}%`}</span></div>
@@ -61,7 +62,7 @@ export async function MissionControlSkin(data: DashboardSkinData) {
           useful data lands above the fold. */}
       {hasPinned && (
         <div className={`${MC_PANEL} mb-4`}>
-          <SkinWidget icon={<Pin />} title="Pinned" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
+          <SkinWidget icon={<Pin />} title="Pinned" skin="mission-control">
             <DashboardPinnedItems initialItems={pinned} />
           </SkinWidget>
         </div>
@@ -69,12 +70,12 @@ export async function MissionControlSkin(data: DashboardSkinData) {
 
       <div className="mb-4 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className={MC_PANEL}>
-          <SkinWidget icon={<History />} title="Recent items" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
+          <SkinWidget icon={<History />} title="Recent items" skin="mission-control">
             {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
           </SkinWidget>
         </div>
         <div className={MC_PANEL}>
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="mission-control">
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </div>
@@ -84,12 +85,12 @@ export async function MissionControlSkin(data: DashboardSkinData) {
           it's exploratory data, not the daily task. */}
       <div className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
         <div className={MC_PANEL}>
-          <SkinWidget icon={<CalendarRange />} title="Activity · last 12 weeks" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
+          <SkinWidget icon={<CalendarRange />} title="Activity · last 12 weeks" skin="mission-control">
             <MissionControlHeatmap activity={activity} />
           </SkinWidget>
         </div>
         <div className={MC_PANEL}>
-          <SkinWidget icon={<PieIcon />} title="By type" headerWrapperClassName={SKIN_HEADER_WRAPPER_CLASS['mission-control']}>
+          <SkinWidget icon={<PieIcon />} title="By type" skin="mission-control">
             <MissionControlDonut distribution={distribution} />
             <div className="mt-4 flex flex-col gap-0.5">
               {legend.map((d) => (

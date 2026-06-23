@@ -12,6 +12,8 @@ CREATE TABLE "ai_parse_jobs" (
     "sourceItemId" TEXT,
     "sourceName" TEXT,
     "truncated" BOOLEAN NOT NULL DEFAULT false,
+    "committedCount" INTEGER NOT NULL DEFAULT 0,
+    "committedByType" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "userId" TEXT NOT NULL,

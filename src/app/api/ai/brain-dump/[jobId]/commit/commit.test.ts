@@ -59,12 +59,21 @@ describe('POST /ai/brain-dump/{jobId}/commit', () => {
     expect(mockInvalidateItems).not.toHaveBeenCalled()
   })
 
-  it('commits the job, invalidates caches, and returns created + total', async () => {
-    mockCommit.mockResolvedValue({ kind: 'done', created: 3, total: 3 })
+  it('commits the whole job, closes it, invalidates caches, and returns created + total + closed', async () => {
+    mockCommit.mockResolvedValue({ kind: 'done', created: 3, total: 3, closed: true })
     const res = await POST(req(), ctx)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ created: 3, total: 3 })
+    // `closed` drives the client's dashboard redirect + toast — it must be on the response.
+    expect(await res.json()).toEqual({ created: 3, total: 3, closed: true })
     expect(mockCommit).toHaveBeenCalledWith('user-1', 'job-1')
+    expect(mockInvalidateItems).toHaveBeenCalledWith('user-1')
+  })
+
+  it('returns closed=false on a partial commit (some drafts could not be saved)', async () => {
+    mockCommit.mockResolvedValue({ kind: 'done', created: 2, total: 3, closed: false })
+    const res = await POST(req(), ctx)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ created: 2, total: 3, closed: false })
     expect(mockInvalidateItems).toHaveBeenCalledWith('user-1')
   })
 })

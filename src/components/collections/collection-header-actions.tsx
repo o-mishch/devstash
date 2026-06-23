@@ -79,7 +79,7 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
             className="size-8 text-muted-foreground hover:text-destructive"
             title="Delete collection"
           >
-            <Trash2 className="size-4" />
+            <Trash2 className="size-4 text-destructive" />
           </Button>
         }
       />

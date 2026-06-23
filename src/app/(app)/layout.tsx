@@ -176,15 +176,15 @@ async function Topbar() {
       <Link
         href="/dashboard"
         prefetch={false}
-        className="flex shrink-0 items-center justify-center size-9 touch:size-11 rounded-lg hover:bg-foreground/5 transition-colors lg:hidden"
+        className="group flex shrink-0 items-center justify-center size-9 touch:size-11 rounded-lg hover:bg-foreground/5 transition-colors lg:hidden"
         aria-label="Home"
       >
-        <Home className="size-5 text-primary" />
+        <Home className="size-5 text-primary transition-transform duration-200 group-hover:scale-110" />
       </Link>
 
       {/* Desktop: full logo + app name */}
-      <Link href="/dashboard" prefetch={false} className="hidden shrink-0 items-center gap-2 hover:opacity-80 transition-opacity lg:flex">
-        <Archive className="size-4 text-primary" />
+      <Link href="/dashboard" prefetch={false} className="group hidden shrink-0 items-center gap-2 lg:flex">
+        <Archive className="size-4 text-primary transition-transform duration-200 group-hover:scale-110" />
         <span className="text-base font-semibold tracking-tight">DevStash</span>
       </Link>
 

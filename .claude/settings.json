@@ -1,6 +1,8 @@
 {
   "permissions": {
-    "allow": [],
+    "allow": [
+      "mcp__neon__run_sql_transaction"
+    ],
     "deny": [
       "Bash(npx prisma db push*)",
       "Bash(prisma db push*)",

@@ -1,5 +1,7 @@
 # Current Feature
 
+<!-- Feature name and description -->
+
 ## Status
 Not Started
 
@@ -7,4 +9,4 @@ Not Started
 <!-- Bullet points of what success looks like -->
 
 ## Notes
-<!-- Additional context, constraints, or details from spec -->
+<!-- Additional context, constraints, or details -->

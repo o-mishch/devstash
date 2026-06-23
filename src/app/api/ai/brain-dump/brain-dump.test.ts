@@ -4,6 +4,9 @@ import { NextRequest } from 'next/server'
 // Exercises the brain-dump routes' auth (401), validation (422), Pro gate (403), rate limit (429),
 // success (201) for both paste + sourceItemId, gate-first ordering (no source/job on refusal), and the
 // unreadable-source 422 (no token spent). The DB + rate-limit layers are mocked.
+// `after` runs the abandoned-job sweep post-response; stub it to a no-op so the handler doesn't
+// register a real callback outside a request scope in tests.
+vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }))
 vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
 vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
 vi.mock('@/lib/infra/rate-limit', () => ({
@@ -14,20 +17,22 @@ vi.mock('@/lib/infra/rate-limit', () => ({
 vi.mock('@/lib/db/ai-parse-jobs', () => ({
   createParseJob: vi.fn(),
   listActiveParseJobs: vi.fn(),
+  listClosedParseJobs: vi.fn(),
   getSourceItemForParse: vi.fn(),
   getSourceText: vi.fn(),
   listParseSourceCandidates: vi.fn(),
+  sweepAbandonedParseJobs: vi.fn(),
 }))
 vi.mock('@/lib/db/items', () => ({ createItem: vi.fn(), deleteItem: vi.fn() }))
 vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn() }))
 
+import { after } from 'next/server'
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit, resetRateLimit } from '@/lib/infra/rate-limit'
-import { createParseJob, listActiveParseJobs, getSourceItemForParse, getSourceText, listParseSourceCandidates } from '@/lib/db/ai-parse-jobs'
+import { createParseJob, listActiveParseJobs, listClosedParseJobs, getSourceItemForParse, getSourceText, sweepAbandonedParseJobs } from '@/lib/db/ai-parse-jobs'
 import { createItem, deleteItem } from '@/lib/db/items'
 import { POST, GET } from './route'
-import { GET as SOURCES } from './sources/route'
 
 const mockSession = getCachedSession as ReturnType<typeof vi.fn>
 const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
@@ -45,8 +50,8 @@ const longText = 'Here is a real project brain dump with plenty of content to sp
 function postReq(payload: unknown): NextRequest {
   return new NextRequest('http://localhost/api/ai/brain-dump', { method: 'POST', body: JSON.stringify(payload) })
 }
-function getReq(): NextRequest {
-  return new NextRequest('http://localhost/api/ai/brain-dump', { method: 'GET' })
+function getReq(query = ''): NextRequest {
+  return new NextRequest(`http://localhost/api/ai/brain-dump${query}`, { method: 'GET' })
 }
 
 beforeEach(() => {
@@ -104,6 +109,14 @@ describe('POST /ai/brain-dump (paste)', () => {
       'user-1',
       expect.objectContaining({ sourceItemId: 'note-1', truncated: false }),
     )
+    // The TTL-cleanup backstop must be registered after a successful create.
+    expect(after).toHaveBeenCalledWith(sweepAbandonedParseJobs)
+    // Gate ordering on the paste success path: the hourly token is spent exactly once, and the job is
+    // created only AFTER it (so a refactor that creates the job before gating the budget is caught).
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1)
+    expect(mockCreate.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mockCheckRateLimit.mock.invocationCallOrder[0],
+    )
   })
 
   it('refunds the hourly token when job creation fails after the paste note was saved', async () => {
@@ -129,6 +142,12 @@ describe('POST /ai/brain-dump (sourceItemId)', () => {
     expect(await res.json()).toEqual({ jobId: 'job-9', sourceName: 'a.txt', truncated: true })
     expect(mockCreateItem).not.toHaveBeenCalled()
     expect(mockCreate).toHaveBeenCalledWith('user-1', expect.objectContaining({ sourceItemId: 'file-1', truncated: true }))
+    // Gate ordering: source eligibility is resolved BEFORE the token is spent, and the token is spent
+    // exactly once — so an unreadable source can never burn the user's hourly quota.
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1)
+    expect(mockGetSourceText.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCheckRateLimit.mock.invocationCallOrder[0],
+    )
   })
 
   it('returns 404 when the source item is not the user\'s', async () => {
@@ -178,32 +197,28 @@ describe('GET /ai/brain-dump', () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ jobs })
     expect(mockList).toHaveBeenCalledWith('user-1')
-  })
-})
-
-describe('GET /ai/brain-dump/sources', () => {
-  function sourcesReq(): NextRequest {
-    return new NextRequest('http://localhost/api/ai/brain-dump/sources', { method: 'GET' })
-  }
-
-  it('returns 401 when not signed in', async () => {
-    mockSession.mockResolvedValue(null)
-    const res = await SOURCES(sourcesReq())
-    expect(res.status).toBe(401)
+    // The job-list path also registers the lazy abandoned-job sweep.
+    expect(after).toHaveBeenCalledWith(sweepAbandonedParseJobs)
   })
 
-  it('returns 403 when not Pro', async () => {
-    mockIsPro.mockResolvedValue(false)
-    const res = await SOURCES(sourcesReq())
-    expect(res.status).toBe(403)
-  })
-
-  it('returns 200 with sources list for Pro users', async () => {
-    const mockSources = [{ itemId: 'item-1', name: 'test.txt', sizeBytes: 100 }]
-    vi.mocked(listParseSourceCandidates).mockResolvedValue(mockSources)
-
-    const res = await SOURCES(sourcesReq())
+  it('returns the closed History list when ?history=1 (not the active list)', async () => {
+    const mockClosed = listClosedParseJobs as ReturnType<typeof vi.fn>
+    const closed = [
+      { id: 'c1', status: 'closed', progress: 100, itemCount: 1, sourceName: 'done.md', createdAt: '2026-06-20T00:00:00.000Z', committedCount: 5, committedByType: { snippet: 5 } },
+    ]
+    mockClosed.mockResolvedValue(closed)
+    const res = await GET(getReq('?history=1'))
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ sources: mockSources })
+    expect(await res.json()).toEqual({ jobs: closed })
+    expect(mockClosed).toHaveBeenCalledWith('user-1')
+    expect(mockList).not.toHaveBeenCalled()
+  })
+
+  it('returns 422 for an invalid history value — neither list is queried', async () => {
+    const mockClosed = listClosedParseJobs as ReturnType<typeof vi.fn>
+    const res = await GET(getReq('?history=2'))
+    expect(res.status).toBe(422)
+    expect(mockList).not.toHaveBeenCalled()
+    expect(mockClosed).not.toHaveBeenCalled()
   })
 })

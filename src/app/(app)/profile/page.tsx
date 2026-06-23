@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Package, FolderOpen } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ArrowLeft, Package, FolderOpen, UserRound, KeyRound, BarChart3 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
+import { CollapsibleCard } from '@/components/shared/collapsible-card'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { getCurrentUserId } from '@/lib/session'
@@ -13,15 +13,20 @@ import { ConnectedAccounts } from '@/components/profile/connected-accounts'
 import { ProfileToast, type ToastCode } from '@/components/profile/profile-toast'
 import { ProfileEmailSection } from '@/components/profile/profile-email-section'
 import { EditableName } from '@/components/profile/editable-name'
+import ProfileLoading from './loading'
 
 interface ProfilePageProps {
-  searchParams: Promise<{ toast?: string }>
+  searchParams: Promise<{ toast?: string; skeleton?: string }>
 }
 
 export default async function ProfilePage({ searchParams }: ProfilePageProps) {
-  const flash = ((await searchParams).toast) as ToastCode | undefined
+  const params = await searchParams
+  const flash = params.toast as ToastCode | undefined
   const userId = await getCurrentUserId()
   if (!userId) redirect('/sign-in')
+
+  // `?skeleton=true` preview: render the same skeleton loading.tsx shows, after the auth guard.
+  if (params.skeleton === 'true') return <ProfileLoading />
 
   const data = await getProfileData(userId)
   if (!data) redirect('/sign-in')
@@ -48,9 +53,9 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
 
       {flash && <ProfileToast code={flash} />}
 
-      {/* Account Information */}
-      <Card>
-        <CardContent className="pt-5 space-y-4">
+      {/* Account Information — same global widget rules as the rest of the app (accent + hover + collapse). */}
+      <CollapsibleCard title="Account Information" icon={<UserRound />}>
+        <div className="space-y-4">
           <div className="flex items-center gap-4">
             <UserAvatar name={user.name} image={user.image} className="size-14 shrink-0" />
             <div className="min-w-0 flex-1">
@@ -70,37 +75,27 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
             createdAt={user.createdAt}
             isPro={user.isPro}
           />
-        </CardContent>
-      </Card>
+        </div>
+      </CollapsibleCard>
 
       {/* Sign-in Methods */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Sign-in Methods</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <ConnectedAccounts
-            verificationDisabled={verificationDisabled}
-          />
-        </CardContent>
-      </Card>
+      <CollapsibleCard title="Sign-in Methods" icon={<KeyRound />}>
+        <ConnectedAccounts verificationDisabled={verificationDisabled} />
+      </CollapsibleCard>
 
       {/* Usage */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Usage</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <CollapsibleCard title="Usage" icon={<BarChart3 />}>
+        <div className="space-y-4">
           <div className="app-grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-              <Package className="size-5 text-muted-foreground" />
+            <div className="card-tier-2 group flex items-center gap-3 rounded-lg border p-3 transition-colors">
+              <Package className="card-icon size-5 text-muted-foreground" />
               <div>
                 <p className="text-xl font-semibold">{stats.totalItems}</p>
                 <p className="text-xs text-muted-foreground">Items</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-              <FolderOpen className="size-5 text-muted-foreground" />
+            <div className="card-tier-2 group flex items-center gap-3 rounded-lg border p-3 transition-colors">
+              <FolderOpen className="card-icon size-5 text-muted-foreground" />
               <div>
                 <p className="text-xl font-semibold">{stats.totalCollections}</p>
                 <p className="text-xs text-muted-foreground">Collections</p>
@@ -114,7 +109,7 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
             {stats.itemTypeCounts.map((type) => (
               <div
                 key={type.name}
-                className="flex items-center justify-between rounded-lg border border-border px-2.5 py-2"
+                className="card-tier-2 group flex items-center justify-between rounded-lg border px-2.5 py-2 transition-colors"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <ItemTypeIcon iconName={type.icon} color={type.color} className="size-3 shrink-0" />
@@ -124,8 +119,8 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </CollapsibleCard>
 
       {/* Danger zone — no card chrome, stands apart */}
       <div className="rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3">

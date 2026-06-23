@@ -1,32 +1,14 @@
+import 'server-only'
+
 import { prisma } from '@/lib/infra/prisma'
 import { SIDEBAR_COLLECTION_SELECT, mapSidebarCollection } from '@/lib/db/collections'
-import type { SearchResultItem } from '@/types/item'
+import { LIGHT_ITEM_SELECT, toLightItem, fetchTextPreviews } from '@/lib/db/items'
+import type { LightItem } from '@/types/item'
 import type { SidebarCollection } from '@/types/collection'
 
-const SEARCH_ITEM_SELECT = {
-  id: true,
-  title: true,
-  description: true,
-  itemType: { select: { name: true } },
-} as const
-
-type SearchItemRow = {
-  id: string
-  title: string
-  description: string | null
-  itemType: SearchResultItem['itemType']
-}
-
-function toSearchResultItem(row: SearchItemRow): SearchResultItem {
-  return {
-    id: row.id,
-    title: row.title,
-    itemType: row.itemType,
-    descriptionPreview: row.description ? row.description.slice(0, 150) : null,
-  }
-}
-
-export async function globalSearch(query: string, userId: string): Promise<[SearchResultItem[], SidebarCollection[]]> {
+// Intentionally uncached: live search must reflect the latest committed items/collections, so the
+// freshness exception in database.md applies (no 'use cache').
+export async function globalSearch(query: string, userId: string): Promise<[LightItem[], SidebarCollection[]]> {
   const [itemRows, collectionRows] = await Promise.all([
     prisma.item.findMany({
       where: {
@@ -35,9 +17,10 @@ export async function globalSearch(query: string, userId: string): Promise<[Sear
           { title: { contains: query, mode: 'insensitive' } },
           { description: { contains: query, mode: 'insensitive' } },
           { content: { contains: query, mode: 'insensitive' } },
+          { tags: { some: { name: { contains: query, mode: 'insensitive' } } } },
         ],
       },
-      select: SEARCH_ITEM_SELECT,
+      select: LIGHT_ITEM_SELECT,
       take: 20,
       orderBy: { updatedAt: 'desc' },
     }),
@@ -55,5 +38,8 @@ export async function globalSearch(query: string, userId: string): Promise<[Sear
     }),
   ])
 
-  return [itemRows.map(toSearchResultItem), collectionRows.map((col) => mapSidebarCollection(col))]
+  // Return full LightItems (same shape as the item list) so the drawer opens with every field —
+  // fileName/fileSize/url/tags — populated, not the lossy slim hit it used to get.
+  const textPreviews = await fetchTextPreviews(itemRows.map((r) => r.id))
+  return [itemRows.map((r) => toLightItem(r, textPreviews)), collectionRows.map((col) => mapSidebarCollection(col))]
 }

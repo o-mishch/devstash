@@ -20,8 +20,11 @@ const mockCommit = commitDraftItem as ReturnType<typeof vi.fn>
 const mockInvalidateItems = invalidateItemsCache as ReturnType<typeof vi.fn>
 const mockInvalidateCollections = invalidateCollectionsCache as ReturnType<typeof vi.fn>
 
-function req(): NextRequest {
-  return new NextRequest('http://localhost/api/ai/brain-dump/job-1/items/item-1/commit', { method: 'POST' })
+function req(body?: unknown): NextRequest {
+  return new NextRequest('http://localhost/api/ai/brain-dump/job-1/items/item-1/commit', {
+    method: 'POST',
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  })
 }
 const ctx = { params: Promise.resolve({ jobId: 'job-1', itemId: 'item-1' }) }
 
@@ -53,21 +56,66 @@ describe('POST /ai/brain-dump/{jobId}/items/{itemId}/commit', () => {
     expect(mockInvalidateItems).not.toHaveBeenCalled()
   })
 
-  it('commits the draft, invalidates both caches, and returns the count', async () => {
-    mockCommit.mockResolvedValue(1)
+  it('commits the draft, invalidates both caches, and returns the commit outcome', async () => {
+    mockCommit.mockResolvedValue({ created: 1, autoClosed: false, needsCollectionConfirm: false })
     const res = await POST(req(), ctx)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ created: 1, total: 1 })
-    expect(mockCommit).toHaveBeenCalledWith('user-1', 'job-1', 'item-1')
+    expect(await res.json()).toEqual({ created: 1, autoClosed: false, needsCollectionConfirm: false })
+    expect(mockCommit).toHaveBeenCalledWith('user-1', 'job-1', 'item-1', { confirmCreateCollection: undefined })
     expect(mockInvalidateItems).toHaveBeenCalledWith('user-1')
     expect(mockInvalidateCollections).toHaveBeenCalledWith('user-1')
   })
 
-  it('does not invalidate caches when nothing was created (createItem failed)', async () => {
-    mockCommit.mockResolvedValue(0)
+  it('surfaces autoClosed when the last draft was committed', async () => {
+    mockCommit.mockResolvedValue({ created: 1, autoClosed: true, needsCollectionConfirm: false })
+    const res = await POST(req(), ctx)
+    expect(await res.json()).toEqual({ created: 1, autoClosed: true, needsCollectionConfirm: false })
+  })
+
+  it('passes confirmCreateCollection from the body through to the helper', async () => {
+    mockCommit.mockResolvedValue({ created: 1, autoClosed: false, needsCollectionConfirm: false })
+    await POST(req({ confirmCreateCollection: true }), ctx)
+    expect(mockCommit).toHaveBeenCalledWith('user-1', 'job-1', 'item-1', { confirmCreateCollection: true })
+  })
+
+  it('passes confirmCreateCollection: false (cancel) through to commit with no new collection', async () => {
+    mockCommit.mockResolvedValue({ created: 1, autoClosed: false, needsCollectionConfirm: false })
+    await POST(req({ confirmCreateCollection: false }), ctx)
+    expect(mockCommit).toHaveBeenCalledWith('user-1', 'job-1', 'item-1', { confirmCreateCollection: false })
+  })
+
+  it('treats an empty body as "ask first" ({}) — no confirm flag forwarded', async () => {
+    mockCommit.mockResolvedValue({ created: 0, autoClosed: false, needsCollectionConfirm: true })
+    // body omitted entirely
+    await POST(req(), ctx)
+    expect(mockCommit).toHaveBeenCalledWith('user-1', 'job-1', 'item-1', { confirmCreateCollection: undefined })
+  })
+
+  it('returns 422 for a non-empty malformed JSON body instead of swallowing it', async () => {
+    const res = await POST(
+      new NextRequest('http://localhost/api/ai/brain-dump/job-1/items/item-1/commit', {
+        method: 'POST',
+        body: '{ not json',
+      }),
+      ctx,
+    )
+    expect(res.status).toBe(422)
+    expect(mockCommit).not.toHaveBeenCalled()
+  })
+
+  it('returns needsCollectionConfirm without invalidating caches (nothing saved yet)', async () => {
+    mockCommit.mockResolvedValue({ created: 0, autoClosed: false, needsCollectionConfirm: true })
     const res = await POST(req(), ctx)
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ created: 0, total: 1 })
+    expect(await res.json()).toEqual({ created: 0, autoClosed: false, needsCollectionConfirm: true })
+    expect(mockInvalidateItems).not.toHaveBeenCalled()
+  })
+
+  it('does not invalidate caches when nothing was created (createItem failed)', async () => {
+    mockCommit.mockResolvedValue({ created: 0, autoClosed: false, needsCollectionConfirm: false })
+    const res = await POST(req(), ctx)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ created: 0, autoClosed: false, needsCollectionConfirm: false })
     expect(mockInvalidateItems).not.toHaveBeenCalled()
   })
 })

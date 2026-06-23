@@ -5,7 +5,7 @@ import { ErrorMessage } from '@/lib/api/error-messages'
 import { getItemForAuth, getItemById, updateItem, deleteItem } from '@/lib/db/items'
 import { invalidateCollectionsCache, invalidateItemsCache } from '@/lib/infra/cache'
 import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
-import { PRO_ITEM_TYPE_NAMES, PRO_ITEM_TYPE_NAMES_LABEL } from '@/lib/utils/constants'
+import { PRO_ITEM_TYPE_NAMES, PRO_ITEM_TYPE_NAMES_LABEL, TEXT_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'api-items' })
@@ -29,6 +29,13 @@ export const PATCH = authedRouteWithParams<IdParam>(
 
     if (PRO_ITEM_TYPE_NAMES.has(existing.itemType.name) && !isPro) {
       return problem(403, `Upgrade to Pro to edit ${PRO_ITEM_TYPE_NAMES_LABEL}.`)
+    }
+
+    // v3 live type change is only valid among text types. The schema enum already rejects any non-text
+    // *target* (link/file/image) at parse with a 422 — this guard covers the *source*: re-typing a
+    // file/image/link item would strand contentType/fileUrl/url, so block it here too.
+    if (parsed.data.itemTypeName !== undefined && !TEXT_ITEM_TYPE_NAMES.has(existing.itemType.name)) {
+      return problem(422, `Cannot change the type of a ${existing.itemType.name} item.`)
     }
 
     const updated = await updateItem(userId, params.id, parsed.data)

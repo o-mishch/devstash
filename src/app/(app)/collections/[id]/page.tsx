@@ -9,24 +9,55 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { itemCountLabel } from '@/lib/utils/format'
 import { CollectionHeaderActions } from '@/components/collections/collection-header-actions'
 import { CollectionItemsGrid } from '@/components/collections/collection-items-grid'
-import { ItemsTypeSkeleton } from '@/components/shared/skeletons'
+import { ItemsTypeSkeleton, CardGridSkeleton } from '@/components/shared/skeletons'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ItemDeepLink } from '@/components/items/item-deep-link'
 
 interface CollectionPageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ skeleton?: string }>
 }
 
-export default async function CollectionPage({ params }: CollectionPageProps) {
+export default async function CollectionPage({ params, searchParams }: CollectionPageProps) {
   const { id } = await params
+  const forceSkeleton = (await searchParams).skeleton === 'true'
   const userId = await requireUserId()
 
   const collection = await getCollectionById(userId, id)
 
   if (!collection) notFound()
 
+  // `?skeleton=true` preview: render the same skeleton loading.tsx shows, after the ownership guard.
+  if (forceSkeleton) {
+    return (
+      <div className="app-page gap-6 p-6">
+        {/* breadcrumb */}
+        <Skeleton className="h-4 w-40" />
+
+        {/* collection header */}
+        <div className="flex items-center gap-3 border-l-2 border-l-border pl-3 sm:pl-4">
+          <Skeleton className="size-10 shrink-0 rounded-lg" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-3.5 w-16" />
+            </div>
+          </div>
+          <Skeleton className="size-8 shrink-0 rounded-md" />
+        </div>
+
+        <CardGridSkeleton />
+      </div>
+    )
+  }
+
   const mainTypeName = collection.types[0]?.name || 'mixed'
 
   return (
     <div className="app-page gap-6 p-6">
+      <Suspense fallback={null}>
+        <ItemDeepLink />
+      </Suspense>
       <nav className="flex items-center gap-1 text-sm">
         <Link href="/collections" prefetch={false} className="text-muted-foreground hover:text-foreground transition-colors">Collections</Link>
         <ChevronRight className="size-3.5 text-muted-foreground" />

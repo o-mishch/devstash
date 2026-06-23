@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, startTransition, useMemo, useEffect, type SyntheticEvent, type ReactNode } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Plus, FolderPlus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -166,12 +167,12 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     })
   }
 
-  const handleCollectionSubmit = (e: SyntheticEvent) => {
-    e.preventDefault()
-    void collectionForm.handleSubmit(async (data: CollectionFormValues) => {
-      const { error, response } = await api.POST('/collections', {
-        body: { name: data.name, description: data.description ?? null },
-      })
+  // Inline collection-create routes through useMutation (openapi-fetch never throws, so the success/403/
+  // error branching stays in onSuccess on the result — mirrors CollectionFormDialog).
+  const createCollectionMutation = useMutation({
+    mutationFn: (data: CollectionFormValues) =>
+      api.POST('/collections', { body: { name: data.name, description: data.description ?? null } }),
+    onSuccess: ({ error, response }) => {
       if (!error) {
         toast.success('Collection created')
         handleOpenChange(false, true)
@@ -183,7 +184,12 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
       } else {
         toast.error(error.message || 'Failed to create collection')
       }
-    })(e)
+    },
+  })
+
+  const handleCollectionSubmit = (e: SyntheticEvent) => {
+    e.preventDefault()
+    void collectionForm.handleSubmit((data: CollectionFormValues) => createCollectionMutation.mutateAsync(data))(e)
   }
 
   const handleFormSubmit = (e: SyntheticEvent) => {

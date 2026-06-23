@@ -1,25 +1,34 @@
+import { after } from 'next/server'
 import { authedRoute, rateLimited } from '@/lib/api/route'
 import { json, problem, parseOr422 } from '@/lib/api/http'
-import { brainDumpInput } from '@/lib/api/schemas/ai'
+import { brainDumpInput, brainDumpListQuery } from '@/lib/api/schemas/ai'
 import { checkRateLimit, resetRateLimit } from '@/lib/infra/rate-limit'
 import {
   createParseJob,
   listActiveParseJobs,
+  listClosedParseJobs,
   getSourceItemForParse,
   getSourceText,
+  sweepAbandonedParseJobs,
   type ParseSourceItem,
 } from '@/lib/db/ai-parse-jobs'
 import { createItem, deleteItem } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/infra/cache'
-import { BRAIN_DUMP_SOURCE_TAG, SPLIT_FILE_MIN_INPUT_CHARS, COLLECTION_NAME_MAX_CHARS } from '@/lib/utils/constants'
-import { deriveSourceLabel, deriveCollectionName } from '@/lib/utils/derive-source-label'
+import { BRAIN_DUMP_SOURCE_TAG, SPLIT_FILE_MIN_INPUT_CHARS } from '@/lib/utils/constants'
+import { deriveBrainDumpNoteTitle, deriveCollectionName } from '@/lib/utils/derive-source-label'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'ai-brain-dump' })
 
-// Lists the user's in-progress split jobs (entry-card badge + /parse index). No AI budget consumed.
-export const GET = authedRoute({}, async ({ userId }) => {
-  const jobs = await listActiveParseJobs(userId)
+// Lists the user's split jobs: the active list (in-progress + committable completed/failed) by default,
+// or the closed History list with `?history=1`. No AI budget consumed. Opportunistically sweeps abandoned
+// (24 h-stale) jobs after responding — the lazy-cleanup backstop (no cron); best-effort, so a sweep
+// failure never affects the listing.
+export const GET = authedRoute({}, async ({ userId, request }) => {
+  const parsed = parseOr422(brainDumpListQuery, Object.fromEntries(request.nextUrl.searchParams))
+  if (!parsed.ok) return parsed.res
+  const jobs = parsed.data.history ? await listClosedParseJobs(userId) : await listActiveParseJobs(userId)
+  after(sweepAbandonedParseJobs)
   return json({ jobs })
 })
 
@@ -69,15 +78,22 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
   // refused job never orphans a brain-dump note. Never set for a reused existing source item.
   let createdNoteId: string | null = null
 
+  // The default new-collection name seeded on the job. For a paste it is exactly the note title; for an
+  // existing file/note source it is derived from the source name (trailing extension dropped).
+  let collectionName: string | null
+
   if (resolvedRead && resolvedSourceItemId) {
     sourceText = resolvedRead.text
     truncated = resolvedRead.truncated
     sourceName = resolvedRead.sourceName
+    collectionName = deriveCollectionName(sourceName)
   } else {
     // Paste — persist the FULL text as a durable `brain-dump` note (the existing createItem way), then
-    // slice the parse window in memory (no re-read, no second transfer).
+    // slice the parse window in memory (no re-read, no second transfer). A paste has no intrinsic name,
+    // so the saved note gets a dated "Brain dump <date>" label, while the new-collection name is left
+    // empty (the user names the collection themselves on the review board).
     const fullText = text ?? ''
-    const noteTitle = deriveSourceLabel(fullText, COLLECTION_NAME_MAX_CHARS)
+    const noteTitle = deriveBrainDumpNoteTitle()
     const note = await createItem(userId, {
       title: noteTitle,
       description: null,
@@ -105,6 +121,9 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
     sourceText = read.text
     truncated = read.truncated
     sourceName = read.sourceName ?? noteTitle
+    // The new-collection input starts empty for a paste — the user names the target collection on the
+    // review board rather than defaulting it to the dated note title.
+    collectionName = null
     resolvedSourceItemId = note.id
     createdNoteId = note.id
   }
@@ -116,7 +135,7 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
       sourceItemId: resolvedSourceItemId,
       sourceName,
       truncated,
-      collectionName: deriveCollectionName(sourceName),
+      collectionName,
     })
   } catch (err) {
     // Job creation failed after the paste note was persisted — remove the orphan note and refund the
@@ -130,5 +149,7 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
     return problem(500, 'Could not start your Brain Dump. Please try again.')
   }
   log.info({ userId, jobId, truncated }, 'brain-dump job started')
+  // Lazy abandoned-job cleanup backstop (no cron) — best-effort, after the response.
+  after(sweepAbandonedParseJobs)
   return json({ jobId, sourceName, truncated }, 201)
 })

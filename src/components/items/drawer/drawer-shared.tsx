@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { formatDate, cn } from '@/lib/utils'
 import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
@@ -22,7 +23,10 @@ function DrawerContainer({ header, actions, children, style }: DrawerContainerPr
     <div className="flex h-full flex-col overflow-hidden" style={style}>
       <div className="flex shrink-0 items-start gap-3 px-5 pt-5 pb-4 max-sm:px-4 max-sm:pt-2.5 max-sm:pb-1.5">{header}</div>
       <Separator className="shrink-0" />
-      <div className="flex shrink-0 items-center gap-0.5 px-2 py-1.5 max-sm:py-0.5">{actions}</div>
+      {/* @container/actionbar: below the ACTIONBAR_LABEL_CLASS breakpoint the spans inside buttons
+          hide (icon-only mode) so all buttons fit on one row without wrapping. flex-nowrap keeps them
+          in a single line always. */}
+      <div className="@container/actionbar flex shrink-0 flex-nowrap items-center gap-y-1 gap-x-0.5 px-2 py-1.5 max-sm:py-0.5">{actions}</div>
       <Separator className="shrink-0" />
       {/* ScrollArea (not native overflow) so the drawer scrollbar matches the sidebar's. */}
       <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
@@ -44,21 +48,26 @@ interface DrawerLayoutProps {
 
 export function DrawerLayout({ itemType, onClose, titleArea, actionArea, children }: DrawerLayoutProps) {
   return (
-    <DrawerContainer
-      style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
-      header={
-        <>
-          <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0 max-sm:size-8" iconClassName="size-4.5" />
-          <div className="min-w-0 flex-1">{titleArea}</div>
-          <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted" onClick={onClose} title="Close">
-            <X className="size-4" />
-          </Button>
-        </>
-      }
-      actions={actionArea}
-    >
-      {children}
-    </DrawerContainer>
+    // One TooltipProvider for the whole drawer (delay 150 matches the dense action-bar chrome) — scopes the
+    // action bar's Parse tooltip in view mode and the Save/Commit tooltips in edit mode, so neither side
+    // needs its own provider.
+    <TooltipProvider delay={150}>
+      <DrawerContainer
+        style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
+        header={
+          <>
+            <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0 max-sm:size-8" iconClassName="size-4.5" />
+            <div className="min-w-0 flex-1">{titleArea}</div>
+            <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8 rounded-full bg-muted/50 hover:bg-muted" onClick={onClose} title="Close">
+              <X className="size-4" />
+            </Button>
+          </>
+        }
+        actions={actionArea}
+      >
+        {children}
+      </DrawerContainer>
+    </TooltipProvider>
   )
 }
 

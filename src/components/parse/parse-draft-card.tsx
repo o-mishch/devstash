@@ -1,35 +1,60 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
-import { GripVertical, Pencil, Trash2, Check, Loader2, Undo2 } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
+import { useRouter } from 'next/navigation'
+import { Pencil, Trash2, Check, Loader2, Undo2, CopyCheck, PackageCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   usePatchBrainDumpDraftItem,
   useDeleteBrainDumpDraftItem,
   useCommitBrainDumpDraftItem,
   type BrainDumpDraftItem,
+  type BrainDumpCommitResult,
 } from '@/hooks/use-brain-dump'
+import { useItemUrlParamSync } from '@/hooks/use-item-url-param-sync'
+import { useFetchItemDetail } from '@/hooks/use-item-detail'
+import { useItemDrawerStore } from '@/stores/item-drawer'
 import {
-  ITEM_TYPES_WITH_CONTENT,
-  ITEM_TYPES_WITH_LANGUAGE,
-  ITEM_TYPES_WITH_URL,
-} from '@/lib/utils/constants'
-import { cn, getTypeLabel } from '@/lib/utils'
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
+import { cn, ACTIONBAR_LABEL_CLASS, ACTIONBAR_BUTTON_CLASS } from '@/lib/utils'
+import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+import { SheetTitle } from '@/components/ui/sheet'
+import { DrawerShell } from '@/components/items/drawer/drawer-shell'
+import { ItemDrawerEditContent } from '@/components/items/drawer/item-drawer-edit-content'
+import type { FullItem } from '@/types/item'
+import type { UpdateItemInput } from '@/lib/utils/validators'
 
 interface ParseDraftCardProps {
   jobId: string
   item: BrainDumpDraftItem
   inTrash: boolean
+  // History (closed-job) mode renders only the Trash bucket, so a restored draft would land in a type
+  // bucket that isn't drawn and vanish from view. When false, the trash card drops Restore and offers
+  // Edit / Save now / Delete forever instead, keeping every action reachable.
+  canRestore: boolean
+  // When true, scroll this card into view on mount and flash a highlight ring (deep-link target).
+  highlight?: boolean
+  // When true, this draft's last bulk-commit attempt failed — flash a transient error ring so it's
+  // distinguishable from untouched cards. Cleared (via onClearFailed) on this card's next success.
+  failed?: boolean
+  // Clear this card's failed-ring — called after a successful trash/restore/commit/edit on this card.
+  onClearFailed?: () => void
   rootRef: (element: Element | null) => void
-  handleRef: (element: Element | null) => void
   isDragging: boolean
+  // Optimistic trash/restore handlers from the board (reuse its `persistMove` — optimistic reflow with
+  // revert on failure), so the card's Delete/Restore behave exactly like a drag into/out of Trash.
+  onTrash: (item: BrainDumpDraftItem) => void
+  onRestore: (item: BrainDumpDraftItem) => void
   // Bumped (+1/-1) around trash-membership mutations so the board can block Empty Trash while one is
   // in flight (a restore the server hasn't committed must not be deleted by an empty-trash).
   onPatchPending: (delta: number) => void
@@ -41,49 +66,85 @@ export function ParseDraftCard({
   jobId,
   item,
   inTrash,
+  canRestore,
+  highlight,
+  failed,
+  onClearFailed,
   rootRef,
-  handleRef,
   isDragging,
+  onTrash,
+  onRestore,
   onPatchPending,
   onEdited,
   onRemoved,
 }: ParseDraftCardProps) {
+  const router = useRouter()
   const patchDraft = usePatchBrainDumpDraftItem()
   const deleteDraft = useDeleteBrainDumpDraftItem()
   const commitDraft = useCommitBrainDumpDraftItem()
   const [editOpen, setEditOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-
-  // Soft delete: move the draft to the Trash bucket (recoverable) rather than removing it.
-  const trash = async () => {
-    setBusy(true)
-    onPatchPending(1)
-    const result = await patchDraft(jobId, item.id, { trashed: true })
-    onPatchPending(-1)
-    setBusy(false)
-    if (!result.ok) {
-      toast.error('Could not move to trash')
-      return
+  const [highlighted, setHighlighted] = useState(highlight ?? false)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  // Suppresses the click that fires after a drag ends. dnd-kit sets `isDragging` false before the
+  // pointer-up click event fires. We track when the card was actively dragging in a ref, then on
+  // the isDragging false transition set wasDraggingRef so openEditor swallows the next click.
+  const wasDraggingRef = useRef(false)
+  const wasDraggingActiveRef = useRef(false)
+  useEffect(() => {
+    if (isDragging) {
+      wasDraggingActiveRef.current = true
+    } else if (wasDraggingActiveRef.current) {
+      wasDraggingActiveRef.current = false
+      wasDraggingRef.current = true
     }
-    onEdited({ trashed: true })
-  }
+  }, [isDragging])
 
-  // Restore from the Trash bucket back to its type bucket.
-  const restore = async () => {
-    setBusy(true)
-    onPatchPending(1)
-    const result = await patchDraft(jobId, item.id, { trashed: false })
-    onPatchPending(-1)
-    setBusy(false)
-    if (!result.ok) {
-      toast.error('Could not restore draft')
-      return
+  // Run the scroll-into-view + open + ring-flash once per activation of `highlight`. `highlight` is a
+  // reactive prop that can flip true AFTER mount (the deep-link target arrives once the draft streams in),
+  // so it must be in the deps — but the `hasRun` guard keeps it a one-shot so a later re-render doesn't
+  // re-trigger the scroll/open.
+  const highlightRanRef = useRef(false)
+  useEffect(() => {
+    if (!highlight || highlightRanRef.current) return
+    const el = cardRef.current
+    if (!el) return
+    highlightRanRef.current = true
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // Show the ring now (covers a post-mount activation where the initial state was false) and open after
+    // a frame so the drawer mounts closed first and its slide-in animation plays.
+    setHighlighted(true)
+    const openTimer = requestAnimationFrame(() => setEditOpen(true))
+    // Flash the ring for 1.5 s then fade out.
+    const ringTimer = setTimeout(() => setHighlighted(false), 1500)
+    return () => {
+      cancelAnimationFrame(openTimer)
+      clearTimeout(ringTimer)
     }
-    onEdited({ trashed: false })
-  }
+  }, [highlight])
 
-  // Permanent delete (from the Trash bucket only) — removes the row for good.
+  // Keep ?item=<draftId> in sync with the edit drawer via the shared hook (same mechanism the item
+  // drawer provider uses), so a draft's editor is deep-linkable and clears the param on close.
+  useItemUrlParamSync(editOpen, item.id)
+
+  // Collection-confirm dialog: shown when "Save now" needs the user to confirm creating the job's pending
+  // new collection before this draft can attach to it (the full-job "Save all" creates it silently).
+  const [collectionConfirmOpen, setCollectionConfirmOpen] = useState(false)
+
+  // Delete-forever confirm dialog: permanent removal from the Trash bucket is irreversible, so the
+  // Delete icon opens this dialog instead of deleting immediately.
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+
+  // Soft delete / restore: delegate to the board's optimistic `persistMove`-backed handlers (optimistic
+  // reflow + revert on failure + failed-ring clear), instead of the card's old pessimistic await-then-
+  // apply spinner. These are synchronous — the card no longer blocks/spins on the network round-trip.
+  const trash = () => onTrash(item)
+  const restore = () => onRestore(item)
+
+  // Permanent delete (from the Trash bucket only) — removes the row for good. Reached only via the
+  // delete-confirm dialog (irreversible), so it closes that dialog as it runs.
   const deleteForever = async () => {
+    setDeleteConfirmOpen(false)
     setBusy(true)
     onPatchPending(1)
     const ok = await deleteDraft(jobId, item.id)
@@ -96,103 +157,335 @@ export function ParseDraftCard({
     onRemoved()
   }
 
-  // Per-item "Save now": commit this draft into a real item, attached to the job's collection target
-  // (same as the batch "Save all"), then drop the draft. Spends no AI budget (just createItem).
-  const saveNow = async () => {
-    setBusy(true)
-    const result = await commitDraft(jobId, item.id)
-    setBusy(false)
+  // Applies a settled per-item commit result: toasts, drops the card, and — when this was the last draft
+  // (the job auto-closed) — redirects to the dashboard (always dashboard, matching "Save all").
+  const applyCommitResult = (result: BrainDumpCommitResult): void => {
     if (!result.ok) {
       toast.error(result.message ?? 'Could not save item')
       return
     }
+    // A successful action supersedes a prior bulk-commit failure on this card (it's leaving the board now).
+    onClearFailed?.()
     toast.success(`Saved “${item.title}”`)
     onRemoved()
+    if (result.closed) router.push('/dashboard')
   }
 
-  const preview = item.itemTypeName === 'link' ? item.url : item.content
+  // Per-item "Save now": commit this draft into a real item, attached to the job's collection target
+  // (same as the batch "Save all"), then drop the draft. Spends no AI budget (just createItem). The first
+  // attempt omits `confirmCreateCollection`; if the job has a pending new collection the server answers
+  // `needsCollectionConfirm` and we open the confirm dialog instead of committing.
+  const saveNow = async () => {
+    setBusy(true)
+    const result = await commitDraft(jobId, item.id)
+    setBusy(false)
+    if (result.needsCollectionConfirm) {
+      setCollectionConfirmOpen(true)
+      return
+    }
+    applyCommitResult(result)
+  }
+
+  // Re-commit after the collection-confirm dialog: `create` true materializes the pending new collection
+  // and attaches it; false (Cancel) commits the item with no new collection. Either way the item is saved.
+  const confirmSaveNow = async (create: boolean) => {
+    setCollectionConfirmOpen(false)
+    setBusy(true)
+    const result = await commitDraft(jobId, item.id, { confirmCreateCollection: create })
+    setBusy(false)
+    applyCommitResult(result)
+  }
+
+  const subtitle = item.description || (item.itemTypeName === 'link' ? item.url : item.content)
+
+  // The whole card is the drag source (no separate grip handle): press+move drags, a plain press opens
+  // the editor. The board's PointerSensor activation distance (5px mouse / hold on touch) is what
+  // separates the two, so a click that doesn't move never starts a drag. The action buttons
+  // opt out of both via `data-no-drag` (the sensor's preventActivation) and stopPropagation (so they
+  // don't open the drawer). `wasDraggingRef` suppresses the click that fires on pointer-up after a drag.
+  const openEditor = () => {
+    if (wasDraggingRef.current) {
+      wasDraggingRef.current = false
+      return
+    }
+    if (!busy) setEditOpen(true)
+  }
 
   return (
+    // Local provider so the card's action/duplicate tooltips appear quickly (150ms) instead of the
+    // app-wide 400ms default — matching the Brain Dump entry card.
+    <TooltipProvider delay={150}>
     <div
-      ref={rootRef}
+      ref={(el) => {
+        rootRef(el)
+        cardRef.current = el as HTMLDivElement | null
+      }}
+      role="button"
+      tabIndex={0}
+      onClick={openEditor}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          openEditor()
+        }
+      }}
+      aria-label={`Open ${item.title}`}
+      // The accent feeds the colored left border (matching the app's item cards / unified card system):
+      // a 2px left border that's neutral at rest and lights up to the item-type color on hover.
+      style={{ '--card-accent': SYSTEM_TYPE_COLORS[item.itemTypeName] ?? 'var(--primary)' } as CSSProperties}
+      // card-interactive = the same hover lift + highlight + shadow as the dashboard item rows.
+      // draggable-card = touch-action:none so a press-and-hold drags on touch screens (the whole card
+      // is the drag source) instead of the browser hijacking the gesture for scrolling.
       className={cn(
-        'group rounded-lg border border-border bg-card p-3 shadow-sm transition-shadow hover:shadow-md',
+        // `relative` anchors the absolutely-positioned action overlay below. The overlay (not an inline
+        // flex sibling) means the text column owns the FULL row width — title/subtitle truncate against
+        // the card edge, not against a permanently-reserved icon column — so a non-hovered card shows
+        // maximally more of the title. The 2px left border picks up the type accent on hover
+        // (`hover:border-l-[var(--card-accent)]`), mirroring the app's item cards.
+        'card-interactive draggable-card group app-row relative gap-2.5 rounded-lg border border-border border-l-2 bg-card px-2.5 py-2 text-left transition-all hover:border-l-[var(--card-accent)]',
         isDragging && 'opacity-50',
+        highlighted && 'ring-2 ring-primary ring-offset-1',
+        // A failed bulk-commit left this card behind — flash an error ring so it stands out from
+        // untouched cards. The highlight ring (deep-link) takes precedence when both are set.
+        failed && !highlighted && 'ring-2 ring-destructive ring-offset-1',
       )}
     >
-      <div className="flex items-start gap-2">
-        <button
-          ref={handleRef}
-          type="button"
-          aria-label="Drag to another bucket"
-          className="mt-0.5 cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
-        >
-          <GripVertical className="size-4" />
-        </button>
-        <ItemTypeIcon typeName={item.itemTypeName} className="mt-0.5 size-4 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{item.title}</p>
-          {item.description && (
-            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
-          )}
-          {preview && (
-            <pre className="mt-1.5 max-h-20 overflow-hidden rounded bg-muted/60 p-2 text-[11px] leading-snug whitespace-pre-wrap break-words text-muted-foreground">
-              {preview.slice(0, 240)}
-            </pre>
-          )}
-          {item.tags.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {item.tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="px-1.5 py-0 text-[10px]">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-          )}
+      <ItemTypeIcon typeName={item.itemTypeName} className="size-4 shrink-0" />
+      {/* Title owns the whole first row (no badge sibling stealing width → truncates much later). The
+          duplicate marker drops to the subtitle line as a compact icon-chip, where it competes with the
+          lower-priority preview text instead of the title. `pr-14` reserves a gutter on hover so the
+          revealed action overlay never sits over the last characters of a long title/subtitle. */}
+      <div className="min-w-0 flex-1 group-hover:pr-14 group-focus-within:pr-14 touch:pr-14">
+        <p className="truncate text-sm font-medium">{item.title}</p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          {!inTrash && item.duplicateOf && <DuplicateBadge match={item.duplicateOf} />}
+          {subtitle && <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{subtitle}</p>}
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <div
+        data-no-drag
+        onClick={(event) => event.stopPropagation()}
+        // Absolute overlay pinned to the right edge so it reserves NO row width (per Tailwind's
+        // hover-action pattern) — the text column truncates against the card edge, not this column.
+        // Hover-reveal on desktop; always visible on touch/mobile (no hover there) via the `touch:`
+        // variant (coarse pointer OR < lg viewport) so the actions are reachable without a hover.
+        // A faint card-colored backdrop keeps the icons legible where they overlap text on a long row.
+        className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0 rounded-md bg-card/80 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100 touch:opacity-100"
+      >
         {inTrash ? (
           <>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={restore} disabled={busy}>
-              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Undo2 className="size-3.5" />} Restore
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-              onClick={deleteForever}
-              disabled={busy}
-            >
-              <Trash2 className="size-3.5" /> Delete forever
-            </Button>
+            {canRestore ? (
+              <IconAction label="Restore" onClick={restore} disabled={busy}>
+                {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Undo2 className="size-3.5" />}
+              </IconAction>
+            ) : (
+              <>
+                <IconAction label="Edit" onClick={openEditor} disabled={busy}>
+                  <Pencil className="size-3.5" />
+                </IconAction>
+                <IconAction
+                  label="Save now"
+                  tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
+                  onClick={saveNow}
+                  disabled={busy}
+                >
+                  {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+                </IconAction>
+              </>
+            )}
+            <IconAction label="Delete forever" onClick={() => setDeleteConfirmOpen(true)} disabled={busy} destructive>
+              <Trash2 className="size-3.5" />
+            </IconAction>
           </>
         ) : (
           <>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setEditOpen(true)} disabled={busy}>
-              <Pencil className="size-3.5" /> Edit
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={trash} disabled={busy}>
-              <Trash2 className="size-3.5" /> Delete
-            </Button>
-            <Button size="sm" className="h-7 px-2 text-xs" onClick={saveNow} disabled={busy}>
-              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />} Save now
-            </Button>
+            <IconAction label="Delete" tooltip="Delete (move to trash)" onClick={trash} disabled={busy} destructive>
+              <Trash2 className="size-3.5" />
+            </IconAction>
+            <IconAction
+              label="Save now"
+              tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
+              onClick={saveNow}
+              disabled={busy}
+            >
+              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+            </IconAction>
           </>
         )}
       </div>
 
       <EditDraftDrawer
-        key={editOpen ? `${item.id}:${item.title}:${item.content?.length ?? 0}` : 'closed'}
         open={editOpen}
         onOpenChange={setEditOpen}
         jobId={jobId}
         item={item}
         patchDraft={patchDraft}
-        onEdited={onEdited}
+        onEdited={(patch) => {
+          // A successful draft edit also clears a prior bulk-commit failure ring on this card.
+          onClearFailed?.()
+          onEdited(patch)
+        }}
+        busy={busy}
+        canCommit={!inTrash || !canRestore}
+        onTrash={async () => {
+          await trash()
+          setEditOpen(false)
+        }}
+        onCommit={async () => {
+          await saveNow()
+          // saveNow drops the card on success (onRemoved) and may open the collection-confirm dialog;
+          // close the drawer either way so the confirm dialog (rendered on the card) isn't behind it.
+          setEditOpen(false)
+        }}
       />
+      <Dialog open={collectionConfirmOpen} onOpenChange={setCollectionConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create the collection for this item?</DialogTitle>
+            <DialogDescription>
+              This Brain Dump wants to save items into a new collection. Saving this item now will create
+              that collection. You can save it without the collection instead.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => confirmSaveNow(false)} disabled={busy}>
+              Save without collection
+            </Button>
+            <Button size="sm" onClick={() => confirmSaveNow(true)} disabled={busy}>
+              Create and save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this draft permanently?</DialogTitle>
+            <DialogDescription>
+              “{item.title}” will be removed from this Brain Dump for good. This can’t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={deleteForever} disabled={busy}>
+              Delete forever
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+    </TooltipProvider>
+  )
+}
+
+interface IconActionProps {
+  label: string
+  // Optional richer tooltip text; falls back to `label`. Used to share the drawer's verbose action copy
+  // (e.g. the full Commit explanation) while keeping `aria-label` short.
+  tooltip?: string
+  onClick: () => void
+  disabled?: boolean
+  destructive?: boolean
+  children: ReactNode
+}
+
+// A compact icon-only card action with a shadcn tooltip (the card is dense, so the actions are
+// icon-only). Used for Edit / Save now / Delete / Restore on the draft card.
+function IconAction({ label, tooltip, onClick, disabled, destructive, children }: IconActionProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            // `icon-sm` carries `touch:size-11` (44px tap target on coarse-pointer / <lg). On this dense
+            // overlay the cards are already tap-friendly, so neutralize it (`touch:size-6`) — otherwise
+            // the buttons balloon and the trash/check icons drift far apart on touch/narrow viewports.
+            className={cn('size-6 touch:size-6', destructive && 'text-destructive hover:text-destructive')}
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={label}
+          >
+            {children}
+          </Button>
+        }
+      />
+      <TooltipContent className="max-w-[260px]">{tooltip ?? label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+type DuplicateOf = NonNullable<BrainDumpDraftItem['duplicateOf']>
+
+interface DuplicateBadgeProps {
+  match: DuplicateOf
+}
+
+// Advisory "possible duplicate" badge — opens the existing item's detail drawer IN PLACE on the current
+// page (fetch by id → openDrawer), so closing the drawer returns the user to the parse board instead of
+// navigating away to /items/<type>. The drawer + provider live in the shared (app) layout, so they're
+// already mounted here. Never blocks commit; purely informational.
+function DuplicateBadge({ match }: DuplicateBadgeProps) {
+  const fetchItemDetail = useFetchItemDetail()
+  const openDrawer = useItemDrawerStore((state) => state.openDrawer)
+  const [opening, setOpening] = useState(false)
+
+  // Compact icon-only chip (down from the worded "Possible duplicate" badge): on the subtitle line it
+  // must not steal width from the preview text. The full meaning + "click to open" lives in the tooltip
+  // below; `aria-label` keeps it accessible to screen readers despite the absent visible text.
+  const badge = (
+    <Badge
+      variant="outline"
+      aria-label="Possible duplicate"
+      className="shrink-0 gap-1 border-amber-500/40 px-1 py-0 text-[10px] font-normal text-amber-600 dark:text-amber-400"
+    >
+      <CopyCheck className="size-3" />
+      Dup
+    </Badge>
+  )
+
+  // Fetch the referenced item by id and pop the shared item drawer — same fetch-then-openDrawer path as
+  // ItemDeepLink, but triggered by a click rather than a URL param, so the user never leaves /parse.
+  // The badge sits inside the card's `role="button"` (onClick → openEditor) on the drag source, so stop
+  // the click from bubbling (else it opens THIS draft's editor) and mark `data-no-drag` (else a press
+  // starts a card drag).
+  const openReferenced = async (event: MouseEvent) => {
+    event.stopPropagation()
+    if (opening) return
+    setOpening(true)
+    // Cached fetch (TanStack) — re-opening the same referenced item skips the backend round-trip.
+    const item = await fetchItemDetail(match.id)
+    setOpening(false)
+    if (item) {
+      openDrawer(item)
+    } else {
+      toast.error('That item is no longer available.')
+    }
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            data-no-drag
+            onClick={openReferenced}
+            disabled={opening}
+            className="inline-flex w-fit cursor-pointer underline-offset-2 hover:underline disabled:opacity-70"
+          />
+        }
+      >
+        {badge}
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[260px]">
+        {`Looks like “${match.title}”, already in your stash. Click to open it.`}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
@@ -203,103 +496,136 @@ interface EditDraftDrawerProps {
   item: BrainDumpDraftItem
   patchDraft: ReturnType<typeof usePatchBrainDumpDraftItem>
   onEdited: (patch: Partial<BrainDumpDraftItem>) => void
+  // Mirrors the card's busy state so the drawer's Delete/Commit lock during a card-level action.
+  busy: boolean
+  // Commit (→ live item) is offered for live drafts and for closed-job trash drafts (still committable),
+  // but not for a restorable trash draft (the user restores it first via the card).
+  canCommit: boolean
+  // Move the draft to the Trash bucket (soft delete), then close the drawer.
+  onTrash: () => void
+  // Commit the draft into a real item (reuses the card's per-item Save-now flow incl. collection-confirm
+  // + last-draft redirect), then close the drawer.
+  onCommit: () => void
 }
 
-function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, onEdited }: EditDraftDrawerProps) {
-  const [title, setTitle] = useState(item.title)
-  const [description, setDescription] = useState(item.description ?? '')
-  const [content, setContent] = useState(item.content ?? '')
-  const [url, setUrl] = useState(item.url ?? '')
-  const [language, setLanguage] = useState(item.language ?? '')
-  const [tags, setTags] = useState(item.tags.join(', '))
-  const [saving, setSaving] = useState(false)
+// Maps a Brain Dump draft onto the FullItem shape the shared item drawer renders. The drawer only reads
+// the title/type/content/language/url/description/tags fields for editing; the list/meta fields
+// (favorite, pin, collections, previews, dates) are filled with inert defaults so a draft — which is an
+// AiParseJobItem row, not a real Item — can drive the exact same edit form. `id` carries the draft id so
+// the form keys correctly; it is never used to fetch a real item (we pass an already-FullItem).
+function draftToFullItem(item: BrainDumpDraftItem): FullItem {
+  return {
+    id: item.id,
+    title: item.title,
+    itemType: { name: item.itemTypeName },
+    content: item.content ?? null,
+    language: item.language ?? null,
+    url: item.url ?? null,
+    description: item.description ?? null,
+    tags: item.tags,
+    descriptionPreview: item.description ?? null,
+    contentPreview: item.content ?? null,
+    fileName: null,
+    fileSize: null,
+    isFavorite: false,
+    isPinned: false,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+    collections: [],
+  }
+}
 
-  const hasContent = ITEM_TYPES_WITH_CONTENT.has(item.itemTypeName)
-  const hasUrl = ITEM_TYPES_WITH_URL.has(item.itemTypeName)
-  const hasLanguage = ITEM_TYPES_WITH_LANGUAGE.has(item.itemTypeName)
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault()
+// The draft edit drawer reuses the app's real item-edit drawer content (DRY + consistency): same title
+// editor, type-switcher, language picker, Monaco content editor, AI description/tags. Save is routed to
+// the draft PATCH endpoint via `onSubmitOverride` instead of the real-item update flow. Drafts have no
+// per-item collections (they attach to the job's collection target on commit), so the collection picker
+// is hidden by passing an empty list.
+function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, onEdited, busy, canCommit, onTrash, onCommit }: EditDraftDrawerProps) {
+  const saveDraft = async (payload: UpdateItemInput): Promise<void> => {
     const patch: Partial<BrainDumpDraftItem> = {
-      title: title.trim(),
-      description: description.trim() || null,
-      content: hasContent ? content : null,
-      url: hasUrl ? url.trim() || null : null,
-      language: hasLanguage ? language.trim() || null : null,
-      tags: tags
-        .split(',')
-        .map((tag) => tag.trim().toLowerCase())
-        .filter(Boolean)
-        .slice(0, 5),
+      title: payload.title,
+      description: payload.description ?? null,
+      content: payload.content ?? null,
+      url: payload.url ?? null,
+      language: payload.language ?? null,
+      tags: payload.tags ?? [],
+      // A staged type switch in the drawer re-types the draft (and re-buckets it on the board).
+      ...(payload.itemTypeName ? { itemTypeName: payload.itemTypeName } : {}),
     }
-    setSaving(true)
     const result = await patchDraft(jobId, item.id, patch)
-    setSaving(false)
     if (!result.ok) {
       toast.error('Could not save changes')
       return
     }
     onEdited(result.item ?? patch)
+    toast.success('Draft saved')
     onOpenChange(false)
   }
 
+  // Same Sheet shell as the live item drawer (resize, swipe-to-dismiss, grab handle, close-ref plumbing)
+  // via DrawerShell. `stopPropagation` is on because this Sheet sits under the draft card's clickable
+  // root in the React tree — see DrawerShell's prop doc. Only the body (the shared edit form, plus the
+  // draft-specific Delete/Commit actions) differs from the live drawer.
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 overflow-y-auto p-5 sm:max-w-md">
-        <div className="mb-4">
-          <SheetTitle className="flex items-center gap-2">
-            <ItemTypeIcon typeName={item.itemTypeName} className="size-4" />
-            Edit {getTypeLabel(item.itemTypeName)} draft
-          </SheetTitle>
-          <p className="mt-1 text-xs text-muted-foreground">Changes are saved to the draft and persist on refresh.</p>
-        </div>
-        <form onSubmit={submit} className="space-y-3">
-          <div className="space-y-1">
-            <Label htmlFor="draft-title">Title</Label>
-            <Input id="draft-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-          </div>
-          {hasUrl && (
-            <div className="space-y-1">
-              <Label htmlFor="draft-url">URL</Label>
-              <Input id="draft-url" value={url} onChange={(e) => setUrl(e.target.value)} type="url" />
-            </div>
-          )}
-          {hasContent && (
-            <div className="space-y-1">
-              <Label htmlFor="draft-content">Content</Label>
-              <Textarea
-                id="draft-content"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={6}
-                className="font-mono text-xs"
-              />
-            </div>
-          )}
-          {hasLanguage && (
-            <div className="space-y-1">
-              <Label htmlFor="draft-language">Language</Label>
-              <Input id="draft-language" value={language} onChange={(e) => setLanguage(e.target.value)} />
-            </div>
-          )}
-          <div className="space-y-1">
-            <Label htmlFor="draft-description">Description</Label>
-            <Input id="draft-description" value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="draft-tags">Tags (comma-separated, max 5)</Label>
-            <Input id="draft-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving || !title.trim()}>
-              {saving && <Loader2 className="size-4 animate-spin" />} Save
-            </Button>
-          </div>
-        </form>
-      </SheetContent>
-    </Sheet>
+    <DrawerShell open={open} onOpenChange={onOpenChange} stopPropagation>
+      {(sheetCloseRef) => (
+        <>
+          <SheetTitle className="sr-only">Edit draft</SheetTitle>
+          {/* Key on the draft id ONLY — keying on title/content would full-remount the form whenever a
+           * stream re-emit updates this draft, silently dropping the user's in-progress edits (and
+           * bypassing the dirty guard). ItemDrawerEditContent snapshots `item` into the form on mount and
+           * does NOT reconcile later field changes (there is no reconciliation effect) — the id `key` is
+           * the only remount seam, so an open edit is never overwritten by a background re-emit. */}
+          <ItemDrawerEditContent
+            key={item.id}
+            item={draftToFullItem(item)}
+            collections={[]}
+            onClose={() => onOpenChange(false)}
+            onCancel={() => onOpenChange(false)}
+            onSave={() => onOpenChange(false)}
+            onSubmitOverride={saveDraft}
+            showDetailsSection={false}
+            sheetCloseRef={sheetCloseRef}
+            saveLabel="Save draft"
+            saveTooltip="Save your edits to this draft (stays in review)"
+            renderExtraActions={({ disabled }) => (
+              <>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(ACTIONBAR_BUTTON_CLASS, 'text-destructive hover:text-destructive')}
+                        onClick={onTrash}
+                        disabled={disabled || busy}
+                        aria-label="Delete"
+                      >
+                        <Trash2 className="size-4" />
+                        <span className={ACTIONBAR_LABEL_CLASS}>Delete</span>
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>Delete (move to trash)</TooltipContent>
+                </Tooltip>
+                {canCommit && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button size="sm" className={ACTIONBAR_BUTTON_CLASS} onClick={onCommit} disabled={disabled || busy} aria-label="Commit">
+                          <PackageCheck className="size-4" />
+                          <span className={ACTIONBAR_LABEL_CLASS}>Commit</span>
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>Commit this draft to your stash — moves it out of this Brain Dump and into your real items</TooltipContent>
+                  </Tooltip>
+                )}
+              </>
+            )}
+          />
+        </>
+      )}
+    </DrawerShell>
   )
 }

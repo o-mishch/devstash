@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect, type DragEvent } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/ui'
 import { api } from '@/lib/api/client'
@@ -138,9 +139,14 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     })
   }
 
+  // The upload is a multi-step pipeline (presign → direct-S3 POST → cleanup on failure); wrapping the whole
+  // operation in useMutation routes it through the same mutation layer as the rest of the app. The internal
+  // `/upload/url` POST and `/upload` cleanup DELETE remain pipeline sub-steps, not separate mutations.
+  const uploadMutation = useMutation({ mutationFn: uploadFile })
+
   function handleFiles(files: FileList | null) {
     const file = files?.[0]
-    if (file) void uploadFile(file)
+    if (file) uploadMutation.mutate(file)
   }
 
   function handleDrop(e: DragEvent) {
@@ -152,7 +158,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
   if (value) {
     const fileMeta = (
       <>
-        <FileIcon className="size-4 shrink-0 text-muted-foreground" />
+        <FileIcon className="card-icon size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{value.fileName}</p>
           <p className="text-xs text-muted-foreground">{formatBytes(value.fileSize)}</p>
@@ -175,7 +181,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     // file meta so the upload is immediately recognizable; other file types keep the chip.
     if (itemType === 'image' && value.localPreviewUrl) {
       return (
-        <div className="overflow-hidden rounded-lg border border-border bg-muted/30">
+        <div className="card-surface card-hover group overflow-hidden rounded-lg border border-border bg-muted/30">
           {/* Local blob/object URL — next/image can't optimize it, so a plain <img> is correct here. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -191,7 +197,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     }
 
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
+      <div className="card-surface card-hover group flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
         {fileMeta}
       </div>
     )
@@ -203,7 +209,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
         role="button"
         tabIndex={0}
         className={cn(
-          'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors',
+          'group flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors',
           isDragging
             ? 'border-primary bg-primary/5'
             : 'border-border hover:border-border/80 hover:bg-muted/30',
@@ -215,7 +221,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
       >
-        <Upload className="size-5 text-muted-foreground" />
+        <Upload className="card-icon size-5 text-muted-foreground" />
         <div>
           <p className="text-sm font-medium">
             {isDragging ? 'Drop to upload' : 'Click or drag to upload'}

@@ -32,8 +32,8 @@ export function ClassicSkin({
         <p className="text-sm text-muted-foreground">Your developer knowledge hub</p>
       </div>
 
-      <Suspense fallback={<StatsCardsSkeleton />}>
-        <DashboardStats statsPromise={statsPromise} collectionStatsPromise={collectionStatsPromise} />
+      <Suspense fallback={<StatsCardsSkeleton isPro={isPro} />}>
+        <DashboardStats statsPromise={statsPromise} collectionStatsPromise={collectionStatsPromise} isPro={isPro} />
       </Suspense>
 
       <Suspense fallback={<CollectionsGridSkeleton />}>

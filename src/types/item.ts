@@ -28,35 +28,6 @@ export interface LightItem {
   isPinned: boolean
 }
 
-/** Slim shape for global search API responses */
-export interface SearchResultItem {
-  id: string
-  title: string
-  itemType: SlimItemType
-  descriptionPreview: string | null
-}
-
-export function searchResultToLightItem(hit: SearchResultItem): LightItem {
-  return {
-    id: hit.id,
-    title: hit.title,
-    itemType: hit.itemType,
-    descriptionPreview: hit.descriptionPreview,
-    contentPreview: null,
-    createdAt: new Date(0).toISOString(),
-    url: null,
-    tags: [],
-    fileName: null,
-    fileSize: null,
-    isFavorite: false,
-    isPinned: false,
-  }
-}
-
-export function isSearchResultItem(item: LightItem | SearchResultItem): item is SearchResultItem {
-  return !('tags' in item)
-}
-
 /** Fetched on drawer open — only what LightItem doesn't already carry */
 export interface ItemDetails {
   description: string | null

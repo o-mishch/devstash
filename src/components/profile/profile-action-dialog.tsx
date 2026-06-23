@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import type { ReactNode } from 'react'
@@ -34,20 +35,19 @@ export function ProfileActionDialog({
   onSuccess,
 }: ProfileActionDialogProps) {
   const [open, setOpen] = useState(false)
-  const [isPending, startTransition] = useTransition()
 
-  function handleAction() {
-    startTransition(async () => {
+  const actionMutation = useMutation({
+    mutationFn: async () => {
       const { error } = await api.DELETE('/profile/accounts/{id}', { params: { path: { id: accountId } } })
-      if (!error) {
-        toast.success(successMessage)
-        setOpen(false)
-        onSuccess?.()
-      } else {
-        toast.error(error.message || errorMessage || 'Action failed.')
-      }
-    })
-  }
+      if (error) throw new Error(error.message || errorMessage || 'Action failed.')
+    },
+    onSuccess: () => {
+      toast.success(successMessage)
+      setOpen(false)
+      onSuccess?.()
+    },
+    onError: (error: Error) => toast.error(error.message || errorMessage || 'Action failed.'),
+  })
 
   return (
     <BaseProfileDialog
@@ -61,8 +61,8 @@ export function ProfileActionDialog({
     >
       <DestructiveDialogFooter
         onCancel={() => setOpen(false)}
-        onConfirm={handleAction}
-        isPending={isPending}
+        onConfirm={() => actionMutation.mutate()}
+        isPending={actionMutation.isPending}
         confirmText={confirmText}
       />
     </BaseProfileDialog>

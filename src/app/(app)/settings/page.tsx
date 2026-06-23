@@ -6,14 +6,18 @@ import { getCachedSession } from '@/lib/session'
 import type { SettingsCheckoutSearchParams } from '@/lib/billing/checkout/checkout-return-params'
 import { EditorPreferencesForm } from '@/components/settings/editor-preferences-form'
 import { BillingSettings } from '@/components/billing/billing-settings'
+import SettingsLoading from './loading'
 
 interface SettingsPageProps {
-  searchParams: Promise<SettingsCheckoutSearchParams>
+  searchParams: Promise<SettingsCheckoutSearchParams & { skeleton?: string }>
 }
 
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const session = await getCachedSession()
   if (!session?.user?.id) redirect('/sign-in')
+
+  // `?skeleton=true` preview: render the same skeleton loading.tsx shows, after the auth guard.
+  if ((await searchParams).skeleton === 'true') return <SettingsLoading />
 
   return (
     <div className="app-page gap-6 p-6">

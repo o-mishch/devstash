@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
@@ -19,7 +20,6 @@ interface RemovePasswordDialogProps {
 export function RemovePasswordDialog({ onCredentialRemoved }: RemovePasswordDialogProps) {
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
-  const [isPending, startTransition] = useTransition()
   const router = useRouter()
 
   function handleOpenChange(nextOpen: boolean) {
@@ -27,27 +27,27 @@ export function RemovePasswordDialog({ onCredentialRemoved }: RemovePasswordDial
     if (!nextOpen) setPassword('')
   }
 
-  function handleRemove() {
-    startTransition(async () => {
+  const removeMutation = useMutation({
+    mutationFn: async () => {
       const { error } = await api.DELETE('/profile/credentials', { body: { password } })
-      if (!error) {
-        toast.success('Email & Password sign-in deleted. Sign in via a linked account.')
-        setOpen(false)
-        setPassword('')
-        onCredentialRemoved()
-        router.refresh()
-      } else {
-        toast.error(error.message || 'Failed to delete sign-in.')
-      }
-    })
-  }
+      if (error) throw new Error(error.message || 'Failed to delete sign-in.')
+    },
+    onSuccess: () => {
+      toast.success('Email & Password sign-in deleted. Sign in via a linked account.')
+      setOpen(false)
+      setPassword('')
+      onCredentialRemoved()
+      router.refresh()
+    },
+    onError: (error: Error) => toast.error(error.message || 'Failed to delete sign-in.'),
+  })
 
   return (
     <BaseProfileDialog
       title="Delete Email & Password sign-in"
       description="This permanently removes your password and your separate login email. You'll no longer be able to sign in with email & password — only your linked accounts. Your items and collections are not affected."
       triggerText="Delete"
-      triggerIcon={<Trash2 className="mr-1 size-3 max-sm:size-4" />}
+      triggerIcon={<Trash2 className="mr-1 size-3 text-destructive max-sm:size-4" />}
       open={open}
       onOpenChange={handleOpenChange}
       triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-destructive max-sm:h-10 max-sm:w-full max-sm:justify-start max-sm:px-3 max-sm:text-sm"
@@ -63,8 +63,8 @@ export function RemovePasswordDialog({ onCredentialRemoved }: RemovePasswordDial
       </div>
       <DestructiveDialogFooter
         onCancel={() => handleOpenChange(false)}
-        onConfirm={handleRemove}
-        isPending={isPending}
+        onConfirm={() => removeMutation.mutate()}
+        isPending={removeMutation.isPending}
         confirmText="Delete"
       />
     </BaseProfileDialog>

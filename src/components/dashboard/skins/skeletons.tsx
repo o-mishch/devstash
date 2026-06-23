@@ -9,6 +9,7 @@ import {
   PinnedSkeleton,
   RecentItemsSkeleton,
 } from '@/components/dashboard/dashboard-skeletons'
+import { brainDumpSkinPanel } from '@/components/dashboard/brain-dump-widget'
 import { cn } from '@/lib/utils'
 import type { UiSkin } from '@/types/editor-preferences'
 
@@ -239,6 +240,38 @@ function ClassicAiUsageSkel() {
   )
 }
 
+// ── Brain Dump banner skeleton (matches BrainDumpWidget) ──────────────────────────────────────────
+
+interface BrainDumpSkelProps {
+  // The skin's panel chrome (same constant the skin wraps its sections in) so the banner placeholder
+  // matches the loaded BrainDumpWidget's chrome. `sheen` mirrors spatial/holographic inner overlays.
+  panel: string
+  sheen?: string
+  // Span/layout class for placing the placeholder as a cell inside a KPI-row grid (e.g. col-span-2).
+  className?: string
+}
+
+// Mirrors BrainDumpWidget's new two-row stacked layout: row 1 = icon tile + title + subtitle, row 2 =
+// quota meter bar + CTA button. Same compact padding (px-3.5 py-2.5) as the real widget so the cell
+// matches when it streams in.
+function BrainDumpSkel({ panel, sheen, className }: BrainDumpSkelProps) {
+  return (
+    <div className={cn('flex h-full flex-col justify-center gap-2.5 px-3.5 py-2.5', panel, className)}>
+      {sheen && <div className={sheen} />}
+      <div className="relative flex min-w-0 items-center gap-2.5">
+        <Skeleton className="size-8 shrink-0 rounded-[10px]" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-3 w-40 max-lg:hidden" />
+      </div>
+      <div className="relative flex items-center gap-3">
+        <Skeleton className="h-2 flex-1 rounded-full" />
+        {/* Arrow-tile affordance — the whole card is the action, so no full-width CTA placeholder. */}
+        <Skeleton className="size-7 shrink-0 rounded-lg" />
+      </div>
+    </div>
+  )
+}
+
 // ── Per-skin skeletons ───────────────────────────────────────────────────────────────────────────
 
 const GLASS = 'ds-glass rounded-2xl'
@@ -255,7 +288,7 @@ function AuroraSkeleton({ isPro }: SkinSkeletonProps) {
     <div className="relative">
       <div className="relative">
         <Head />
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
+        <div className={cn('mb-6 grid grid-cols-2 gap-4', isPro ? 'lg:grid-cols-4' : 'lg:grid-cols-2')}>
           {/* Height is driven by the fixed 64px ring (the text block stays shorter), matching the real hero. */}
           <div className={cn(`${GLASS} flex items-center gap-4 px-5 py-3`, !isPro && 'col-span-2 lg:col-span-2')}>
             <Skeleton className="size-[64px] shrink-0 rounded-full" />
@@ -279,6 +312,7 @@ function AuroraSkeleton({ isPro }: SkinSkeletonProps) {
               <Skeleton className="h-3 w-20" />
             </div>
           ))}
+          {isPro && <BrainDumpSkel {...brainDumpSkinPanel('aurora')} className="col-span-2" />}
         </div>
         {/* Type distribution — its own full-width card below the hero/stat row. */}
         <div className={`${GLASS} mb-6 p-5`}>
@@ -334,6 +368,7 @@ function EditorialSkeleton({ isPro }: SkinSkeletonProps) {
       </header>
       <div className="h-px bg-border" />
       <div className="my-7 grid grid-cols-2 gap-4 sm:gap-8">
+        {isPro && <BrainDumpSkel {...brainDumpSkinPanel('editorial')} className="col-span-2" />}
         {Array.from({ length: 2 }).map((_, i) => (
           <div key={i} className="flex items-baseline gap-3 sm:gap-4">
             <TextSkel
@@ -395,7 +430,7 @@ function SpatialSkeleton() {
         <Skeleton className="h-4 w-16" />
         <Skeleton className="mt-1 h-8 w-60" />
       </header>
-      <div className="mb-5 grid grid-cols-[1.3fr_1fr] gap-3 sm:gap-5 lg:grid-cols-[1fr_1.4fr]">
+      <div className="mb-5 grid grid-cols-[1.3fr_1fr] gap-3 sm:gap-5 lg:grid-cols-[1fr_0.9fr_1.6fr]">
         <div className={`${SP} flex items-center gap-3 px-4 py-3 sm:gap-5 sm:px-5`}>
           {/* number text-3xl leading-none + mt-1 + label text-sm — mirrored so the block height tracks
               the real text at every root-font scale (a fixed h-* would drift on the 125% desktop root). */}
@@ -418,6 +453,7 @@ function SpatialSkeleton() {
             </div>
           </div>
         </div>
+        <BrainDumpSkel {...brainDumpSkinPanel('spatial')} className="col-span-2 lg:col-span-1" />
       </div>
       {/* Pinned section */}
       <section className={`${SP} mb-5 p-6`}>
@@ -454,8 +490,9 @@ function CommandDeckSkeleton() {
           <Skeleton className="mt-1 h-8 w-44" />
           <Skeleton className="mt-1 h-4 w-60" />
         </header>
-        {/* Pro: clean 2-up readout cells (Total + Collections); the slots-left cell is dropped. */}
-        <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-2">
+        {/* Pro: clean 2-up readout cells (Total + Collections) beside a wide 2-col Brain Dump cell on a
+            4-col track; the slots-left cell is dropped. */}
+        <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
           {Array.from({ length: 2 }).map((_, i) => (
             <div key={i} className={CD_CELL}>
               <div className="flex items-end justify-between gap-3">
@@ -468,6 +505,7 @@ function CommandDeckSkeleton() {
               <Skeleton className="mt-2 h-1 w-full rounded-sm" />
             </div>
           ))}
+          <BrainDumpSkel {...brainDumpSkinPanel('command-deck')} className="col-span-2" />
         </div>
         <div className={`mb-6 ${HUD_PANEL}`}>
           <SectionLabel count />
@@ -494,6 +532,9 @@ const ORBITAL_PANEL = 'rounded-2xl border border-border bg-foreground/[0.02] p-5
 function OrbitalSkeleton() {
   return (
     <div>
+      <div className="mb-3">
+        <BrainDumpSkel {...brainDumpSkinPanel('orbital')} />
+      </div>
       <div className="grid items-start gap-6 lg:grid-cols-[1.05fr_1fr] [&>*]:min-w-0">
         {/* Left column: constellation stage, KPI grid, then Recent beneath it. */}
         <div className="flex flex-col gap-5">
@@ -542,8 +583,9 @@ function MissionControlSkeleton() {
         <Skeleton className="h-4 w-28" />
         <Skeleton className="mt-1 h-8 w-44" />
       </header>
-      {/* Pro: 2-up KPIs (Total w/ sparkline + Collections); the free-tier tile is dropped. */}
-      <div className="mb-4 grid grid-cols-2 gap-3.5 lg:grid-cols-2">
+      {/* Pro: 2-up KPIs (Total w/ sparkline + Collections) beside a wide 2-col Brain Dump cell on a
+          4-col track; the free-tier tile is dropped. */}
+      <div className="mb-4 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
         <div className="rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3">
           <div className="flex items-center justify-between">
             <Skeleton className="h-3 w-20" />
@@ -559,6 +601,7 @@ function MissionControlSkeleton() {
           </div>
           <Skeleton className="mt-1 h-6 w-12" />
         </div>
+        <BrainDumpSkel {...brainDumpSkinPanel('mission-control')} className="col-span-2" />
       </div>
       {/* Pinned section */}
       <div className={`${MC_PANEL} mb-4`}>
@@ -606,14 +649,16 @@ function NeonGridSkeleton() {
     <div className="relative min-h-[70vh]">
       <div className="relative z-10">
         <Head wide />
-        {/* Pro: 2-up cells (Total + Collections); the slots-left cell is dropped. */}
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
+        {/* Pro: 2-up cells (Total + Collections) beside a wide 2-col Brain Dump cell on a 4-col track;
+            the slots-left cell is dropped. */}
+        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
           {Array.from({ length: 2 }).map((_, i) => (
             <div key={i} className={NEON_CELL}>
               <Skeleton className="h-6 w-14" />
               <Skeleton className="mt-1.5 h-3 w-20" />
             </div>
           ))}
+          <BrainDumpSkel {...brainDumpSkinPanel('neon-grid')} className="col-span-2" />
         </div>
         {/* Pinned section */}
         <div className={`${NEON_PANEL} mb-4`}>
@@ -661,8 +706,8 @@ function HolographicSkeleton() {
         <Skeleton className="h-4 w-28" />
         <Skeleton className="mt-1 h-8 w-60" />
       </header>
-      {/* Slim hero (number + bar in one row) + a single one-line Collections card. */}
-      <div className="mb-5 grid grid-cols-[1.6fr_1fr] gap-4">
+      {/* Slim hero (number + bar in one row) + a one-line Collections card + a wide Brain Dump cell. */}
+      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-[1.4fr_1fr_1.6fr]">
         <HoloSkel className="relative overflow-hidden" innerClassName="px-4 py-3 sm:px-5">
           {/* number text-3xl leading-none + mt-1 + label text-[13px] — mirrored for scale-correct height. */}
           <div className="flex h-full items-center gap-3 sm:gap-5">
@@ -682,6 +727,7 @@ function HolographicSkeleton() {
             <TextSkel className="w-14 text-[12.5px]" inset="inset-y-[18%]" />
           </div>
         </HoloSkel>
+        <BrainDumpSkel {...brainDumpSkinPanel('holographic')} />
       </div>
       {/* Pinned section */}
       <div className="mb-4">
@@ -711,7 +757,7 @@ function ClassicSkeleton({ isPro }: SkinSkeletonProps) {
         <Skeleton className="h-6 w-32" />
         <Skeleton className="mt-1 h-4 w-56" />
       </div>
-      <StatsCardsSkeleton />
+      <StatsCardsSkeleton isPro={isPro} />
       <CollectionsGridSkeleton />
       <PinnedSkeleton />
       <RecentItemsSkeleton />
