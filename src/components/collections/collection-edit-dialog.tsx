@@ -17,7 +17,6 @@ export function CollectionEditDialog({ collection: activeCollection, trigger, op
   const lastNonNullCollection = useLastNonNull(activeCollection)
   const displayCollection = lastNonNullCollection || EMPTY_COLLECTION
 
-
   return (
     <CollectionFormDialog
       title="Edit Collection"
@@ -38,5 +37,3 @@ export function CollectionEditDialog({ collection: activeCollection, trigger, op
     />
   )
 }
-
-

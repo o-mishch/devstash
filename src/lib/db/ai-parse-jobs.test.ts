@@ -1145,7 +1145,7 @@ describe('listParseSourceCandidates', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           userId: 'user-1',
-          itemType: { name: 'note' },
+          itemType: { name: { in: ['note', 'snippet'] } },
           tags: { some: { name: 'brain-dump' } },
         }),
       }),
@@ -1156,7 +1156,7 @@ describe('listParseSourceCandidates', () => {
     mockItem.findMany.mockResolvedValue([{ id: 'n2', title: '', content: null }])
     const result = await listParseSourceCandidates('user-1', 'note')
 
-    expect(result).toEqual([{ itemId: 'n2', name: 'Untitled note', sizeBytes: null }])
+    expect(result).toEqual([{ itemId: 'n2', name: 'Untitled source', sizeBytes: null }])
   })
 })
 

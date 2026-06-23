@@ -10,6 +10,8 @@ import { OrbitingCircles } from '@/components/ui/orbiting-circles'
 import { SkinWidget } from './skin-widget'
 import { computeUsage, typeColor, resolveSkinData, MaybeLink, type DashboardSkinData } from './shared'
 
+const ORBITAL_PANEL = 'relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5'
+
 // Orbital Core (Pro) — item-type constellation that genuinely orbits a glowing core. A single
 // OrbitingCircles ring keeps the nodes evenly spaced (no clustering) while they revolve; the
 // component counter-rotates each node so its badge/label stay upright. Radius is kept inside the
@@ -88,7 +90,7 @@ export async function OrbitalSkin(data: DashboardSkinData) {
           })}
         </div>
 
-        <div className="flex-1 relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
+        <div className={`${ORBITAL_PANEL} flex-1`}>
           <SkinWidget icon={<History />} title="Recent" skin="orbital">
             {hasRecent ? <DashboardRecentItems firstPage={recent} /> : <p className="text-sm text-muted-foreground">No items yet.</p>}
           </SkinWidget>
@@ -97,13 +99,13 @@ export async function OrbitalSkin(data: DashboardSkinData) {
 
       <div className="flex flex-col gap-5">
         {hasPinned && (
-          <div className="relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
+          <div className={ORBITAL_PANEL}>
             <SkinWidget icon={<Pin />} title="Pinned" skin="orbital">
               <DashboardPinnedItems initialItems={pinned} />
             </SkinWidget>
           </div>
         )}
-        <div className="relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
+        <div className={ORBITAL_PANEL}>
           <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="orbital">
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
@@ -113,7 +115,7 @@ export async function OrbitalSkin(data: DashboardSkinData) {
 
       {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
       {isPro && (
-        <div className="mt-6 relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5">
+        <div className={`${ORBITAL_PANEL} mt-6`}>
           <AiUsageWidget skin="orbital" />
         </div>
       )}

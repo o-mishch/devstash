@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Folder } from 'lucide-react'
-import { CollectionsGrid } from '@/components/dashboard/collections-grid'
+import { CollectionsGrid } from '@/components/collections/collections-grid'
 import { DashboardWidget } from '@/components/dashboard/dashboard-widget'
 import type { CollectionWithTypes } from '@/types/collection'
 

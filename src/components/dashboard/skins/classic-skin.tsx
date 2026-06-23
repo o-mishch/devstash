@@ -1,17 +1,17 @@
 import { Suspense } from 'react'
-import { DashboardStats } from '@/components/dashboard/dashboard-stats'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'
 import { CollectionsWidget } from '@/components/dashboard/collections-widget'
 import { PinnedWidget } from '@/components/dashboard/pinned-widget'
 import { RecentItemsWidget } from '@/components/dashboard/recent-items-widget'
+import { StatsCards } from '@/components/dashboard/stats-cards'
 import {
   StatsCardsSkeleton,
   CollectionsGridSkeleton,
   PinnedSkeleton,
   RecentItemsSkeleton,
 } from '@/components/dashboard/dashboard-skeletons'
-import type { CollectionWithTypes } from '@/types/collection'
-import type { ItemsPage, LightItem } from '@/types/item'
+import type { CollectionStats, CollectionWithTypes } from '@/types/collection'
+import type { ItemsPage, ItemStats, LightItem } from '@/types/item'
 import type { DashboardSkinData } from './shared'
 
 // Classic — the dashboard exactly as it ships today: stat cards + the three collapsible section
@@ -33,7 +33,7 @@ export function ClassicSkin({
       </div>
 
       <Suspense fallback={<StatsCardsSkeleton isPro={isPro} />}>
-        <DashboardStats statsPromise={statsPromise} collectionStatsPromise={collectionStatsPromise} isPro={isPro} />
+        <ClassicStats statsPromise={statsPromise} collectionStatsPromise={collectionStatsPromise} isPro={isPro} />
       </Suspense>
 
       <Suspense fallback={<CollectionsGridSkeleton />}>
@@ -51,6 +51,27 @@ export function ClassicSkin({
       {/* AI Usage — demoted to the foot of the dashboard: occasional-reassurance data, below content. */}
       {isPro && <AiUsageWidget skin="classic" />}
     </>
+  )
+}
+
+interface ClassicStatsProps {
+  statsPromise: Promise<ItemStats>
+  collectionStatsPromise: Promise<CollectionStats>
+  // Pro swaps the Favorite Collections chip for the inline Brain Dump widget (see StatsCards).
+  isPro: boolean
+}
+
+async function ClassicStats({ statsPromise, collectionStatsPromise, isPro }: ClassicStatsProps) {
+  const [itemStats, collectionStats] = await Promise.all([statsPromise, collectionStatsPromise])
+
+  return (
+    <StatsCards
+      totalItems={itemStats.totalItems}
+      totalCollections={collectionStats.totalCollections}
+      favoriteItems={itemStats.favoriteItems}
+      favoriteCollections={collectionStats.favoriteCollections}
+      isPro={isPro}
+    />
   )
 }
 

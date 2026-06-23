@@ -93,7 +93,7 @@ describe('POST /ai/brain-dump (paste)', () => {
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
-  it('persists the paste as a brain-dump note, then creates the job (201)', async () => {
+  it('persists the paste as a brain-dump snippet, then creates the job (201)', async () => {
     mockCreateItem.mockResolvedValue({ id: 'note-1' })
     mockGetSourceText.mockResolvedValue({ text: longText, truncated: false, sourceName: 'Here is a real project' })
     mockCreate.mockResolvedValue('job-123')
@@ -103,7 +103,7 @@ describe('POST /ai/brain-dump (paste)', () => {
     expect(await res.json()).toEqual({ jobId: 'job-123', sourceName: 'Here is a real project', truncated: false })
     expect(mockCreateItem).toHaveBeenCalledWith(
       'user-1',
-      expect.objectContaining({ itemTypeName: 'note', content: longText, tags: ['brain-dump'] }),
+      expect.objectContaining({ itemTypeName: 'snippet', content: longText, language: 'Plain Text', tags: ['brain-dump'] }),
     )
     expect(mockCreate).toHaveBeenCalledWith(
       'user-1',
@@ -119,7 +119,7 @@ describe('POST /ai/brain-dump (paste)', () => {
     )
   })
 
-  it('refunds the hourly token when job creation fails after the paste note was saved', async () => {
+  it('refunds the hourly token when job creation fails after the paste snippet was saved', async () => {
     mockCreateItem.mockResolvedValue({ id: 'note-1' })
     mockGetSourceText.mockResolvedValue({ text: longText, truncated: false, sourceName: 'Here is a real project' })
     mockCreate.mockRejectedValue(new Error('db down'))

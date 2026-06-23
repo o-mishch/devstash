@@ -10,6 +10,7 @@ import {
   RecentItemsSkeleton,
 } from '@/components/dashboard/dashboard-skeletons'
 import { brainDumpSkinPanel } from '@/components/dashboard/skins/brain-dump-skin-panel'
+import { aiUsageSkinTreatment } from '@/components/dashboard/skins/ai-usage-treatment'
 import { cn } from '@/lib/utils'
 import type { UiSkin } from '@/types/editor-preferences'
 
@@ -169,18 +170,6 @@ function SegmentsSkel() {
 
 // ── AI Usage section skeleton (matches AiUsageWidget) ─────────────────────────────────────────────
 
-// Per-skin meter-card treatment, mirroring SKIN_TREATMENTS in ai-usage-widget so the skeleton cards
-// carry the same border/background (and mono font for command-deck) as the loaded meters.
-const AI_DEFAULT_TREATMENT = 'border-border bg-foreground/[0.02]'
-const AI_TREATMENTS: Partial<Record<UiSkin, string>> = {
-  'mission-control': 'border-primary/20 bg-primary/[0.04]',
-  orbital: 'border-primary/20 bg-foreground/[0.03]',
-  'command-deck': 'border-primary/25 bg-foreground/[0.03] font-mono',
-  'neon-grid': 'border-primary/30 bg-foreground/[0.03]',
-  holographic: 'border-primary/20 bg-foreground/[0.03]',
-  spatial: 'border-border bg-foreground/[0.04]',
-}
-
 interface AiUsageSkelProps {
   skin: UiSkin
 }
@@ -190,13 +179,13 @@ interface AiUsageSkelProps {
 // + slim bar = UsageMeterSkeleton). The skin's own panel chrome is supplied by the caller, exactly as
 // each skin wraps <AiUsageWidget /> in its panel.
 function AiUsageSkel({ skin }: AiUsageSkelProps) {
-  const treatment = AI_TREATMENTS[skin] ?? AI_DEFAULT_TREATMENT
+  const treatment = aiUsageSkinTreatment(skin)
   return (
     <div className="@container">
       <SectionLabel />
       <div className="grid grid-cols-2 gap-2.5 @md:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className={cn('flex items-center gap-2.5 rounded-lg border px-3 py-2', treatment)}>
+          <div key={i} className={cn('flex items-center gap-2.5 rounded-lg border px-3 py-2', treatment.card)}>
             <Skeleton className="size-4 shrink-0 rounded" />
             <div className="min-w-0 flex-1">
               <Skeleton className="h-3 w-full" />
@@ -225,7 +214,7 @@ function ClassicAiUsageSkel() {
         <CardContent className="pt-2">
           <div className="grid grid-cols-2 gap-2.5 @md:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className={cn('flex items-center gap-2.5 rounded-lg border px-3 py-2', AI_DEFAULT_TREATMENT)}>
+              <div key={i} className="flex items-center gap-2.5 rounded-lg border border-border bg-foreground/[0.02] px-3 py-2">
                 <Skeleton className="size-4 shrink-0 rounded" />
                 <div className="min-w-0 flex-1">
                   <Skeleton className="h-3 w-full" />

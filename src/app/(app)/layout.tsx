@@ -20,7 +20,7 @@ import { TopbarCreateButton } from '@/components/layout/topbar-create-button'
 import { SidebarContent } from '@/components/layout/sidebar-content'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { CollectionCreateDialog } from '@/components/dashboard/collection-create-dialog'
+import { CollectionCreateDialog } from '@/components/collections/collection-create-dialog'
 import { UpgradePromptProvider } from '@/providers/upgrade-prompt-provider'
 import { ItemDrawerProvider } from '@/providers/item-drawer-provider'
 import { EditorPreloader } from '@/components/shared/dynamic-editors'

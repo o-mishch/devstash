@@ -74,7 +74,7 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
           <DialogHeader>
             <DialogTitle>Delete Collection</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the collection &quot;{displayCollection.name}&quot;? 
+              Are you sure you want to delete the collection &quot;{displayCollection.name}&quot;?
               Your items will <strong>not</strong> be deleted, but they will be removed from this collection.
             </DialogDescription>
           </DialogHeader>
@@ -89,5 +89,3 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
     </>
   )
 }
-
-

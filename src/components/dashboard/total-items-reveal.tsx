@@ -6,10 +6,8 @@ import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'motion/react'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
-import { getTypeHref } from '@/components/layout/sidebar/utils'
-import { getTypeLabel } from '@/lib/utils/format'
-import { SYSTEM_TYPE_ORDER, SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants'
 import { cn } from '@/lib/utils'
+import { getDashboardTypeShortcuts, type DashboardTypeShortcut } from './type-shortcuts'
 
 // A "browse by type" reveal anchored to a skin's Total Items element — same intent as the classic
 // TotalItemsFanout (click the total → jump to any item type) but each skin gets its OWN animation so
@@ -19,21 +17,7 @@ import { cn } from '@/lib/utils'
 
 export type RevealVariant = 'pop' | 'float' | 'terminal' | 'neon' | 'list'
 
-interface TypeShortcut {
-  name: string
-  label: string
-  href: string
-  icon: string
-  color: string
-}
-
-const TYPES: TypeShortcut[] = SYSTEM_TYPE_ORDER.map((name) => ({
-  name,
-  label: getTypeLabel(name),
-  href: getTypeHref(name),
-  icon: SYSTEM_TYPE_ICON_NAMES[name],
-  color: SYSTEM_TYPE_COLORS[name],
-}))
+const TYPES = getDashboardTypeShortcuts()
 
 interface VariantConfig {
   width: number
@@ -41,12 +25,12 @@ interface VariantConfig {
   container: Variants
   item: Variants
   tile: string
-  renderTile: (t: TypeShortcut) => ReactNode
+  renderTile: (t: DashboardTypeShortcut) => ReactNode
 }
 
 const SPRING = { type: 'spring', stiffness: 480, damping: 26 } as const
 
-function iconBadge(t: TypeShortcut, size: string) {
+function iconBadge(t: DashboardTypeShortcut, size: string) {
   return (
     <span
       className={cn('grid place-items-center rounded-lg', size)}

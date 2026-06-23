@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { Folder, Pin, History, Zap } from 'lucide-react'
-import { CollectionsGrid } from '@/components/dashboard/collections-grid'
+import { CollectionsGrid } from '@/components/collections/collections-grid'
 import { DashboardPinnedItems } from '@/components/dashboard/dashboard-pinned-items'
 import { DashboardRecentItems } from '@/components/dashboard/dashboard-recent-items'
 import { AiUsageWidget } from '@/components/dashboard/ai-usage-widget'

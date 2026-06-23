@@ -74,11 +74,11 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
   let sourceText: string
   let truncated: boolean
   let sourceName: string | null
-  // The paste note we created in this request (if any) — deleted if the job create then fails, so a
-  // refused job never orphans a brain-dump note. Never set for a reused existing source item.
-  let createdNoteId: string | null = null
+  // The paste snippet we created in this request (if any) — deleted if the job create then fails, so a
+  // refused job never orphans a brain-dump snippet. Never set for a reused existing source item.
+  let createdSnippetId: string | null = null
 
-  // The default new-collection name seeded on the job. For a paste it is exactly the note title; for an
+  // The default new-collection name seeded on the job. For a paste it is exactly the snippet title; for an
   // existing file/note source it is derived from the source name (trailing extension dropped).
   let collectionName: string | null
 
@@ -88,44 +88,44 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
     sourceName = resolvedRead.sourceName
     collectionName = deriveCollectionName(sourceName)
   } else {
-    // Paste — persist the FULL text as a durable `brain-dump` note (the existing createItem way), then
+    // Paste — persist the FULL text as a durable `brain-dump` snippet (the existing createItem way), then
     // slice the parse window in memory (no re-read, no second transfer). A paste has no intrinsic name,
-    // so the saved note gets a dated "Brain dump <date>" label, while the new-collection name is left
+    // so the saved snippet gets a dated "Brain dump <date>" label, while the new-collection name is left
     // empty (the user names the collection themselves on the review board).
     const fullText = text ?? ''
-    const noteTitle = deriveBrainDumpNoteTitle()
-    const note = await createItem(userId, {
-      title: noteTitle,
+    const snippetTitle = deriveBrainDumpNoteTitle()
+    const snippet = await createItem(userId, {
+      title: snippetTitle,
       description: null,
       content: fullText,
       url: null,
       fileUrl: null,
       fileName: null,
       fileSize: null,
-      language: null,
+      language: 'Plain Text',
       tags: [BRAIN_DUMP_SOURCE_TAG],
-      itemTypeName: 'note',
+      itemTypeName: 'snippet',
       collectionIds: [],
     })
-    if (!note) return problem(500, 'Could not save your pasted text.')
+    if (!snippet) return problem(500, 'Could not save your pasted text.')
     invalidateItemsCache(userId)
 
-    const noteSource: ParseSourceItem = {
-      id: note.id,
-      itemTypeName: 'note',
+    const snippetSource: ParseSourceItem = {
+      id: snippet.id,
+      itemTypeName: 'snippet',
       content: fullText,
       fileUrl: null,
       fileName: null,
     }
-    const read = await getSourceText(noteSource)
+    const read = await getSourceText(snippetSource)
     sourceText = read.text
     truncated = read.truncated
-    sourceName = read.sourceName ?? noteTitle
+    sourceName = read.sourceName ?? snippetTitle
     // The new-collection input starts empty for a paste — the user names the target collection on the
-    // review board rather than defaulting it to the dated note title.
+    // review board rather than defaulting it to the dated snippet title.
     collectionName = null
-    resolvedSourceItemId = note.id
-    createdNoteId = note.id
+    resolvedSourceItemId = snippet.id
+    createdSnippetId = snippet.id
   }
 
   let jobId: string
@@ -138,11 +138,11 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
       collectionName,
     })
   } catch (err) {
-    // Job creation failed after the paste note was persisted — remove the orphan note and refund the
+    // Job creation failed after the paste snippet was persisted — remove the orphan snippet and refund the
     // hourly token so a transient DB error doesn't burn the user's 1/hr Brain Dump quota.
     await resetRateLimit('aiBrainDump', userId)
-    if (createdNoteId) {
-      await deleteItem(userId, createdNoteId)
+    if (createdSnippetId) {
+      await deleteItem(userId, createdSnippetId)
       invalidateItemsCache(userId)
     }
     log.error({ userId, sourceItemId: resolvedSourceItemId, err }, 'brain-dump job create failed')

@@ -9,6 +9,7 @@ import { useAiUsage, type AiFeatureUsage } from '@/hooks/use-ai-usage'
 import { formatRenewIn } from '@/lib/utils/format'
 import { DashboardWidget } from '@/components/dashboard/dashboard-widget'
 import { SkinWidget } from './skins/skin-widget'
+import { aiUsageSkinTreatment, type AiUsageSkinTreatment } from './skins/ai-usage-treatment'
 import { cn } from '@/lib/utils'
 
 // Per-feature display config, keyed by the AI rate-limit key the API returns. The API order is
@@ -25,27 +26,6 @@ const FEATURE_META: Record<string, FeatureMeta> = {
   aiExplain: { label: 'Explain', icon: Lightbulb, description: 'Generates a plain-language explanation of a code snippet or command.' },
   aiTags: { label: 'Tags', icon: Tag, description: 'Suggests relevant tags for an item from its title and content.' },
   aiDescription: { label: 'Description', icon: AlignLeft, description: 'Writes a short description for an item or collection.' },
-}
-
-// Visual treatment per skin. A flat lookup (not nested ternaries) keyed by skin, with a default for
-// the token-light free skins. Bold/Pro skins lean on the primary accent + a subtle inset glow.
-interface SkinTreatment {
-  card: string
-  bar: string
-}
-
-const DEFAULT_TREATMENT: SkinTreatment = {
-  card: 'border-border bg-foreground/[0.02]',
-  bar: 'bg-primary',
-}
-
-const SKIN_TREATMENTS: Partial<Record<UiSkin, SkinTreatment>> = {
-  'mission-control': { card: 'border-primary/20 bg-primary/[0.04]', bar: 'bg-primary' },
-  orbital: { card: 'border-primary/20 bg-foreground/[0.03]', bar: 'bg-primary' },
-  'command-deck': { card: 'border-primary/25 bg-foreground/[0.03] font-mono', bar: 'bg-primary' },
-  'neon-grid': { card: 'border-primary/30 bg-foreground/[0.03]', bar: 'bg-primary shadow-[0_0_10px_-2px_var(--primary)]' },
-  holographic: { card: 'border-primary/20 bg-foreground/[0.03]', bar: 'bg-primary' },
-  spatial: { card: 'border-border bg-foreground/[0.04]', bar: 'bg-primary' },
 }
 
 // Per-skin header styling, mirroring exactly what each skin passes to its OWN SkinWidget
@@ -71,7 +51,7 @@ interface AiUsageWidgetProps {
  */
 export function AiUsageWidget({ skin }: AiUsageWidgetProps) {
   const { data, isLoading, isError } = useAiUsage()
-  const treatment = SKIN_TREATMENTS[skin] ?? DEFAULT_TREATMENT
+  const treatment = aiUsageSkinTreatment(skin)
 
   // The read fails open (the route always returns 200), so an error here means the request never
   // reached the route (offline / aborted). Hide the section rather than leaving a permanent skeleton —
@@ -119,7 +99,7 @@ export function AiUsageWidget({ skin }: AiUsageWidgetProps) {
 
 interface UsageMeterProps {
   feature: AiFeatureUsage
-  treatment: SkinTreatment
+  treatment: AiUsageSkinTreatment
 }
 
 function UsageMeter({ feature, treatment }: UsageMeterProps) {
@@ -174,7 +154,7 @@ function UsageMeter({ feature, treatment }: UsageMeterProps) {
 }
 
 interface UsageMeterSkeletonProps {
-  treatment: SkinTreatment
+  treatment: AiUsageSkinTreatment
 }
 
 // Mirrors the compact meter shape so first paint reserves the exact final layout (no shift).

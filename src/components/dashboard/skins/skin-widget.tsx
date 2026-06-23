@@ -5,7 +5,18 @@ import { ChevronDown } from 'lucide-react'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 import type { UiSkin } from '@/types/ui-skins'
-import { SKIN_HEADER_WRAPPER_CLASS } from './skin-header'
+
+// Single source of truth for each skin's SkinWidget header-wrapper padding: negative margins bleed the
+// full-width clickable header out to the panel edges, then the panel's own padding is restored.
+const SKIN_HEADER_WRAPPER_CLASS: Partial<Record<UiSkin, string>> = {
+  orbital: '-mx-5 -mt-5 px-5 pt-5 pb-3',
+  'mission-control': '-mx-5 -mt-5 px-5 pt-5 pb-3',
+  'neon-grid': '-mx-5 -mt-5 px-5 pt-5 pb-3',
+  holographic: '-mx-[22px] -mt-[22px] px-[22px] pt-[22px] pb-3',
+  spatial: '-mx-6 -mt-6 px-6 pt-6 pb-3',
+  aurora: '-mx-5 -mt-5 px-5 pt-5 pb-3',
+  'command-deck': '-mx-5 -mt-5 px-5 pt-5 pb-3',
+}
 
 interface SkinWidgetProps {
   icon?: ReactNode
@@ -44,7 +55,7 @@ export function SkinWidget({
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <div className={cn("group relative", wrapperClass || '-mx-2 px-2 py-1.5 rounded-md')}>
+      <div className={cn('group relative', wrapperClass || '-mx-2 px-2 py-1.5 rounded-md')}>
         <CollapsibleTrigger
           aria-label={`Toggle ${title} section`}
           className="absolute inset-0 z-10 rounded-[inherit] outline-none transition-all hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring"

@@ -8,9 +8,7 @@ import { Package } from 'lucide-react'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { StatChipBody, statAccentStyle, STAT_CHIP_CLASS, STAT_COLORS } from './stat-chip'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { SYSTEM_TYPE_ORDER, SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants'
-import { getTypeLabel } from '@/lib/utils/format'
-import { getTypeHref } from '@/components/layout/sidebar/utils'
+import { getDashboardTypeShortcuts } from './type-shortcuts'
 
 interface TotalItemsFanoutProps {
   totalItems: number
@@ -34,13 +32,7 @@ const FAN_RADIUS = { desktop: 244, mobile: 158 }
 const FAN_ARC_START_DEG = 10
 const FAN_ARC_END_DEG = { desktop: 102, mobile: 120 }
 
-const TYPES = SYSTEM_TYPE_ORDER.map((name) => ({
-  name,
-  label: getTypeLabel(name),
-  href: getTypeHref(name),
-  icon: SYSTEM_TYPE_ICON_NAMES[name],
-  color: SYSTEM_TYPE_COLORS[name],
-}))
+const TYPES = getDashboardTypeShortcuts()
 
 export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
   const [open, setOpen] = useState(false)

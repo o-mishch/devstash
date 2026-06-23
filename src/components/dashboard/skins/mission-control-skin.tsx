@@ -45,7 +45,17 @@ export async function MissionControlSkin(data: DashboardSkinData) {
           </TotalItemsReveal>
           <MissionControlSparkline activity={activity} />
         </div>
-        <KpiCard label="Collections" value={collectionStats.totalCollections} sub={`${collectionStats.favoriteCollections} favorite`} href="/collections" />
+        <Link
+          href="/collections"
+          prefetch={false}
+          className="block rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3 transition-colors hover:bg-foreground/5"
+        >
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs text-muted-foreground">Collections</span>
+            <span className="text-[11px] text-muted-foreground">{collectionStats.favoriteCollections} favorite</span>
+          </div>
+          <div className="mt-1 text-2xl font-extrabold leading-none">{collectionStats.totalCollections}</div>
+        </Link>
         {isPro && <BrainDumpWidget skin="mission-control" className="col-span-2" />}
         {!isPro && (
           <div className="rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3">
@@ -118,32 +128,4 @@ export async function MissionControlSkin(data: DashboardSkinData) {
       )}
     </div>
   )
-}
-
-interface KpiCardProps {
-  label: string
-  value: number
-  sub: string
-  href?: string
-}
-
-function KpiCard({ label, value, sub, href }: KpiCardProps) {
-  const className = 'block rounded-2xl border border-border bg-foreground/[0.02] px-4 py-3'
-  const inner = (
-    <>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className="text-[11px] text-muted-foreground">{sub}</span>
-      </div>
-      <div className="mt-1 text-2xl font-extrabold leading-none">{value}</div>
-    </>
-  )
-  if (href) {
-    return (
-      <Link href={href} prefetch={false} className={`${className} transition-colors hover:bg-foreground/5`}>
-        {inner}
-      </Link>
-    )
-  }
-  return <div className={className}>{inner}</div>
 }
