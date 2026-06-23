@@ -9,7 +9,7 @@ import {
   PinnedSkeleton,
   RecentItemsSkeleton,
 } from '@/components/dashboard/dashboard-skeletons'
-import { brainDumpSkinPanel } from '@/components/dashboard/brain-dump-widget'
+import { brainDumpSkinPanel } from '@/components/dashboard/skins/brain-dump-skin-panel'
 import { cn } from '@/lib/utils'
 import type { UiSkin } from '@/types/editor-preferences'
 
