@@ -45,18 +45,24 @@ export const passwordMatchRefine =
   }
 
 /**
- * `superRefine` callback for an OPTIONAL password field — checks `passwordField` against
- * `confirmPassword` only when it's present, attaching any mismatch to `confirmPassword`. Used by the
- * credential-email add/confirm schemas, where the password is supplied only on the instant-activation
- * (verification-off) path.
+ * `superRefine` callback for an OPTIONAL password field — validates strength and confirmation only
+ * when `passwordField` is present. Used by credential-email add/confirm schemas, where the password is
+ * supplied only on the add / instant-activation path.
  */
 export const optionalPasswordMatchRefine =
   <K extends string>(passwordField: K) =>
   (data: Partial<Record<K, string>> & { confirmPassword?: string }, ctx: z.RefinementCtx) => {
     const password = data[passwordField]
-    if (password !== undefined && password !== data.confirmPassword) {
-      ctx.addIssue({ code: 'custom', message: 'Passwords do not match.', path: ['confirmPassword'] })
-    }
+    if (password === undefined) return
+
+    const error = validatePassword(password, data.confirmPassword)
+    if (!error) return
+
+    ctx.addIssue({
+      code: 'custom',
+      message: error,
+      path: error === 'Passwords do not match.' ? ['confirmPassword'] : [passwordField],
+    })
   }
 
 export const EmailSchema = z.email('Please enter a valid email address.').trim().toLowerCase()

@@ -323,6 +323,12 @@ describe('POST /auth/confirm-login-email', () => {
     expect(mockConfirmCredentialEmail).not.toHaveBeenCalled()
   })
 
+  it('returns 422 when the provided password is too short', async () => {
+    const res = await CONFIRM_LOGIN_EMAIL(post('confirm-login-email', { token: 'tok', password: 'short', confirmPassword: 'short' }))
+    expect(res.status).toBe(422)
+    expect(mockConfirmCredentialEmail).not.toHaveBeenCalled()
+  })
+
   it('returns 409 when the address is already taken', async () => {
     mockConfirmCredentialEmail.mockResolvedValue('email-in-use')
     const res = await CONFIRM_LOGIN_EMAIL(post('confirm-login-email', { token: 'tok' }))

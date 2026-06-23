@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, type MouseEvent } from 'react'
+import { useState, useCallback, type MouseEvent } from 'react'
 import { ExternalLink, Tag, Download, FileIcon, XCircle, RotateCcw } from 'lucide-react'
-import { showFileNotFoundToast } from '@/hooks/use-restricted-download'
+import { showFileNotFoundToast, useRestrictedDownload } from '@/hooks/use-restricted'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -12,16 +12,15 @@ import { ImageLightbox } from '@/components/shared/image-lightbox'
 import { ItemTags } from '@/components/shared/item-tags'
 import { DrawerLayout, DrawerSection, DrawerCollectionsSection, DrawerDetailsSection, DrawerCollectionsSkeleton, DrawerDetailsSkeleton } from './drawer-shared'
 import { ItemDrawerActionBar } from './item-drawer-action-bar'
-import { useExplainCode } from '@/hooks/use-explain-code'
-import { useOptimizePrompt } from '@/hooks/use-optimize-prompt'
+import { useAiItemRewrite } from '@/hooks/use-ai-item-rewrite'
+import { useAiMutation } from '@/hooks/use-ai-usage'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
 import { useRegisterSheetClose, type SheetCloseRef } from '@/hooks/use-register-sheet-close'
-import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_PROMPT_OPTIMIZE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
+import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_PROMPT_OPTIMIZE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES, EXPLAIN_MAX_INPUT_CHARS, OPTIMIZE_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { useProDownloadSrc, useDownloadSrcActions, markPreviewFailed, isPreviewFailed } from '@/hooks/use-pro-download-src'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
-import { useRestrictedDownload } from '@/hooks/use-restricted-download'
 import { isFullItem } from '@/types/item'
 import type { LightItem, FullItem } from '@/types/item'
 
@@ -175,10 +174,39 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
   const { itemType } = item
   const fullItem = isFullItem(item) ? item : null
   const description = isFullItem(item) ? item.description : item.descriptionPreview
-  const explain = useExplainCode(fullItem, onAiResultSaved)
+
+  const aiMutate = useAiMutation()
+
+  const explain = useAiItemRewrite({
+    item: fullItem,
+    onSaved: onAiResultSaved,
+    maxInputChars: EXPLAIN_MAX_INPUT_CHARS,
+    inputCapNoun: 'explanation',
+    generate: useCallback(async (target: FullItem) => {
+      const { data, error } = await aiMutate('/ai/explain', { itemId: target.id })
+      if (error || !data) return { ok: false, message: error?.message ?? 'Failed to explain code.' }
+      return { ok: true, result: data.explanation }
+    }, [aiMutate]),
+    targetField: 'description',
+    successMessage: 'Explanation saved as description',
+    alwaysConfirmReplace: false,
+  })
   const canExplain = fullItem !== null && ITEM_TYPES_WITH_CODE_EDITOR.has(itemType.name)
 
-  const optimize = useOptimizePrompt(fullItem, onAiResultSaved)
+  const optimize = useAiItemRewrite({
+    item: fullItem,
+    onSaved: onAiResultSaved,
+    maxInputChars: OPTIMIZE_MAX_INPUT_CHARS,
+    inputCapNoun: 'optimization',
+    generate: useCallback(async (target: FullItem) => {
+      const { data, error } = await aiMutate('/ai/optimize', { itemId: target.id })
+      if (error || !data) return { ok: false, message: error?.message ?? 'Failed to optimize prompt.' }
+      return { ok: true, result: data.prompt }
+    }, [aiMutate]),
+    targetField: 'content',
+    successMessage: 'Optimized prompt applied',
+    alwaysConfirmReplace: true,
+  })
   const canOptimize = fullItem !== null && ITEM_TYPES_WITH_PROMPT_OPTIMIZE.has(itemType.name)
 
   // Guard both the drawer close AND the switch to edit mode while an AI result (explanation or
@@ -225,7 +253,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
   }
 
   const handleGuardSave = async () => {
-    const ok = canOptimize ? await optimize.apply() : await explain.save()
+    const ok = canOptimize ? await optimize.save() : await explain.save()
     if (ok) proceedAfterGuard()
   }
 

@@ -1,9 +1,10 @@
 'use client'
 
+import { useActionState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import type { ActionState } from '@/types/actions'
-import { useActionStateWithToast } from '@/hooks/use-action-state-with-toast'
 
 interface LinkAccountFormProps {
   action: (_prev: ActionState | null, formData: FormData) => Promise<ActionState>
@@ -11,7 +12,13 @@ interface LinkAccountFormProps {
 }
 
 export function LinkAccountForm({ action, providerLabel }: LinkAccountFormProps) {
-  const { formAction, isPending } = useActionStateWithToast(action)
+  const [state, formAction, isPending] = useActionState(action, null)
+
+  useEffect(() => {
+    if (state && !state.success) {
+      toast.error(state.message ?? 'Something went wrong. Please try again.')
+    }
+  }, [state])
 
   return (
     <form action={formAction} className="space-y-4" suppressHydrationWarning>

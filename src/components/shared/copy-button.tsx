@@ -4,7 +4,7 @@ import { type MouseEvent } from 'react'
 import { Copy, Check, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { useRestrictedAction } from '@/hooks/use-restricted-action'
+import { useRestrictedAction } from '@/hooks/use-restricted'
 import { cn } from '@/lib/utils'
 
 interface CopyButtonProps {

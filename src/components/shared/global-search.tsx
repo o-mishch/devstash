@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Command as CommandPrimitive } from 'cmdk'
 import { useRouter } from 'next/navigation'
 import { Search, X } from 'lucide-react'
@@ -17,7 +17,6 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { itemCountLabel } from '@/lib/utils/format'
 
 import { useGlobalSearch } from '@/hooks/use-global-search'
-import { useGlobalSearchShortcuts } from '@/hooks/use-global-search-shortcuts'
 
 interface GlobalSearchProps {
   collections: SidebarCollection[]
@@ -33,7 +32,33 @@ export function GlobalSearch({ collections }: GlobalSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  useGlobalSearchShortcuts({ inputRef, containerRef, setOpen, closeDrawer })
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        inputRef.current?.focus()
+        setOpen(true)
+        closeDrawer()
+      }
+      if (e.key === 'Escape') {
+        setOpen(false)
+        inputRef.current?.blur()
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [closeDrawer, inputRef])
+
+  useEffect(() => {
+    const click = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', click)
+    return () => document.removeEventListener('mousedown', click)
+  }, [containerRef])
+
   const { loading, displayItems, displayCollections } = useGlobalSearch(query, collections)
 
   const handleSelect = useCallback((type: 'item' | 'collection', id: string) => {

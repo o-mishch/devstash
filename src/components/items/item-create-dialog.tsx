@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, startTransition, useMemo, useEffect, type SyntheticEvent, type ReactNode } from 'react'
+import { useRef, useState, startTransition, useMemo, useEffect, type SyntheticEvent, type ReactNode, type TouchEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Plus, FolderPlus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -40,7 +40,6 @@ import { itemFormBaseSchema, collectionFormSchema, type ItemFormBaseValues } fro
 import { parseTagString } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
-import { useSelectTouchSwipe } from '@/hooks/use-select-touch-swipe'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionPickerItem } from '@/types/collection'
 
@@ -545,3 +544,56 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     </>
   )
 }
+
+const DRAG_THRESHOLD_PX = 6
+
+function useSelectTouchSwipe() {
+  const activeRef = useRef<HTMLElement | null>(null)
+  const draggedRef = useRef(false)
+  const startXRef = useRef(0)
+  const startYRef = useRef(0)
+
+  function setActive(el: HTMLElement | null) {
+    activeRef.current?.removeAttribute('data-touch-active')
+    el?.setAttribute('data-touch-active', '')
+    activeRef.current = el
+  }
+
+  function optionAt(x: number, y: number): HTMLElement | null {
+    const node = document.elementFromPoint(x, y)
+    const option = node?.closest('[role="option"]')
+    if (!(option instanceof HTMLElement)) return null
+    if (option.getAttribute('aria-disabled') === 'true') return null
+    return option
+  }
+
+  function onTouchStart(e: TouchEvent) {
+    if (e.touches.length !== 1) return
+    const touch = e.touches[0]
+    startXRef.current = touch.clientX
+    startYRef.current = touch.clientY
+    draggedRef.current = false
+    setActive(optionAt(touch.clientX, touch.clientY))
+  }
+
+  function onTouchMove(e: TouchEvent) {
+    if (e.touches.length !== 1) return
+    const touch = e.touches[0]
+    const movedFar =
+      Math.abs(touch.clientX - startXRef.current) > DRAG_THRESHOLD_PX ||
+      Math.abs(touch.clientY - startYRef.current) > DRAG_THRESHOLD_PX
+    if (movedFar) draggedRef.current = true
+    setActive(optionAt(touch.clientX, touch.clientY))
+  }
+
+  function onTouchEnd(e: TouchEvent) {
+    const el = activeRef.current
+    setActive(null)
+    if (!draggedRef.current) return
+    e.preventDefault()
+    el?.click()
+  }
+
+  return { onTouchStart, onTouchMove, onTouchEnd }
+}
+

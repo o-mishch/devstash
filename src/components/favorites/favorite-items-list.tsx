@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useItemDrawerStore } from '@/stores/item-drawer'
 import { useInfiniteItems } from '@/hooks/use-infinite-items'
-import { useAutoFetchNextPage } from '@/hooks/use-auto-fetch-next-page'
+import { useIntersectionObserver } from '@/hooks/use-intersection-observer'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FavoriteItemRow } from './favorite-item-row'
@@ -37,7 +37,13 @@ interface FavoriteItemsListProps {
 export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsListProps) {
   const { openDrawer } = useItemDrawerStore()
   const { items, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteItems({ type: 'favorites' }, firstPage)
-  const { sentinelRef } = useAutoFetchNextPage(hasNextPage, isFetchingNextPage, fetchNextPage)
+  const { ref: sentinelRef, inView } = useIntersectionObserver({ rootMargin: '200px' })
+
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage()
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const groups = useMemo(

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { getRedis } from '@/lib/infra/redis'
-import { generateSecureToken } from '@/lib/auth/tokens'
+import { generateSecureToken, hashToken } from '@/lib/auth/tokens'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'pending-link' })
@@ -36,17 +36,20 @@ export interface LinkIntentData {
   userId: string
 }
 
+const pendingLinkKey = (token: string) => `pending-link:${hashToken(token)}`
+const linkIntentKey = (token: string) => `link-intent:${hashToken(token)}`
+
 export async function createPendingLink(data: PendingLinkData): Promise<string | null> {
   const token = generateSecureToken()
   const stored = await redisOp('Failed to create pending link in Redis', (r) =>
-    r.set(`pending-link:${token}`, data, { ex: 60 * 15 })
+    r.set(pendingLinkKey(token), data, { ex: 60 * 15 })
   )
   return stored !== null ? token : null
 }
 
 export async function getPendingLink(token: string): Promise<PendingLinkData | null> {
   return redisOp('Failed to read pending link from Redis', (r) =>
-    r.get<PendingLinkData>(`pending-link:${token}`)
+    r.get<PendingLinkData>(pendingLinkKey(token))
   )
 }
 
@@ -55,27 +58,26 @@ export async function getPendingLink(token: string): Promise<PendingLinkData | n
 // the 15-minute TTL; the token is still alive in Redis and will work once the service recovers.
 export async function consumePendingLink(token: string): Promise<PendingLinkData | null> {
   return redisOp('Failed to consume pending link from Redis', (r) =>
-    r.getdel<PendingLinkData>(`pending-link:${token}`)
+    r.getdel<PendingLinkData>(pendingLinkKey(token))
   )
 }
 
 export async function createLinkIntent(userId: string): Promise<string | null> {
   const token = generateSecureToken()
   const stored = await redisOp('Failed to create link intent in Redis', (r) =>
-    r.set(`link-intent:${token}`, { userId } as LinkIntentData, { ex: 60 * 5 })
+    r.set(linkIntentKey(token), { userId } as LinkIntentData, { ex: 60 * 5 })
   )
   return stored !== null ? token : null
 }
 
 export async function getLinkIntent(token: string): Promise<LinkIntentData | null> {
   return redisOp('Failed to read link intent from Redis', (r) =>
-    r.get<LinkIntentData>(`link-intent:${token}`)
+    r.get<LinkIntentData>(linkIntentKey(token))
   )
 }
 
 export async function consumeLinkIntent(token: string): Promise<LinkIntentData | null> {
   return redisOp('Failed to consume link intent from Redis', (r) =>
-    r.getdel<LinkIntentData>(`link-intent:${token}`)
+    r.getdel<LinkIntentData>(linkIntentKey(token))
   )
 }
-

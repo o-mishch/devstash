@@ -20,6 +20,7 @@ vi.mock('@/lib/infra/redis', () => ({
 
 vi.mock('@/lib/auth/tokens', () => ({
   generateSecureToken: vi.fn(() => 'test-token-abc'),
+  hashToken: vi.fn((token: string) => `hashed-${token}`),
 }))
 
 import {
@@ -56,6 +57,8 @@ describe('pending link lifecycle', () => {
   it('createPendingLink stores data retrievable by getPendingLink', async () => {
     const token = await createPendingLink(pendingData)
     expect(token).toBe('test-token-abc')
+    expect(store.has('pending-link:test-token-abc')).toBe(false)
+    expect(store.has('pending-link:hashed-test-token-abc')).toBe(true)
     expect(await getPendingLink('test-token-abc')).toEqual(pendingData)
   })
 
@@ -77,6 +80,8 @@ describe('link intent lifecycle', () => {
   it('createLinkIntent stores userId retrievable by getLinkIntent', async () => {
     const token = await createLinkIntent('user-1')
     expect(token).toBe('test-token-abc')
+    expect(store.has('link-intent:test-token-abc')).toBe(false)
+    expect(store.has('link-intent:hashed-test-token-abc')).toBe(true)
     expect(await getLinkIntent('test-token-abc')).toEqual({ userId: 'user-1' })
   })
 

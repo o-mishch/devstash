@@ -355,6 +355,13 @@ describe('POST /profile/credential-email', () => {
     expect(mockRequestCredentialEmail).toHaveBeenCalledWith('user-1', 'new@example.com', 'pass1234')
   })
 
+  it('ADD: returns 422 when the instant activation password is too short', async () => {
+    asAdd()
+    const res = await REQUEST_CREDENTIAL_EMAIL(req('POST', { email: 'new@example.com', newPassword: 'short', confirmPassword: 'short' }))
+    expect(res.status).toBe(422)
+    expect(mockRequestCredentialEmail).not.toHaveBeenCalled()
+  })
+
   it('ADD: returns 422 when the instant path needs a password', async () => {
     asAdd()
     mockRequestCredentialEmail.mockResolvedValue({ result: 'password-required' })

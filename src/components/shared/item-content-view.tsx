@@ -6,13 +6,12 @@ import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components
 import { CopyButton } from '@/components/shared/copy-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR, aiRateLimitHint } from '@/lib/utils/constants'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
 import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
 import { useAppUserFlagsStore } from '@/stores/app-user-flags'
-import { cn } from '@/lib/utils'
-import type { ExplainController } from '@/hooks/use-explain-code'
-import type { OptimizeController } from '@/hooks/use-optimize-prompt'
+import type { AiItemRewriteController } from '@/hooks/use-ai-item-rewrite'
 import { CodeEditor, MarkdownViewer } from './dynamic-editors'
 
 interface EditorChromeContainerProps {
@@ -187,7 +186,7 @@ function AiChromeHeader({ result, isLoading, isSaving, isDone, onGenerate, onApp
 interface MarkdownContentViewProps {
   content: string
   // Drawer read-view only: the AI Optimize controller for prompt items.
-  optimize?: OptimizeController
+  optimize?: AiItemRewriteController
 }
 
 function MarkdownContentView({ content, optimize }: MarkdownContentViewProps) {
@@ -195,7 +194,7 @@ function MarkdownContentView({ content, optimize }: MarkdownContentViewProps) {
 
   // Surface a freshly generated optimized prompt by switching to its tab; manual toggles still stick.
   // Adjusting state during render (vs. an effect) per the React "previous render" pattern.
-  const optimizedPrompt = optimize?.optimizedPrompt ?? null
+  const optimizedPrompt = optimize?.result ?? null
   const [shownOptimized, setShownOptimized] = useState<string | null>(null)
   if (optimizedPrompt !== shownOptimized) {
     setShownOptimized(optimizedPrompt)
@@ -212,12 +211,12 @@ function MarkdownContentView({ content, optimize }: MarkdownContentViewProps) {
         <div className="flex items-center gap-1">
           {optimize && (
             <AiChromeHeader
-              result={optimize.optimizedPrompt}
+              result={optimize.result}
               isLoading={optimize.isLoading}
               isSaving={optimize.isSaving}
-              isDone={optimize.isApplied}
+              isDone={optimize.isDone}
               onGenerate={optimize.generate}
-              onApply={optimize.requestApply}
+              onApply={optimize.requestSave}
               tab={tab}
               onTabChange={setTab}
               ApplyIcon={Wand2}
@@ -278,7 +277,7 @@ function ExplanationBody({ explanation }: { explanation: string }) {
 interface CodeEditorViewProps {
   content: string
   language?: string | null
-  explain?: ExplainController
+  explain?: AiItemRewriteController
 }
 
 function CodeEditorView({ content, language, explain }: CodeEditorViewProps) {
@@ -287,7 +286,7 @@ function CodeEditorView({ content, language, explain }: CodeEditorViewProps) {
 
   // Surface a freshly generated explanation by switching to its tab; manual toggles still stick.
   // Adjusting state during render (vs. an effect) per the React "previous render" pattern.
-  const explanation = explain?.explanation ?? null
+  const explanation = explain?.result ?? null
   const [shownExplanation, setShownExplanation] = useState<string | null>(null)
   if (explanation !== shownExplanation) {
     setShownExplanation(explanation)
@@ -299,10 +298,10 @@ function CodeEditorView({ content, language, explain }: CodeEditorViewProps) {
   if (resolvedLang !== null || !language) {
     const headerStart = explain ? (
       <AiChromeHeader
-        result={explain.explanation}
+        result={explain.result}
         isLoading={explain.isLoading}
         isSaving={explain.isSaving}
-        isDone={explain.isSaved}
+        isDone={explain.isDone}
         onGenerate={explain.generate}
         onApply={explain.requestSave}
         tab={tab}
@@ -320,8 +319,8 @@ function CodeEditorView({ content, language, explain }: CodeEditorViewProps) {
       />
     ) : null
     const bodyOverride =
-      explain && tab === 'result' && explain.explanation !== null ? (
-        <ExplanationBody explanation={explain.explanation} />
+      explain && tab === 'result' && explain.result !== null ? (
+        <ExplanationBody explanation={explain.result} />
       ) : undefined
 
     return (
@@ -347,9 +346,9 @@ interface ItemContentViewProps {
   content?: string | null
   language?: string | null
   // Drawer read-view only: the AI Explain controller for snippet/command (the code-editor path).
-  explain?: ExplainController
+  explain?: AiItemRewriteController
   // Drawer read-view only: the AI Optimize controller for prompt (the markdown path).
-  optimize?: OptimizeController
+  optimize?: AiItemRewriteController
 }
 
 export function ItemContentView({ itemType, content, language, explain, optimize }: ItemContentViewProps) {

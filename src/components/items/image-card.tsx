@@ -3,7 +3,7 @@
 import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import Image from 'next/image'
 import { RotateCcw } from 'lucide-react'
-import { showFileNotFoundToast } from '@/hooks/use-restricted-download'
+import { showFileNotFoundToast } from '@/hooks/use-restricted'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from '@/components/shared/copy-button'
