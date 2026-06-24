@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useInfiniteItems } from '@/hooks/use-infinite-items'
 import { useIntersectionObserver } from '@/hooks/use-intersection-observer'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'

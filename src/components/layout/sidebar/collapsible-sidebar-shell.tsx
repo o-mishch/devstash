@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { SidebarData } from '@/types/sidebar'
 import { useUpdateEditorPreferences } from '@/hooks/use-editor-preferences'
-import { writeLayoutCookie } from '@/lib/utils/layout-cookie'
+import { writeLayoutCookie } from '@/lib/dom/layout-cookie'
 import { CollapsedSidebar } from './collapsed-sidebar'
 import { ExpandedSidebar } from './expanded-sidebar'
 

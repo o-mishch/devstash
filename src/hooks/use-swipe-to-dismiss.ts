@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type TouchEvent } from 'react'
 
-import { shouldDismissSwipe } from '@/lib/utils/swipe'
+import { shouldDismissSwipe, schedulePostDismissCheck, FLY_OFF_MS, FLY_OFF_EASE } from '@/lib/utils/swipe'
+import { SHEET_CONTENT_SELECTOR } from '@/lib/dom/drawer-selectors'
 
 type SwipeDirection = 'left' | 'right' | 'down'
 
@@ -86,6 +87,18 @@ export function useSwipeToDismiss({ onDismiss, direction = 'right', threshold = 
   const offsetRef = useRef(0)
   const [offset, setOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
+  // True from the moment a dismiss is decided until onDismiss fires: the panel keeps its current offset
+  // and animates the REST of the way off-screen (transition on, not snapping back to 0), so the close
+  // visibly continues from where the finger lifted instead of vanishing in place.
+  const [flyingOff, setFlyingOff] = useState(false)
+  const flyOffTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flyOffStartRaf = useRef(0)
+  // Separate ref for the rAF scheduled INSIDE the fly-off timer callback. If the component unmounts
+  // while the timer is still pending, cleanup (below) cancels both the timer and any already-scheduled
+  // rAF. If cleanup runs while the timer is in-flight (unmount between timer start and its callback),
+  // the rAF scheduled inside the callback fires after cleanup — it cannot be pre-cancelled. React 18
+  // no-ops setState on unmounted components, so setDragOffset(0) in that case is a safe no-op.
+  const postDismissRafRef = useRef(0)
 
   const setDragOffset = useCallback((value: number) => {
     offsetRef.current = value
@@ -93,10 +106,22 @@ export function useSwipeToDismiss({ onDismiss, direction = 'right', threshold = 
   }, [])
 
   const reset = useCallback(() => {
+    if (flyOffStartRaf.current) {
+      cancelAnimationFrame(flyOffStartRaf.current)
+      flyOffStartRaf.current = 0
+    }
     phase.current = 'pending'
     setDragging(false)
+    setFlyingOff(false)
     setDragOffset(0)
   }, [setDragOffset])
+
+  // Clear any pending fly-off timer/rAF on unmount so onDismiss can't fire after the panel is gone.
+  useEffect(() => () => {
+    if (flyOffTimer.current) clearTimeout(flyOffTimer.current)
+    if (flyOffStartRaf.current) cancelAnimationFrame(flyOffStartRaf.current)
+    if (postDismissRafRef.current) cancelAnimationFrame(postDismissRafRef.current)
+  }, [])
 
   const onTouchStart = useCallback((e: TouchEvent) => {
     if (!enabled || e.touches.length !== 1) return
@@ -144,16 +169,54 @@ export function useSwipeToDismiss({ onDismiss, direction = 'right', threshold = 
     const velocity = dragged / Math.max(1, elapsed) // px per ms
     const limit = distanceThreshold ?? size.current * threshold
     if (shouldDismissSwipe({ dragged, velocity, limit })) {
-      onDismiss()
+      // CONTINUE the close from the release point: fly the panel the rest of the way off-screen (full
+      // length along the closing axis), with the transition on, THEN commit the close. Without this the
+      // old code called onDismiss() and reset() together — snapping the offset back to 0 the same frame
+      // the sheet closed, so the drawer vanished in place instead of sliding out (the reported bug).
+      //
+      // The fly-off MUST be split across two frames. The drag frames painted with `transition: none`; a
+      // CSS transition only fires when the property changes BETWEEN two painted states. So frame 1 turns
+      // the transition ON while holding the current offset (paints the start), and frame 2 (next rAF)
+      // moves the offset to the off-screen target — only then does the browser interpolate. Setting both
+      // in one commit lets the browser collapse them and jump instantly (no animation) — the device-
+      // dependent "just disappeared" we saw, which a synthetic test's frame cadence happened to mask.
+      setDragging(false) // re-enable the CSS transition (frame 1 holds the current offset)
+      setFlyingOff(true)
+      const target = sign * size.current
+      flyOffStartRaf.current = requestAnimationFrame(() => {
+        setDragOffset(target) // frame 2: now interpolate to off-screen
+      })
+      flyOffTimer.current = setTimeout(() => {
+        // Commit the close but DON'T reset the offset to 0 — the panel is now parked off-screen. Resetting
+        // here would snap the transform back to translateX(0) the same frame base-ui starts its own close,
+        // re-showing the drawer for a frame before it slides out again (the "~20% reappears then completes"
+        // jump). The Sheet unmounts on close from where the fly-off left it; the next open mounts fresh.
+        onDismiss()
+        // …unless the close was DEFERRED (an unsaved-edit guard opened a discard dialog instead of closing):
+        // the panel is still mounted but stranded off-screen. Detect that next frame (the right-side sheet
+        // is still present and not in its closing/ending state) and spring the offset back so the dialog
+        // sits over the drawer in place. document query: the Sheet is portaled outside this subtree.
+        // Deferred close: spring back into place, then drop gesture state once settled.
+        schedulePostDismissCheck(postDismissRafRef, () => document.querySelector(SHEET_CONTENT_SELECTOR), () => {
+          setDragOffset(0)
+          phase.current = 'pending'
+          flyOffTimer.current = setTimeout(() => setFlyingOff(false), FLY_OFF_MS)
+        })
+      }, FLY_OFF_MS)
+      return
     }
     reset()
-  }, [onDismiss, reset, threshold, distanceThreshold])
+  }, [onDismiss, reset, setDragOffset, sign, threshold, distanceThreshold])
 
   const dragStyle = useMemo<CSSProperties>(() => {
-    if (!offset) return { transition: dragging ? 'none' : undefined }
+    // During the fly-off, drive an explicit transform transition so the panel slides the rest of the way
+    // off-screen (the Sheet has no transform transition of its own, so without this the offset jump would
+    // be instant). While actively dragging, transition is off so the panel tracks the finger 1:1.
+    const transition = flyingOff ? `transform ${FLY_OFF_MS}ms ${FLY_OFF_EASE}` : dragging ? 'none' : undefined
+    if (!offset) return { transition }
     const translate = axis === 'x' ? `translateX(${offset}px)` : `translateY(${offset}px)`
-    return { transform: translate, transition: dragging ? 'none' : undefined }
-  }, [offset, dragging, axis])
+    return { transform: translate, transition }
+  }, [offset, dragging, flyingOff, axis])
 
   const handlers = useMemo<SwipeHandlers>(
     () => ({ onTouchStart, onTouchMove, onTouchEnd }),

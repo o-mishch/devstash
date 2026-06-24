@@ -2,10 +2,12 @@
 
 import { Suspense, useCallback, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useItemUrlParamSync } from '@/hooks/use-item-url-param-sync'
 import { useCacheItemDetail } from '@/hooks/use-item-detail'
+import { useIsTouch } from '@/hooks/use-is-touch'
 import { ItemDetailDrawer } from '@/components/items/drawer/item-detail-drawer'
+import { MobileItemPaneSlider } from '@/components/items/drawer/mobile-item-pane-slider'
 import type { WithChildren } from '@/types/common'
 import type { FullItem } from '@/types/item'
 
@@ -40,8 +42,14 @@ function ItemDrawerUrlSync() {
 }
 
 export function ItemDrawerProvider({ children }: WithChildren) {
-  const { isOpen, item: openItem } = useItemDrawerStore()
+  const { isOpen, item: openItem, openScrollY } = useItemDrawerStore()
   const cacheItemDetail = useCacheItemDetail()
+  // `useIsTouch` returns false on the server and the first client paint, then resolves after hydration.
+  // So on a touch device the desktop branch renders first and swaps to the slider post-hydration — which
+  // moves `children` into the slider's stable wrapper, a one-time remount on initial load (and a brief
+  // desktop-Sheet mount if `?item=` is deep-linked). Accepted: it happens once at hydration, before any
+  // open/close interaction; the no-remount guarantee holds for every open/close AFTER that first paint.
+  const isTouch = useIsTouch()
 
   // Seed the shared item-detail caches once the drawer has assembled the full item from its progressive
   // /details + /content reads, so a later deep-link / preview / list-open of the same item is served from
@@ -50,20 +58,39 @@ export function ItemDrawerProvider({ children }: WithChildren) {
     cacheItemDetail(item)
   }, [cacheItemDetail])
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) useItemDrawerStore.getState().closeDrawer()
+  }
+
   return (
     <>
-      {children}
+      {/* Touch: MobileItemPaneSlider owns the page↔item paired slide (page slides left, item slides in from
+          the right) and, once settled, renders the item as document content so the mobile URL bar retracts.
+          It always renders `children` from one stable slot, so the app page never remounts. Desktop: the
+          page renders straight through and the right-side Sheet drawer handles items. */}
+      {isTouch ? (
+        <MobileItemPaneSlider
+          page={children}
+          open={isOpen}
+          item={openItem}
+          openScrollY={openScrollY}
+          onOpenChange={handleOpenChange}
+          onFullItemFetched={handleFullItemFetched}
+        />
+      ) : (
+        children
+      )}
       <Suspense fallback={null}>
         <ItemDrawerUrlSync />
       </Suspense>
-      <ItemDetailDrawer
-        item={openItem}
-        open={isOpen}
-        onOpenChange={(newOpen) => {
-          if (!newOpen) useItemDrawerStore.getState().closeDrawer()
-        }}
-        onFullItemFetched={handleFullItemFetched}
-      />
+      {!isTouch && (
+        <ItemDetailDrawer
+          item={openItem}
+          open={isOpen}
+          onOpenChange={handleOpenChange}
+          onFullItemFetched={handleFullItemFetched}
+        />
+      )}
     </>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { X, Check } from 'lucide-react'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -16,6 +16,7 @@ import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog
 import { useUpdateItem, type TextItemTypeName } from '@/hooks/use-update-item'
 import type { UpdateItemInput } from '@/lib/utils/validators'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
+import { useVisualViewport } from '@/hooks/use-visual-viewport'
 import { useRegisterSheetClose, type SheetCloseRef } from '@/hooks/use-register-sheet-close'
 import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL, TEXT_ITEM_TYPE_NAMES, SYSTEM_TYPE_ORDER, remapLanguageForType } from '@/lib/utils/constants'
@@ -86,12 +87,14 @@ interface ItemDrawerEditContentProps {
    * job's "Save items to collection" target — so the field shows that target but can't be changed here.
    */
   collectionsReadOnly?: boolean
+  /** Mobile full-screen mode: render as document-flow content so the browser URL bar can collapse. */
+  fullScreen?: boolean
 }
 
 // The four text types, in canonical order, rendered as the type-switch options.
 const TEXT_TYPE_OPTIONS = SYSTEM_TYPE_ORDER.filter((name) => TEXT_ITEM_TYPE_NAMES.has(name))
 
-export function ItemDrawerEditContent({ item, collections = [], onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions, collectionsReadOnly }: ItemDrawerEditContentProps) {
+export function ItemDrawerEditContent({ item, collections = [], onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions, collectionsReadOnly, fullScreen = false }: ItemDrawerEditContentProps) {
   const { itemType } = item
   const committedType = itemType.name
   const updateItem = useUpdateItem()
@@ -217,6 +220,62 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
   // would be unreachable on the very state it explains. When dirty, the tooltip falls back to the
   // consumer's `saveTooltip` (the draft drawer's copy); the real item drawer passes none, so the
   // editable button shows no tooltip.
+  // When the virtual keyboard opens the browser shrinks the visual viewport without scrolling the focused
+  // input into view, so it can sit hidden behind the keyboard. We scroll it back above the keyboard
+  // whenever the keyboard height changes. The scroller differs by mode: full-screen mode scrolls the
+  // <html> document (document.scrollingElement); Sheet mode scrolls the inner ScrollArea viewport that
+  // wraps the focused field. `keyboardHeight` comes from useVisualViewport (its formula is iOS-robust —
+  // see that hook; a naive innerHeight-only inset collapses to 0 on some iOS versions). document is
+  // required: the focused element and its scroll container are queried from the live DOM.
+  const keyboardHeight = useVisualViewport()?.keyboardHeight ?? 0
+  useEffect(() => {
+    if (keyboardHeight <= 0) return
+
+    // Scroll the focused field above the keyboard. Re-runs when the keyboard height changes AND on every
+    // focus change while it is up (focusin) — tapping a different, lower field with the keyboard already
+    // open leaves keyboardHeight unchanged, so without this the newly-focused field stays hidden.
+    const reveal = () => {
+      // document.activeElement: React has no hook for the currently focused element.
+      const active = document.activeElement as HTMLElement | null
+      // document.body: sentinel for "no real element focused"; no React equivalent.
+      if (!active || active === document.body) return
+
+      // Full-screen mode: the document is the scroller. Sheet mode: walk up to the ScrollArea viewport.
+      let scroller: HTMLElement | null = null
+      if (!fullScreen) {
+        scroller = active.parentElement
+        while (scroller && scroller.dataset.slot !== 'scroll-area-viewport') {
+          scroller = scroller.parentElement
+        }
+        // No viewport ancestor (e.g. a portaled editor field) — bail. Falling back to the document
+        // scroller would be a no-op here: the Sheet locks document scroll, so scrollBy moves nothing
+        // and the field would stay hidden behind the keyboard. Full-screen mode has no such lock.
+        if (!scroller) return
+      } else {
+        // document.scrollingElement: the document-level scroll container; no React/Next equivalent.
+        scroller = document.scrollingElement as HTMLElement | null
+        if (!scroller) return
+      }
+
+      const scrollerRect = scroller.getBoundingClientRect()
+      const activeRect = active.getBoundingClientRect()
+      // Visible bottom of the scroller in the current visual viewport (above the keyboard). window.innerHeight
+      // is the layout-viewport height — the reference the keyboard inset is subtracted from; no framework read.
+      const visibleBottom = Math.min(scrollerRect.bottom, window.innerHeight - keyboardHeight)
+      // Amount the focused element overshoots below the visible area (positive = hidden behind keyboard).
+      const overshoot = activeRect.bottom + 8 - visibleBottom
+
+      if (overshoot > 0) {
+        scroller.scrollBy({ top: overshoot, behavior: 'smooth' })
+      }
+    }
+
+    reveal()
+    // document.addEventListener: React has no mechanism for listening to focusin at the document level.
+    document.addEventListener('focusin', reveal)
+    return () => document.removeEventListener('focusin', reveal)
+  }, [keyboardHeight, fullScreen])
+
   const hasExtras = Boolean(renderExtraActions)
   // Mobile-only restyle of the regular 2-button edit bar (no injected extras): drop the full-width
   // stretch so both buttons sit compact and left-aligned like the desktop view-mode action bar —
@@ -229,10 +288,14 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
   const saveButtonClass = hasExtras ? cn(ACTIONBAR_BUTTON_CLASS, 'max-sm:w-full') : 'touch:h-11'
   const saveWrapperClass = hasExtras ? 'inline-flex max-sm:flex-1' : 'inline-flex'
 
+  // Save's label-reveal threshold: in the dense draft bar (Cancel · Save · Delete · Commit) it sits at
+  // position 1, so it reveals progressively as that bar widens. In the regular 2-button edit bar there's
+  // only Cancel · Save, which always fits both labels — so Save reveals at the SAME low threshold as
+  // Cancel (index 0) instead of staying icon-only while Cancel shows its text.
   const saveButton = (
     <Button size="sm" onClick={handleSubmit} disabled={saving || !isDirty} className={saveButtonClass} aria-label={saveLabel}>
       <Check className="size-4" />
-      <span className={actionbarLabelClass(1)}>{saving ? 'Saving…' : saveLabel}</span>
+      <span className={actionbarLabelClass(hasExtras ? 1 : 0)}>{saving ? 'Saving…' : saveLabel}</span>
     </Button>
   )
   const saveButtonTooltip = !isDirty ? 'No changes to save' : saveTooltip
@@ -248,6 +311,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
   return (
     <>
       <DrawerLayout
+        fullScreen={fullScreen}
         itemType={headerItemType}
         onClose={() => guardedAction(onClose)}
         titleArea={

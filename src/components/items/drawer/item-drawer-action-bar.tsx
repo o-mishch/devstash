@@ -15,7 +15,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatRenewIn } from '@/lib/utils/format'
 import { api } from '@/lib/api/client'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useIsPro, useInvalidateUserProfile } from '@/hooks/use-user-profile'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { usePinnedItemsStore } from '@/stores/pinned-items'

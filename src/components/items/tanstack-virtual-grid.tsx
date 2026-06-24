@@ -2,9 +2,10 @@
 'use no memo'
 
 import { useVirtualizer, useWindowVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
-import { useCallback, useEffect, useMemo, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react'
 import { useVirtualContainer } from '@/hooks/use-virtual-container'
 import { useIsTouch } from '@/hooks/use-is-touch'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 
 // Stable reference for single-column list callers so the grid's ResizeObserver effect doesn't
 // re-subscribe each render. Shared by the dashboard recent list and the file list.
@@ -105,7 +106,15 @@ function MainVirtualGrid<T>(props: TanStackVirtualGridProps<T>) {
 // Mobile: the document/window is the scroll element (so the URL bar collapses). scrollMargin is the
 // list's absolute offset from the top of the document.
 function WindowVirtualGrid<T>(props: TanStackVirtualGridProps<T>) {
-  const { containerRef, cols, scrollMargin } = useVirtualContainer({ getColumns: props.getColumns, windowMode: true })
+  // When an item drawer is open on touch, this list becomes the occluded backdrop behind the full-screen
+  // item (reparented into a fixed layer). Freeze its measurements so it doesn't re-flow to that box's width
+  // and stretch on the swipe-reveal — see useVirtualContainer's `frozen`.
+  const itemDrawerOpen = useItemDrawerStore((s) => s.isOpen)
+  const { containerRef, cols, scrollMargin } = useVirtualContainer({
+    getColumns: props.getColumns,
+    windowMode: true,
+    frozen: itemDrawerOpen,
+  })
   const { rows, effectiveItemHeight, rowHeight } = useGridRows(props, cols, true)
   const virtualizer = useWindowVirtualizer({
     count: rows.length,
@@ -113,6 +122,27 @@ function WindowVirtualGrid<T>(props: TanStackVirtualGridProps<T>) {
     overscan: 2,
     scrollMargin,
   })
+
+  // Freeze the container HEIGHT too while the item is open. On close the page rejoins document flow and the
+  // window scroll is restored to where it was — but if the virtualizer's getTotalSize() momentarily reports
+  // a collapsed height (it re-measures from scratch on unfreeze; the document is briefly ~viewport-tall for
+  // a few hundred ms), the document isn't tall enough to scroll to the saved position, so the page is stuck
+  // flashing at the top until it re-grows. Holding the last document-time total height keeps the container
+  // tall across the whole open→close cycle, so the scroll restore lands in a single frame with no flash.
+  // Held in state (not a ref) and updated by a render-phase setState — React's supported pattern for
+  // deriving state from props/external reads — so the lint rule against render-time ref access is satisfied.
+  const liveTotalSize = virtualizer.getTotalSize()
+  const [frozenTotalSize, setFrozenTotalSize] = useState(liveTotalSize)
+  // Refresh the frozen height from any positive live size while the drawer is closed (normal case), AND
+  // on a deep-link open where the store is already `isOpen` at the grid's first measured render — there
+  // the seed above captured 0 (the window virtualizer reports 0 before its first measure), and the
+  // closed-only guard would latch it there forever, leaving the backdrop with no scrollable height and
+  // breaking the close-time scroll restore. So also accept the first non-zero size while open.
+  const shouldRefreshFrozen = !itemDrawerOpen || frozenTotalSize === 0
+  if (shouldRefreshFrozen && liveTotalSize > 0 && liveTotalSize !== frozenTotalSize) {
+    setFrozenTotalSize(liveTotalSize)
+  }
+  const totalSize = itemDrawerOpen ? frozenTotalSize : liveTotalSize
 
   return (
     <VirtualGridBody
@@ -123,7 +153,7 @@ function WindowVirtualGrid<T>(props: TanStackVirtualGridProps<T>) {
       scrollMargin={scrollMargin}
       rows={rows}
       virtualItems={virtualizer.getVirtualItems()}
-      totalSize={virtualizer.getTotalSize()}
+      totalSize={totalSize}
     />
   )
 }

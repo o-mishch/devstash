@@ -90,32 +90,24 @@ export function ParseProgress({
     <TooltipProvider delay={150}>
       <div
         className={cn(
-          'relative @container/progress flex min-w-0 flex-col gap-4 overflow-hidden',
+          'relative @container/progress flex min-w-0 flex-col gap-4',
           chrome &&
             'card-surface card-hover group rounded-xl border border-border bg-muted/20 p-3 transition-colors hover:bg-muted/40 @min-[34rem]/progress:p-4 @min-[54rem]/progress:p-5',
         )}
       >
-        {isStreaming && chrome && <BorderBeam size={120} duration={6} className="opacity-70" />}
-        {/* Single grid: narrow = 2 cols × 2 rows; wide = 4 cols × 1 row.
-            Items flow in order: [status] [re-parse/resume] [discard] [save all].
-            On narrow the first pair (status + contextual btn) sits on row 1 and the
-            action pair (discard + save all) wraps to row 2 naturally. */}
-        {/* Narrow (< 460px): 2-col grid — status spans both rows (col 1), all buttons stay
-            in col 2 (right side). Re-parse sits on row 1; Discard + Save share row 2 as a
-            flex pair. Wide (≥ 460px): 4-col single row — the action-pair wrapper becomes
-            display:contents so Discard and Save each occupy their own grid column.
-            Button labels use stacked container-query thresholds: progressively hide from
-            right-to-left as the narrow zone shrinks, and re-reveal left-to-right as the
-            wide zone grows — never all at once. */}
-        {/* Status column is minmax(0,1fr) — NOT minmax(min-content,1fr) — so it can shrink below its
-            (whitespace-nowrap) text and truncate. With min-content the column refused to shrink, the row's
-            min-width exceeded the card, and the overflow-hidden card clipped the rightmost button. The
-            auto button columns stay pinned to the right edge inside the card at every width; the status
-            text gives up space first. */}
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 @min-[460px]/progress:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
-          {/* Status — spans both rows in narrow so all buttons stay right-aligned in col 2. min-w-0 lets
-              the inner text truncate instead of forcing the column wide. */}
-          <div className="row-span-2 flex min-w-0 items-center gap-3 @min-[460px]/progress:row-span-1">
+        {isStreaming && chrome && (
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
+            <BorderBeam size={120} duration={6} className="opacity-70" />
+          </div>
+        )}
+        {/* Single row always. Status is whitespace-nowrap (never wraps/shrinks).
+            Buttons drop labels right-to-left as space shrinks:
+              ≥ 620px: all labels visible
+              ≥ 500px: Re-parse + Discard labelled, Save all icon-only
+              ≥ 390px: Re-parse labelled, Discard + Save all icon-only
+              < 390px: all icon-only */}
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 items-center gap-3">
             <div
               className={cn(
                 'flex size-9 shrink-0 items-center justify-center rounded-full',
@@ -124,24 +116,23 @@ export function ParseProgress({
             >
               <meta.Icon className={cn('card-icon size-4', meta.iconClassName)} />
             </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{meta.label}</p>
-              <p className="truncate text-xs text-muted-foreground">
+            <div>
+              <p className="whitespace-nowrap text-sm font-semibold">{meta.label}</p>
+              <p className="whitespace-nowrap text-xs text-muted-foreground">
                 <NumberTicker value={count} className="font-medium text-foreground" /> draft
                 {count === 1 ? '' : 's'} found
               </p>
             </div>
           </div>
 
-          {/* Row 1 col 2 (narrow) / col 2 (wide): Resume or Re-parse */}
-          <div className="flex justify-end">
+          <div className="flex shrink-0 items-center gap-1">
             {resumable && (
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <Button variant="outline" size="sm" onClick={onResume}>
                       <RotateCw className="size-4" />
-                      <span className="hidden @[340px]/progress:inline @[460px]/progress:hidden @[530px]/progress:inline">Resume parsing</span>
+                      <span className="hidden @min-[390px]/progress:inline">Resume parsing</span>
                     </Button>
                   }
                 />
@@ -162,7 +153,7 @@ export function ParseProgress({
                     <span className="inline-flex">
                       <Button variant="outline" size="sm" disabled>
                         <RefreshCw className="size-4" />
-                        <span className="hidden @[340px]/progress:inline @[460px]/progress:hidden @[530px]/progress:inline">Re-parse</span>
+                        <span className="hidden @min-[390px]/progress:inline">Re-parse</span>
                       </Button>
                     </span>
                   }
@@ -182,7 +173,7 @@ export function ParseProgress({
                         render={
                           <Button variant="outline" size="sm" disabled={reparsing}>
                             {reparsing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                            <span className="hidden @[340px]/progress:inline @[460px]/progress:hidden @[530px]/progress:inline">Re-parse</span>
+                            <span className="hidden @min-[390px]/progress:inline">Re-parse</span>
                           </Button>
                         }
                       />
@@ -216,89 +207,78 @@ export function ParseProgress({
                 </DialogContent>
               </Dialog>
             )}
-          </div>
 
-          {/* Row 2 col 2 (narrow): flex pair of action buttons, right-aligned.
-              Wide: display:contents so each child becomes its own grid column (cols 3 + 4). */}
-          <div className="flex justify-end gap-1 @min-[460px]/progress:contents">
-            <div>
-              <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <DialogTrigger
-                        render={
-                          <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={discarding}>
-                            {discarding ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4 text-destructive" />}
-                            <span className="hidden @[400px]/progress:inline @[460px]/progress:hidden @[590px]/progress:inline">Discard and Delete</span>
-                          </Button>
-                        }
-                      />
-                    }
-                  />
-                  <TooltipContent className="max-w-[260px]">
-                    Permanently delete this parse job and its drafts, and stop parsing. Your saved source stays in your
-                    stash to re-parse later.
-                  </TooltipContent>
-                </Tooltip>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Discard and delete this parse job?</DialogTitle>
-                    <DialogDescription>
-                      This permanently deletes the parse job and its drafts, and stops parsing. Your saved source stays in
-                      your stash (tagged brain-dump) so you can re-parse it later.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        setConfirmOpen(false)
-                        onDiscard()
-                      }}
-                    >
-                      Discard and delete
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-            <div>
+            <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <span className="inline-flex">
-                      <Button size="sm" onClick={onCommitAll} disabled={committing || count === 0 || isStreaming}>
-                        {committing ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                        {/* Re-reveal at 590 (matching Discard), not 480: from 460px the grid is the 4-col
-                            single row, and with the whitespace-nowrap status column the rightmost Save-all
-                            label re-appearing at 480 overflowed the overflow-hidden card (clipped button).
-                            Staying icon-only through the tight 460–590 zone keeps every column on the row. */}
-                        <span className="hidden @[280px]/progress:inline @[460px]/progress:hidden @[590px]/progress:inline">Save all {count > 0 ? count : ''}</span>
-                      </Button>
-                    </span>
+                    <DialogTrigger
+                      render={
+                        <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={discarding}>
+                          {discarding ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4 text-destructive" />}
+                          <span className="hidden @min-[500px]/progress:inline">Discard and Delete</span>
+                        </Button>
+                      }
+                    />
                   }
                 />
-                <TooltipContent className="max-w-[260px]">{saveAllTooltip}</TooltipContent>
+                <TooltipContent className="max-w-[260px]">
+                  Permanently delete this parse job and its drafts, and stop parsing. Your saved source stays in your
+                  stash to re-parse later.
+                </TooltipContent>
               </Tooltip>
-            </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Discard and delete this parse job?</DialogTitle>
+                  <DialogDescription>
+                    This permanently deletes the parse job and its drafts, and stops parsing. Your saved source stays in
+                    your stash (tagged brain-dump) so you can re-parse it later.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      setConfirmOpen(false)
+                      onDiscard()
+                    }}
+                  >
+                    Discard and delete
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex">
+                    <Button size="sm" onClick={onCommitAll} disabled={committing || count === 0 || isStreaming}>
+                      {committing ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                      <span className="hidden @min-[620px]/progress:inline">Save all {count > 0 ? count : ''}</span>
+                    </Button>
+                  </span>
+                }
+              />
+              <TooltipContent className="max-w-[260px]">{saveAllTooltip}</TooltipContent>
+            </Tooltip>
           </div>
         </div>
 
-      {/* Failed jobs surface the server's rich remediation detail in a dedicated block (not a clipped
-          suffix on the muted "N drafts found" line) so the "what to fix before re-running" guidance is
-          legible — a blind re-run reproduces the fault. Partials above stay committable. */}
-      {failed && error && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          {error}
-        </div>
-      )}
+        {/* Failed jobs surface the server's rich remediation detail in a dedicated block (not a clipped
+            suffix on the muted "N drafts found" line) so the "what to fix before re-running" guidance is
+            legible — a blind re-run reproduces the fault. Partials above stay committable. */}
+        {failed && error && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+            {error}
+          </div>
+        )}
 
-      {!done && !failed && <Progress value={progress} className="h-1.5" />}
+        {!done && !failed && <Progress value={progress} className="h-1.5" />}
       </div>
     </TooltipProvider>
   )

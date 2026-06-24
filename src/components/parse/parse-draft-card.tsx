@@ -13,7 +13,7 @@ import {
 } from '@/hooks/use-brain-dump'
 import { useItemUrlParamSync } from '@/hooks/use-item-url-param-sync'
 import { useFetchItemDetail } from '@/hooks/use-item-detail'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import {
   Dialog,
   DialogContent,
@@ -116,16 +116,16 @@ export function ParseDraftCard({
     if (!el) return
     highlightRanRef.current = true
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    // Show the ring now (covers a post-mount activation where the initial state was false) and open after
-    // a frame so the drawer mounts closed first and its slide-in animation plays.
+    // Open the drawer SYNCHRONOUSLY (not via a deferred rAF). The board re-renders heavily right after
+    // mount — the SSE stream seeds, syncColumns reflows, AnimatePresence/layoutId reconciles — and a
+    // deferred open (requestAnimationFrame) scheduled here was cancelled by this effect's cleanup on that
+    // churn before it could fire, so a `?item=` deep-link often never opened the drawer. Setting editOpen
+    // directly commits the open with the same render; the Sheet still plays its enter animation via its
+    // `data-starting-style` transform, so nothing is lost visually. The ring still flashes for 1.5s.
     setHighlighted(true)
-    const openTimer = requestAnimationFrame(() => setEditOpen(true))
-    // Flash the ring for 1.5 s then fade out.
+    setEditOpen(true)
     const ringTimer = setTimeout(() => setHighlighted(false), 1500)
-    return () => {
-      cancelAnimationFrame(openTimer)
-      clearTimeout(ringTimer)
-    }
+    return () => clearTimeout(ringTimer)
   }, [highlight])
 
   // Keep ?item=<draftId> in sync with the edit drawer via the shared hook (same mechanism the item
@@ -351,43 +351,50 @@ export function ParseDraftCard({
             setEditOpen(false)
           }}
         />
-        <Dialog open={collectionConfirmOpen} onOpenChange={setCollectionConfirmOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create the collection for this item?</DialogTitle>
-              <DialogDescription>
-                This Brain Dump wants to save items into a new collection. Saving this item now will create
-                that collection. You can save it without the collection instead.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => confirmSaveNow(false)} disabled={busy}>
-                Save without collection
-              </Button>
-              <Button size="sm" onClick={() => confirmSaveNow(true)} disabled={busy}>
-                Create and save
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-          <DialogContent elevated>
-            <DialogHeader>
-              <DialogTitle>Delete this draft permanently?</DialogTitle>
-              <DialogDescription>
-                “{item.title}” will be removed from this Brain Dump for good. This can’t be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(false)} disabled={busy}>
-                Cancel
-              </Button>
-              <Button variant="destructive" size="sm" onClick={deleteForever} disabled={busy}>
-                Delete forever
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Both confirm dialogs portal to <body> in the DOM, but in the REACT tree they sit under the card's
+            clickable root (onClick={openEditor}), and React bubbles synthetic clicks along the REACT tree —
+            so clicking any dialog button (notably Cancel, which leaves the card mounted) would bubble up and
+            open the draft editor. Stop propagation here so dialog clicks never reach openEditor. (The
+            EditDraftDrawer above already does this via DrawerShell's stopPropagation prop.) */}
+        <div onClick={(event) => event.stopPropagation()}>
+          <Dialog open={collectionConfirmOpen} onOpenChange={setCollectionConfirmOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create the collection for this item?</DialogTitle>
+                <DialogDescription>
+                  This Brain Dump wants to save items into a new collection. Saving this item now will create
+                  that collection. You can save it without the collection instead.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" size="sm" onClick={() => confirmSaveNow(false)} disabled={busy}>
+                  Save without collection
+                </Button>
+                <Button size="sm" onClick={() => confirmSaveNow(true)} disabled={busy}>
+                  Create and save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+            <DialogContent elevated>
+              <DialogHeader>
+                <DialogTitle>Delete this draft permanently?</DialogTitle>
+                <DialogDescription>
+                  “{item.title}” will be removed from this Brain Dump for good. This can’t be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(false)} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" size="sm" onClick={deleteForever} disabled={busy}>
+                  Delete forever
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
     </TooltipProvider>
   )
@@ -531,7 +538,7 @@ function DuplicateBadge({ match }: DuplicateBadgeProps) {
             data-no-drag
             onClick={openReferenced}
             disabled={opening}
-            className="inline-flex w-fit cursor-pointer underline-offset-2 hover:underline disabled:opacity-70"
+            className="inline-flex w-fit underline-offset-2 hover:underline disabled:opacity-70"
           />
         }
       >

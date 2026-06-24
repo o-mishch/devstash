@@ -5,7 +5,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { $api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/api/query-keys'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import type { FullItem } from '@/types/item'
 
 // The item drawer is fed by three GET caches: the single-shot /items/{id} (deep-link / preview / dup-badge

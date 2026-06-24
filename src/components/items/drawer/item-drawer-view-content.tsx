@@ -20,7 +20,7 @@ import { useRegisterSheetClose, type SheetCloseRef } from '@/hooks/use-register-
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_PROMPT_OPTIMIZE, ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES, EXPLAIN_MAX_INPUT_CHARS, OPTIMIZE_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 import { formatBytes } from '@/lib/utils/format'
 import { useProDownloadSrc, useDownloadSrcActions, markPreviewFailed, isPreviewFailed } from '@/hooks/use-pro-download-src'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useIsPro } from '@/hooks/use-user-profile'
 import { isFullItem } from '@/types/item'
 import type { LightItem, FullItem } from '@/types/item'
@@ -169,9 +169,11 @@ interface ItemDrawerViewContentProps {
   // description, or optimized prompt applied to the content), so the drawer reflects the change
   // immediately and it survives reopen (mirrors the edit form's onSave).
   onAiResultSaved?: (updated: FullItem) => void
+  /** Mobile full-screen mode: render as document-flow content so the browser URL bar can collapse. */
+  fullScreen?: boolean
 }
 
-export function ItemDrawerViewContent({ item, isLight, contentLoading = false, onClose, onEdit, onDeleted, sheetCloseRef, onAiResultSaved }: ItemDrawerViewContentProps) {
+export function ItemDrawerViewContent({ item, isLight, contentLoading = false, onClose, onEdit, onDeleted, sheetCloseRef, onAiResultSaved, fullScreen = false }: ItemDrawerViewContentProps) {
   const { itemType } = item
   const fullItem = isFullItem(item) ? item : null
   const description = isFullItem(item) ? item.description : item.descriptionPreview
@@ -270,6 +272,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
   return (
     <>
     <DrawerLayout
+      fullScreen={fullScreen}
       itemType={itemType}
       onClose={requestClose}
       titleArea={
@@ -332,7 +335,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
       {ITEM_TYPES_WITH_URL.has(itemType.name) && (
         <DrawerSection label="URL">
           {item.url ? (
-            <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all">
+            <a href={/^https?:\/\//i.test(item.url ?? '') ? item.url! : '#'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all">
               {item.url}
               <ExternalLink className="size-3 shrink-0" />
             </a>
@@ -364,6 +367,10 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
         </>
       )}
     </DrawerLayout>
+    {/* canExplain (code types) and canOptimize (prompt type) are mutually exclusive — only one can be
+        true for any given item. Both blocks share the same `confirmOpen`/`handleConfirmOpenChange` for
+        the unsaved-guard dialog; a future item type satisfying both predicates would result in two dialogs
+        sharing the same open state. Keep these two predicates non-overlapping. */}
     {canExplain && (
       <>
         <ConfirmDialog

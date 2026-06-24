@@ -1,4 +1,5 @@
-Get recommendations and best practices from context7
+Get recommendations, best practices, and modern approaches from context7
+
 
 add all commands for which you are asking for permissions to allowed-tools in:
 .agents/skills/cleanup 

@@ -42,6 +42,20 @@ function getClippingAncestors(el: HTMLElement): HTMLElement[] {
   return result
 }
 
+// The mobile full-screen item drawer scrolls the document, so it has no overflow-clipping ancestor for
+// the walk above to find — yet it pins a sticky header (marked `data-drawer-sticky-header`) the portaled
+// overlay must still clip below. Walk up to the drawer container that holds that header and return it, so
+// its bottom edge can clamp the overlay's clip top. Returns null on every other surface.
+function getDrawerStickyHeader(el: HTMLElement): HTMLElement | null {
+  let node = el.parentElement
+  while (node && node !== document.body && node !== document.documentElement) {
+    const header = node.querySelector<HTMLElement>(':scope > [data-drawer-sticky-header]')
+    if (header) return header
+    node = node.parentElement
+  }
+  return null
+}
+
 // Shared className for the copy button in editor chrome headers. The `touch:size-5` cancels the
 // Button variant's `touch:size-11` tap-target upsize so the chrome bar stays compact on mobile.
 export const EDITOR_CHROME_COPY_BUTTON_CLASS =
@@ -167,6 +181,9 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   // overlay so it never paints over the form header/footer when the body scrolls. The ancestor list
   // is stable while mounted, so it's computed once (lazily) and only the rects are re-read per frame.
   const clipAncestorsRef = useRef<HTMLElement[] | null>(null)
+  // The mobile full-screen drawer's pinned sticky header (when this editor lives inside one). Cached
+  // alongside the clip ancestors and reset on cleanup; used to clamp the overlay's clip top below it.
+  const stickyHeaderRef = useRef<HTMLElement | null>(null)
   const [clipRect, setClipRect] = useState<ClipRect | null>(null)
 
   // Geometry is driven by motion values, NOT React state + Motion's declarative `animate`, so the
@@ -227,9 +244,19 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const updateClipRect = useCallback(() => {
     const el = sentinelRef.current
     if (!el) return
-    if (!clipAncestorsRef.current) clipAncestorsRef.current = getClippingAncestors(el)
+    if (!clipAncestorsRef.current) {
+      clipAncestorsRef.current = getClippingAncestors(el)
+      // Resolve the enclosing drawer's sticky header once (the sentinel's drawer ancestor, if any).
+      stickyHeaderRef.current = getDrawerStickyHeader(el)
+    }
     const ancestors = clipAncestorsRef.current
-    if (ancestors.length === 0) {
+    // The mobile full-screen item drawer scrolls the DOCUMENT, so it has no overflow-clipping ancestor —
+    // but it pins a sticky header the overlay must still clip below. Its content area (this sentinel's
+    // enclosing flow) is a sibling of that header; reach back up to the shared drawer container and grab
+    // the header, so its bottom can clamp `top` even when `ancestors` is empty (otherwise the overlay
+    // slides up over the header as the page scrolls). Null on every other surface — a plain no-op there.
+    const stickyHeader = stickyHeaderRef.current
+    if (ancestors.length === 0 && !stickyHeader) {
       setClipRect((prev) => (prev === null ? prev : null))
       return
     }
@@ -245,6 +272,12 @@ export function EditorChromeShell({ header, children, className, style, fullscre
       if (r.right < right) right = r.right
       if (r.bottom < bottom) bottom = r.bottom
     })
+    // Clamp the top to the drawer's sticky header bottom: the portal must never paint over the pinned
+    // header. (No-op on surfaces without one — stickyHeader is null there.)
+    if (stickyHeader) {
+      const hb = stickyHeader.getBoundingClientRect().bottom
+      if (hb > top) top = hb
+    }
     setClipRect((prev) =>
       prev && prev.top === top && prev.left === left && prev.right === right && prev.bottom === bottom
         ? prev
@@ -296,6 +329,7 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     return () => {
       cancelAnimationFrame(raf)
       clipAncestorsRef.current = null
+      stickyHeaderRef.current = null
       setClipRect(null)
     }
   }, [fullscreen, portaled, morphing, updateSentinelRect, updateClipRect, mvLeft, mvTop, mvWidth, mvHeight])
