@@ -186,6 +186,34 @@
     }
 }
 
+/* GlowBorder conic sweep — used by the Brain Dump parse top widget to signal active streaming.
+   The angle is a registered custom property so it can be animated cheaply (the conic-gradient is
+   repainted as the angle advances, no layout). The element is masked to a border ring by GlowBorder,
+   so only the rounded edge shows. Reduced-motion users get a static ring (the animation is dropped
+   below) — they still see the colored border, just without the rotation. */
+@property --glow-angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+}
+
+@keyframes glow-border-spin {
+    to {
+        --glow-angle: 360deg;
+    }
+}
+
+@layer utilities {
+    .animate-glow-border {
+        animation: glow-border-spin var(--glow-duration, 4s) linear infinite;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .animate-glow-border {
+            animation: none;
+        }
+    }
+}
+
 /* Dialog "grow from origin" morph (desktop only). Opt-in via the `morph` prop on DialogContent,
    which sets --ds-morph-x/y (the click point's offset from viewport centre, in px) on the popup's
    inline style. Centering stays on the `translate` property (Tailwind's -translate-x/y-1/2), so the
@@ -244,6 +272,14 @@
        there — scrolling starts from bucket gaps/headers instead. */
     .draggable-card {
         touch-action: none;
+    }
+    /* Monaco sets touch-action:none on its container, which blocks vertical scroll gestures
+       inside any overlay (drawer, dialog) on iOS/Android. Allow pan-y so a finger can scroll
+       past the editor; Monaco still handles horizontal panning for long lines internally. */
+    [data-slot="sheet-content"] .monaco-editor,
+    [data-slot="sheet-content"] .monaco-editor-background,
+    [data-slot="sheet-content"] .monaco-mouse-cursor-text {
+        touch-action: pan-y !important;
     }
     /* ── Unified card design system ───────────────────────────────────────────
        Every card/widget in the app shares one look: an always-on colored LEFT

@@ -57,6 +57,11 @@ export type BrainDumpPhase =
   | 'completed'
   | 'failed'
 
+// The stream is "live" only while the reader is attached or reconnecting — drives the streaming
+// glow / progress UI. Single source of truth so a new streaming phase updates every call site at once.
+export const isStreamingPhase = (phase: BrainDumpPhase): boolean =>
+  phase === 'processing-active' || phase === 'processing-reconnecting'
+
 export interface CreateBrainDumpResult {
   ok: boolean
   jobId?: string

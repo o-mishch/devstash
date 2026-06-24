@@ -35,6 +35,7 @@ import {
   useDiscardBrainDumpJob,
   useReparseBrainDumpJob,
   useUpdateBrainDumpJobCollections,
+  isStreamingPhase,
   type BrainDumpDraftItem,
   type BrainDumpStreamSeed,
 } from '@/hooks/use-brain-dump'
@@ -43,6 +44,7 @@ import { ParseSourceBanner } from '@/components/parse/parse-source-banner'
 import { ParseDraftCard } from '@/components/parse/parse-draft-card'
 import { ParseCollectionTarget } from '@/components/parse/parse-collection-target'
 import { BentoMasonry, type BentoMasonryTile } from '@/components/parse/bento-masonry'
+import { GlowBorder } from '@/components/ui/glow-border'
 import { useCollections } from '@/hooks/use-collections'
 import type { CollectionWithTypes, CollectionPickerItem } from '@/types/collection'
 
@@ -257,6 +259,8 @@ export function ParseReviewBoard({
 
   // "Save all N" and the progress count reflect only committable (non-trashed) drafts.
   const committableCount = useMemo(() => stream.items.filter((item) => !item.trashed).length, [stream.items])
+  // Drives the top-widget glow: live only while the stream is actively reading or reconnecting.
+  const isStreaming = isStreamingPhase(stream.phase)
 
   // Closed-job History mode: offer to delete the now-empty history record when its Trash bucket
   // transitions from non-empty to empty (last trashed draft committed/deleted). Driven off the live
@@ -720,7 +724,11 @@ export function ParseReviewBoard({
       {/* One workflow header beats two competing widgets: source, destination, state, and commit actions
           are one decision surface. The internal grid is container-query driven so the app shell width,
           not the viewport, decides when the status/actions can sit beside the source metadata. */}
-      <div className="card-surface card-hover group @container/parse-top rounded-xl border border-border bg-muted/20 p-3 sm:p-4">
+      <div className="card-surface card-hover group @container/parse-top relative overflow-hidden rounded-xl border border-border bg-muted/20 p-3 sm:p-4">
+        {/* While the parse stream is live, a glowing conic sweep traces the whole widget border so it
+            is unmistakable that the AI is working — calmer than per-item flicker, and the one place a
+            user looks for "is anything happening?". Removed the instant the phase leaves streaming. */}
+        {isStreaming && <GlowBorder />}
         <div className="grid gap-4 @min-[54rem]/parse-top:grid-cols-[minmax(0,1.05fr)_minmax(23rem,0.95fr)] @min-[54rem]/parse-top:items-stretch">
           <div className="min-w-0">
             <ParseSourceBanner

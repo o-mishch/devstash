@@ -334,10 +334,16 @@ export function ParseDraftCard({
           }}
           busy={busy}
           canCommit={!inTrash || !canRestore}
-          onTrash={async () => {
-            await trash()
+          inTrash={inTrash}
+          onTrash={() => {
+            trash()
             setEditOpen(false)
           }}
+          onRestore={() => {
+            restore()
+            setEditOpen(false)
+          }}
+          onDeleteForever={() => setDeleteConfirmOpen(true)}
           onCommit={async () => {
             await saveNow()
             // saveNow drops the card on success (onRemoved) and may open the collection-confirm dialog;
@@ -365,7 +371,7 @@ export function ParseDraftCard({
           </DialogContent>
         </Dialog>
         <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-          <DialogContent>
+          <DialogContent elevated>
             <DialogHeader>
               <DialogTitle>Delete this draft permanently?</DialogTitle>
               <DialogDescription>
@@ -421,6 +427,49 @@ function IconAction({ label, tooltip, onClick, disabled, destructive, children }
         }
       />
       <TooltipContent className="max-w-[260px]">{tooltip ?? label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+interface DrawerActionProps {
+  icon: ReactNode
+  // Visible button text (also the default aria-label / tooltip).
+  label: string
+  // Overrides aria-label when it must differ from the visible text (e.g. "Delete forever" vs "Delete").
+  ariaLabel?: string
+  // Tooltip copy; falls back to label.
+  tooltip?: string
+  // Collapse-priority for the label span (see actionbarLabelClass) — higher = collapses later.
+  labelPriority?: number
+  onClick: () => void
+  disabled?: boolean
+  // Red destructive styling (Delete actions).
+  destructive?: boolean
+  // Filled primary button instead of outline (the Commit action).
+  primary?: boolean
+}
+
+// A worded action-bar button (icon + collapsing label + tooltip) for the draft edit drawer's footer —
+// the verbose sibling of IconAction. Used for Restore / Delete / Delete-forever / Commit.
+function DrawerAction({ icon, label, ariaLabel, tooltip, labelPriority = 2, onClick, disabled, destructive, primary }: DrawerActionProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant={primary ? 'default' : 'outline'}
+            size="sm"
+            className={cn(ACTIONBAR_BUTTON_CLASS, destructive && 'text-destructive hover:text-destructive')}
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={ariaLabel ?? label}
+          >
+            {icon}
+            <span className={actionbarLabelClass(labelPriority)}>{label}</span>
+          </Button>
+        }
+      />
+      <TooltipContent>{tooltip ?? label}</TooltipContent>
     </Tooltip>
   )
 }
@@ -510,8 +559,14 @@ interface EditDraftDrawerProps {
   // Commit (→ live item) is offered for live drafts and for closed-job trash drafts (still committable),
   // but not for a restorable trash draft (the user restores it first via the card).
   canCommit: boolean
+  // True when the item is already in the Trash bucket — swaps the Delete action for Restore.
+  inTrash: boolean
   // Move the draft to the Trash bucket (soft delete), then close the drawer.
   onTrash: () => void
+  // Restore the draft from the Trash bucket back to the active board, then close the drawer.
+  onRestore: () => void
+  // Open the permanent-delete confirmation dialog (trash items only).
+  onDeleteForever: () => void
   // Commit the draft into a real item (reuses the card's per-item Save-now flow incl. collection-confirm
   // + last-draft redirect), then close the drawer.
   onCommit: () => void
@@ -549,7 +604,7 @@ function draftToFullItem(item: BrainDumpDraftItem): FullItem {
 // the draft PATCH endpoint via `onSubmitOverride` instead of the real-item update flow. Drafts have no
 // per-item collections — they attach to the job's collection target on commit — so the field shows that
 // shared target read-only (collectionsReadOnly) rather than an editable picker.
-function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCollections, onEdited, busy, canCommit, onTrash, onCommit }: EditDraftDrawerProps) {
+function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCollections, onEdited, busy, canCommit, inTrash, onTrash, onRestore, onDeleteForever, onCommit }: EditDraftDrawerProps) {
   const saveDraft = async (payload: UpdateItemInput): Promise<void> => {
     const patch: Partial<BrainDumpDraftItem> = {
       title: payload.title,
@@ -600,36 +655,45 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
             saveTooltip="Save your edits to this draft (stays in review)"
             renderExtraActions={({ disabled }) => (
               <>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(ACTIONBAR_BUTTON_CLASS, 'text-destructive hover:text-destructive')}
-                        onClick={onTrash}
-                        disabled={disabled || busy}
-                        aria-label="Delete"
-                      >
-                        <Trash2 className="size-4" />
-                        <span className={actionbarLabelClass(2)}>Delete</span>
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>Delete (move to trash)</TooltipContent>
-                </Tooltip>
-                {canCommit && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button size="sm" className={ACTIONBAR_BUTTON_CLASS} onClick={onCommit} disabled={disabled || busy} aria-label="Commit">
-                          <PackageCheck className="size-4" />
-                          <span className={actionbarLabelClass(3)}>Commit</span>
-                        </Button>
-                      }
+                {inTrash ? (
+                  <>
+                    <DrawerAction
+                      icon={<Undo2 className="size-4" />}
+                      label="Restore"
+                      tooltip="Restore draft from trash"
+                      onClick={onRestore}
+                      disabled={disabled || busy}
                     />
-                    <TooltipContent>Commit this draft to your stash — moves it out of this Brain Dump and into your real items</TooltipContent>
-                  </Tooltip>
+                    <DrawerAction
+                      icon={<Trash2 className="size-4" />}
+                      label="Delete"
+                      ariaLabel="Delete forever"
+                      tooltip="Delete permanently"
+                      onClick={onDeleteForever}
+                      disabled={disabled || busy}
+                      destructive
+                    />
+                  </>
+                ) : (
+                  <DrawerAction
+                    icon={<Trash2 className="size-4" />}
+                    label="Delete"
+                    tooltip="Delete (move to trash)"
+                    onClick={onTrash}
+                    disabled={disabled || busy}
+                    destructive
+                  />
+                )}
+                {canCommit && (
+                  <DrawerAction
+                    icon={<PackageCheck className="size-4" />}
+                    label="Commit"
+                    labelPriority={3}
+                    tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
+                    onClick={onCommit}
+                    disabled={disabled || busy}
+                    primary
+                  />
                 )}
               </>
             )}

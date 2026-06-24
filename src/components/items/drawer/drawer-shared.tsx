@@ -28,8 +28,10 @@ function DrawerContainer({ header, actions, children, style }: DrawerContainerPr
           wrapping. flex-nowrap keeps them in a single line always. */}
       <div className="@container/actionbar flex shrink-0 flex-nowrap items-center gap-y-1 gap-x-0.5 px-2 py-1.5 max-sm:py-0.5">{actions}</div>
       <Separator className="shrink-0" />
-      {/* ScrollArea (not native overflow) so the drawer scrollbar matches the sidebar's. */}
-      <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
+      {/* ScrollArea (not native overflow) so the drawer scrollbar matches the sidebar's.
+          overscroll-behavior:contain stops the locked body from trying to scroll when
+          this viewport hits its top/bottom edge (prevents URL-bar flash on iOS). */}
+      <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]]:!overflow-x-hidden [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
         <div className="flex flex-col gap-5 px-5 py-4 min-h-full">
           {children}
         </div>

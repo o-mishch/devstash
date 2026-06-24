@@ -19,7 +19,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import { useAiUsage } from '@/hooks/use-ai-usage'
 import { formatRenewIn } from '@/lib/utils/format'
-import type { BrainDumpPhase } from '@/hooks/use-brain-dump'
+import { isStreamingPhase, type BrainDumpPhase } from '@/hooks/use-brain-dump'
 
 interface PhaseMeta {
   Icon: LucideIcon
@@ -67,7 +67,7 @@ export function ParseProgress({
 }: ParseProgressProps) {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [reparseOpen, setReparseOpen] = useState(false)
-  const isStreaming = phase === 'processing-active' || phase === 'processing-reconnecting'
+  const isStreaming = isStreamingPhase(phase)
   const done = phase === 'completed'
   const failed = phase === 'failed'
   const resumable = phase === 'processing-paused'
