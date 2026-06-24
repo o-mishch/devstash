@@ -100,14 +100,22 @@ export function ItemFormFields({
   const showUrl = ITEM_TYPES_WITH_URL.has(itemType)
 
   // Content-editor sizing differs by context. Computed as plain branches (not
-  // nested ternaries): drawer = fixed 70vh hero; dialog editorFill = flex-fill a
+  // nested ternaries): drawer = content-dominant hero; dialog editorFill = flex-fill a
   // resizable column; dialog default = fixed h-64.
+  //
+  // Drawer height is split by pointer: desktop keeps the tall 70dvh hero, but on TOUCH the
+  // editor is capped (h-72) and sits in normal flow. A 70dvh editor on mobile fills the whole
+  // scroll viewport and — being its own touch scroller (Monaco/textarea/markdown all consume
+  // vertical swipes) — steals every swipe, so the outer drawer never scrolls and the
+  // URL/Description/Tags fields below it are unreachable. A bounded in-flow editor lets a swipe
+  // that overshoots the editor's own scroll chain up to the drawer body; the fullscreen toggle
+  // still covers "I want the big editor".
   let contentFieldClassName: string | undefined
   let contentEditorClassName: string
   let contentEditorWrapperClassName: string | undefined
   let contentTextareaClassName: string
   if (variant === 'drawer') {
-    contentFieldClassName = 'flex flex-col h-[70vh]'
+    contentFieldClassName = 'flex flex-col h-72 sm:h-[70dvh]'
     contentEditorClassName = 'flex-1 min-h-0'
     contentEditorWrapperClassName = 'flex flex-col w-full flex-1 h-0 min-h-[120px]'
     contentTextareaClassName = 'resize-none font-mono text-xs w-full flex-1 h-0 min-h-[120px]'
@@ -168,8 +176,8 @@ export function ItemFormFields({
       label="Content"
       error={form.formState.errors.content?.message}
       // Drawer: mirror the read drawer — hide the Content label on mobile and make
-      // the editor a content-dominant 70vh block (all viewports) right under the
-      // action bar, so it's the main area and the drawer scrolls to the rest.
+      // the editor a content-dominant hero right under the action bar (70dvh on
+      // desktop, a bounded h-72 on touch so the drawer body stays swipe-scrollable).
       labelClassName={variant === 'drawer' ? 'hidden' : undefined}
       className={contentFieldClassName}
     >

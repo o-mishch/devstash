@@ -190,7 +190,7 @@ export function DrawerSkeleton() {
     >
       <section className="flex flex-col">
         <Skeleton className="mb-2 h-3 w-16 shrink-0" />
-        <Skeleton className="h-[70vh] min-h-[120px] w-full rounded-md" />
+        <Skeleton className="h-[70dvh] min-h-[120px] w-full rounded-md" />
       </section>
       <section className="shrink-0">
         <Skeleton className="mb-2 h-3 w-24" />

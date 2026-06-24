@@ -296,13 +296,13 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
         // so the redundant title is dropped to give the content more room.
         <section className="flex shrink-0 flex-col">
           {isLight || contentLoading ? (
-            <Skeleton className="w-full rounded-md h-[70vh] min-h-[120px]" />
+            <Skeleton className="w-full rounded-md h-[70dvh] min-h-[120px]" />
           ) : (
-            // A definite 70vh window with contained overscroll and internal scrolling
+            // A definite 70dvh window with contained overscroll and internal scrolling
             // (same for code + markdown, all viewports), so the content block is the
             // dominant area, its bottom stays on-screen, and the drawer scrolls
             // vertically to reveal the Description section just below it.
-            <div className="overflow-hidden rounded-lg flex flex-col h-[70vh] min-h-[120px] [overscroll-behavior:contain]">
+            <div className="overflow-hidden rounded-lg flex flex-col h-[70dvh] min-h-[120px] [overscroll-behavior:contain]">
               <ItemContentView
                 itemType={itemType.name}
                 content={fullItem!.content}

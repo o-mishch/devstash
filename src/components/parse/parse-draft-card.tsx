@@ -657,9 +657,13 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
               <>
                 {inTrash ? (
                   <>
+                    {/* Distinct ascending priorities so labels collapse one at a time from the right as the
+                        bar narrows. Same priority on two siblings makes them collapse together, leaving the
+                        rightmost (Delete) clipped before either label drops — the bug this avoids. */}
                     <DrawerAction
                       icon={<Undo2 className="size-4" />}
                       label="Restore"
+                      labelPriority={2}
                       tooltip="Restore draft from trash"
                       onClick={onRestore}
                       disabled={disabled || busy}
@@ -668,6 +672,7 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
                       icon={<Trash2 className="size-4" />}
                       label="Delete"
                       ariaLabel="Delete forever"
+                      labelPriority={3}
                       tooltip="Delete permanently"
                       onClick={onDeleteForever}
                       disabled={disabled || busy}
@@ -678,6 +683,7 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
                   <DrawerAction
                     icon={<Trash2 className="size-4" />}
                     label="Delete"
+                    labelPriority={3}
                     tooltip="Delete (move to trash)"
                     onClick={onTrash}
                     disabled={disabled || busy}
@@ -688,7 +694,7 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
                   <DrawerAction
                     icon={<PackageCheck className="size-4" />}
                     label="Commit"
-                    labelPriority={3}
+                    labelPriority={4}
                     tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
                     onClick={onCommit}
                     disabled={disabled || busy}

@@ -107,9 +107,15 @@ export function ParseProgress({
             Button labels use stacked container-query thresholds: progressively hide from
             right-to-left as the narrow zone shrinks, and re-reveal left-to-right as the
             wide zone grows — never all at once. */}
-        <div className="grid grid-cols-[minmax(min-content,1fr)_auto] items-center gap-x-2 gap-y-2 @min-[460px]/progress:grid-cols-[minmax(min-content,1fr)_auto_auto_auto]">
-          {/* Status — spans both rows in narrow so all buttons stay right-aligned in col 2. */}
-          <div className="row-span-2 flex items-center gap-3 @min-[460px]/progress:row-span-1">
+        {/* Status column is minmax(0,1fr) — NOT minmax(min-content,1fr) — so it can shrink below its
+            (whitespace-nowrap) text and truncate. With min-content the column refused to shrink, the row's
+            min-width exceeded the card, and the overflow-hidden card clipped the rightmost button. The
+            auto button columns stay pinned to the right edge inside the card at every width; the status
+            text gives up space first. */}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 @min-[460px]/progress:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+          {/* Status — spans both rows in narrow so all buttons stay right-aligned in col 2. min-w-0 lets
+              the inner text truncate instead of forcing the column wide. */}
+          <div className="row-span-2 flex min-w-0 items-center gap-3 @min-[460px]/progress:row-span-1">
             <div
               className={cn(
                 'flex size-9 shrink-0 items-center justify-center rounded-full',
@@ -118,9 +124,9 @@ export function ParseProgress({
             >
               <meta.Icon className={cn('card-icon size-4', meta.iconClassName)} />
             </div>
-            <div>
-              <p className="whitespace-nowrap text-sm font-semibold">{meta.label}</p>
-              <p className="whitespace-nowrap text-xs text-muted-foreground">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{meta.label}</p>
+              <p className="truncate text-xs text-muted-foreground">
                 <NumberTicker value={count} className="font-medium text-foreground" /> draft
                 {count === 1 ? '' : 's'} found
               </p>
@@ -268,7 +274,11 @@ export function ParseProgress({
                     <span className="inline-flex">
                       <Button size="sm" onClick={onCommitAll} disabled={committing || count === 0 || isStreaming}>
                         {committing ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                        <span className="hidden @[280px]/progress:inline @[460px]/progress:hidden @[480px]/progress:inline">Save all {count > 0 ? count : ''}</span>
+                        {/* Re-reveal at 590 (matching Discard), not 480: from 460px the grid is the 4-col
+                            single row, and with the whitespace-nowrap status column the rightmost Save-all
+                            label re-appearing at 480 overflowed the overflow-hidden card (clipped button).
+                            Staying icon-only through the tight 460–590 zone keeps every column on the row. */}
+                        <span className="hidden @[280px]/progress:inline @[460px]/progress:hidden @[590px]/progress:inline">Save all {count > 0 ? count : ''}</span>
                       </Button>
                     </span>
                   }
