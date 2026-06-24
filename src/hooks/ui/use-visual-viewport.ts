@@ -10,6 +10,11 @@ export interface VisualViewportMetrics {
   // Height of the on-screen keyboard (and any other bottom inset): the slice of the layout
   // viewport hidden below the visual viewport. 0 when no keyboard is shown.
   keyboardHeight: number
+  // The bottom edge of the visible viewport in client (getBoundingClientRect) coordinates — i.e. the
+  // on-screen keyboard's top edge when one is open, or the full viewport bottom otherwise. The single
+  // reference every keyboard-avoidance consumer scrolls a focused field up to / clips an overlay
+  // against, so they can't drift apart (`offsetTop + height`).
+  visibleBottom: number
 }
 
 // Cached snapshot so getSnapshot returns a referentially-stable object between changes —
@@ -33,6 +38,7 @@ function getSnapshot(): VisualViewportMetrics | null {
     offsetTop: vv.offsetTop,
     offsetLeft: vv.offsetLeft,
     keyboardHeight: Math.max(0, layoutViewportHeight - vv.height - vv.offsetTop),
+    visibleBottom: vv.offsetTop + vv.height,
   }
   if (
     cached &&

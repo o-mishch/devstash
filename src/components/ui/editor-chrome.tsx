@@ -186,6 +186,17 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const stickyHeaderRef = useRef<HTMLElement | null>(null)
   const [clipRect, setClipRect] = useState<ClipRect | null>(null)
 
+  // Live visible-viewport bottom (the keyboard top, in client coords) so the per-frame clip callback
+  // can read it without the viewport being a dependency. When the on-screen keyboard opens, the
+  // collapsed editor's portal — sized to its (tall) sentinel — would otherwise extend its bottom
+  // edge DOWN past the keyboard top, painting over both the keyboard and any field the host scrolled
+  // up to sit just above it. Clamping the clip bottom here keeps the editor strictly inside the
+  // visible area above the keyboard. 0 (no inset) when no keyboard is shown.
+  const keyboardTopRef = useRef(0)
+  useLayoutEffect(() => {
+    keyboardTopRef.current = viewport && viewport.keyboardHeight > 0 ? viewport.visibleBottom : 0
+  }, [viewport])
+
   // Geometry is driven by motion values, NOT React state + Motion's declarative `animate`, so the
   // collapsed overlay can be positioned imperatively each frame (see the tracking effect) with zero
   // lag — the same imperative-mirror technique the drawer's grab-handle rail uses. Routing the rect
@@ -256,7 +267,8 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     // the header, so its bottom can clamp `top` even when `ancestors` is empty (otherwise the overlay
     // slides up over the header as the page scrolls). Null on every other surface — a plain no-op there.
     const stickyHeader = stickyHeaderRef.current
-    if (ancestors.length === 0 && !stickyHeader) {
+    const keyboardTop = keyboardTopRef.current
+    if (ancestors.length === 0 && !stickyHeader && keyboardTop <= 0) {
       setClipRect((prev) => (prev === null ? prev : null))
       return
     }
@@ -277,6 +289,11 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     if (stickyHeader) {
       const hb = stickyHeader.getBoundingClientRect().bottom
       if (hb > top) top = hb
+    }
+    // Clamp the bottom to the on-screen keyboard top so the editor never paints over the keyboard or
+    // over a field the host has scrolled up to rest just above it. (No-op when no keyboard is shown.)
+    if (keyboardTop > 0 && keyboardTop < bottom) {
+      bottom = keyboardTop
     }
     setClipRect((prev) =>
       prev && prev.top === top && prev.left === left && prev.right === right && prev.bottom === bottom

@@ -60,6 +60,15 @@ The requirement "never force a card" + "once per user ever" + "user clicks to st
 Stripe's only upside is native `trial_will_end` dunning — not worth phantom subscriptions and a more complex
 reconciler. **Stripe's role stays exactly as today: it appears only when real money is involved.**
 
+> **Context7 / Stripe docs confirm this** (`/stripe/stripe-node`, API `2025-03-31.basil`, SDK v18+):
+> - Trials are **subscription-bound only** — `trial_period_days` / `trial_end` exist solely inside
+>   `subscription_data` on a Checkout Session or `Subscription`. There is no free-standing "trial" object;
+>   a cardless trial still mints a real `Subscription`.
+> - The Stripe API has **no once-per-customer trial enforcement** — a DB flag is required either way.
+> - **Breaking change in v18:** Checkout Sessions for subscriptions now **postpone subscription creation
+>   until after payment completes**, making a cardless-trial-via-Checkout flow more awkward, not less.
+>   This reinforces keeping the trial entirely app-side.
+
 ---
 
 ## 4. Data model
@@ -130,6 +139,20 @@ caller's tier. Thread the tier from the route `ctx` into `checkRateLimit` / `get
 
 The four per-feature AI limits (`AI_FEATURE_HOURLY_LIMIT`) stay shared for now; the same tier-aware pattern
 can extend to them later if a trial AI throttle is wanted. Document that as out-of-scope here.
+
+> **Context7 / Upstash docs confirm this** (`/websites/upstash_redis_sdks_ratelimit-`): separate
+> `Ratelimit` instances with distinct `prefix` per tier is the **officially recommended** way to do
+> per-plan limits — exactly what `getLimiters()` already does per key. Verbatim pattern:
+> ```ts
+> const ratelimit = {
+>   free: new Ratelimit({ redis, prefix: 'ratelimit:free', limiter: Ratelimit.slidingWindow(10, '10s') }),
+>   paid: new Ratelimit({ redis, prefix: 'ratelimit:paid', limiter: Ratelimit.slidingWindow(60, '10s') }),
+> }
+> await ratelimit.paid.limit(userId)
+> ```
+> **Do NOT use the newer `dynamicLimits` / `setDynamicLimit()` API** — it sets a *global* limit persisted in
+> Redis (overriding for all users), built for runtime-tunable global limits, not per-request tier selection.
+> The static two-limiter pattern is the correct fit.
 
 ---
 

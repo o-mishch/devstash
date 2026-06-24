@@ -96,9 +96,18 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
 
     const bodyRect = scrollEl.getBoundingClientRect()
     const activeRect = active.getBoundingClientRect()
-    // 80px above the active element: enough room to show the field label (and Monaco's chrome bar).
-    const targetTop = scrollEl.scrollTop + activeRect.top - bodyRect.top - 80
-    scrollEl.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+    // The sheet is lifted to rest directly on the keyboard (keyboardStyle below), so the scroll body's
+    // bottom edge IS the keyboard top. Rest the focused field's BOTTOM just above it (12px breathing
+    // room) so the field the user tapped sits right on top of the keyboard — not near the sheet's top.
+    const GAP = 12
+    const fieldBottomInBody = scrollEl.scrollTop + activeRect.bottom - bodyRect.top
+    let target = fieldBottomInBody + GAP - scrollEl.clientHeight
+    // If the field is taller than the visible area (a multi-line Description), don't push its top off
+    // the top edge — clamp so the field's top (and its label) stays in view, preferring to show the top.
+    const fieldTopInBody = scrollEl.scrollTop + activeRect.top - bodyRect.top
+    const labelRoom = 28 // room above the field for its label
+    if (target > fieldTopInBody - labelRoom) target = fieldTopInBody - labelRoom
+    scrollEl.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
   }, [])
 
   // Re-centre once the keyboard inset settles — rAF lets the sheet finish resizing before we

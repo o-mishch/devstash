@@ -227,7 +227,12 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
   // wraps the focused field. `keyboardHeight` comes from useVisualViewport (its formula is iOS-robust —
   // see that hook; a naive innerHeight-only inset collapses to 0 on some iOS versions). document is
   // required: the focused element and its scroll container are queried from the live DOM.
-  const keyboardHeight = useVisualViewport()?.keyboardHeight ?? 0
+  const viewport = useVisualViewport()
+  const keyboardHeight = viewport?.keyboardHeight ?? 0
+  // The keyboard's top edge in client coords — the shared visible-bottom reference from useVisualViewport
+  // (offsetTop + height), so the field-reveal math here matches the editor overlay's clip and the bottom
+  // sheet's lift instead of each re-deriving it. 0 when the viewport API is unavailable.
+  const visibleBottom = viewport?.visibleBottom ?? 0
   useEffect(() => {
     if (keyboardHeight <= 0) return
 
@@ -259,11 +264,11 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
 
       const scrollerRect = scroller.getBoundingClientRect()
       const activeRect = active.getBoundingClientRect()
-      // Visible bottom of the scroller in the current visual viewport (above the keyboard). window.innerHeight
-      // is the layout-viewport height — the reference the keyboard inset is subtracted from; no framework read.
-      const visibleBottom = Math.min(scrollerRect.bottom, window.innerHeight - keyboardHeight)
-      // Amount the focused element overshoots below the visible area (positive = hidden behind keyboard).
-      const overshoot = activeRect.bottom + 8 - visibleBottom
+      // Lowest the focused field may rest: above the keyboard (shared visibleBottom) AND within the
+      // scroller. 12px breathing room so the field sits just on top of the keyboard, not flush against it.
+      const restBottom = Math.min(scrollerRect.bottom, visibleBottom)
+      // Amount the focused element overshoots below that line (positive = hidden behind keyboard).
+      const overshoot = activeRect.bottom + 12 - restBottom
 
       if (overshoot > 0) {
         scroller.scrollBy({ top: overshoot, behavior: 'smooth' })
@@ -274,7 +279,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
     // document.addEventListener: React has no mechanism for listening to focusin at the document level.
     document.addEventListener('focusin', reveal)
     return () => document.removeEventListener('focusin', reveal)
-  }, [keyboardHeight, fullScreen])
+  }, [keyboardHeight, visibleBottom, fullScreen])
 
   const hasExtras = Boolean(renderExtraActions)
   // Mobile-only restyle of the regular 2-button edit bar (no injected extras): drop the full-width
