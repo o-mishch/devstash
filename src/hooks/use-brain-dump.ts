@@ -146,16 +146,16 @@ export function useReparseBrainDumpJob() {
 
 /**
  * Lists the user's eligible source items for the picker (Pro-gated by caller). `type` selects the tab:
- * `file` → text `file`s ("My files"), `note` → `brain-dump`-tagged `note`s ("Notes").
+ * `file` → text `file`s ("My files"), `content` → `brain-dump`-tagged content items ("Items").
  */
-export function useBrainDumpSources(enabled: boolean, type: 'file' | 'note' = 'file') {
+export function useBrainDumpSources(enabled: boolean, type: 'file' | 'content' = 'file') {
   return $api.useQuery(
     'get',
     '/ai/brain-dump/sources',
     { params: { query: { type } } },
     // No staleTime: the picker mounts only when its tab is selected, and a source's eligibility changes
-    // out-of-band (e.g. adding the `brain-dump` tag to a note elsewhere) without touching this query's
-    // cache. `refetchOnMount: 'always'` re-reads on every tab (re)selection so a freshly-tagged note
+    // out-of-band (e.g. adding the `brain-dump` tag to an item elsewhere) without touching this query's
+    // cache. `refetchOnMount: 'always'` re-reads on every tab (re)selection so a freshly-tagged item
     // appears without a full page reload. The list is cheap and advisory, so the extra fetch is cheap.
     { enabled, refetchOnMount: 'always' },
   )
@@ -163,9 +163,9 @@ export function useBrainDumpSources(enabled: boolean, type: 'file' | 'note' = 'f
 
 /**
  * The single place that touches `queryClient` for the Brain Dump source-picker cache. Returns a
- * fire-and-forget invalidator covering BOTH tabs (`file` and `note`), matched by path prefix so it
+ * fire-and-forget invalidator covering BOTH tabs (`file` and `content`), matched by path prefix so it
  * hits every `type` variant of the key. A source's eligibility changes out-of-band — adding/removing
- * the `brain-dump` tag on a note or file flows through `useUpdateItem`, which never touches this query
+ * the `brain-dump` tag on an item or file flows through `useUpdateItem`, which never touches this query
  * — so the item-edit flow calls this after a successful PATCH to drop the stale picker list. With the
  * default `refetchType: 'active'` it is a true no-op when no picker is mounted, so callers invoke it
  * unconditionally.
@@ -188,10 +188,13 @@ export function useDiscardBrainDumpJob() {
 
 /** Lists the user's in-progress jobs; polls while any are still processing. */
 export function useActiveBrainDumpJobs() {
+  // init `undefined` (not `{}`) so the observed key is `['get','/ai/brain-dump']`, consistent with the
+  // other param-less reads. The brainDumpJobs predicate matches on `key[1]` regardless, and the closed
+  // list keys distinctly via its `history` query param — so the two lists never collide.
   return $api.useQuery(
     'get',
     '/ai/brain-dump',
-    {},
+    undefined,
     {
       refetchInterval: (query) =>
         query.state.data?.jobs.some((job) => job.status === 'processing') ? 4000 : false,

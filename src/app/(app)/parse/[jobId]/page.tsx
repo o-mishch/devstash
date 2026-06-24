@@ -6,8 +6,8 @@ import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-reso
 import { getParseJobSnapshot } from '@/lib/db/ai-parse-jobs'
 import { getAllCollections } from '@/lib/db/collections'
 import { ParseReviewBoard } from '@/components/parse/parse-review-board'
-import { ParseSourceBanner } from '@/components/parse/parse-source-banner'
 import { ParseBoardSkeleton } from '@/components/parse/parse-board-skeleton'
+import { deriveCollectionName, deriveBrainDumpNoteTitle } from '@/lib/utils/derive-source-label'
 
 interface ParseJobPageProps {
   params: Promise<{ jobId: string }>
@@ -37,6 +37,12 @@ export default async function ParseJobPage({ params, searchParams }: ParseJobPag
 
   const collections = await getAllCollections(userId)
 
+  // Suggestion for an opt-in "create a collection for this job" — the source/file name (extension
+  // dropped), falling back to a dated label for a nameless paste. Never auto-applied: the user must
+  // pick or create explicitly, so the job no longer seeds a deferred collection name.
+  const suggestedCollectionName =
+    (snapshot.sourceName && deriveCollectionName(snapshot.sourceName)) || deriveBrainDumpNoteTitle()
+
   return (
     <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6">
       <Link
@@ -47,9 +53,12 @@ export default async function ParseJobPage({ params, searchParams }: ParseJobPag
       </Link>
       <ParseReviewBoard
         jobId={jobId}
-        collections={collections.map((collection) => ({ id: collection.id, name: collection.name }))}
-        initialCollectionName={snapshot.collectionName}
+        initialCollections={collections}
+        suggestedCollectionName={suggestedCollectionName}
         initialCollectionIds={snapshot.collectionIds}
+        sourceItemId={snapshot.sourceItemId}
+        sourceName={snapshot.sourceName}
+        truncated={snapshot.truncated}
         initialSnapshot={{
           status: snapshot.status,
           progress: snapshot.progress,
@@ -60,13 +69,6 @@ export default async function ParseJobPage({ params, searchParams }: ParseJobPag
           items: snapshot.items,
         }}
         highlightItemId={highlightItemId}
-        sourceBanner={
-          <ParseSourceBanner
-            sourceItemId={snapshot.sourceItemId}
-            sourceName={snapshot.sourceName}
-            truncated={snapshot.truncated}
-          />
-        }
       />
     </div>
   )

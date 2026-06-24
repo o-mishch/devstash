@@ -21,10 +21,13 @@ import {
   optionalPasswordInput,
   updateNameInput,
   editorPreferencesInput,
+  editorPreferencesResponse,
+  userProfileFlagsSchema,
   changePasswordInput,
   updateMainEmailInput,
   accountIdParam,
   requestCredentialEmailInput,
+  profileContextSchema,
 } from '../schemas/profile'
 import {
   generateDescriptionInput,
@@ -55,7 +58,7 @@ import {
 } from '../schemas/ai'
 import { searchQueryParam, searchResultSchema } from '../schemas/search'
 import { getUploadUrlInput, deleteUploadQuery, uploadUrlResultSchema } from '../schemas/upload'
-import { createCheckoutInput, billingRedirectSchema } from '../schemas/billing'
+import { createCheckoutInput, billingRedirectSchema, billingContextSchema } from '../schemas/billing'
 import {
   loginInput,
   registerInput,
@@ -116,6 +119,18 @@ export const paths: ZodOpenApiPathsObject = {
     },
   },
   '/collections/{id}': {
+    get: {
+      summary: 'Get a single collection',
+      requestParams: { path: idParam },
+      responses: {
+        200: {
+          description: 'The collection details',
+          content: { 'application/json': { schema: collectionSchema } },
+        },
+        401: unauthorized,
+        404: problem('Collection not found'),
+      },
+    },
     patch: {
       summary: 'Update a collection',
       requestParams: { path: idParam },
@@ -278,6 +293,17 @@ export const paths: ZodOpenApiPathsObject = {
     },
   },
   '/profile': {
+    get: {
+      summary: 'Get the current user\'s profile',
+      responses: {
+        200: {
+          description: 'Profile data, account summary, and usage stats',
+          content: { 'application/json': { schema: profileContextSchema } },
+        },
+        401: unauthorized,
+        404: problem('Profile not found'),
+      },
+    },
     delete: {
       summary: 'Delete the current user\'s account',
       requestBody: { content: { 'application/json': { schema: optionalPasswordInput } } },
@@ -302,7 +328,29 @@ export const paths: ZodOpenApiPathsObject = {
       },
     },
   },
+  '/profile/me': {
+    get: {
+      summary: 'Get the current user\'s profile flags and capability checks',
+      responses: {
+        200: {
+          description: 'User profile flags',
+          content: { 'application/json': { schema: userProfileFlagsSchema } },
+        },
+        401: unauthorized,
+      },
+    },
+  },
   '/profile/editor-preferences': {
+    get: {
+      summary: 'Get editor preferences',
+      responses: {
+        200: {
+          description: 'Editor preferences',
+          content: { 'application/json': { schema: editorPreferencesResponse } },
+        },
+        401: unauthorized,
+      },
+    },
     patch: {
       summary: 'Update editor preferences',
       requestBody: { content: { 'application/json': { schema: editorPreferencesInput } } },
@@ -506,11 +554,11 @@ export const paths: ZodOpenApiPathsObject = {
   },
   '/ai/brain-dump/sources': {
     get: {
-      summary: 'List eligible stash items (text files or brain-dump notes) for the source picker',
+      summary: 'List eligible stash items (text files or brain-dump content items) for the source picker',
       requestParams: { query: brainDumpSourceQuery },
       responses: {
         200: {
-          description: 'Eligible source file items',
+          description: 'Eligible source items',
           content: { 'application/json': { schema: brainDumpSourceListSchema } },
         },
         401: unauthorized,
@@ -696,6 +744,18 @@ export const paths: ZodOpenApiPathsObject = {
         401: unauthorized,
         403: problem('Key does not belong to the user'),
         422: problem('Validation failed'),
+      },
+    },
+  },
+  '/billing/context': {
+    get: {
+      summary: 'Get unified billing context and usage statistics',
+      responses: {
+        200: {
+          description: 'Unified billing context',
+          content: { 'application/json': { schema: billingContextSchema } },
+        },
+        401: unauthorized,
       },
     },
   },

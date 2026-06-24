@@ -1,15 +1,10 @@
 # Current Feature
 
-Refactor and consolidate single-use and duplicated hooks in `src/hooks`.
-
 ## Status
-Completed
+Not Started
 
 ## Goals
-- Collapse single-use hooks (`useExplainCode`, `useOptimizePrompt`, `useGlobalSearchShortcuts`, `useAutoFetchNextPage`, `useSelectTouchSwipe`, `useActionStateWithToast`) into their callers/components.
-- Group `useRestrictedAction` and `useRestrictedDownload` into `use-restricted.ts`.
-- Ensure all tests and lints pass.
+<!-- Bullet points of what success looks like -->
 
 ## Notes
-Refactor cleanup based on `refactor-scanner.md` scanning findings.
-
+<!-- Additional context, constraints, or details from spec -->

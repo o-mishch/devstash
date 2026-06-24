@@ -10,7 +10,7 @@ import { OrbitingCircles } from '@/components/ui/orbiting-circles'
 import { SkinWidget } from './skin-widget'
 import { computeUsage, typeColor, resolveSkinData, MaybeLink, type DashboardSkinData } from './shared'
 
-const ORBITAL_PANEL = 'relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5'
+const ORBITAL_PANEL = 'relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5 transition-colors duration-300 hover:bg-foreground/[0.04]'
 
 // Orbital Core (Pro) — item-type constellation that genuinely orbits a glowing core. A single
 // OrbitingCircles ring keeps the nodes evenly spaced (no clustering) while they revolve; the

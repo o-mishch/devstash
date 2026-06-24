@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR, aiRateLimitHint } from '@/lib/utils/constants'
 import { useMonacoLanguage } from '@/hooks/use-monaco-language'
 import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import type { AiItemRewriteController } from '@/hooks/use-ai-item-rewrite'
 import { CodeEditor, MarkdownViewer } from './dynamic-editors'
 
@@ -94,7 +94,7 @@ interface AiChromeHeaderProps {
 // users, a Sparkles generate button before generating, then Source/Result tabs plus a persist button
 // once a result exists.
 function AiChromeHeader({ result, isLoading, isSaving, isDone, onGenerate, onApply, tab, onTabChange, labels, ApplyIcon }: AiChromeHeaderProps) {
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
 
   if (!isPro) {
     return (

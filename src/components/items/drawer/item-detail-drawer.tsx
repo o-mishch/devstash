@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { SheetTitle } from '@/components/ui/sheet'
-import { $api } from '@/lib/api/client'
 import { DrawerShell } from './drawer-shell'
+import { useItemDetails, useItemContent } from '@/hooks/use-item-detail'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton } from './drawer-shared'
@@ -49,26 +49,8 @@ function ItemDetailDrawerInner({
   const needsDetailsFetch = item !== null && !isFullItem(item)
   const needsContent = item !== null && ITEM_TYPES_WITH_CONTENT.has(item.itemType.name) && !isFullItem(item)
 
-  const { data: fetchedDetails } = $api.useQuery(
-    'get',
-    '/items/{id}/details',
-    { params: { path: { id: itemId ?? '' } } },
-    { enabled: needsDetailsFetch && itemId !== null },
-  )
-
-  const { data: fetchedContent } = $api.useQuery(
-    'get',
-    '/items/{id}/content',
-    { params: { path: { id: itemId ?? '' } } },
-    { enabled: needsContent && itemId !== null },
-  )
-
-  const { data: collections = [] } = $api.useQuery(
-    'get',
-    '/collections',
-    {},
-    { enabled: editingItemId !== null },
-  )
+  const { data: fetchedDetails } = useItemDetails(itemId, { enabled: needsDetailsFetch })
+  const { data: fetchedContent } = useItemContent(itemId, { enabled: needsContent })
 
   const initialDetails: ItemDetails | null =
     item && isFullItem(item)
@@ -114,7 +96,6 @@ function ItemDetailDrawerInner({
     body = (
       <ItemDrawerEditContent
         item={displayItem as FullItem}
-        collections={collections}
         onClose={() => onOpenChange(false)}
         onSave={(updated: FullItem) => {
           setSavedItem(updated)

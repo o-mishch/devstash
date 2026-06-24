@@ -15,7 +15,7 @@ import {
 import { SkinWidget } from './skin-widget'
 import { computeUsage, typeColor, resolveSkinData, type DashboardSkinData } from './shared'
 
-const MC_PANEL = 'relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5'
+const MC_PANEL = 'relative overflow-hidden rounded-2xl border border-border bg-foreground/[0.02] p-5 transition-colors duration-300 hover:bg-foreground/[0.04]'
 
 // Mission Control (Pro) — analytics cockpit: activity heatmap, by-type donut, KPI sparklines.
 // The only skin that consumes the activity series (fetched conditionally in page.tsx).

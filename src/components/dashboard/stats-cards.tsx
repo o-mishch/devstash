@@ -36,7 +36,8 @@ export function StatsCards({
       <Link href="/collections" prefetch={false} className={STAT_CHIP_CLASS} style={statAccentStyle(STAT_COLORS.collections)}>
         <StatChipBody icon={FolderOpen} value={totalCollections} label="Collections" color={STAT_COLORS.collections} />
       </Link>
-      <Link href="/favorites/items" prefetch={false} className={STAT_CHIP_CLASS} style={statAccentStyle(STAT_COLORS.favoriteItems)}>
+      {/* Favorite Items chip is hidden on mobile to keep the stat strip to a tight two-up (+ Brain Dump). */}
+      <Link href="/favorites/items" prefetch={false} className={`${STAT_CHIP_CLASS} max-sm:hidden`} style={statAccentStyle(STAT_COLORS.favoriteItems)}>
         <StatChipBody icon={Star} value={favoriteItems} label="Favorite Items" color={STAT_COLORS.favoriteItems} />
       </Link>
       {isPro ? (

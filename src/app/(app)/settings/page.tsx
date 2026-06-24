@@ -1,9 +1,13 @@
-import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { getCachedSession } from '@/lib/session'
-import type { SettingsCheckoutSearchParams } from '@/lib/billing/checkout/checkout-return-params'
+import {
+  type SettingsCheckoutSearchParams,
+  checkoutNotificationFromSearchParams,
+} from '@/lib/billing/checkout/checkout-return-params'
+import { loadBillingPageContext, toBillingContextResponse } from '@/lib/billing/sync/user-billing-state'
+import { getUserUsageStats } from '@/lib/db/usage'
 import { EditorPreferencesForm } from '@/components/settings/editor-preferences-form'
 import { BillingSettings } from '@/components/billing/billing-settings'
 import SettingsLoading from './loading'
@@ -16,8 +20,22 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const session = await getCachedSession()
   if (!session?.user?.id) redirect('/sign-in')
 
+  const resolvedSearchParams = await searchParams
+
   // `?skeleton=true` preview: render the same skeleton loading.tsx shows, after the auth guard.
-  if ((await searchParams).skeleton === 'true') return <SettingsLoading />
+  if (resolvedSearchParams.skeleton === 'true') return <SettingsLoading />
+
+  // Seed the client billing cache from SSR so /settings paints instantly (no skeleton flash, no extra
+  // fetch). On return from a Stripe checkout, pull fresh state so the plan reflects the upgrade before
+  // the webhook lands instead of briefly showing the stale tier.
+  const needsFreshBilling = checkoutNotificationFromSearchParams(resolvedSearchParams) !== null
+  const [billingPage, usage] = await Promise.all([
+    loadBillingPageContext(session.user.id, session.user.isPro ?? false, {
+      freshBillingContext: needsFreshBilling,
+    }),
+    getUserUsageStats(session.user.id),
+  ])
+  const billingContext = toBillingContextResponse(billingPage, usage)
 
   return (
     <div className="app-page gap-6 p-6">
@@ -36,13 +54,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       </div>
 
       <div className="flex flex-col gap-6">
-        <Suspense fallback={<div className="h-48 rounded-xl border bg-muted/30 animate-pulse" />}>
-          <BillingSettings
-            userId={session.user.id}
-            fallbackIsPro={session.user.isPro ?? false}
-            searchParams={searchParams}
-          />
-        </Suspense>
+        <BillingSettings initialData={billingContext} searchParams={resolvedSearchParams} />
         <EditorPreferencesForm />
       </div>
     </div>

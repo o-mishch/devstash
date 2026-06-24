@@ -23,9 +23,9 @@ function DrawerContainer({ header, actions, children, style }: DrawerContainerPr
     <div className="flex h-full flex-col overflow-hidden" style={style}>
       <div className="flex shrink-0 items-start gap-3 px-5 pt-5 pb-4 max-sm:px-4 max-sm:pt-2.5 max-sm:pb-1.5">{header}</div>
       <Separator className="shrink-0" />
-      {/* @container/actionbar: below the ACTIONBAR_LABEL_CLASS breakpoint the spans inside buttons
-          hide (icon-only mode) so all buttons fit on one row without wrapping. flex-nowrap keeps them
-          in a single line always. */}
+      {/* @container/actionbar: as this row narrows, each button's label span collapses to icon-only
+          one at a time from the right (see actionbarLabelClass) so all buttons fit on one row without
+          wrapping. flex-nowrap keeps them in a single line always. */}
       <div className="@container/actionbar flex shrink-0 flex-nowrap items-center gap-y-1 gap-x-0.5 px-2 py-1.5 max-sm:py-0.5">{actions}</div>
       <Separator className="shrink-0" />
       {/* ScrollArea (not native overflow) so the drawer scrollbar matches the sidebar's. */}

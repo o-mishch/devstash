@@ -5,7 +5,12 @@ import { ProviderIcon } from '@/components/shared/provider-icon'
 import { PROVIDER_LABELS, SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils'
 import { primaryEmailMovesWithCredential } from '@/lib/utils/auth'
 import { linkWithProviderAction } from '@/actions/auth/login'
-import { useProfileEmailsStore } from '@/stores/profile-emails'
+import {
+  useAddCredentialLogin,
+  useChangeCredentialLogin,
+  useRemoveCredentialLogin,
+  useRemoveLinkedAccount,
+} from '@/hooks/use-profile'
 import type { OAuthProvider } from '@/lib/utils/constants'
 import type { LinkedAccount } from '@/types/profile'
 import { ProfileActionDialog } from './profile-action-dialog'
@@ -16,6 +21,11 @@ import { AddProviderSubmitButton } from './add-provider-submit-button'
 import { RemovePasswordDialog } from './remove-password-dialog'
 
 interface ConnectedAccountsProps {
+  currentEmail: string
+  availableEmails: string[]
+  hasPassword: boolean
+  credentialEmail: string | null
+  accounts: LinkedAccount[]
   verificationDisabled: boolean
 }
 
@@ -115,33 +125,34 @@ function AddProviderRow({ provider }: AddProviderRowProps) {
   )
 }
 
-export function ConnectedAccounts({ verificationDisabled }: ConnectedAccountsProps) {
-  // Credential-login presence + emails come from the shared profile-emails store so adding/deleting a
-  // login reflects instantly here AND in the primary-email dropdown (a sibling in another card) — the
-  // server re-render lags behind the route handler's stale-while-revalidate cache invalidation. The
-  // displayed login email is the dedicated `credentialEmail` when set, else the primary `email`
-  // (legacy owned-email password).
-  const hasCredentialLogin = useProfileEmailsStore((state) => state.hasCredentialLogin)
-  const credentialEmail = useProfileEmailsStore((state) => state.credentialEmail)
-  const currentEmail = useProfileEmailsStore((state) => state.currentEmail)
-  const availableEmails = useProfileEmailsStore((state) => state.availableEmails)
-  const linkedAccounts = useProfileEmailsStore((state) => state.linkedAccounts)
-  const addCredentialLogin = useProfileEmailsStore((state) => state.addCredentialLogin)
-  const changeCredentialLogin = useProfileEmailsStore((state) => state.changeCredentialLogin)
-  const removeCredentialLogin = useProfileEmailsStore((state) => state.removeCredentialLogin)
-  const removeLinkedAccount = useProfileEmailsStore((state) => state.removeLinkedAccount)
+export function ConnectedAccounts({
+  currentEmail,
+  availableEmails,
+  hasPassword,
+  credentialEmail,
+  accounts,
+  verificationDisabled,
+}: ConnectedAccountsProps) {
+  // All values come from the `/profile` query cache (via ProfileContent); the mutation hooks below patch
+  // that cache optimistically, so adding/changing/removing a login reflects instantly here AND in the
+  // primary-email dropdown (a sibling card reading the same cache). The displayed login email is the
+  // dedicated `credentialEmail` when set, else the primary `email` (legacy owned-email password).
+  const addCredentialLogin = useAddCredentialLogin()
+  const changeCredentialLogin = useChangeCredentialLogin()
+  const removeCredentialLogin = useRemoveCredentialLogin()
+  const removeLinkedAccount = useRemoveLinkedAccount()
 
   const loginEmail = credentialEmail ?? currentEmail
   const alsoMovesPrimaryEmail = primaryEmailMovesWithCredential({ email: currentEmail, credentialEmail })
-  const totalMethods = (hasCredentialLogin ? 1 : 0) + linkedAccounts.length
+  const totalMethods = (hasPassword ? 1 : 0) + accounts.length
 
   return (
     <div className="space-y-2">
-      {hasCredentialLogin ? (
+      {hasPassword ? (
         <EmailRow
           email={loginEmail}
           alsoMovesPrimaryEmail={alsoMovesPrimaryEmail}
-          canUnlink={linkedAccounts.length > 0}
+          canUnlink={accounts.length > 0}
           verificationDisabled={verificationDisabled}
           onChanged={changeCredentialLogin}
           onRemoved={removeCredentialLogin}
@@ -159,7 +170,7 @@ export function ConnectedAccounts({ verificationDisabled }: ConnectedAccountsPro
           />
         </div>
       )}
-      {linkedAccounts.map((account) => (
+      {accounts.map((account) => (
         <ProviderAccountRow
           key={account.id}
           account={account}

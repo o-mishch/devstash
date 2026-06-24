@@ -5,6 +5,8 @@ import { useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
 import { useDownloadSrcActions } from '@/hooks/use-pro-download-src'
 import { usePrependItem, useReplaceItem, useRemoveItem, useInvalidateItems } from '@/hooks/use-infinite-items'
+import { useInvalidateCollections } from '@/hooks/use-collections'
+import { useInvalidateUserProfile } from '@/hooks/use-user-profile'
 import type { CreateItemInput } from '@/lib/utils/validators'
 import type { LightItem } from '@/types/item'
 
@@ -29,6 +31,8 @@ export function useCreateItem() {
   const replaceItem = useReplaceItem()
   const tqRemoveItem = useRemoveItem()
   const invalidateItems = useInvalidateItems()
+  const invalidateCollections = useInvalidateCollections()
+  const invalidateUserProfile = useInvalidateUserProfile()
   const { seed: seedPreviewCache, clear: clearDownloadSrcCache } = useDownloadSrcActions()
 
   // Fire-and-forget optimistic create as a useMutation: onMutate prepends the temp card (the caller
@@ -60,7 +64,7 @@ export function useCreateItem() {
       if (options?.localPreviewUrl) seedPreviewCache(tempId, options.localPreviewUrl)
       return { tempId }
     },
-    onSuccess: (data, { options }, { tempId }) => {
+    onSuccess: (data, { payload, options }, { tempId }) => {
       if (options?.localPreviewUrl) {
         // Transfer the blob URL to the real ID before swapping the card — zero-flicker handoff.
         clearDownloadSrcCache(tempId)
@@ -68,6 +72,14 @@ export function useCreateItem() {
       }
       replaceItem(tempId, data)
       invalidateItems('none')
+      // Creating into a collection changes its itemCount/type chips — mark the shared /collections
+      // cache stale and refetch active collection readers (grid/sidebar/header) after the route handler
+      // has invalidated the server cache tags. Skip when no collection was selected (the common case) —
+      // nothing about the collection list changed, so a refetch would be wasted.
+      if (payload.collectionIds && payload.collectionIds.length > 0) invalidateCollections()
+      // A new item can push a free-tier user over the item limit, flipping canCreateItem in /profile/me
+      // (which gates the create dialog).
+      invalidateUserProfile()
     },
     onError: (error: Error, { options }, context) => {
       if (context?.tempId) tqRemoveItem(context.tempId)

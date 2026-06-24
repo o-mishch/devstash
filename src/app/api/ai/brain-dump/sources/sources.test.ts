@@ -45,7 +45,7 @@ describe('GET /ai/brain-dump/sources', () => {
   })
 
   it('defaults to listing file sources, scoped to the session userId', async () => {
-    const sources = [{ itemId: 'f1', name: 'notes.md', sizeBytes: 12 }]
+    const sources = [{ itemId: 'f1', name: 'notes.md', itemTypeName: 'file', sizeBytes: 12 }]
     mockList.mockResolvedValue(sources)
     const res = await GET(getReq())
     expect(res.status).toBe(200)
@@ -53,14 +53,13 @@ describe('GET /ai/brain-dump/sources', () => {
     expect(mockList).toHaveBeenCalledWith('user-1', 'file')
   })
 
-  it('lists note sources when ?type=note', async () => {
-    // A note source has no byte size on disk → sizeBytes is null (the realistic note shape).
-    const sources = [{ itemId: 'n1', name: 'Project ideas', sizeBytes: null }]
+  it('lists content item sources when ?type=content', async () => {
+    const sources = [{ itemId: 'n1', name: 'Project ideas', itemTypeName: 'command', sizeBytes: 64 }]
     mockList.mockResolvedValue(sources)
-    const res = await GET(getReq('note'))
+    const res = await GET(getReq('content'))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ sources })
-    expect(mockList).toHaveBeenCalledWith('user-1', 'note')
+    expect(mockList).toHaveBeenCalledWith('user-1', 'content')
   })
 
   it('returns 422 for an unknown source type', async () => {

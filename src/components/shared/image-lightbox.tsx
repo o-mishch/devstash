@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { X, Loader2 } from 'lucide-react'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { useDownloadSrcActions } from '@/hooks/use-pro-download-src'
 
 interface ImageLightboxProps {
@@ -26,7 +26,7 @@ interface ImageLightboxProps {
 // loading (thumbnail as base layer, high-res overlay once downloaded).
 // For SVGs: renders the existing preview src at full viewport size — no fetch needed.
 export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isSvg = false }: ImageLightboxProps) {
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   const { ensure } = useDownloadSrcActions()
   const [fullsizeUrl, setFullsizeUrl] = useState<string | null>(null)
   const [isFetchingUrl, setIsFetchingUrl] = useState(false)

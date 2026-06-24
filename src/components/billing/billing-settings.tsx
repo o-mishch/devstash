@@ -1,3 +1,5 @@
+'use client'
+
 import { CreditCard } from 'lucide-react'
 import { BillingAlert } from '@/components/billing/billing-alert'
 import {
@@ -6,13 +8,11 @@ import {
 } from '@/lib/billing/checkout/checkout-return-params'
 import { CollapsibleCard } from '@/components/shared/collapsible-card'
 import { Badge } from '@/components/ui/badge'
-import { getUserUsageStats } from '@/lib/db/usage'
-import { loadBillingPageContext } from '@/lib/billing/sync/user-billing-state'
 import {
   BILLING_UNAVAILABLE_MESSAGE,
   getBillingIssueMessage,
-} from '@/lib/billing/messages/billing-messages'
-import { getSubscriptionIntervalInfo } from '@/lib/billing/config/billing-pricing'
+} from '@/lib/billing/messages/billing-messages.client'
+import { getSubscriptionIntervalInfo } from '@/lib/billing/config/billing-pricing.client'
 import { BillingActions } from './billing-actions'
 import { BillingCheckoutNotification } from './billing-checkout-notification'
 import {
@@ -20,26 +20,30 @@ import {
   BillingProPlanSection,
   BillingProUnavailableSection,
 } from './billing-settings-sections'
+import type Stripe from 'stripe'
+import { useBillingContext, useReconcileProFlag } from '@/hooks/use-billing-context'
+import type { BillingContextResponse } from '@/lib/api/schemas/billing'
 
 interface BillingSettingsProps {
-  userId: string
-  fallbackIsPro?: boolean
-  searchParams: Promise<SettingsCheckoutSearchParams>
+  initialData?: BillingContextResponse
+  searchParams: SettingsCheckoutSearchParams
 }
 
-export async function BillingSettings({
-  userId,
-  fallbackIsPro = false,
+export function BillingSettings({
+  initialData,
   searchParams,
 }: BillingSettingsProps) {
-  const resolvedSearchParams = await searchParams
-  const checkoutNotification = checkoutNotificationFromSearchParams(resolvedSearchParams)
-  const needsFreshBilling = checkoutNotification !== null
+  const checkoutNotification = checkoutNotificationFromSearchParams(searchParams)
 
-  const [usage, billingPage] = await Promise.all([
-    getUserUsageStats(userId),
-    loadBillingPageContext(userId, fallbackIsPro, { freshBillingContext: needsFreshBilling }),
-  ])
+  const { billingContext } = useBillingContext({ initialData })
+  const data = billingContext
+
+  // Reconcile the /profile/me Pro flag from billing so the sidebar updates after a checkout return.
+  useReconcileProFlag(data?.isPro)
+
+  if (!data) {
+    return <div className="h-48 rounded-xl border bg-muted/30 animate-pulse" />
+  }
 
   const {
     billing,
@@ -48,12 +52,15 @@ export async function BillingSettings({
     needsBillingRecovery,
     checkoutDisabled,
     canManageBilling,
-  } = billingPage
+    usage,
+  } = data
 
-  const stripeSubscriptionStart = billing?.stripeSubscriptionStart ?? null
-  const stripeCurrentPeriodEnd = billing?.stripeCurrentPeriodEnd ?? null
+  // Dates/status arrive as ISO strings over JSON — coerce back to Date / the Stripe enum for the
+  // display sections (which still type against the rich domain shapes). `new Date(...)` accepts both.
+  const stripeSubscriptionStart = billing?.stripeSubscriptionStart ? new Date(billing.stripeSubscriptionStart) : null
+  const stripeCurrentPeriodEnd = billing?.stripeCurrentPeriodEnd ? new Date(billing.stripeCurrentPeriodEnd) : null
   const stripeCancelAtPeriodEnd = billing?.stripeCancelAtPeriodEnd ?? false
-  const stripeSubscriptionStatus = billing?.stripeSubscriptionStatus ?? null
+  const stripeSubscriptionStatus = (billing?.stripeSubscriptionStatus ?? null) as Stripe.Subscription.Status | null
   const billingIssueMessage = getBillingIssueMessage(stripeSubscriptionStatus, isPro)
   const planInfo = isPro ? getSubscriptionIntervalInfo(billing?.stripeSubscriptionInterval ?? null) : null
 
@@ -96,9 +103,6 @@ export async function BillingSettings({
   }
 
   return (
-    // Same widget rules as the rest of the app: accent left border + hover + collapse. The async data
-    // fetch stays in this server component; only the collapse toggle (CollapsibleCard) is client, with
-    // the server-rendered body passed through as children.
     <CollapsibleCard
       title="Billing & Usage"
       icon={<CreditCard />}

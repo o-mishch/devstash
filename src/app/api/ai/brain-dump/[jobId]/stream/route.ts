@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { authedRouteWithParams } from '@/lib/api/route'
-import { problem } from '@/lib/api/http'
+import { problem, parseOr422 } from '@/lib/api/http'
+import { brainDumpJobIdParam } from '@/lib/api/schemas/ai'
 import { getOpenAIClient } from '@/lib/ai/openai'
 import {
   startBackgroundBrainDump,
@@ -49,16 +50,17 @@ interface SendOptions {
   retry?: number
 }
 
-interface JobIdParam {
-  jobId: string
-}
+type RouteParams = Awaited<RouteContext<'/api/ai/brain-dump/[jobId]/stream'>['params']>
 
-export const GET = authedRouteWithParams<JobIdParam>({}, async ({ userId, isPro, request, params }) => {
+export const GET = authedRouteWithParams<RouteParams>({}, async ({ userId, isPro, request, params }) => {
+  const parsedParams = parseOr422(brainDumpJobIdParam, params)
+  if (!parsedParams.ok) return parsedParams.res
+  const { jobId } = parsedParams.data
+
   // Pro-gated like the commit routes: the stream drives the paid OpenAI run, so a user who has since
   // downgraded must not start/resume generation on a previously-created job via a direct request.
   if (!isPro) return problem(403, 'This feature requires a Pro subscription.')
 
-  const { jobId } = params
   const snapshot = await getParseJobSnapshot(userId, jobId)
   if (!snapshot) return problem(404, 'Parse job not found.')
 

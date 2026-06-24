@@ -11,7 +11,7 @@ import { z } from 'zod'
 // --- shared request schemas ---
 
 // Single `{ id: string }` path param for the `{id}` dynamic routes (collections, items, download).
-export const idParam = z.object({ id: z.string() })
+export const idParam = z.object({ id: z.string().trim().min(1, 'ID is required.') })
 
 // Favorite toggle body shared by the collection and item favorite routes.
 export const toggleFavoriteInput = z.object({ isFavorite: z.boolean() })

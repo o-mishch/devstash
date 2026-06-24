@@ -5,25 +5,24 @@ import { useMutation } from '@tanstack/react-query'
 import { Star, Pin, Pencil, Trash2, XCircle, Sparkles, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePatchItem, useRemoveItem, useToggleFavoriteInCache } from '@/hooks/use-infinite-items'
+import { useInvalidateCollections } from '@/hooks/use-collections'
 import { useRestrictedAction } from '@/hooks/use-restricted'
 import { useStartBrainDumpFromSource, BRAIN_DUMP_UPGRADE_PROMPT } from '@/hooks/use-brain-dump'
 import { useAiUsage } from '@/hooks/use-ai-usage'
 import { CopyButton } from '@/components/shared/copy-button'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatRenewIn } from '@/lib/utils/format'
 import { api } from '@/lib/api/client'
 import { useItemDrawerStore } from '@/stores/item-drawer'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro, useInvalidateUserProfile } from '@/hooks/use-user-profile'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { usePinnedItemsStore } from '@/stores/pinned-items'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
 import { ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import { isParseSourceEligible } from '@/lib/utils/brain-dump-source'
-import { ACTIONBAR_LABEL_CLASS } from '@/lib/utils/ui'
+import { actionbarLabelClass } from '@/lib/utils/ui'
 import { getDownloadUrl } from '@/lib/utils/url'
 import type { LightItem, FullItem } from '@/types/item'
 
@@ -38,10 +37,12 @@ interface ItemDrawerActionBarProps {
 export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted }: ItemDrawerActionBarProps) {
   const patchItem = usePatchItem()
   const removeItem = useRemoveItem()
+  const invalidateCollections = useInvalidateCollections()
+  const invalidateUserProfile = useInvalidateUserProfile()
   const toggleFavoriteInCache = useToggleFavoriteInCache()
   const { setPinnedOverride, removePinnedOverride } = usePinnedItemsStore()
   const { closeDrawer } = useItemDrawerStore()
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   const { openPrompt } = useUpgradePromptStore()
   const startParse = useStartBrainDumpFromSource()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
@@ -146,6 +147,12 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
       setDeleteDialogOpen(false)
       removeItem(item.id)
       removePinnedOverride(item.id)
+      // Deleting an item drops it from any collection it belonged to, changing that collection's
+      // itemCount / type chips / dominant color on the cards — mark the shared /collections cache stale
+      // so mounted grid/sidebar/header readers update after the route handler invalidates server tags.
+      invalidateCollections()
+      // Deleting an item frees a free-tier slot, flipping canCreateItem back to true in /profile/me.
+      invalidateUserProfile()
       onDeleted()
     },
     onError: (error: Error) => {
@@ -164,14 +171,14 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
       onClick={openParse}
     >
       {isParsing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-      <span className={ACTIONBAR_LABEL_CLASS}>Parse</span>
+      <span className={actionbarLabelClass(4)}>Parse</span>
     </Button>
   )
   const parseButtonDisabled = (
     <span className="ml-auto inline-flex">
       <Button variant="ghost" size="sm" className="text-primary hover:text-primary" disabled>
         <Sparkles className="size-4" />
-        <span className={ACTIONBAR_LABEL_CLASS}>Parse</span>
+        <span className={actionbarLabelClass(4)}>Parse</span>
       </Button>
     </span>
   )
@@ -186,7 +193,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         onClick={handleFavoriteToggle}
       >
         <Star className={`size-4 ${isFavorite ? 'fill-yellow-500' : ''}`} />
-        <span className={ACTIONBAR_LABEL_CLASS}>{isFavorite ? 'Starred' : 'Favorite'}</span>
+        <span className={actionbarLabelClass(0)}>{isFavorite ? 'Starred' : 'Favorite'}</span>
       </Button>
       <Button
         variant="ghost"
@@ -196,9 +203,9 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         onClick={handlePinToggle}
       >
         <Pin className={`size-4 ${isPinned ? 'fill-primary' : ''}`} />
-        <span className={ACTIONBAR_LABEL_CLASS}>Pin</span>
+        <span className={actionbarLabelClass(1)}>Pin</span>
       </Button>
-      <CopyButton value={copyValue} text="Copy" textClassName={ACTIONBAR_LABEL_CLASS} isRestricted={isRestricted} onUpgrade={closeDrawer} />
+      <CopyButton value={copyValue} text="Copy" textClassName={actionbarLabelClass(2)} isRestricted={isRestricted} onUpgrade={closeDrawer} />
       <Button variant="ghost" size="sm" onClick={(e) => {
         if (isRestricted) {
           e.preventDefault()
@@ -208,7 +215,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         onEdit()
       }} disabled={isLight}>
         {showEditError ? <XCircle className="size-4 text-destructive" /> : <Pencil className="size-4" />}
-        <span className={ACTIONBAR_LABEL_CLASS}>Edit</span>
+        <span className={actionbarLabelClass(3)}>Edit</span>
       </Button>
       {canParse && (
         // Tooltip scoped by the single TooltipProvider in DrawerLayout (this action bar only renders inside it).
@@ -230,22 +237,17 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         <Trash2 className="size-4" />
       </Button>
 
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete item?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this {item.itemType.name}? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DestructiveDialogFooter
-            onCancel={() => setDeleteDialogOpen(false)}
-            onConfirm={() => deleteMutation.mutate()}
-            isPending={deleteMutation.isPending}
-            confirmText="Delete"
-          />
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete item?"
+        description={`Are you sure you want to delete this ${item.itemType.name}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={() => deleteMutation.mutate()}
+        isPending={deleteMutation.isPending}
+        cancelLabel="Cancel"
+        destructive
+      />
 
       <ConfirmDialog
         open={parseConfirmOpen}

@@ -143,7 +143,7 @@ describe('POST /ai/brain-dump/{jobId}/re-parse', () => {
       sourceItemId: 'note-1',
       sourceName: 'project.md',
       truncated: true,
-      collectionName: 'project',
+      collectionName: null,
     })
     // Re-parse is a create handler, so it registers the lazy abandoned-job sweep like POST/GET /brain-dump.
     expect(after).toHaveBeenCalledWith(sweepAbandonedParseJobs)

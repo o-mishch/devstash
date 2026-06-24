@@ -3,6 +3,27 @@ import {
   type CheckoutReturnNotification,
 } from '@/lib/billing/checkout/checkout-return-params'
 
+export const BILLING_UNAVAILABLE_MESSAGE =
+  'Unable to load billing details right now. Please refresh the page or try again shortly.'
+
+// Accepts a plain `string` (the status as it arrives over JSON from GET /billing/context) as well as the
+// typed Stripe enum used server-side — both compare against the same literal values.
+export function getBillingIssueMessage(
+  status: string | null | undefined,
+  isPro: boolean,
+): string | null {
+  if (status === 'past_due' && isPro) {
+    return 'Your latest payment failed. Pro access continues for now — update your payment method in Manage Billing to avoid interruption.'
+  }
+  if (status === 'unpaid') {
+    return 'Your subscription has an unpaid invoice. Use Manage Billing below to update your payment method and restore Pro access — a new checkout is not available while billing is unresolved.'
+  }
+  if (status === 'paused') {
+    return 'Your subscription is paused. Use Manage Billing below to resume and restore Pro access — a new checkout is not available while billing is paused.'
+  }
+  return null
+}
+
 export const CHECKOUT_NOT_CONFIGURED_MESSAGE =
   'Upgrade checkout is not configured. Contact support if this persists.'
 

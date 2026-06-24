@@ -81,3 +81,40 @@ export function useCacheItemDetail() {
   const queryClient = useQueryClient()
   return useCallback((item: FullItem) => seedItemDetailCaches(queryClient, item), [queryClient])
 }
+
+interface ItemReadOptions {
+  /** Defaults to true; gate the read on whether the drawer/banner actually needs this cache yet. */
+  enabled?: boolean
+}
+
+// Live readers for the three GET caches, wrapping `$api.useQuery` so a component's read sits beside the
+// writers above and shares the same registry keys — no raw `$api.useQuery` in components. Each gates itself
+// on a non-null id, so callers pass the id straight through (no `id ?? ''` juggling at the call site).
+export function useItemDetail(id: string | null, options?: ItemReadOptions) {
+  return $api.useQuery(
+    'get',
+    '/items/{id}',
+    { params: { path: { id: id ?? '' } } },
+    // retry: false — the only live reader (the Brain Dump source banner) reads a denormalized id that may
+    // point at a since-deleted item; a 404 should fall back to the stored name, not retry.
+    { enabled: (options?.enabled ?? true) && id !== null, retry: false },
+  )
+}
+
+export function useItemDetails(id: string | null, options?: ItemReadOptions) {
+  return $api.useQuery(
+    'get',
+    '/items/{id}/details',
+    { params: { path: { id: id ?? '' } } },
+    { enabled: (options?.enabled ?? true) && id !== null },
+  )
+}
+
+export function useItemContent(id: string | null, options?: ItemReadOptions) {
+  return $api.useQuery(
+    'get',
+    '/items/{id}/content',
+    { params: { path: { id: id ?? '' } } },
+    { enabled: (options?.enabled ?? true) && id !== null },
+  )
+}

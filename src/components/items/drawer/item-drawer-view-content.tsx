@@ -2,7 +2,8 @@
 
 import { useState, useCallback, type MouseEvent } from 'react'
 import { ExternalLink, Tag, Download, FileIcon, XCircle, RotateCcw } from 'lucide-react'
-import { showFileNotFoundToast, useRestrictedDownload } from '@/hooks/use-restricted'
+import { useRestrictedDownload } from '@/hooks/use-restricted'
+import { showFileNotFoundToast } from '@/lib/utils/toast-error'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -20,7 +21,7 @@ import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_P
 import { formatBytes } from '@/lib/utils/format'
 import { useProDownloadSrc, useDownloadSrcActions, markPreviewFailed, isPreviewFailed } from '@/hooks/use-pro-download-src'
 import { useItemDrawerStore } from '@/stores/item-drawer'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { isFullItem } from '@/types/item'
 import type { LightItem, FullItem } from '@/types/item'
 
@@ -30,7 +31,7 @@ interface FileSectionProps {
 
 function FileSectionContent({ item }: FileSectionProps) {
   const { closeDrawer } = useItemDrawerStore()
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   const { refresh } = useDownloadSrcActions()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const [imageError, setImageError] = useState(false)

@@ -10,10 +10,15 @@ export { FREE_TIER_COLLECTION_LIMIT, FREE_TIER_ITEM_LIMIT } from '@/lib/utils/co
 
 const log = logger.child({ tag: 'db:usage' })
 
-export async function getUserUsageStats(userId: string) {
+export interface UsageStats {
+  itemsCount: number
+  collectionsCount: number
+}
+
+export async function getUserUsageStats(userId: string): Promise<UsageStats> {
   const [itemsCount, collectionsCount] = await Promise.all([
-    prisma.item.count({ where: { userId } }),
-    prisma.collection.count({ where: { userId } }),
+    countItemsByUserId(userId),
+    countCollectionsByUserId(userId),
   ])
   return { itemsCount, collectionsCount }
 }

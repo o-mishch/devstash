@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, type MouseEvent } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api/client'
 import { useUpgradePromptStore, type UpgradePromptConfig } from '@/stores/upgrade-prompt'
+import { showFileNotFoundToast } from '@/lib/utils/toast-error'
 
 export function useRestrictedAction(config: UpgradePromptConfig) {
   const { openPrompt } = useUpgradePromptStore()
@@ -20,12 +21,6 @@ export function useRestrictedAction(config: UpgradePromptConfig) {
   }
 
   return { showError, flash }
-}
-
-export function showFileNotFoundToast(message?: string | null) {
-  toast.error(message ?? 'File not found in storage.', {
-    id: 'file-not-found',
-  })
 }
 
 export function useRestrictedDownload(

@@ -4,7 +4,7 @@ import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { $api } from '@/lib/api/client'
 import { getDownloadUrl } from '@/lib/utils/url'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import {
   SIGNED_URL_GC_TIME,
   DEFAULT_PREVIEW_SEED_TTL_MS,
@@ -45,7 +45,7 @@ function downloadSrcOptions(itemId: string, preview: boolean) {
  * known to have failed to render.
  */
 export function useProDownloadSrc(itemId: string, preview = false): string | null {
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   // Previews are available to all users; full downloads require Pro.
   const enabled = preview || isPro
 

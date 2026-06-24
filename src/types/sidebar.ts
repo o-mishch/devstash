@@ -1,4 +1,4 @@
-import type { SidebarCollection } from './collection'
+import type { CollectionWithTypes } from './collection'
 import type { SidebarItemType } from './item'
 
 export interface SidebarUser {
@@ -10,7 +10,9 @@ export interface SidebarUser {
 }
 
 export interface SidebarData {
-  collections: SidebarCollection[]
+  // Full collections (not the slim SidebarCollection) so the sidebars can seed the shared `/collections`
+  // TanStack cache with complete rows (types + createdAt) — the grid/detail readers share that key.
+  collections: CollectionWithTypes[]
   itemTypes: SidebarItemType[]
   user: SidebarUser | null
 }

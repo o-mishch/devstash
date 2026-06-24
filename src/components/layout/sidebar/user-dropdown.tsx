@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Settings, User, LogOut, Sun, Moon } from 'lucide-react'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useResolvedEditorPreferences, useUpdateEditorPreferences } from '@/hooks/use-editor-preferences'
 import { startThemeTransition } from '@/lib/dom/theme-transition'
 
 import {
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { signOut } from 'next-auth/react'
-import { useProfileEmailsStore } from '@/stores/profile-emails'
+import { useResetProfile } from '@/hooks/use-profile'
 
 interface UserDropdownMenuContentProps {
   side: 'top' | 'right' | 'bottom' | 'left'
@@ -24,8 +24,9 @@ export function UserDropdownMenuContent({
   align,
   onClose
 }: UserDropdownMenuContentProps) {
-  const colorMode = useEditorPreferencesStore((state) => state.colorMode)
-  const updatePreference = useEditorPreferencesStore((state) => state.updatePreference)
+  const { colorMode } = useResolvedEditorPreferences()
+  const updateEditorPreferences = useUpdateEditorPreferences()
+  const resetProfile = useResetProfile()
 
   return (
     <DropdownMenuContent
@@ -50,7 +51,7 @@ export function UserDropdownMenuContent({
       } />
       <DropdownMenuItem onClick={(e) => {
         startThemeTransition(e, () => {
-          void updatePreference('colorMode', colorMode === 'dark' ? 'light' : 'dark')
+          void updateEditorPreferences({ colorMode: colorMode === 'dark' ? 'light' : 'dark' })
         })
       }}>
         {colorMode === 'dark' ? (
@@ -67,9 +68,9 @@ export function UserDropdownMenuContent({
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={() => {
-        // Clear user-scoped client state so the next account on this device never sees the prior
-        // user's emails (PII) from the module-global store.
-        useProfileEmailsStore.getState().reset()
+        // Drop the /profile cache so the next account on this device never sees the prior user's
+        // emails (PII).
+        resetProfile()
         signOut({ redirectTo: '/' })
         onClose?.()
       }} className="text-red-500 focus:text-red-500">

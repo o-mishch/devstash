@@ -1,6 +1,8 @@
 import 'server-only'
 
+import { cacheTag, cacheLife } from 'next/cache'
 import { prisma } from '@/lib/infra/prisma'
+import { CacheTags } from '@/lib/infra/cache'
 import { Prisma } from '@/generated/prisma'
 import { resolveMatchedVerification, primaryEmailMovesWithCredential } from '@/lib/utils/auth'
 
@@ -72,6 +74,15 @@ export async function createCredentialUser(data: Prisma.UserUncheckedCreateInput
 
 // Auth/security reads in this file are intentionally uncached: they gate login, credential
 // verification, password state, or write-conflict decisions and must reflect the latest committed row.
+
+// Reads verification state for a resend-verification flow; must reflect the latest committed
+// `emailVerified` so it stays uncached like the other auth/security reads above.
+export async function findUnverifiedUserByEmail(email: string) {
+  return prisma.user.findUnique({
+    where: { email },
+    select: { id: true, emailVerified: true },
+  })
+}
 
 // Returns the user if they exist but haven't linked the given OAuth provider yet.
 // Returns null if no user with that email exists, or they already have the provider linked.
@@ -184,6 +195,16 @@ export async function checkAccountExists(accountId: string, userId: string) {
 
 export async function getUserById(id: string) {
   return prisma.user.findUnique({ where: { id }, select: { id: true, email: true } })
+}
+
+export async function getUserProfile(userId: string) {
+  'use cache'
+  cacheTag(CacheTags.profile(userId))
+  cacheLife('max')
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, email: true, image: true },
+  })
 }
 
 export async function checkProviderAccountExists(provider: string, providerAccountId: string) {

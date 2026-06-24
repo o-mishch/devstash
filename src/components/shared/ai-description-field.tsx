@@ -10,7 +10,7 @@ import {
   AiProHint,
   AiSuggestionPanel,
 } from '@/components/shared/ai-field-chrome'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
 import { aiRateLimitHint } from '@/lib/utils/constants'
 import { cn } from '@/lib/utils'
@@ -80,7 +80,7 @@ export function AiDescriptionField({
   fill = false,
   children,
 }: AiDescriptionFieldProps) {
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   const { isLoading, suggestedDescription, setSuggestedDescription, run, disabled } = field
 
   const handleUse = () => {

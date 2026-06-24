@@ -15,7 +15,7 @@ import {
 import { createItem, deleteItem } from '@/lib/db/items'
 import { invalidateItemsCache } from '@/lib/infra/cache'
 import { BRAIN_DUMP_SOURCE_TAG, SPLIT_FILE_MIN_INPUT_CHARS } from '@/lib/utils/constants'
-import { deriveBrainDumpNoteTitle, deriveCollectionName } from '@/lib/utils/derive-source-label'
+import { deriveBrainDumpNoteTitle } from '@/lib/utils/derive-source-label'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'ai-brain-dump' })
@@ -78,15 +78,15 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
   // refused job never orphans a brain-dump snippet. Never set for a reused existing source item.
   let createdSnippetId: string | null = null
 
-  // The default new-collection name seeded on the job. For a paste it is exactly the snippet title; for an
-  // existing file/note source it is derived from the source name (trailing extension dropped).
-  let collectionName: string | null
+  // Jobs no longer seed a deferred "new collection" name: the review board offers the source name as a
+  // suggestion the user can create on demand, but a collection is only ever attached when explicitly
+  // picked/created (commit attaches just the chosen `collectionIds`). Kept null on every path.
+  const collectionName: string | null = null
 
   if (resolvedRead && resolvedSourceItemId) {
     sourceText = resolvedRead.text
     truncated = resolvedRead.truncated
     sourceName = resolvedRead.sourceName
-    collectionName = deriveCollectionName(sourceName)
   } else {
     // Paste — persist the FULL text as a durable `brain-dump` snippet (the existing createItem way), then
     // slice the parse window in memory (no re-read, no second transfer). A paste has no intrinsic name,
@@ -121,9 +121,6 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
     sourceText = read.text
     truncated = read.truncated
     sourceName = read.sourceName ?? snippetTitle
-    // The new-collection input starts empty for a paste — the user names the target collection on the
-    // review board rather than defaulting it to the dated snippet title.
-    collectionName = null
     resolvedSourceItemId = snippet.id
     createdSnippetId = snippet.id
   }

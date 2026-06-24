@@ -111,6 +111,52 @@
       }
     },
     "/collections/{id}": {
+      "get": {
+        "summary": "Get a single collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The collection details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Collection not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "summary": "Update a collection",
         "parameters": [
@@ -118,7 +164,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -203,7 +250,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -243,7 +291,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -560,7 +609,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -605,7 +655,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -771,7 +822,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -821,7 +873,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -868,7 +921,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -915,7 +969,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -992,7 +1047,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           }
@@ -1062,6 +1118,41 @@
       }
     },
     "/profile": {
+      "get": {
+        "summary": "Get the current user's profile",
+        "responses": {
+          "200": {
+            "description": "Profile data, account summary, and usage stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileContext"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Profile not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "summary": "Delete the current user's account",
         "requestBody": {
@@ -1184,7 +1275,180 @@
         }
       }
     },
+    "/profile/me": {
+      "get": {
+        "summary": "Get the current user's profile flags and capability checks",
+        "responses": {
+          "200": {
+            "description": "User profile flags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileFlags"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/profile/editor-preferences": {
+      "get": {
+        "summary": "Get editor preferences",
+        "responses": {
+          "200": {
+            "description": "Editor preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "fontSize": {
+                      "type": "number",
+                      "minimum": 8,
+                      "maximum": 100
+                    },
+                    "tabSize": {
+                      "type": "number",
+                      "minimum": 1,
+                      "maximum": 16
+                    },
+                    "wordWrap": {
+                      "type": "string",
+                      "enum": [
+                        "on",
+                        "off"
+                      ]
+                    },
+                    "minimap": {
+                      "type": "boolean"
+                    },
+                    "appTheme": {
+                      "type": "string",
+                      "enum": [
+                        "modern-minimal",
+                        "t3-chat",
+                        "twitter",
+                        "mocha-mousse",
+                        "bubblegum",
+                        "doom-64",
+                        "catppuccin",
+                        "graphite",
+                        "perpetuity",
+                        "kodama-grove",
+                        "cosmic-night",
+                        "tangerine",
+                        "quantum-rose",
+                        "nature",
+                        "bold-tech",
+                        "elegant-luxury",
+                        "amber-minimal",
+                        "supabase",
+                        "neo-brutalism",
+                        "solar-dusk",
+                        "claymorphism",
+                        "cyberpunk",
+                        "pastel-dreams",
+                        "clean-slate",
+                        "caffeine",
+                        "ocean-breeze",
+                        "retro-arcade",
+                        "midnight-bloom",
+                        "candyland",
+                        "northern-lights",
+                        "vintage-paper",
+                        "sunset-horizon",
+                        "starry-night",
+                        "claude",
+                        "vercel",
+                        "mono",
+                        "violet-bloom",
+                        "amethyst-haze",
+                        "soft-pop",
+                        "sage-garden",
+                        "notebook",
+                        "darkmatter",
+                        "aurora",
+                        "editorial",
+                        "spatial",
+                        "command-deck",
+                        "orbital",
+                        "mission-control",
+                        "neon-grid",
+                        "holographic"
+                      ]
+                    },
+                    "colorMode": {
+                      "type": "string",
+                      "enum": [
+                        "light",
+                        "dark"
+                      ]
+                    },
+                    "editorThemeMode": {
+                      "type": "string",
+                      "enum": [
+                        "app",
+                        "auto",
+                        "dark"
+                      ]
+                    },
+                    "uiSkin": {
+                      "type": "string",
+                      "enum": [
+                        "classic",
+                        "aurora",
+                        "editorial",
+                        "spatial",
+                        "command-deck",
+                        "orbital",
+                        "mission-control",
+                        "neon-grid",
+                        "holographic"
+                      ]
+                    },
+                    "sidebarCollapsed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "fontSize",
+                    "tabSize",
+                    "wordWrap",
+                    "minimap",
+                    "appTheme",
+                    "colorMode",
+                    "editorThemeMode",
+                    "uiSkin",
+                    "sidebarCollapsed"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "summary": "Update editor preferences",
         "requestBody": {
@@ -2330,7 +2594,7 @@
     },
     "/ai/brain-dump/sources": {
       "get": {
-        "summary": "List eligible stash items (text files or brain-dump notes) for the source picker",
+        "summary": "List eligible stash items (text files or brain-dump content items) for the source picker",
         "parameters": [
           {
             "in": "query",
@@ -2340,14 +2604,14 @@
               "type": "string",
               "enum": [
                 "file",
-                "note"
+                "content"
               ]
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Eligible source file items",
+            "description": "Eligible source items",
             "content": {
               "application/json": {
                 "schema": {
@@ -3280,6 +3544,33 @@
         }
       }
     },
+    "/billing/context": {
+      "get": {
+        "summary": "Get unified billing context and usage statistics",
+        "responses": {
+          "200": {
+            "description": "Unified billing context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingContext"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/billing/checkout": {
       "post": {
         "summary": "Start a Stripe Checkout session",
@@ -3983,7 +4274,8 @@
             "in": "path",
             "name": "id",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": true
           },
@@ -7370,6 +7662,214 @@
         ],
         "additionalProperties": false
       },
+      "ProfileContext": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hasPassword": {
+            "type": "boolean"
+          },
+          "credentialEmail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "credentialEmailVerified": {
+            "type": "boolean"
+          },
+          "isPro": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "email": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "provider",
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "accountTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "availableEmails": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verificationDisabled": {
+            "type": "boolean"
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "totalItems": {
+                "type": "number"
+              },
+              "totalCollections": {
+                "type": "number"
+              },
+              "itemTypeCounts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "icon": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "icon",
+                    "color",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "totalItems",
+              "totalCollections",
+              "itemTypeCounts"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "image",
+          "hasPassword",
+          "credentialEmail",
+          "credentialEmailVerified",
+          "isPro",
+          "createdAt",
+          "accounts",
+          "accountTypes",
+          "availableEmails",
+          "verificationDisabled",
+          "stats"
+        ],
+        "additionalProperties": false
+      },
+      "UserProfileFlags": {
+        "type": "object",
+        "properties": {
+          "isPro": {
+            "type": "boolean"
+          },
+          "canCreateItem": {
+            "type": "boolean"
+          },
+          "canCreateCollection": {
+            "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "isPro",
+          "canCreateItem",
+          "canCreateCollection",
+          "name",
+          "email",
+          "image"
+        ],
+        "additionalProperties": false
+      },
       "AiDescription": {
         "type": "object",
         "properties": {
@@ -7608,6 +8108,9 @@
           "name": {
             "type": "string"
           },
+          "itemTypeName": {
+            "type": "string"
+          },
           "sizeBytes": {
             "anyOf": [
               {
@@ -7622,6 +8125,7 @@
         "required": [
           "itemId",
           "name",
+          "itemTypeName",
           "sizeBytes"
         ],
         "additionalProperties": false
@@ -7992,6 +8496,163 @@
         "required": [
           "url",
           "fields"
+        ],
+        "additionalProperties": false
+      },
+      "BillingContext": {
+        "type": "object",
+        "properties": {
+          "billing": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stripeCustomerId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stripeSubscriptionId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "isPro": {
+                    "type": "boolean"
+                  },
+                  "stripeSubscriptionStatus": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stripeSubscriptionStart": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stripeCurrentPeriodEnd": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stripeSubscriptionInterval": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stripeCancelAtPeriodEnd": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "email",
+                  "stripeCustomerId",
+                  "stripeSubscriptionId",
+                  "isPro",
+                  "stripeSubscriptionStatus",
+                  "stripeSubscriptionStart",
+                  "stripeCurrentPeriodEnd",
+                  "stripeSubscriptionInterval",
+                  "stripeCancelAtPeriodEnd"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "type": "boolean"
+          },
+          "isPro": {
+            "type": "boolean"
+          },
+          "needsBillingRecovery": {
+            "type": "boolean"
+          },
+          "checkoutDisabled": {
+            "type": "boolean"
+          },
+          "checkoutDisabledMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canManageBilling": {
+            "type": "boolean"
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "itemsCount": {
+                "type": "number"
+              },
+              "collectionsCount": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "itemsCount",
+              "collectionsCount"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "billing",
+          "unavailable",
+          "isPro",
+          "needsBillingRecovery",
+          "checkoutDisabled",
+          "checkoutDisabledMessage",
+          "canManageBilling",
+          "usage"
         ],
         "additionalProperties": false
       },

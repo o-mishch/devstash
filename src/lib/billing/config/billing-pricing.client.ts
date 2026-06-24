@@ -44,7 +44,9 @@ const UNKNOWN_SUBSCRIPTION_INTERVAL_INFO: SubscriptionIntervalInfo = {
   unit: '',
 }
 
-export function getSubscriptionIntervalInfo(interval: SubscriptionInterval | null): SubscriptionIntervalInfo {
+// Accepts a plain `string` (the interval as it arrives over JSON from GET /billing/context) as well as the
+// typed enum; an unrecognized value falls back to the neutral "Pro" info rather than indexing undefined.
+export function getSubscriptionIntervalInfo(interval: string | null): SubscriptionIntervalInfo {
   if (!interval) return UNKNOWN_SUBSCRIPTION_INTERVAL_INFO
-  return SUBSCRIPTION_INTERVAL_INFO[interval]
+  return SUBSCRIPTION_INTERVAL_INFO[interval as SubscriptionInterval] ?? UNKNOWN_SUBSCRIPTION_INTERVAL_INFO
 }

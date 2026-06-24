@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawerStore } from '@/stores/item-drawer'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { useRestrictedDownload } from '@/hooks/use-restricted'
 import { formatDate, formatBytes } from '@/lib/utils/format'
 import { getDownloadUrl } from '@/lib/utils/url'
@@ -40,7 +40,7 @@ interface FileRowProps {
 
 export function FileRow({ item }: FileRowProps) {
   const { openDrawer } = useItemDrawerStore()
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const { handleDownload, showError } = useRestrictedDownload(
     item.id,

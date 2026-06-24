@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 import { SkinWidget } from './skin-widget'
 import { computeUsage, resolveSkinData, MaybeLink, TypeDistributionSegments, type DashboardSkinData } from './shared'
 
-const HUD_PANEL = 'relative overflow-hidden rounded-lg border border-border bg-foreground/[0.015] p-5'
+const HUD_PANEL = 'relative overflow-hidden rounded-lg border border-border bg-foreground/[0.015] p-5 transition-colors duration-300 hover:bg-foreground/[0.035]'
 
 // Command Deck (Pro) — HUD/terminal readouts with corner brackets and a segmented type bar.
 export async function CommandDeckSkin(data: DashboardSkinData) {
@@ -88,7 +88,7 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
         </div>
 
         <div className={`${HUD_PANEL} mb-6`}>
-          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="command-deck">
+          <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="command-deck" headerHoverless>
             <DashboardCollectionsList collections={collections} />
           </SkinWidget>
         </div>
@@ -96,14 +96,14 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
         <div className="mb-6 grid items-start gap-4 lg:grid-cols-2 [&>*]:min-w-0">
           {hasPinned && (
             <div className={HUD_PANEL}>
-              <SkinWidget icon={<Pin />} title="Pinned" skin="command-deck">
+              <SkinWidget icon={<Pin />} title="Pinned" skin="command-deck" headerHoverless>
                 <DashboardPinnedItems initialItems={pinned} />
               </SkinWidget>
             </div>
           )}
           {hasRecent && (
             <div className={HUD_PANEL}>
-              <SkinWidget icon={<History />} title="Recent records" skin="command-deck">
+              <SkinWidget icon={<History />} title="Recent records" skin="command-deck" headerHoverless>
                 <DashboardRecentItems firstPage={recent} />
               </SkinWidget>
             </div>
@@ -111,8 +111,8 @@ export async function CommandDeckSkin(data: DashboardSkinData) {
         </div>
 
         {/* Type distribution — analytics, below the content lists. */}
-        <div className="mb-6 relative overflow-hidden rounded-lg border border-border bg-foreground/[0.015] p-5">
-          <SkinWidget icon={<BarChart3 />} title="Type distribution" skin="command-deck">
+        <div className={`${HUD_PANEL} mb-6`}>
+          <SkinWidget icon={<BarChart3 />} title="Type distribution" skin="command-deck" headerHoverless>
             <TypeDistributionSegments distribution={distribution} />
           </SkinWidget>
         </div>

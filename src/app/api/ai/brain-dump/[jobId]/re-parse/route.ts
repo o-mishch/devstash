@@ -1,7 +1,7 @@
 import { after } from 'next/server'
 import { authedRouteWithParams, rateLimited } from '@/lib/api/route'
 import { json, parseOr422, problem } from '@/lib/api/http'
-import { brainDumpJobIdParam, type BrainDumpJobIdParam } from '@/lib/api/schemas/ai'
+import { brainDumpJobIdParam } from '@/lib/api/schemas/ai'
 import { checkRateLimit, resetRateLimit } from '@/lib/infra/rate-limit'
 import {
   createParseJob,
@@ -11,13 +11,14 @@ import {
   sweepAbandonedParseJobs,
 } from '@/lib/db/ai-parse-jobs'
 import { SPLIT_FILE_MIN_INPUT_CHARS } from '@/lib/utils/constants'
-import { deriveCollectionName } from '@/lib/utils/derive-source-label'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'ai-brain-dump-re-parse' })
 
+type RouteParams = Awaited<RouteContext<'/api/ai/brain-dump/[jobId]/re-parse'>['params']>
+
 // Re-parse takes no request body — the source is re-read from the original job's durable item.
-export const POST = authedRouteWithParams<BrainDumpJobIdParam>({}, async ({ userId, isPro, params }) => {
+export const POST = authedRouteWithParams<RouteParams>({}, async ({ userId, isPro, params }) => {
   const parsedParams = parseOr422(brainDumpJobIdParam, params)
   if (!parsedParams.ok) return parsedParams.res
   if (!isPro) return problem(403, 'This feature requires a Pro subscription.')
@@ -56,7 +57,8 @@ export const POST = authedRouteWithParams<BrainDumpJobIdParam>({}, async ({ user
       sourceItemId,
       sourceName: read.sourceName,
       truncated: read.truncated,
-      collectionName: deriveCollectionName(read.sourceName),
+      // No deferred collection seed — the review board offers the name as an on-demand suggestion instead.
+      collectionName: null,
     })
     log.info({ userId, jobId, sourceItemId, truncated: read.truncated }, 'brain-dump re-parse started')
     // Lazy abandoned-job cleanup backstop (no cron) — re-parse is a create handler too, so it registers

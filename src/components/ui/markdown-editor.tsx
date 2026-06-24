@@ -5,7 +5,7 @@ import { Keyboard } from 'lucide-react'
 import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useResolvedEditorPreferences } from '@/hooks/use-editor-preferences'
 import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
 import { MarkdownViewer } from '@/components/shared/dynamic-editors'
 import { useIsTouch } from '@/hooks/use-is-touch'
@@ -21,7 +21,7 @@ interface MarkdownEditorProps {
 export function MarkdownEditor({ value, onChange, readOnly = false, className, fullscreenLabel }: MarkdownEditorProps) {
   const [activeTabState, setActiveTab] = useState<'write' | 'preview'>('write')
   const activeTab = readOnly ? 'preview' : activeTabState
-  const { fontSize, tabSize, wordWrap } = useEditorPreferencesStore()
+  const { fontSize, tabSize, wordWrap } = useResolvedEditorPreferences()
   const isTouch = useIsTouch()
   const expandRef = useRef<(() => void) | null>(null)
   const fullscreenRef = useRef(false)

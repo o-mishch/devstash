@@ -24,6 +24,8 @@ import { UserAvatar } from '@/components/shared/user-avatar'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { SidebarData } from '@/types/sidebar'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
+import { useUserProfile, useIsPro } from '@/hooks/use-user-profile'
+import { useCollections } from '@/hooks/use-collections'
 import { UserDropdownMenuContent } from './user-dropdown'
 import { getTypeHref, sidebarLinkClass, handleProGatedTypeClick } from './utils'
 
@@ -39,8 +41,13 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
   const [typesOpen, setTypesOpen] = useState(true)
   const [collectionsOpen, setCollectionsOpen] = useState(true)
 
-  const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
-  const recentCollections = sidebarData.collections.filter((c) => !c.isFavorite).slice(0, 5)
+  const { data: profile } = useUserProfile()
+  const { name = null, email = null, image = null } = profile ?? {}
+  const isPro = useIsPro()
+  const { collections } = useCollections({ initialData: sidebarData.collections })
+
+  const favoriteCollections = collections.filter((c) => c.isFavorite)
+  const recentCollections = collections.filter((c) => !c.isFavorite).slice(0, 5)
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -104,7 +111,6 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
             {sidebarData.itemTypes.map((t) => {
               const typeHref = getTypeHref(t.name)
               const isCurrentPage = pathname === typeHref
-              const isPro = sidebarData.user?.isPro ?? false
               const isProGated = PRO_ITEM_TYPE_NAMES.has(t.name)
 
               return (
@@ -211,18 +217,18 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
       <Separator />
       <div className="shrink-0 p-3">
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition-colors hover:bg-foreground/5 focus:outline-none cursor-pointer">
+          <DropdownMenuTrigger className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition-colors hover:bg-foreground/5 focus:outline-none">
             <UserAvatar
-              name={sidebarData.user?.name}
-              image={sidebarData.user?.image}
+              name={name}
+              image={image}
               className="shrink-0"
             />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium leading-none">
-                {sidebarData.user?.name ?? 'Guest'}
+                {name ?? 'Guest'}
               </p>
               <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {sidebarData.user?.email ?? ''}
+                {email ?? ''}
               </p>
             </div>
             <Settings className="size-3.5 shrink-0 text-muted-foreground" />

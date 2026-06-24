@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api/client'
 import { buttonVariants } from '@/components/ui/button'
@@ -13,6 +12,7 @@ import {
   BILLING_PORTAL_FALLBACK_ERROR,
   BILLING_REACTIVATE_FALLBACK_ERROR,
 } from '@/lib/billing/messages/billing-messages.client'
+import { useInvalidateBillingContext } from '@/hooks/use-billing-context'
 
 interface BillingPortalFormProps {
   className?: string
@@ -80,22 +80,23 @@ export function BillingActions({
   showUpgradeCta = true,
   billingUnavailable = false,
 }: BillingActionsProps) {
-  const router = useRouter()
-  const refreshBilling = () => router.refresh()
+  const invalidateBillingContext = useInvalidateBillingContext()
 
   const { formAction: cancelFormAction } = useApiFormAction(async () => {
     const { error } = await api.POST('/billing/cancel')
     if (error) throw new Error(error.message)
   }, {
     fallbackError: BILLING_CANCEL_FALLBACK_ERROR,
-    onSuccess: refreshBilling,
+    // The cancel route busts the server cache synchronously (revalidateTag expire:0) before it
+    // responds, so an active refetch here reads fresh state and the mounted settings UI updates.
+    onSuccess: () => invalidateBillingContext(),
   })
   const { formAction: reactivateFormAction } = useApiFormAction(async () => {
     const { error } = await api.POST('/billing/reactivate')
     if (error) throw new Error(error.message)
   }, {
     fallbackError: BILLING_REACTIVATE_FALLBACK_ERROR,
-    onSuccess: refreshBilling,
+    onSuccess: () => invalidateBillingContext(),
   })
 
   if (isPro && billingUnavailable) {

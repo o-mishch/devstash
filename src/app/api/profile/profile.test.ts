@@ -19,6 +19,7 @@ vi.mock('@/lib/db/users', () => ({
   checkAccountExists: vi.fn(),
   unlinkUserAccount: vi.fn(),
   isEmailTakenByAnotherUser: vi.fn(),
+  getUserProfile: vi.fn(),
 }))
 vi.mock('@/lib/db/profile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/db/profile')>()
@@ -27,10 +28,15 @@ vi.mock('@/lib/db/profile', async (importOriginal) => {
     updateEditorPreferences: vi.fn(),
     getProfileData: vi.fn(),
     updateUserEmail: vi.fn(),
+    getEditorPreferences: vi.fn(),
     buildOwnedEmails: actual.buildOwnedEmails,
     getProfileAccountSummary: actual.getProfileAccountSummary,
   }
 })
+vi.mock('@/lib/db/usage', () => ({
+  canCreateItem: vi.fn(),
+  canCreateCollection: vi.fn(),
+}))
 vi.mock('@/lib/auth/auth-service', () => ({ changeUserPassword: vi.fn(), verifyUserPasswordById: vi.fn(), requestCredentialEmail: vi.fn() }))
 vi.mock('@/lib/emails/security-notification', () => ({ sendSecurityNotification: vi.fn() }))
 vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', () => ({
@@ -48,15 +54,18 @@ import {
   checkAccountExists,
   unlinkUserAccount,
   isEmailTakenByAnotherUser,
+  getUserProfile,
 } from '@/lib/db/users'
-import { updateUserName, getProfileData, updateUserEmail } from '@/lib/db/profile'
+import { updateUserName, getProfileData, updateUserEmail, getEditorPreferences } from '@/lib/db/profile'
+import { canCreateItem, canCreateCollection } from '@/lib/db/usage'
 import { changeUserPassword, verifyUserPasswordById, requestCredentialEmail } from '@/lib/auth/auth-service'
 import { sendSecurityNotification } from '@/lib/emails/security-notification'
 import { teardownStripeBillingForUser, syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 
-import { DELETE as DELETE_ACCOUNT } from './route'
+import { GET as GET_PROFILE, DELETE as DELETE_ACCOUNT } from './route'
+import { GET as GET_PROFILE_ME } from './me/route'
+import { GET as GET_EDITOR_PREFS, PATCH as PATCH_PREFS } from './editor-preferences/route'
 import { PATCH as PATCH_NAME } from './name/route'
-import { PATCH as PATCH_PREFS } from './editor-preferences/route'
 import { PATCH as CHANGE_PASSWORD } from './password/route'
 import { DELETE as REMOVE_CREDENTIALS } from './credentials/route'
 import { POST as REQUEST_CREDENTIAL_EMAIL } from './credential-email/route'
@@ -81,6 +90,10 @@ const mockVerifyPassword = verifyUserPasswordById as ReturnType<typeof vi.fn>
 const mockNotify = sendSecurityNotification as ReturnType<typeof vi.fn>
 const mockTeardown = teardownStripeBillingForUser as ReturnType<typeof vi.fn>
 const mockSyncStripeEmail = syncStripeCustomerEmailForUserSafe as ReturnType<typeof vi.fn>
+const mockGetUserProfile = getUserProfile as ReturnType<typeof vi.fn>
+const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
+const mockCanCreateCollection = canCreateCollection as ReturnType<typeof vi.fn>
+const mockGetEditorPrefs = getEditorPreferences as ReturnType<typeof vi.fn>
 
 const OWNED_EMAIL = 'owned@google.com'
 
@@ -102,13 +115,27 @@ beforeEach(() => {
   mockAuthMethods.mockResolvedValue({ email: 'me@example.com', credentialEmail: null, password: 'hash', accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }] })
   mockIsEmailTaken.mockResolvedValue(false)
   mockCheckAccount.mockResolvedValue({ id: 'acc-1' })
+  mockGetUserProfile.mockResolvedValue({ name: 'me', email: 'me@example.com', image: 'img' })
+  mockCanCreateItem.mockResolvedValue(true)
+  mockCanCreateCollection.mockResolvedValue(true)
+  mockGetEditorPrefs.mockResolvedValue(null)
   mockGetProfile.mockResolvedValue({
     user: {
+      id: 'user-1',
+      name: 'me',
       email: 'me@example.com',
       credentialEmail: null,
       credentialEmailVerified: null,
+      image: 'img',
       hasPassword: true,
       accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }],
+      createdAt: new Date('2026-06-24T00:00:00.000Z'),
+      isPro: false,
+    },
+    stats: {
+      totalItems: 0,
+      totalCollections: 0,
+      itemTypeCounts: [],
     },
   })
 })
@@ -457,5 +484,61 @@ describe('DELETE /profile/accounts/{id}', () => {
     expect(res.status).toBe(204)
     expect(mockUnlink).toHaveBeenCalledWith('user-1', 'acc-1')
     expect(mockNotify).toHaveBeenCalledWith('user-1', 'method-unlinked')
+  })
+})
+
+describe('GET /profile', () => {
+  it('returns 401 when not signed in', async () => {
+    mockSession.mockResolvedValue(null)
+    const res = await GET_PROFILE(req('GET'))
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 404 when profile context is missing', async () => {
+    mockGetProfile.mockResolvedValue(null)
+    const res = await GET_PROFILE(req('GET'))
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 200 with the profile context on success', async () => {
+    const res = await GET_PROFILE(req('GET'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.email).toBe('me@example.com')
+  })
+})
+
+describe('GET /profile/me', () => {
+  it('returns 401 when not signed in', async () => {
+    mockSession.mockResolvedValue(null)
+    const res = await GET_PROFILE_ME(req('GET'))
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 200 with profile flags', async () => {
+    const res = await GET_PROFILE_ME(req('GET'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.name).toBe('me')
+    expect(body.email).toBe('me@example.com')
+    expect(body.image).toBe('img')
+    expect(body.isPro).toBe(false)
+    expect(body.canCreateItem).toBe(true)
+    expect(body.canCreateCollection).toBe(true)
+  })
+})
+
+describe('GET /profile/editor-preferences', () => {
+  it('returns 401 when not signed in', async () => {
+    mockSession.mockResolvedValue(null)
+    const res = await GET_EDITOR_PREFS(req('GET'))
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 200 with normalized editor preferences', async () => {
+    const res = await GET_EDITOR_PREFS(req('GET'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.appTheme).toBeDefined()
   })
 })

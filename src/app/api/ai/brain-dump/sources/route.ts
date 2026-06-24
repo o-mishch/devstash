@@ -4,7 +4,7 @@ import { brainDumpSourceQuery } from '@/lib/api/schemas/ai'
 import { listParseSourceCandidates } from '@/lib/db/ai-parse-jobs'
 
 // Lists the user's eligible durable stash items for the "Select from my stash" picker. `?type=file`
-// (default) lists text `file`s; `?type=note` lists `brain-dump`-tagged `note`s (the "Notes" tab).
+// (default) lists text `file`s; `?type=content` lists `brain-dump`-tagged text-content items.
 // IDOR-scoped in the DB helper; spends no AI budget.
 export const GET = authedRoute({}, async ({ userId, isPro, request }) => {
   // Validate the query before the Pro gate — matches the documented schema→Pro order (api-contract.md)

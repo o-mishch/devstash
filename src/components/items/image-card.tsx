@@ -3,13 +3,13 @@
 import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import Image from 'next/image'
 import { RotateCcw } from 'lucide-react'
-import { showFileNotFoundToast } from '@/hooks/use-restricted'
+import { showFileNotFoundToast } from '@/lib/utils/toast-error'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawerStore } from '@/stores/item-drawer'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { getDownloadUrl } from '@/lib/utils/url'
 import { useProDownloadSrc, useDownloadSrcActions, markPreviewFailed } from '@/hooks/use-pro-download-src'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
@@ -22,7 +22,7 @@ interface ImageCardProps {
 
 export function ImageCard({ item, priority = false }: ImageCardProps) {
   const { openDrawer } = useItemDrawerStore()
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   const { refresh } = useDownloadSrcActions()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null)

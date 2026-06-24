@@ -12,19 +12,24 @@ import {
   CommandItem,
 } from '@/components/ui/command'
 import { useItemDrawerStore } from '@/stores/item-drawer'
-import type { SidebarCollection } from '@/types/collection'
+import type { CollectionWithTypes } from '@/types/collection'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { itemCountLabel } from '@/lib/utils/format'
 
 import { useGlobalSearch } from '@/hooks/use-global-search'
+import { useCollections } from '@/hooks/use-collections'
 
 interface GlobalSearchProps {
-  collections: SidebarCollection[]
+  /** Server-fetched collections seeding the shared useCollections cache (the local-first search source). */
+  initialCollections: CollectionWithTypes[]
 }
 
-export function GlobalSearch({ collections }: GlobalSearchProps) {
+export function GlobalSearch({ initialCollections }: GlobalSearchProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  // Local-first search reads the single shared /collections cache so freshly created/renamed collections
+  // are searchable immediately (CollectionWithTypes is a superset of the slim search-result shape).
+  const { collections } = useCollections({ initialData: initialCollections })
 
   const { openDrawer, closeDrawer } = useItemDrawerStore()
   const router = useRouter()

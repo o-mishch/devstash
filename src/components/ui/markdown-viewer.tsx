@@ -3,7 +3,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useResolvedEditorPreferences } from '@/hooks/use-editor-preferences'
 
 interface MarkdownViewerProps {
   value: string
@@ -11,7 +11,7 @@ interface MarkdownViewerProps {
 }
 
 export function MarkdownViewer({ value, className }: MarkdownViewerProps) {
-  const { colorMode, editorThemeMode } = useEditorPreferencesStore()
+  const { colorMode, editorThemeMode } = useResolvedEditorPreferences()
   const isDark = editorThemeMode === 'dark' || colorMode === 'dark'
 
   return (

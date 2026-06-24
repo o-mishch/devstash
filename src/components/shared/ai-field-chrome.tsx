@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Sparkles, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { cn } from '@/lib/utils'
 
 interface AiFieldFrameProps {
@@ -13,7 +13,7 @@ interface AiFieldFrameProps {
 }
 
 export function AiFieldFrame({ children, className }: AiFieldFrameProps) {
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
 
   return (
     <div
@@ -169,7 +169,7 @@ export function AiFieldBadge({ onClick, disabled, tooltip }: AiFieldBadgeProps) 
 }
 
 export function AiFieldBadgeIfPro({ onClick, disabled, tooltip }: AiFieldBadgeProps) {
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   if (!isPro) return null
   return <AiFieldBadge onClick={onClick} disabled={disabled} tooltip={tooltip} />
 }

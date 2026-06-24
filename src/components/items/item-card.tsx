@@ -6,7 +6,7 @@ import { CopyButton } from '@/components/shared/copy-button'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
 import { useItemDrawerStore } from '@/stores/item-drawer'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { getBaseUrl } from '@/lib/utils/url'
 import { formatDate } from '@/lib/utils'
 import { ITEM_TYPES_WITH_FILE, PRO_ITEM_TYPE_NAMES, SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
@@ -19,7 +19,7 @@ interface ItemCardProps {
 export function ItemCard({ item }: ItemCardProps) {
   const { itemType } = item
   const { openDrawer } = useItemDrawerStore()
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   const hasFile = ITEM_TYPES_WITH_FILE.has(itemType.name)
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(itemType.name)
   const copyValue = hasFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.url ?? item.title)

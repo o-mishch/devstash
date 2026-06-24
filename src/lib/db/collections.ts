@@ -112,7 +112,7 @@ function mapCollectionBase(col: CollectionBaseRow, typeCounts: CollectionTypeCou
     name: col.name,
     description: col.description,
     isFavorite: col.isFavorite,
-    createdAt: col.createdAt,
+    createdAt: col.createdAt.toISOString(),
     itemCount: col._count.items,
     dominantColor: typeCounts[0]?.color ?? null,
     types,
@@ -163,7 +163,7 @@ export function mapCollection(col: CollectionRow): CollectionWithTypes {
     name: col.name,
     description: col.description,
     isFavorite: col.isFavorite,
-    createdAt: col.createdAt,
+    createdAt: col.createdAt.toISOString(),
     itemCount: col._count.items,
     dominantColor: sortedTypes[0]?.type.color ?? null,
     types: sortedTypes.slice(0, 4).map(({ type }) => type),
@@ -174,7 +174,6 @@ export const DASHBOARD_COLLECTIONS_PREVIEW_LIMIT = 6
 
 interface FetchCollectionsWithTypesOptions {
   limit?: number
-  favoritesOnly?: boolean
 }
 
 async function fetchCollectionsWithTypes(
@@ -182,10 +181,7 @@ async function fetchCollectionsWithTypes(
   options: FetchCollectionsWithTypesOptions = {},
 ): Promise<CollectionWithTypes[]> {
   const collections = await prisma.collection.findMany({
-    where: {
-      userId,
-      ...(options.favoritesOnly ? { isFavorite: true } : {}),
-    },
+    where: { userId },
     // Favorites pinned first, then most-recently-updated. Applied at the DB level so the dashboard
     // preview's `take` selects favorites before the limit truncates (a JS sort after the limit can't).
     orderBy: [{ isFavorite: 'desc' }, { updatedAt: 'desc' }],
@@ -197,32 +193,6 @@ async function fetchCollectionsWithTypes(
   const typeCounts = await getCollectionTypeCounts(ids)
   const countsByCollection = groupTypeCountsByCollection(typeCounts)
   return collections.map(col => mapCollectionBase(col, countsByCollection.get(col.id) ?? []))
-}
-
-export async function getSidebarCollections(userId: string): Promise<SidebarCollection[]> {
-  'use cache'
-  const cacheKey = CacheTags.sidebarCollections(userId)
-  cacheTag(cacheKey, CacheTags.collectionGroup(userId))
-  cacheLife('max')
-  const start = Date.now()
-  const collections = await prisma.collection.findMany({
-    where: { userId },
-    orderBy: { updatedAt: 'desc' },
-    select: SIDEBAR_COLLECTION_SELECT,
-  })
-  const duration = Date.now() - start
-
-  if (collections.length === 0) {
-    log.info({ userId, cacheKey, count: 0, duration }, 'DB: getSidebarCollections - empty')
-    return []
-  }
-
-  const typeCounts = await getCollectionTypeCounts(collections.map((c) => c.id))
-  const countsByCollection = groupTypeCountsByCollection(typeCounts)
-  const result = collections.map((col) => mapSidebarCollection(col, countsByCollection.get(col.id)?.[0]?.color ?? null))
-
-  log.info({ userId, cacheKey, count: result.length, duration }, 'DB: getSidebarCollections - success')
-  return result
 }
 
 export async function getAllCollections(userId: string): Promise<CollectionWithTypes[]> {
@@ -247,17 +217,6 @@ export async function getCollectionsPreview(
   const start = Date.now()
   const result = await fetchCollectionsWithTypes(userId, { limit })
   log.info({ userId, cacheKey, count: result.length, limit, duration: Date.now() - start }, 'DB: getCollectionsPreview')
-  return result
-}
-
-export async function getFavoriteCollections(userId: string): Promise<CollectionWithTypes[]> {
-  'use cache'
-  const cacheKey = CacheTags.favoriteCollections(userId)
-  cacheTag(cacheKey, CacheTags.collectionGroup(userId))
-  cacheLife('max')
-  const start = Date.now()
-  const result = await fetchCollectionsWithTypes(userId, { favoritesOnly: true })
-  log.info({ userId, cacheKey, count: result.length, duration: Date.now() - start }, 'DB: getFavoriteCollections')
   return result
 }
 
@@ -321,25 +280,34 @@ export interface UpdateCollectionInput {
   isFavorite?: boolean
 }
 
-export async function updateCollection(userId: string, collectionId: string, input: UpdateCollectionInput): Promise<CollectionWithTypes> {
+// Returns null when no collection matches { id, userId } — scoped updateMany avoids the P2025 throw
+// that `update` raises on a concurrent delete, so the route maps not-found to 404 instead of 500.
+export async function updateCollection(userId: string, collectionId: string, input: UpdateCollectionInput): Promise<CollectionWithTypes | null> {
   const start = Date.now()
-  const col = await prisma.collection.update({
+  const result = await prisma.collection.updateMany({
     where: { id: collectionId, userId },
     data: input,
+  })
+  if (result.count === 0) return null
+  const col = await prisma.collection.findFirst({
+    where: { id: collectionId, userId },
     select: COLLECTION_SELECT,
   })
   const duration = Date.now() - start
   log.info({ userId, collectionId, duration }, 'DB: updateCollection')
-  return mapCollection(col)
+  return col ? mapCollection(col) : null
 }
 
-export async function deleteCollection(userId: string, collectionId: string): Promise<void> {
+// Returns false when no collection matches { id, userId } — scoped deleteMany avoids the P2025 throw
+// that `delete` raises on a concurrent delete, so the route maps not-found to 404 instead of 500.
+export async function deleteCollection(userId: string, collectionId: string): Promise<boolean> {
   const start = Date.now()
-  await prisma.collection.delete({
+  const result = await prisma.collection.deleteMany({
     where: { id: collectionId, userId },
   })
   const duration = Date.now() - start
-  log.info({ userId, collectionId, duration }, 'DB: deleteCollection')
+  log.info({ userId, collectionId, deleted: result.count > 0, duration }, 'DB: deleteCollection')
+  return result.count > 0
 }
 
 export async function toggleCollectionFavorite(userId: string, collectionId: string, isFavorite: boolean): Promise<boolean> {

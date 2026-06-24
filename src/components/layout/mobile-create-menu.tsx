@@ -7,18 +7,20 @@ import { Button } from '@/components/ui/button'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 
 import { getInitialTypeFromPathname, getCollectionIdFromPathname } from '@/lib/utils/url'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useUserProfile } from '@/hooks/use-user-profile'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import type { SidebarItemType } from '@/types/item'
-import type { CollectionPickerItem } from '@/types/collection'
+import type { CollectionWithTypes } from '@/types/collection'
 
 interface MobileCreateMenuProps {
   itemTypes: SidebarItemType[]
-  collections: CollectionPickerItem[]
+  initialCollections: CollectionWithTypes[]
 }
 
-export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuProps) {
-  const { canCreateItem, canCreateCollection } = useAppUserFlagsStore()
+export function MobileCreateMenu({ itemTypes, initialCollections }: MobileCreateMenuProps) {
+  const { data: profile } = useUserProfile()
+  const canCreateItem = profile?.canCreateItem ?? true
+  const canCreateCollection = profile?.canCreateCollection ?? true
   const { openPrompt } = useUpgradePromptStore()
   const [itemOpen, setItemOpen] = useState(false)
   const pathname = usePathname()
@@ -32,7 +34,7 @@ export function MobileCreateMenu({ itemTypes, collections }: MobileCreateMenuPro
           Base UI play the slide-up enter animation. Mounting already-open skips it (pops in). */}
       <CreateItemDialog
         itemTypes={itemTypes}
-        collections={collections}
+        initialCollections={initialCollections}
         open={itemOpen}
         onOpenChange={setItemOpen}
         initialType={initialType}

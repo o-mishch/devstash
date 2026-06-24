@@ -182,9 +182,11 @@ import { getItems } from '@/lib/db/items'
 
 | State type | Tool | Package |
 |---|---|---|
-| UI state (modals, drawers, flags, selections) | Zustand store in `src/stores/` | `zustand` |
-| Server / async data (items, collections, pages) | `$api` hooks; or `useQuery` / `useInfiniteQuery` for non-API data | `@tanstack/react-query` |
+| Pure UI state (modals, drawers, selections, non-server flags) | Zustand store in `src/stores/` | `zustand` |
+| Server / async data (items, collections, user profile, editor prefs, pages) | `$api` hooks; or `useQuery` / `useInfiniteQuery` for non-API data | `@tanstack/react-query` |
 | Long lists / grids | `TanStackVirtualGrid` (`src/components/items/tanstack-virtual-grid.tsx`) | `@tanstack/react-virtual` |
+
+**Zustand is for pure UI state only** — it must never hold server-derived data (user profile fields, feature flags, editor preferences, billing state). Server-derived state belongs in TanStack Query, seeded from SSR via a hydrator hook that calls `setQueryData` in a `useLayoutEffect`. New Zustand stores must not replicate DB-persisted values.
 
 ```typescript
 // ✅ correct
@@ -197,6 +199,34 @@ export function ItemProvider({ children }: { children: ReactNode }) {
   return <ItemContext.Provider value={...}>{children}</ItemContext.Provider>
 }
 ```
+
+### Prefer self-sufficient TanStack components over prop-drilling server state
+
+A reusable client component that needs shared, cacheable server state (collections, the user profile, item types — anything backed by a `$api` query) should **read it from its own TanStack hook**, not receive it through a prop drilled down from an ancestor. Reach for a prop only as an **override** for a curated subset or an SSR-seed.
+
+**Why this is safe — and better:**
+- **One request, not N.** TanStack dedupes by query key: every component calling the same hook shares one underlying `Query` and one in-flight fetch. Ten self-sourcing dropdowns cause one request, not ten.
+- **No fetch on mount/open.** These caches are SSR-seeded app-wide (app chrome) with a long `staleTime`, so the component reads cache instantly. It only fetches if nothing seeded it — an acceptable lazy fallback.
+- **Never stale.** It reflects create/rename/delete from anywhere, with no prop to thread or keep in sync.
+
+**Reference — `CollectionSelector`** (`src/components/shared/collection-selector.tsx`): `collections` is an optional override; omit it and the component self-sources via `useCollections()`. It also owns its own create flow end-to-end (the create dialog + auto-select), so every call site is just `<CollectionSelector creatable selectedIds={…} onChange={…} />` — zero per-call wiring.
+
+```tsx
+// ✅ correct — self-sources from the shared, deduped, SSR-seeded cache
+function CollectionSelector({ collections: override, selectedIds, onChange }: Props) {
+  const self = useCollections({ enabled: override === undefined }) // disabled when an override is given
+  const collections = override ?? self.collections
+  // …
+}
+
+// ❌ wrong — every ancestor must fetch and drill the same list down
+<CollectionSelector collections={collections} … />   // collections threaded through 3 layers
+```
+
+**Rules:**
+- Self-source shared server state by default; expose an optional list prop only for curated/SSR-seed cases (disable the internal query with `enabled` when the override is present, so it never idles a fetch).
+- **Do not gate the query on transient UI** (e.g. `enabled: open`) when the component renders cached data while "closed" — a multiselect shows its selected chips' names before it is ever opened, so it needs the data unconditionally. Lazy-on-open is fine only when nothing is shown until open.
+- Cache **writes** still follow the updater rule in `coding-standards.md`: `setQueryData`/`invalidateQueries` live in the owning hook, never in the component.
 
 ### Virtualization (`@tanstack/react-virtual`)
 

@@ -7,6 +7,29 @@ import type { SubscriptionInterval } from '@/generated/prisma'
 
 const log = logger.child({ tag: 'db-stripe' })
 
+interface ClearedStripeFieldsOptions {
+  includeCustomerId?: boolean
+  proExpiredAt?: Date
+}
+
+// Shared "reset Stripe subscription columns" payload used by every clear path, so a
+// newly added Stripe column can't be reset in one path but forgotten in another.
+// stripeSubscriptionStart is intentionally never cleared — it's kept as a historical
+// record of when the user first went Pro.
+function buildClearedStripeFields(options: ClearedStripeFieldsOptions = {}): Prisma.UserUpdateManyMutationInput {
+  return {
+    isPro: false,
+    stripeSubscriptionId: null,
+    stripeSubscriptionStatus: null,
+    stripeCurrentPeriodEnd: null,
+    stripeSubscriptionInterval: null,
+    stripeCancelAtPeriodEnd: false,
+    stripeLastSyncAt: new Date(),
+    ...(options.includeCustomerId ? { stripeCustomerId: null } : {}),
+    ...(options.proExpiredAt ? { proExpiredAt: options.proExpiredAt } : {}),
+  }
+}
+
 export async function getUserIdByStripeCustomerId(stripeCustomerId: string): Promise<string | null> {
   const user = await prisma.user.findUnique({
     where: { stripeCustomerId },
@@ -72,16 +95,7 @@ export async function clearStripeCustomerByCustomerId(stripeCustomerId: string) 
 
   const result = await prisma.user.updateMany({
     where: { stripeCustomerId },
-    data: {
-      isPro: false,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      stripeSubscriptionStatus: null,
-      stripeCurrentPeriodEnd: null,
-      stripeSubscriptionInterval: null,
-      stripeCancelAtPeriodEnd: false,
-      stripeLastSyncAt: new Date(),
-    },
+    data: buildClearedStripeFields({ includeCustomerId: true }),
   })
   const userIds = users.map((user) => user.id)
   log.info({ stripeCustomerId, count: result.count }, 'DB: stripe_customer_cleared — Cleared Stripe customer link from local users')
@@ -136,16 +150,7 @@ async function clearConflictingStripeCustomerLink(
   }, 'DB: Clearing stale stripeCustomerId from another user before reassignment')
   await prisma.user.update({
     where: { id: owner.id },
-    data: {
-      isPro: false,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      stripeSubscriptionStatus: null,
-      stripeCurrentPeriodEnd: null,
-      stripeSubscriptionInterval: null,
-      stripeCancelAtPeriodEnd: false,
-      stripeLastSyncAt: new Date(),
-    },
+    data: buildClearedStripeFields({ includeCustomerId: true }),
   })
   return [owner.id]
 }
@@ -225,17 +230,7 @@ export async function clearStripeSubscriptionBySubId(stripeSubscriptionId: strin
   const userIds = await getUserIdsByStripeSubscriptionId(stripeSubscriptionId)
   const result = await prisma.user.updateMany({
     where: { stripeSubscriptionId },
-    data: {
-      isPro: false,
-      stripeSubscriptionId: null,
-      stripeSubscriptionStatus: null,
-      stripeCurrentPeriodEnd: null,
-      stripeLastSyncAt: new Date(),
-      stripeSubscriptionInterval: null,
-      stripeCancelAtPeriodEnd: false,
-      // stripeSubscriptionStart kept as a historical record of when they first went Pro
-      ...(proExpiredAt && { proExpiredAt }),
-    },
+    data: buildClearedStripeFields({ proExpiredAt }),
   })
   log.info({ stripeSubscriptionId, proExpiredAt }, 'DB: subscription_link_cleared — Cleared local Stripe subscription link')
   return { count: result.count, userIds }

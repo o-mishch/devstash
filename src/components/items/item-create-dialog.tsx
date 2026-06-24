@@ -6,7 +6,6 @@ import { Plus, FolderPlus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -34,14 +33,15 @@ import { api } from '@/lib/api/client'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEM_TYPES_WITH_CONTENT, PRO_ITEM_TYPE_NAMES, FREE_TIER_COLLECTION_LIMIT, type FileItemType } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useUserProfile, useIsPro } from '@/hooks/use-user-profile'
+import { useCollections, useApplyCollectionSave } from '@/hooks/use-collections'
 
 import { itemFormBaseSchema, collectionFormSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
 import type { SidebarItemType } from '@/types/item'
-import type { CollectionPickerItem } from '@/types/collection'
+import type { CollectionWithTypes } from '@/types/collection'
 
 const COLLECTION_TYPE_VALUE = '__collection__'
 
@@ -53,7 +53,8 @@ async function deleteOrphanedFile(file: UploadedFile): Promise<void> {
 
 interface CreateItemDialogProps {
   itemTypes: SidebarItemType[]
-  collections: CollectionPickerItem[]
+  /** Server-fetched collections seeding the shared useCollections cache (avoids a mount fetch + flash). */
+  initialCollections: CollectionWithTypes[]
   initialType?: string
   initialCollectionId?: string
   trigger?: ReactNode
@@ -61,10 +62,17 @@ interface CreateItemDialogProps {
   onOpenChange?: (open: boolean) => void
 }
 
-export function CreateItemDialog({ itemTypes, collections, initialType, initialCollectionId, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
+export function CreateItemDialog({ itemTypes, initialCollections, initialType, initialCollectionId, trigger, open: controlledOpen, onOpenChange: controlledOnOpenChange }: CreateItemDialogProps) {
   const createItem = useCreateItem()
-  const router = useRouter()
-  const { isPro, canCreateItem, canCreateCollection } = useAppUserFlagsStore()
+  const applyCollectionSave = useApplyCollectionSave()
+  // Seed the single shared /collections cache from the chrome's server fetch so the picker (which
+  // self-sources via CollectionSelector) reads it without a mount fetch + flash, and reflects
+  // collections created/renamed/deleted elsewhere — and the inline create below.
+  useCollections({ initialData: initialCollections })
+  const { data: profile } = useUserProfile()
+  const isPro = useIsPro()
+  const canCreateItem = profile?.canCreateItem ?? true
+  const canCreateCollection = profile?.canCreateCollection ?? true
   const { openPrompt } = useUpgradePromptStore()
   const validInitialType = (initialType && PRO_ITEM_TYPE_NAMES.has(initialType) && !isPro) ? itemTypes[0]?.name : initialType
   // Captured once at mount so mid-session flag changes (canCreateItem/canCreateCollection)
@@ -171,11 +179,11 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
   const createCollectionMutation = useMutation({
     mutationFn: (data: CollectionFormValues) =>
       api.POST('/collections', { body: { name: data.name, description: data.description ?? null } }),
-    onSuccess: ({ error, response }) => {
+    onSuccess: ({ data, error, response }) => {
       if (!error) {
         toast.success('Collection created')
         handleOpenChange(false, true)
-        router.refresh()
+        applyCollectionSave(data, { isCreate: true })
         return
       }
       if (response.status === 403) {
@@ -254,7 +262,7 @@ export function CreateItemDialog({ itemTypes, collections, initialType, initialC
     itemType,
     ...(uploadedFile ? { fileName: uploadedFile.fileName, fileSize: uploadedFile.fileSize } : {}),
   }
-  const fieldProps = { form, itemContext, watchedLanguage, collections, variant: 'dialog' as const }
+  const fieldProps = { form, itemContext, watchedLanguage, variant: 'dialog' as const }
 
   const typeSwipe = useSelectTouchSwipe()
 
@@ -596,4 +604,3 @@ function useSelectTouchSwipe() {
 
   return { onTouchStart, onTouchMove, onTouchEnd }
 }
-

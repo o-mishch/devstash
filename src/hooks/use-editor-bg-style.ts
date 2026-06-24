@@ -1,4 +1,4 @@
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useResolvedEditorPreferences } from '@/hooks/use-editor-preferences'
 
 export interface EditorBgStyle {
   backgroundColor: string
@@ -20,8 +20,7 @@ const APP_THEME: EditorBgStyle = { backgroundColor: 'var(--background)', color: 
  * useEffect has a chance to update CSS vars on <html>).
  */
 export function useEditorBgStyle(): EditorBgStyle {
-  const colorMode = useEditorPreferencesStore((state) => state.colorMode)
-  const editorThemeMode = useEditorPreferencesStore((state) => state.editorThemeMode)
+  const { colorMode, editorThemeMode } = useResolvedEditorPreferences()
 
   if (editorThemeMode === 'dark') return MONACO_DARK
   if (editorThemeMode === 'auto') return colorMode === 'dark' ? MONACO_DARK : MONACO_LIGHT

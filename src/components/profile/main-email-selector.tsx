@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
 import { Check, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -24,14 +23,14 @@ import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api/client'
 import { WarningBanner } from '@/components/shared/warning-banner'
+import { usePatchUserProfile } from '@/hooks/use-user-profile'
+import { usePatchProfile } from '@/hooks/use-profile'
 
 interface MainEmailSelectorProps {
   currentEmail: string
   availableEmails: string[]
   hasPassword: boolean
   isPro: boolean
-  // Notifies the parent (shared profile-emails store) on a successful change so siblings stay in sync.
-  onEmailChanged?: (email: string) => void
 }
 
 interface ChangeEmailVariables {
@@ -39,11 +38,15 @@ interface ChangeEmailVariables {
   currentPassword?: string
 }
 
-export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, isPro, onEmailChanged }: MainEmailSelectorProps) {
-  const [email, setEmail] = useState(currentEmail)
+export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, isPro }: MainEmailSelectorProps) {
+  const patchUserProfile = usePatchUserProfile()
+  const patchProfile = usePatchProfile()
+  // `currentEmail` is the live value from the /profile cache (via ProfileContent), so it reflects each
+  // optimistic patch — no separate local/store copy needed.
+  const currentDisplayEmail = currentEmail
+
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
   const [password, setPassword] = useState('')
-  const router = useRouter()
 
   const changeMutation = useMutation({
     mutationFn: async ({ target, currentPassword }: ChangeEmailVariables) => {
@@ -52,21 +55,21 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
       return target
     },
     onSuccess: (target) => {
-      setEmail(target)
-      onEmailChanged?.(target)
+      // Patch both caches: /profile/me backs the sidebar; /profile backs this page's email controls.
+      patchUserProfile({ email: target })
+      patchProfile({ email: target })
       // Close the confirm dialog only on success — on failure it stays open so the user can retry
       // without re-selecting the target email from the dropdown.
       setPendingEmail(null)
       setPassword('')
       toast.success(hasPassword ? 'Primary email updated.' : 'Display email updated.')
-      router.refresh()
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to update email.'),
   })
   const isPending = changeMutation.isPending
 
   function requestChange(newEmail: string) {
-    if (newEmail === email) return
+    if (newEmail === currentDisplayEmail) return
     if (hasPassword) {
       setPassword('')
       setPendingEmail(newEmail)
@@ -91,7 +94,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
           disabled={isPending}
           className="group flex items-center gap-1.5 rounded-md border border-border bg-transparent px-2 py-1 text-sm text-foreground transition-colors hover:bg-accent disabled:opacity-50"
         >
-          <span className="truncate">{email}</span>
+          <span className="truncate">{currentDisplayEmail}</span>
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[popup-open]:rotate-180" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="!w-auto min-w-48">
@@ -99,7 +102,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
           <DropdownMenuSeparator />
           {availableEmails.map((e) => (
             <DropdownMenuItem key={e} onClick={() => requestChange(e)} className="gap-2">
-              <Check className={`size-3 shrink-0 transition-opacity ${e === email ? 'opacity-100' : 'opacity-0'}`} />
+              <Check className={`size-3 shrink-0 transition-opacity ${e === currentDisplayEmail ? 'opacity-100' : 'opacity-0'}`} />
               <span className="truncate">{e}</span>
             </DropdownMenuItem>
           ))}
@@ -118,7 +121,7 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
           <WarningBanner>
             <div className="space-y-1.5">
               <p>
-                You are switching your primary email. All email notifications will be sent to the new primary email (changing from <span className="font-medium text-foreground">{email}</span> to <span className="font-medium text-foreground">{pendingEmail}</span>).
+                You are switching your primary email. All email notifications will be sent to the new primary email (changing from <span className="font-medium text-foreground">{currentDisplayEmail}</span> to <span className="font-medium text-foreground">{pendingEmail}</span>).
               </p>
               {isPro && (
                 <p>

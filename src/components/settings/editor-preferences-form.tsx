@@ -1,8 +1,8 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useResolvedEditorPreferences, useUpdateEditorPreferences } from '@/hooks/use-editor-preferences'
 import {
   EDITOR_FONT_SIZE_OPTIONS,
   EDITOR_TAB_SIZE_OPTIONS,
@@ -17,7 +17,7 @@ import {
   type UiSkin,
   type EditorThemeMode,
 } from '@/types/editor-preferences'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { CollapsibleCard } from '@/components/shared/collapsible-card'
 import { Label } from '@/components/ui/label'
@@ -29,6 +29,7 @@ import { startThemeTransition, type TransitionEventCoords } from '@/lib/dom/them
 import { Crown, RotateCcw, LayoutDashboard, Palette, Settings2 } from 'lucide-react'
 import { DarkLightSwitch } from '@/components/shared/dark-light-switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { SlideIndicator } from '@/components/shared/slide-indicator'
 
 // Representative gradient swatch per skin for the picker grid (purely decorative preview).
 const SKIN_SWATCHES: Record<UiSkin, string> = {
@@ -74,15 +75,18 @@ function PreferenceRow({ title, description, children }: PreferenceRowProps) {
 }
 
 export function EditorPreferencesForm() {
-  const store = useEditorPreferencesStore()
-  const { updatePreference, updatePreferences } = store
-  const isPro = useAppUserFlagsStore((s) => s.isPro)
+  // No mount gate needed: useResolvedEditorPreferences returns DEFAULT until the layout-effect hydrator
+  // seeds the cache (matching SSR markup, no hydration flash), and isPro is seeded synchronously via
+  // /profile/me initialData so it's correct on the first paint.
+  const prefs = useResolvedEditorPreferences()
+  const updateEditorPreferences = useUpdateEditorPreferences()
+  const isPro = useIsPro()
   const { openPrompt } = useUpgradePromptStore()
   const router = useRouter()
 
   const handleAppThemeChange = (e: TransitionEventCoords, theme: AppTheme) => {
     startThemeTransition(e, () => {
-      void updatePreference('appTheme', theme)
+      void updateEditorPreferences({ appTheme: theme })
     })
   }
 
@@ -102,9 +106,10 @@ export function EditorPreferencesForm() {
     const themePreset = SKIN_THEME_PRESET[skin]
     const patch = themePreset ? { uiSkin: skin, appTheme: themePreset } : { uiSkin: skin }
     startThemeTransition(e, () => {
-      void updatePreferences(patch).then((ok) => {
+      void updateEditorPreferences(patch).then((ok: boolean) => {
         // The skin is server-rendered on /dashboard. A route-handler save doesn't clear the client
         // Router Cache, so refresh it here — otherwise the dashboard shows the old skin until reload.
+        // (Only the skin branch needs this; the other preferences render live from the query cache.)
         if (ok) router.refresh()
       })
     })
@@ -112,12 +117,12 @@ export function EditorPreferencesForm() {
 
   const handleReset = (e: TransitionEventCoords) => {
     startThemeTransition(e, () => {
-      void updatePreferences(DEFAULT_EDITOR_PREFERENCES)
+      void updateEditorPreferences(DEFAULT_EDITOR_PREFERENCES)
     })
   }
 
 
-  const isDark = store.colorMode === 'dark'
+  const isDark = prefs.colorMode === 'dark'
 
   return (
     <div className="space-y-6">
@@ -129,7 +134,7 @@ export function EditorPreferencesForm() {
         <div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
             {UI_SKIN_OPTIONS.map((skin) => {
-              const isActive = store.uiSkin === skin.value
+              const isActive = prefs.uiSkin === skin.value
               const locked = isProSkin(skin.value) && !isPro
               return (
                 <button
@@ -178,7 +183,7 @@ export function EditorPreferencesForm() {
           <div className="max-h-[256px] overflow-y-auto pr-1">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
             {APP_THEME_OPTIONS.map((theme) => {
-              const isActive = store.appTheme === theme.value
+              const isActive = prefs.appTheme === theme.value
               const colors = isDark ? theme.dark : theme.light
               return (
                 <button
@@ -212,8 +217,8 @@ export function EditorPreferencesForm() {
             <Label>Color Mode</Label>
             <div className="flex items-center gap-3">
               <DarkLightSwitch
-                colorMode={store.colorMode}
-                onColorModeChange={(mode) => void updatePreference('colorMode', mode)}
+                colorMode={prefs.colorMode}
+                onColorModeChange={(mode) => void updateEditorPreferences({ colorMode: mode })}
               />
               <Button
                 variant="outline"
@@ -237,22 +242,22 @@ export function EditorPreferencesForm() {
       >
           <PreferenceRow title="Editor Theme" description="Controls syntax highlighting and the editor background">
             <TooltipProvider>
-              <div className="flex w-full sm:w-auto rounded-md border border-border overflow-hidden">
+              <div className="relative grid grid-cols-3 w-full sm:w-80 rounded-lg border border-border bg-muted p-[3px]">
                 {EDITOR_THEME_MODE_OPTIONS.map((option) => {
-                  const isActive = store.editorThemeMode === option.value
+                  const isActive = prefs.editorThemeMode === option.value
                   return (
                     <Tooltip key={option.value}>
                       <TooltipTrigger
-                        onClick={() => void updatePreference('editorThemeMode', option.value)}
+                        onClick={() => void updateEditorPreferences({ editorThemeMode: option.value })}
                         className={cn(
-                          "flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium transition-colors text-center",
-                          "border-r border-border last:border-r-0",
+                          "relative z-10 flex-1 px-3 py-1.5 text-sm font-medium transition-all text-center rounded-md",
                           isActive
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-background text-foreground hover:bg-muted"
+                            ? "text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground"
                         )}
                       >
-                        {option.label}
+                        {isActive && <SlideIndicator layoutId="editorThemeIndicator" />}
+                        <span className="relative z-10">{option.label}</span>
                       </TooltipTrigger>
                       <TooltipContent>{option.description}</TooltipContent>
                     </Tooltip>
@@ -264,12 +269,12 @@ export function EditorPreferencesForm() {
 
           <PreferenceRow title="Font Size" description="Font size in pixels — code and markdown editors">
             <Select
-              value={String(store.fontSize)}
-              onValueChange={(v) => { if (v) void updatePreference('fontSize', parseInt(v, 10)) }}
+              value={String(prefs.fontSize)}
+              onValueChange={(v) => { if (v) void updateEditorPreferences({ fontSize: parseInt(v, 10) }) }}
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Font Size">
-                  {store.fontSize}px
+                  {prefs.fontSize}px
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -284,12 +289,12 @@ export function EditorPreferencesForm() {
 
           <PreferenceRow title="Tab Size" description="Spaces per tab — code and markdown editors">
             <Select
-              value={String(store.tabSize)}
-              onValueChange={(v) => { if (v) void updatePreference('tabSize', parseInt(v, 10)) }}
+              value={String(prefs.tabSize)}
+              onValueChange={(v) => { if (v) void updateEditorPreferences({ tabSize: parseInt(v, 10) }) }}
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Tab Size">
-                  {EDITOR_TAB_SIZE_OPTIONS.find((t) => t.value === store.tabSize)?.label}
+                  {EDITOR_TAB_SIZE_OPTIONS.find((t) => t.value === prefs.tabSize)?.label}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -304,15 +309,15 @@ export function EditorPreferencesForm() {
 
           <PreferenceRow title="Word Wrap" description="Wrap long lines — code and markdown editors">
             <Switch
-              checked={store.wordWrap === 'on'}
-              onCheckedChange={(checked) => updatePreference('wordWrap', checked ? 'on' : 'off')}
+              checked={prefs.wordWrap === 'on'}
+              onCheckedChange={(checked) => void updateEditorPreferences({ wordWrap: checked ? 'on' : 'off' })}
             />
           </PreferenceRow>
 
           <PreferenceRow title="Minimap" description="Show code minimap on the right — code editor only">
             <Switch
-              checked={store.minimap}
-              onCheckedChange={(checked) => updatePreference('minimap', checked)}
+              checked={prefs.minimap}
+              onCheckedChange={(checked) => void updateEditorPreferences({ minimap: checked })}
             />
           </PreferenceRow>
       </CollapsibleCard>

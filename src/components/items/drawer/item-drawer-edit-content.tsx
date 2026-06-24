@@ -19,7 +19,7 @@ import { useDirtyGuard } from '@/hooks/use-dirty-guard'
 import { useRegisterSheetClose, type SheetCloseRef } from '@/hooks/use-register-sheet-close'
 import { DrawerLayout, DrawerDetailsSection } from './drawer-shared'
 import { ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL, TEXT_ITEM_TYPE_NAMES, SYSTEM_TYPE_ORDER, remapLanguageForType } from '@/lib/utils/constants'
-import { cn, getTypeLabel, ACTIONBAR_LABEL_CLASS, ACTIONBAR_BUTTON_CLASS } from '@/lib/utils'
+import { cn, getTypeLabel, actionbarLabelClass, ACTIONBAR_BUTTON_CLASS } from '@/lib/utils'
 import { itemFormBaseSchema } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import type { FullItem } from '@/types/item'
@@ -41,7 +41,8 @@ type DrawerFormValues = z.infer<ReturnType<typeof createDrawerFormSchema>>
 
 interface ItemDrawerEditContentProps {
   item: FullItem
-  collections: CollectionPickerItem[]
+  /** Read-only chips for the draft drawer's shared save target; defaults to `[]` for the editable item drawer. */
+  collections?: CollectionPickerItem[]
   onClose: () => void
   onSave: (updated: FullItem) => void
   onCancel: () => void
@@ -79,12 +80,18 @@ interface ItemDrawerEditContentProps {
    * state so the extras lock during a save.
    */
   renderExtraActions?: (state: { disabled: boolean }) => ReactNode
+  /**
+   * Render the Collections field as a read-only list of the passed `collections` instead of an editable
+   * picker. The Brain Dump draft drawer uses it: a draft has no per-item collections — it inherits the
+   * job's "Save items to collection" target — so the field shows that target but can't be changed here.
+   */
+  collectionsReadOnly?: boolean
 }
 
 // The four text types, in canonical order, rendered as the type-switch options.
 const TEXT_TYPE_OPTIONS = SYSTEM_TYPE_ORDER.filter((name) => TEXT_ITEM_TYPE_NAMES.has(name))
 
-export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions }: ItemDrawerEditContentProps) {
+export function ItemDrawerEditContent({ item, collections = [], onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions, collectionsReadOnly }: ItemDrawerEditContentProps) {
   const { itemType } = item
   const committedType = itemType.name
   const updateItem = useUpdateItem()
@@ -210,16 +217,28 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
   // would be unreachable on the very state it explains. When dirty, the tooltip falls back to the
   // consumer's `saveTooltip` (the draft drawer's copy); the real item drawer passes none, so the
   // editable button shows no tooltip.
+  const hasExtras = Boolean(renderExtraActions)
+  // Mobile-only restyle of the regular 2-button edit bar (no injected extras): drop the full-width
+  // stretch so both buttons sit compact and left-aligned like the desktop view-mode action bar —
+  // instead of two heavy full-bleed blocks. Desktop is unchanged (the `max-sm:` overrides go inert),
+  // and the dense draft bar (with extras) keeps flex-1 + w-full so it still wraps into a balanced 2×2.
+  // Cancel reads as ghost on mobile by clearing its outline chrome.
+  const cancelButtonClass = hasExtras
+    ? ACTIONBAR_BUTTON_CLASS
+    : 'touch:h-11 max-sm:border-transparent max-sm:bg-transparent max-sm:shadow-none'
+  const saveButtonClass = hasExtras ? cn(ACTIONBAR_BUTTON_CLASS, 'max-sm:w-full') : 'touch:h-11'
+  const saveWrapperClass = hasExtras ? 'inline-flex max-sm:flex-1' : 'inline-flex'
+
   const saveButton = (
-    <Button size="sm" onClick={handleSubmit} disabled={saving || !isDirty} className={cn(ACTIONBAR_BUTTON_CLASS, 'max-sm:w-full')} aria-label={saveLabel}>
+    <Button size="sm" onClick={handleSubmit} disabled={saving || !isDirty} className={saveButtonClass} aria-label={saveLabel}>
       <Check className="size-4" />
-      <span className={ACTIONBAR_LABEL_CLASS}>{saving ? 'Saving…' : saveLabel}</span>
+      <span className={actionbarLabelClass(1)}>{saving ? 'Saving…' : saveLabel}</span>
     </Button>
   )
   const saveButtonTooltip = !isDirty ? 'No changes to save' : saveTooltip
   const saveAction = saveButtonTooltip ? (
     <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex max-sm:flex-1">{saveButton}</span>} />
+      <TooltipTrigger render={<span className={saveWrapperClass}>{saveButton}</span>} />
       <TooltipContent>{saveButtonTooltip}</TooltipContent>
     </Tooltip>
   ) : (
@@ -311,9 +330,9 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
                 max-sm:flex-1 lets the buttons share the row evenly on mobile so a dense bar (the draft
                 drawer's Cancel · Save draft · Delete · Commit) wraps into a balanced 2×2 instead of
                 clipping or right-floating its last buttons. */}
-            <Button variant="outline" size="sm" onClick={() => guardedAction(onCancel)} disabled={saving} className={ACTIONBAR_BUTTON_CLASS} aria-label="Cancel">
+            <Button variant="outline" size="sm" onClick={() => guardedAction(onCancel)} disabled={saving} className={cancelButtonClass} aria-label="Cancel">
               <X className="size-4" />
-              <span className={ACTIONBAR_LABEL_CLASS}>Cancel</span>
+              <span className={actionbarLabelClass(0)}>Cancel</span>
             </Button>
             {saveAction}
             {/* Consumer-injected extras (Brain Dump draft: Delete → trash, Commit → live item).
@@ -334,6 +353,7 @@ export function ItemDrawerEditContent({ item, collections, onClose, onSave, onCa
           }}
           watchedLanguage={watchedLanguage}
           collections={collections}
+          collectionsReadOnly={collectionsReadOnly}
           variant="drawer"
         />
 

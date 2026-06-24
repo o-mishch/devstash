@@ -40,16 +40,22 @@ function DialogContent({
   children,
   showCloseButton = true,
   morph = false,
+  elevated = false,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
   // When true the popup grows out of a captured origin point instead of the default centre zoom.
   // The caller sets the --ds-morph-x/y CSS vars via `style`; see `.dialog-morph` in globals.css.
   morph?: boolean
+  // When this dialog is opened from inside another drawer/dialog (e.g. the collection-create dialog
+  // launched from the item drawer), `elevated` lifts the backdrop + popup to z-[60] above the z-50
+  // drawer and `forceRender`s the backdrop — Base UI suppresses a nested child's backdrop by default,
+  // so without it the surface behind stays un-dimmed (same fix as NestedAlertDialog).
+  elevated?: boolean
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay forceRender={elevated || undefined} className={cn(elevated && "z-[60]")} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
@@ -57,6 +63,7 @@ function DialogContent({
           morph
             ? "dialog-morph"
             : "duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          elevated && "z-[60]",
           className
         )}
         {...props}

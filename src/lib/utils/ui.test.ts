@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getListGridColumns, getImageGridColumns, cn } from './ui'
+import { getListGridColumns, getImageGridColumns, cn, actionbarLabelClass } from './ui'
 
 describe('cn', () => {
   it('merges class names', () => {
@@ -42,5 +42,23 @@ describe('getImageGridColumns', () => {
   it('returns 3 columns at lg and above', () => {
     expect(getImageGridColumns(1024)).toBe(3)
     expect(getImageGridColumns(1920)).toBe(3)
+  })
+})
+
+describe('actionbarLabelClass', () => {
+  it('maps each in-range index to its threshold class, left to right', () => {
+    expect(actionbarLabelClass(0)).toBe('@[230px]/actionbar:inline hidden')
+    expect(actionbarLabelClass(1)).toBe('@[300px]/actionbar:inline hidden')
+    expect(actionbarLabelClass(4)).toBe('@[510px]/actionbar:inline hidden')
+  })
+
+  it('clamps a negative index to the first (leftmost) class', () => {
+    expect(actionbarLabelClass(-1)).toBe('@[230px]/actionbar:inline hidden')
+    expect(actionbarLabelClass(-99)).toBe('@[230px]/actionbar:inline hidden')
+  })
+
+  it('clamps an index past the end to the last class', () => {
+    expect(actionbarLabelClass(5)).toBe('@[510px]/actionbar:inline hidden')
+    expect(actionbarLabelClass(100)).toBe('@[510px]/actionbar:inline hidden')
   })
 })

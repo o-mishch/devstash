@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { findUnverifiedUserByEmail } from '@/lib/db/verification'
+import { findUnverifiedUserByEmail } from '@/lib/db/users'
 import { createVerificationToken, verificationRecentlySent } from '@/lib/auth/tokens'
 import { sendTokenLinkEmail } from './link-email'
 

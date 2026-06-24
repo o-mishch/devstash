@@ -10,8 +10,11 @@ vi.mock('@/lib/db/profile', async (importOriginal) => {
     getProfileData: vi.fn(),
     updateUserEmail: vi.fn(),
     buildOwnedEmails: actual.buildOwnedEmails,
+    getProfileAccountSummary: actual.getProfileAccountSummary,
   }
 })
+const { mockOutboundEmailEnabled } = vi.hoisted(() => ({ mockOutboundEmailEnabled: vi.fn() }))
+vi.mock('@/lib/utils/auth', () => ({ outboundEmailEnabled: mockOutboundEmailEnabled }))
 vi.mock('@/lib/db/users', () => ({
   isEmailTakenByAnotherUser: vi.fn(),
 }))
@@ -26,7 +29,7 @@ import { getProfileData, updateUserEmail } from '@/lib/db/profile'
 import { isEmailTakenByAnotherUser } from '@/lib/db/users'
 import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 import { invalidateProfileCache } from '@/lib/infra/cache'
-import { applyOwnedEmailChange } from '@/lib/app/profile-helpers'
+import { applyOwnedEmailChange, loadProfileContext } from '@/lib/app/profile-helpers'
 
 const mockGetProfile = vi.mocked(getProfileData)
 const mockIsEmailTaken = vi.mocked(isEmailTakenByAnotherUser)
@@ -45,7 +48,7 @@ function profileRow(overrides?: { email?: string }): NonNullable<Awaited<ReturnT
       hasPassword: true,
       accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }],
     },
-  } as NonNullable<Awaited<ReturnType<typeof getProfileData>>>
+  } as unknown as NonNullable<Awaited<ReturnType<typeof getProfileData>>>
 }
 
 beforeEach(() => {
@@ -141,5 +144,80 @@ describe('applyOwnedEmailChange', () => {
     })
     expect(result).toBeNull()
     expect(mockGetProfile).not.toHaveBeenCalled()
+  })
+})
+
+const baseStats = { totalItems: 5, totalCollections: 2, itemTypeCounts: [] }
+
+function profileContextRow(overrides?: {
+  credentialEmailVerified?: Date | null
+}): NonNullable<Awaited<ReturnType<typeof getProfileData>>> {
+  return {
+    user: {
+      name: 'Ada',
+      email: 'me@example.com',
+      image: null,
+      hasPassword: true,
+      credentialEmail: 'me@example.com',
+      credentialEmailVerified:
+        overrides?.credentialEmailVerified === undefined
+          ? new Date('2026-01-01T00:00:00.000Z')
+          : overrides.credentialEmailVerified,
+      isPro: true,
+      createdAt: new Date('2025-12-25T10:30:00.000Z'),
+      accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }],
+    },
+    stats: baseStats,
+  } as unknown as NonNullable<Awaited<ReturnType<typeof getProfileData>>>
+}
+
+describe('loadProfileContext', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetProfile.mockResolvedValue(profileContextRow())
+    mockOutboundEmailEnabled.mockReturnValue(true)
+  })
+
+  it('serializes createdAt to an ISO string (no Date drift between SSR seed and refetch)', async () => {
+    const result = await loadProfileContext('user-1')
+    expect(result?.createdAt).toBe('2025-12-25T10:30:00.000Z')
+    expect(typeof result?.createdAt).toBe('string')
+  })
+
+  it('coerces a credentialEmailVerified date to true', async () => {
+    expect((await loadProfileContext('user-1'))?.credentialEmailVerified).toBe(true)
+  })
+
+  it('coerces a null credentialEmailVerified to false', async () => {
+    mockGetProfile.mockResolvedValue(profileContextRow({ credentialEmailVerified: null }))
+    expect((await loadProfileContext('user-1'))?.credentialEmailVerified).toBe(false)
+  })
+
+  it('sets verificationDisabled to the negation of outboundEmailEnabled()', async () => {
+    mockOutboundEmailEnabled.mockReturnValue(false)
+    expect((await loadProfileContext('user-1'))?.verificationDisabled).toBe(true)
+
+    mockOutboundEmailEnabled.mockReturnValue(true)
+    expect((await loadProfileContext('user-1'))?.verificationDisabled).toBe(false)
+  })
+
+  it('passes identity and stats fields through unchanged', async () => {
+    const result = await loadProfileContext('user-1')
+    expect(result).toMatchObject({
+      name: 'Ada',
+      email: 'me@example.com',
+      image: null,
+      hasPassword: true,
+      credentialEmail: 'me@example.com',
+      isPro: true,
+      stats: baseStats,
+    })
+    expect(Array.isArray(result?.accountTypes)).toBe(true)
+    expect(Array.isArray(result?.availableEmails)).toBe(true)
+  })
+
+  it('returns null when the user row is missing', async () => {
+    mockGetProfile.mockResolvedValue(null)
+    expect(await loadProfileContext('user-1')).toBeNull()
   })
 })

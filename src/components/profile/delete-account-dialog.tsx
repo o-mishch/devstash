@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -18,8 +17,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { api } from '@/lib/api/client'
-import { DEFAULT_EDITOR_PREFERENCES } from '@/lib/utils/editor-preferences'
-import { useProfileEmailsStore } from '@/stores/profile-emails'
+import { useResetProfile } from '@/hooks/use-profile'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
 interface DeleteAccountDialogProps {
@@ -28,6 +26,7 @@ interface DeleteAccountDialogProps {
 
 export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialogProps) {
   const router = useRouter()
+  const resetProfile = useResetProfile()
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
 
@@ -37,11 +36,9 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
       if (error) throw new Error(error.message || 'Failed to delete account. Please try again.')
     },
     onSuccess: () => {
-      // Clear user-scoped client state so the deleted account's emails (PII) don't linger in the
-      // module-global store for the next sign-in on this device. Editor prefs reset here too — never
-      // before the DELETE resolves, so a failed delete (wrong password) doesn't wipe a live user's prefs.
-      useEditorPreferencesStore.getState().setPreferences(DEFAULT_EDITOR_PREFERENCES)
-      useProfileEmailsStore.getState().reset()
+      // Drop the /profile cache so the deleted account's emails (PII) don't linger for the next sign-in
+      // on this device.
+      resetProfile()
       router.push('/')
       router.refresh()
     },

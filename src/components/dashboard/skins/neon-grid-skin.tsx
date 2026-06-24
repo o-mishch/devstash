@@ -11,7 +11,7 @@ import { SkinWidget } from './skin-widget'
 import { computeUsage, resolveSkinData, MaybeLink, TypeDistributionSegments, type DashboardSkinData } from './shared'
 
 const NEON_CELL = 'rounded-lg border bg-[color-mix(in_srgb,var(--card)_60%,transparent)] px-4 py-3 backdrop-blur'
-const NEON_PANEL = 'relative z-10 overflow-hidden rounded-lg border border-primary/30 bg-[color-mix(in_srgb,var(--card)_55%,transparent)] p-5 backdrop-blur'
+const NEON_PANEL = 'relative z-10 overflow-hidden rounded-lg border border-primary/30 bg-[color-mix(in_srgb,var(--card)_55%,transparent)] hover:bg-[color-mix(in_srgb,var(--card)_60%,var(--foreground)_2.5%)] p-5 backdrop-blur transition-colors duration-300'
 
 // Neon Grid (Pro) — synthwave neon outlines over an animated perspective grid horizon.
 export async function NeonGridSkin(data: DashboardSkinData) {

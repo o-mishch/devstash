@@ -1,6 +1,7 @@
-import { authedRouteWithParams, type IdParam } from '@/lib/api/route'
+import { authedRouteWithParams } from '@/lib/api/route'
 import { json, noContent, problem, parseOr422 } from '@/lib/api/http'
 import { updateItemInput } from '@/lib/api/schemas/items'
+import { idParam } from '@/lib/api/schemas/common'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { getItemForAuth, getItemById, updateItem, deleteItem } from '@/lib/db/items'
 import { invalidateCollectionsCache, invalidateItemsCache } from '@/lib/infra/cache'
@@ -10,21 +11,31 @@ import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'api-items' })
 
+type RouteParams = Awaited<RouteContext<'/api/items/[id]'>['params']>
+
 // Single item by id (IDOR-scoped). Powers the source deep-link: opening /items/[type]?item=<id> fetches
 // the item and pops its detail drawer. Returns the LightItem shape the drawer is seeded with.
-export const GET = authedRouteWithParams<IdParam>({}, async ({ userId, params }) => {
-  const item = await getItemById(userId, params.id)
+export const GET = authedRouteWithParams<RouteParams>({}, async ({ userId, params }) => {
+  const parsedParams = parseOr422(idParam, params)
+  if (!parsedParams.ok) return parsedParams.res
+  const { id } = parsedParams.data
+
+  const item = await getItemById(userId, id)
   if (!item) return problem(404, ErrorMessage.ITEM_NOT_FOUND)
   return json(item)
 })
 
-export const PATCH = authedRouteWithParams<IdParam>(
+export const PATCH = authedRouteWithParams<RouteParams>(
   { rateLimit: 'itemMutation' },
   async ({ userId, isPro, params, request }) => {
+    const parsedParams = parseOr422(idParam, params)
+    if (!parsedParams.ok) return parsedParams.res
+    const { id } = parsedParams.data
+
     const parsed = parseOr422(updateItemInput, await request.json())
     if (!parsed.ok) return parsed.res
 
-    const existing = await getItemForAuth(userId, params.id)
+    const existing = await getItemForAuth(userId, id)
     if (!existing) return problem(404, ErrorMessage.ITEM_NOT_FOUND)
 
     if (PRO_ITEM_TYPE_NAMES.has(existing.itemType.name) && !isPro) {
@@ -38,38 +49,42 @@ export const PATCH = authedRouteWithParams<IdParam>(
       return problem(422, `Cannot change the type of a ${existing.itemType.name} item.`)
     }
 
-    const updated = await updateItem(userId, params.id, parsed.data)
+    const updated = await updateItem(userId, id, parsed.data)
     if (!updated) return problem(404, ErrorMessage.ITEM_NOT_FOUND)
 
     invalidateItemsCache(userId)
     invalidateCollectionsCache(userId)
-    log.info({ userId, itemId: params.id }, 'Item updated')
+    log.info({ userId, itemId: id }, 'Item updated')
     return json(updated)
   },
 )
 
-export const DELETE = authedRouteWithParams<IdParam>(
+export const DELETE = authedRouteWithParams<RouteParams>(
   { rateLimit: 'itemMutation' },
   async ({ userId, params }) => {
-    const existing = await getItemForAuth(userId, params.id)
+    const parsedParams = parseOr422(idParam, params)
+    if (!parsedParams.ok) return parsedParams.res
+    const { id } = parsedParams.data
+
+    const existing = await getItemForAuth(userId, id)
     if (!existing) return problem(404, ErrorMessage.ITEM_NOT_FOUND)
 
     if (existing.fileUrl) {
       try {
         await deleteStoredFile(existing.fileUrl)
       } catch (error) {
-        log.error({ userId, itemId: params.id, err: error }, 'Failed to delete file from storage')
+        log.error({ userId, itemId: id, err: error }, 'Failed to delete file from storage')
         return problem(500, 'Failed to delete file from storage.')
       }
     }
 
-    if (!(await deleteItem(userId, params.id))) {
+    if (!(await deleteItem(userId, id))) {
       return problem(500, 'Failed to delete item.')
     }
 
     invalidateItemsCache(userId)
     invalidateCollectionsCache(userId)
-    log.info({ userId, itemId: params.id }, 'Item deleted')
+    log.info({ userId, itemId: id }, 'Item deleted')
     return noContent()
   },
 )

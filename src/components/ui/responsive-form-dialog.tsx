@@ -53,6 +53,10 @@ interface ResponsiveFormDialogProps {
   // Desktop only: when set, the dialog grows out of this point (captured at open via
   // morphOriginFromClick) instead of the default centre zoom. Null/undefined → default zoom.
   morphOrigin?: MorphOrigin | null
+  // Lift this dialog above another open drawer/dialog (z-50) and dim the surface behind it. Set when
+  // the form is launched from inside another overlay — e.g. the collection-create dialog opened from
+  // the item drawer's collection picker. Applies to both the desktop dialog and the mobile sheet.
+  elevated?: boolean
 }
 
 // Shared responsive shell: a centered Dialog on desktop, a swipe-to-dismiss BottomSheet on
@@ -69,6 +73,7 @@ export function ResponsiveFormDialog({
   mobileClassName,
   children,
   morphOrigin,
+  elevated = false,
 }: ResponsiveFormDialogProps) {
   const isDesktop = useMediaQuery('(min-width: 768px)')
 
@@ -78,7 +83,7 @@ export function ResponsiveFormDialog({
       : undefined
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className={desktopClassName} morph={Boolean(morphOrigin)} style={morphStyle}>
+        <DialogContent className={desktopClassName} morph={Boolean(morphOrigin)} elevated={elevated} style={morphStyle}>
           <DialogHeader className={headerClassName}>
             <DialogTitle>{title}</DialogTitle>
             {description ? <DialogDescription>{description}</DialogDescription> : null}
@@ -90,7 +95,7 @@ export function ResponsiveFormDialog({
   }
 
   return (
-    <BottomSheet open={open} onOpenChange={onOpenChange} title={title} description={description} resizable={mobileResizable} className={mobileClassName}>
+    <BottomSheet open={open} onOpenChange={onOpenChange} title={title} description={description} resizable={mobileResizable} className={mobileClassName} elevated={elevated}>
       {(scrolled) => children(false, scrolled)}
     </BottomSheet>
   )

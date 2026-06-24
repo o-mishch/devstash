@@ -34,8 +34,6 @@ export const CacheTags = {
   // Collection tags
   allCollections: (userId: string) => `user:${userId}:collections`,
   collectionsPreview: (userId: string) => `user:${userId}:collections-preview`,
-  sidebarCollections: (userId: string) => `user:${userId}:sidebar-collections`,
-  favoriteCollections: (userId: string) => `user:${userId}:favorite-collections`,
   collectionById: (userId: string, collectionId: string) => `user:${userId}:collection:${collectionId}`,
   collectionStats: (userId: string) => `user:${userId}:collection-stats`,
   usageCollectionCount: (userId: string) => `user:${userId}:usage:collection-count`,

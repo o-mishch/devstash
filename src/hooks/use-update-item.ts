@@ -116,8 +116,21 @@ export function useUpdateItem() {
       // 'active' refetch would skip it, leaving it stale (the 5-min staleTime keeps it from refetching
       // on the next visit), which is the "doesn't appear until full reload" symptom. 'all' refetches
       // inactive queries too, so the dashboard is correct the moment you navigate back.
-      if (payload.itemTypeName && payload.itemTypeName !== currentItem.itemType.name) {
+      const typeChanged = Boolean(payload.itemTypeName && payload.itemTypeName !== currentItem.itemType.name)
+      if (typeChanged) {
         invalidate('items', { refetchType: 'all' })
+      }
+      // A type change or a collection-membership change alters the collection cards' itemCount / type
+      // chips / dominant color (all derived from the items inside), but neither flows through the
+      // /collections cache — mark it stale so the grid/sidebar/header refetch when next active. Mirrors
+      // the create path; only fire when a card-affecting field actually changed (a title-only edit can't).
+      const oldCollectionIds = currentItem.collections.map((c) => c.id)
+      const membershipChanged =
+        payload.collectionIds !== undefined &&
+        (payload.collectionIds.length !== oldCollectionIds.length ||
+          oldCollectionIds.some((id) => !payload.collectionIds!.includes(id)))
+      if (typeChanged || membershipChanged) {
+        invalidate('collections')
       }
       // The dashboard Pinned widget renders from the pinned-items STORE (server snapshot + live
       // overrides), not the `['items']` query — so the invalidation above doesn't reach it. If the

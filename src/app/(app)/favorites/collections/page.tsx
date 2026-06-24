@@ -1,27 +1,19 @@
-import { getCurrentUserId } from '@/lib/session'
-import { getFavoriteCollections } from '@/lib/db/collections'
-import { FavoriteCollectionRow } from '@/components/favorites/favorite-collection-row'
+import { requireUserId } from '@/lib/session'
+import { getAllCollections } from '@/lib/db/collections'
+import { FavoriteCollectionsList } from '@/components/favorites/favorite-collections-list'
 import { FavoritesListSkeleton } from '@/components/favorites/favorites-list-skeleton'
-import { FavoritesEmpty } from '@/components/favorites/favorites-empty'
 
 interface FavoriteCollectionsPageProps {
   searchParams: Promise<{ skeleton?: string }>
 }
 
 export default async function FavoriteCollectionsPage({ searchParams }: FavoriteCollectionsPageProps) {
-  // `?skeleton=true` preview: render the same skeleton loading.tsx shows.
+  const userId = await requireUserId()
+
+  // `?skeleton=true` preview: render the same skeleton loading.tsx shows, after the auth guard.
   if ((await searchParams).skeleton === 'true') return <FavoritesListSkeleton />
 
-  const userId = await getCurrentUserId()
-  const favoriteCollections = userId ? await getFavoriteCollections(userId) : []
+  const collections = await getAllCollections(userId)
 
-  if (favoriteCollections.length === 0) return <FavoritesEmpty kind="collections" />
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      {favoriteCollections.map((collection) => (
-        <FavoriteCollectionRow key={collection.id} collection={collection} />
-      ))}
-    </div>
-  )
+  return <FavoriteCollectionsList initialCollections={collections} />
 }

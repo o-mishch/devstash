@@ -37,11 +37,11 @@ export async function AuroraSkin(data: DashboardSkinData) {
       : [{ icon: Zap, value: String(usage.slotsLeft), label: 'Slots left', color: '#10b981', href: undefined as string | undefined }]),
   ]
   // Slim horizontal stat cards — icon + value + label on one line, matched to the slimmed hero. A lone
-  // Collections card (Pro) centers its row; the free pair (Collections + Slots left) left-aligns.
+  // tile (Pro shows only the Collections card) centers its content; the free pair left-aligns.
   const loneTile = tiles.length === 1
   const tileClass = loneTile
-    ? 'ds-glass flex items-center justify-center gap-3 rounded-2xl px-5 py-3 text-center transition-transform hover:-translate-y-0.5'
-    : 'ds-glass flex items-center gap-3 rounded-2xl px-4 py-3 transition-transform hover:-translate-y-0.5'
+    ? 'group ds-glass flex items-center justify-center gap-3 rounded-2xl px-5 py-3 text-center transition-all duration-300 hover:-translate-y-0.5 hover:bg-foreground/5'
+    : 'group ds-glass flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-300 hover:-translate-y-0.5 hover:bg-foreground/5'
 
   return (
     <div className="relative">
@@ -60,12 +60,19 @@ export async function AuroraSkin(data: DashboardSkinData) {
             full-width card below so the hero stays compact and the stat cards aren't oversized. Pro
             widens to 4 cols so Brain Dump occupies a wide 2-col cell beside the hero + Collections. */}
         <div className={`mb-6 grid grid-cols-2 gap-4 ${isPro ? 'lg:grid-cols-4' : 'lg:grid-cols-2'}`}>
-          <div className={`ds-glass flex items-center gap-4 rounded-2xl px-5 py-3 ${isPro ? '' : 'col-span-2 lg:col-span-2'}`}>
+          <div
+            className={cn(
+              'group ds-glass flex items-center gap-4 rounded-2xl px-5 py-3 transition-all duration-300 hover:-translate-y-0.5 hover:bg-foreground/5 w-full',
+              isPro ? '' : 'col-span-2 lg:col-span-2'
+            )}
+          >
             <div
-              className="ds-ring relative grid size-[64px] shrink-0 place-items-center rounded-full"
+              className="ds-ring relative grid size-[64px] shrink-0 place-items-center rounded-full transition-transform duration-500 ease-out group-hover:scale-110"
               style={{ '--ds-pct': usage.isPro ? 100 : usage.pct } as CSSProperties}
             >
-              <TotalItemsReveal variant="pop" align="center" className="relative text-center">
+              {/* Only the inline count is the reveal trigger — TotalItemsReveal renders a <button>, which
+                  must not wrap the card's <h3>/block content (invalid DOM nesting). */}
+              <TotalItemsReveal variant="pop" align="center" className="relative z-10">
                 <b className="block text-xl font-extrabold leading-none">{stats.totalItems}</b>
               </TotalItemsReveal>
             </div>
@@ -83,7 +90,7 @@ export async function AuroraSkin(data: DashboardSkinData) {
             const inner = (
               <>
                 <span
-                  className="grid size-9 shrink-0 place-items-center rounded-xl"
+                  className="grid size-9 shrink-0 place-items-center rounded-xl transition-transform duration-500 ease-out group-hover:scale-110"
                   style={{ background: `color-mix(in srgb, ${t.color} 16%, transparent)`, color: t.color }}
                 >
                   <t.icon className="size-[18px]" />
@@ -107,13 +114,13 @@ export async function AuroraSkin(data: DashboardSkinData) {
         <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
           <div className="flex flex-col gap-4">
             <section className="ds-glass rounded-2xl p-5">
-              <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="aurora">
+              <SkinWidget icon={<Folder />} title="Collections" count={collectionStats.totalCollections} skin="aurora" headerHoverless>
                 <CollectionsGrid collections={collections} />
               </SkinWidget>
             </section>
             {hasPinned && (
               <section className="ds-glass rounded-2xl p-5">
-                <SkinWidget icon={<Pin />} title="Pinned" skin="aurora">
+                <SkinWidget icon={<Pin />} title="Pinned" skin="aurora" headerHoverless>
                   <DashboardPinnedItems initialItems={pinned} />
                 </SkinWidget>
               </section>
@@ -122,7 +129,7 @@ export async function AuroraSkin(data: DashboardSkinData) {
 
           {hasRecent && (
             <section className="ds-glass rounded-2xl p-5">
-              <SkinWidget icon={<History />} title="Recent items" skin="aurora">
+              <SkinWidget icon={<History />} title="Recent items" skin="aurora" headerHoverless>
                 <DashboardRecentItems firstPage={recent} />
               </SkinWidget>
             </section>

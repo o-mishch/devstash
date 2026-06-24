@@ -13,9 +13,17 @@ import { queryKeys, queryKeyMatches } from '@/lib/api/query-keys'
 // here, routing every client invalidation through this single switch.
 
 /** Cache entities a mutation can invalidate. Extend here (one case) when a new cached entity is added. */
-export type CacheEntity = 'items' | 'brainDumpJobs' | 'brainDumpSources' | 'aiUsage'
+export type CacheEntity =
+  | 'items'
+  | 'brainDumpJobs'
+  | 'brainDumpSources'
+  | 'aiUsage'
+  | 'collections'
+  | 'billingContext'
+  | 'profile'
+  | 'userProfile'
 
-interface InvalidateOptions {
+export interface InvalidateOptions {
   // Mirror of TanStack's `refetchType`. 'none' marks stale without refetching (lets a server-side
   // revalidateTag that runs via after() win the race); 'all' also refetches INACTIVE queries (needed
   // when the affected list is unmounted at mutation time, e.g. the dashboard while the drawer is open).
@@ -50,6 +58,21 @@ export function useInvalidate() {
           return
         case 'aiUsage':
           void queryClient.invalidateQueries({ queryKey: queryKeys.aiUsage(), ...refetch })
+          return
+        case 'collections':
+          void queryClient.invalidateQueries({
+            predicate: (query) => queryKeyMatches.collections(query.queryKey),
+            ...refetch,
+          })
+          return
+        case 'billingContext':
+          void queryClient.invalidateQueries({ queryKey: queryKeys.billingContext(), ...refetch })
+          return
+        case 'profile':
+          void queryClient.invalidateQueries({ queryKey: queryKeys.profile(), ...refetch })
+          return
+        case 'userProfile':
+          void queryClient.invalidateQueries({ queryKey: queryKeys.userProfile(), ...refetch })
           return
       }
     },

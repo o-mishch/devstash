@@ -20,6 +20,9 @@ interface ConfirmDialogProps {
   // dialog is a plain confirm with the cancel + confirm buttons right-aligned (the replace variant).
   onDiscard?: () => void
   discardLabel?: string
+  // Renders the confirm button as a solid destructive action (e.g. "Delete"). Defaults to the primary
+  // confirm style.
+  destructive?: boolean
 }
 
 // Shared confirm/guard dialog for the AI Explain + Optimize flows (replace-existing confirm and
@@ -36,13 +39,14 @@ export function ConfirmDialog({
   cancelLabel = 'Keep current',
   onDiscard,
   discardLabel = 'Discard',
+  destructive = false,
 }: ConfirmDialogProps) {
   const actions = (
     <div className="flex gap-2">
       <AlertDialog.Close render={<Button variant="outline" size="sm" />}>
         {cancelLabel}
       </AlertDialog.Close>
-      <Button size="sm" disabled={isPending} onClick={onConfirm} className="gap-1.5">
+      <Button size="sm" variant={destructive ? 'destructiveSolid' : 'default'} disabled={isPending} onClick={onConfirm} className="gap-1.5">
         {isPending && <Loader2 className="size-3.5 animate-spin" />}
         {confirmLabel}
       </Button>

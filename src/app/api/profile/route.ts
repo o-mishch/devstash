@@ -1,13 +1,21 @@
 import { authedRoute } from '@/lib/api/route'
-import { noContent, problem, problemFrom, parseOr422 } from '@/lib/api/http'
-import { optionalPasswordInput } from '@/lib/api/schemas/profile'
+import { json, noContent, problem, problemFrom, parseOr422 } from '@/lib/api/http'
+import { optionalPasswordInput, profileContextSchema } from '@/lib/api/schemas/profile'
 import { signOut } from '@/auth'
 import { getUserAuthMethods, deleteUserById } from '@/lib/db/users'
-import { verifyPasswordFromBody } from '@/lib/app/profile-helpers'
+import { loadProfileContext, verifyPasswordFromBody } from '@/lib/app/profile-helpers'
 import { teardownStripeBillingForUser } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'api-profile' })
+
+export const GET = authedRoute({}, async ({ userId }) => {
+  const context = await loadProfileContext(userId)
+  if (!context) return problem(404, 'Profile not found')
+  // Parse-on-the-way-out (matching /profile/me and /billing/context): strips anything outside the
+  // contract so a future field added to loadProfileContext's serializer can't silently leak.
+  return json(profileContextSchema.parse(context))
+})
 
 export const DELETE = authedRoute({ rateLimit: 'deleteAccount' }, async ({ userId, request }) => {
   const parsed = parseOr422(optionalPasswordInput, await request.json())

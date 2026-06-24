@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Pencil } from 'lucide-react'
 import { SubmitButton } from '@/components/ui/button'
@@ -12,6 +11,7 @@ import { useApiFormAction } from '@/hooks/use-api-form-action'
 import { api } from '@/lib/api/client'
 import { credentialEmailPrimaryMoveNote } from '@/lib/utils/auth'
 import { ProfileFormDialog } from './profile-form-dialog'
+import { usePatchUserProfile } from '@/hooks/use-user-profile'
 
 interface ChangeCredentialEmailDialogProps {
   currentEmail: string
@@ -31,7 +31,7 @@ interface ChangeCredentialResult {
 
 export function ChangeCredentialEmailDialog({ currentEmail, alsoMovesPrimaryEmail, verificationDisabled, onCredentialChanged }: ChangeCredentialEmailDialogProps) {
   const [emailError, setEmailError] = useState('')
-  const router = useRouter()
+  const patchUserProfile = usePatchUserProfile()
 
   // Verification enabled → a confirmation link is emailed to the new address and nothing changes until
   // it's confirmed. Verification disabled → the change applies instantly.
@@ -42,10 +42,15 @@ export function ChangeCredentialEmailDialog({ currentEmail, alsoMovesPrimaryEmai
       toast.success(`Confirmation link sent to ${result.email}. Click it to switch your sign-in email.`)
     } else {
       toast.success('Sign-in email updated.')
+      // Patches the /profile cache (credentialEmail + available list, and the primary email when it moves
+      // with the credential) via the ConnectedAccounts-supplied hook.
       onCredentialChanged(result.email)
+      // When the primary email moves too, also patch /profile/me so the sidebar reflects it.
+      if (alsoMovesPrimaryEmail) {
+        patchUserProfile({ email: result.email })
+      }
     }
-    router.refresh()
-  }, [router, onCredentialChanged])
+  }, [onCredentialChanged, alsoMovesPrimaryEmail, patchUserProfile])
 
   // The form's `formAction` wrapper already validated email === confirmEmail before calling this.
   const { formAction: submitForm, isPending } = useApiFormAction<ChangeCredentialResult>(async (body) => {

@@ -34,14 +34,17 @@ import {
   useEmptyBrainDumpTrash,
   useDiscardBrainDumpJob,
   useReparseBrainDumpJob,
+  useUpdateBrainDumpJobCollections,
   type BrainDumpDraftItem,
   type BrainDumpStreamSeed,
 } from '@/hooks/use-brain-dump'
 import { ParseProgress } from '@/components/parse/parse-progress'
+import { ParseSourceBanner } from '@/components/parse/parse-source-banner'
 import { ParseDraftCard } from '@/components/parse/parse-draft-card'
 import { ParseCollectionTarget } from '@/components/parse/parse-collection-target'
 import { BentoMasonry, type BentoMasonryTile } from '@/components/parse/bento-masonry'
-import type { CollectionPickerItem } from '@/types/collection'
+import { useCollections } from '@/hooks/use-collections'
+import type { CollectionWithTypes, CollectionPickerItem } from '@/types/collection'
 
 // The splitter only ever produces these five text types (file/image need an upload), so they are the
 // buckets. A draft with any other type is shown under "note" (the catch-all), mirroring the server.
@@ -122,27 +125,55 @@ const boardSensors = [
 
 interface ParseReviewBoardProps {
   jobId: string
-  collections: CollectionPickerItem[]
-  initialCollectionName: string | null
+  /** Server-fetched collections seeding the shared `useCollections` cache (avoids a mount fetch + flash). */
+  initialCollections: CollectionWithTypes[]
+  /** Default name offered when the user opts to create a collection for this job (source/file name or dated label). */
+  suggestedCollectionName: string
   initialCollectionIds: string[]
+  /** Source item for the "Saved as …" banner (the collection picker now lives inside this widget). */
+  sourceItemId: string | null
+  sourceName: string | null
+  /** The parse window was capped — surfaced in the source banner. */
+  truncated: boolean
   /** Server-fetched snapshot pre-populates the stream hook to avoid an intermediate flash on mount. */
   initialSnapshot: BrainDumpStreamSeed
   /** Draft item id to scroll into view and highlight on mount (from `?item=` deep-link). */
   highlightItemId?: string
-  /** The "Saved as …" source banner, rendered on one row with the progress bar (stacked on mobile). */
-  sourceBanner?: ReactNode
 }
 
 export function ParseReviewBoard({
   jobId,
-  collections,
-  initialCollectionName,
+  initialCollections,
+  suggestedCollectionName,
   initialCollectionIds,
   initialSnapshot,
   highlightItemId,
-  sourceBanner,
+  sourceItemId,
+  sourceName,
+  truncated,
 }: ParseReviewBoardProps) {
   const router = useRouter()
+  const { collections } = useCollections({ initialData: initialCollections })
+  const collectionPickerItems = useMemo(
+    () => collections.map((collection) => ({ id: collection.id, name: collection.name })),
+    [collections],
+  )
+  // The job's "Save items to collection" target lives here (not in the widget) so every draft drawer can
+  // show it read-only — the widget edits it, the drawers only display where their item will be saved.
+  const updateJobCollections = useUpdateBrainDumpJobCollections()
+  const [targetCollectionIds, setTargetCollectionIds] = useState<string[]>(initialCollectionIds)
+  const persistTargetCollections = useCallback(
+    async (ids: string[]) => {
+      setTargetCollectionIds(ids)
+      const ok = await updateJobCollections(jobId, { collectionIds: ids })
+      if (!ok) toast.error('Could not update collections')
+    },
+    [jobId, updateJobCollections],
+  )
+  const targetCollections = useMemo(
+    () => collectionPickerItems.filter((c) => targetCollectionIds.includes(c.id)),
+    [collectionPickerItems, targetCollectionIds],
+  )
   const stream = useBrainDumpStream(jobId, initialSnapshot)
   const patchDraft = usePatchBrainDumpDraftItem()
   const bulkCommit = useBulkCommitBrainDumpDrafts()
@@ -641,6 +672,7 @@ export function ParseReviewBoard({
                         highlight={highlightItemId === id}
                         failed={failedIds.has(id)}
                         onClearFailed={() => clearFailed(id)}
+                        targetCollections={targetCollections}
                         onTrash={optimisticTrash}
                         onRestore={optimisticRestore}
                         onPatchPending={trackPatch}
@@ -685,35 +717,46 @@ export function ParseReviewBoard({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Source banner + progress share one row on sm+ (banner ~3/10, progress ~7/10); they stack
-          below 640px so neither is cramped. Use flex-grow ratios on a 0 basis (not basis-30%/70% +
-          shrink-0): fixed percentage bases plus the gap-4 would sum past 100% and, unable to shrink,
-          overflow the container — making the progress card's right edge miss the full-width widgets below. */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
-        {sourceBanner ? <div className="sm:min-w-0 sm:flex-[3]">{sourceBanner}</div> : null}
-        <div className="sm:min-w-0 sm:flex-[7]">
-          <ParseProgress
-            phase={stream.phase}
-            progress={stream.progress}
-            count={committableCount}
-            error={stream.error}
-            committing={committing}
-            discarding={discarding}
-            reparsing={reparsing}
-            onResume={stream.resume}
-            onCommitAll={commitAll}
-            onDiscard={discard}
-            onReparse={reparse}
-          />
+      {/* One workflow header beats two competing widgets: source, destination, state, and commit actions
+          are one decision surface. The internal grid is container-query driven so the app shell width,
+          not the viewport, decides when the status/actions can sit beside the source metadata. */}
+      <div className="card-surface card-hover group @container/parse-top rounded-xl border border-border bg-muted/20 p-3 sm:p-4">
+        <div className="grid gap-4 @min-[54rem]/parse-top:grid-cols-[minmax(0,1.05fr)_minmax(23rem,0.95fr)] @min-[54rem]/parse-top:items-stretch">
+          <div className="min-w-0">
+            <ParseSourceBanner
+              sourceItemId={sourceItemId}
+              sourceName={sourceName}
+              truncated={truncated}
+              chrome={false}
+              footer={
+                <ParseCollectionTarget
+                  collections={collectionPickerItems}
+                  sourceItemId={sourceItemId}
+                  suggestedName={suggestedCollectionName}
+                  selectedIds={targetCollectionIds}
+                  onChange={persistTargetCollections}
+                />
+              }
+            />
+          </div>
+          <div className="flex min-w-0 flex-col justify-center border-t border-border/60 pt-4 @min-[54rem]/parse-top:border-l @min-[54rem]/parse-top:border-t-0 @min-[54rem]/parse-top:pt-0 @min-[54rem]/parse-top:pl-4">
+            <ParseProgress
+              phase={stream.phase}
+              progress={stream.progress}
+              count={committableCount}
+              error={stream.error}
+              committing={committing}
+              discarding={discarding}
+              reparsing={reparsing}
+              onResume={stream.resume}
+              onCommitAll={commitAll}
+              onDiscard={discard}
+              onReparse={reparse}
+              chrome={false}
+            />
+          </div>
         </div>
       </div>
-
-      <ParseCollectionTarget
-        jobId={jobId}
-        collections={collections}
-        initialName={initialCollectionName}
-        initialIds={initialCollectionIds}
-      />
 
       <DragDropProvider sensors={boardSensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
         {/* Bento masonry: each bucket is a measured tile, absolutely positioned and packed by height;
@@ -770,6 +813,7 @@ export function ParseReviewBoard({
                             highlight={highlightItemId === id}
                             failed={failedIds.has(id)}
                             onClearFailed={() => clearFailed(id)}
+                            targetCollections={targetCollections}
                             onTrash={optimisticTrash}
                             onRestore={optimisticRestore}
                             onPatchPending={trackPatch}
@@ -986,6 +1030,9 @@ interface SortableCardProps {
   failed?: boolean
   // Clear this card's failed-ring (called by the card after its next successful action).
   onClearFailed?: () => void
+  // The job's "Save items to collection" target, shown read-only in the draft drawer. Empty (default)
+  // hides the field — used in closed-job History mode where there's no live save target.
+  targetCollections?: CollectionPickerItem[]
   // Optimistic trash/restore via the board's `persistMove` (optimistic reflow + revert on failure),
   // replacing the card's old pessimistic await-then-apply flow.
   onTrash: (item: BrainDumpDraftItem) => void
@@ -995,7 +1042,7 @@ interface SortableCardProps {
   onRemoved: () => void
 }
 
-function SortableCard({ item, index, group, jobId, canRestore = true, highlight, failed, onClearFailed, onTrash, onRestore, onPatchPending, onEdited, onRemoved }: SortableCardProps) {
+function SortableCard({ item, index, group, jobId, canRestore = true, highlight, failed, onClearFailed, targetCollections, onTrash, onRestore, onPatchPending, onEdited, onRemoved }: SortableCardProps) {
   // No separate drag handle: the whole card is the sortable element (and thus the drag source), so a
   // press+move anywhere on the card drags it. A plain press (no move past the sensor's activation
   // distance) is a click that opens the editor — see ParseDraftCard.
@@ -1016,6 +1063,7 @@ function SortableCard({ item, index, group, jobId, canRestore = true, highlight,
       highlight={highlight}
       failed={failed}
       onClearFailed={onClearFailed}
+      targetCollections={targetCollections}
       onTrash={onTrash}
       onRestore={onRestore}
       rootRef={ref}

@@ -1,5 +1,6 @@
-import { authedRouteWithParams, apiRedirect, type IdParam } from '@/lib/api/route'
-import { problem } from '@/lib/api/http'
+import { authedRouteWithParams, apiRedirect } from '@/lib/api/route'
+import { problem, parseOr422 } from '@/lib/api/http'
+import { idParam } from '@/lib/api/schemas/common'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { getDownloadItem } from '@/lib/db/items'
 import { getSignedDownloadUrl } from '@/lib/storage/s3'
@@ -8,9 +9,12 @@ import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 
 const log = logger.child({ tag: 'download' })
 
-export const GET = authedRouteWithParams<IdParam>({}, async ({ userId, isPro, params }) => {
-  const { id } = params
-  if (!id) return problem(400, 'Missing item ID.')
+type RouteParams = Awaited<RouteContext<'/api/download/[id]'>['params']>
+
+export const GET = authedRouteWithParams<RouteParams>({}, async ({ userId, isPro, params }) => {
+  const parsedParams = parseOr422(idParam, params)
+  if (!parsedParams.ok) return parsedParams.res
+  const { id } = parsedParams.data
 
   const item = await getDownloadItem(userId, id)
   if (!item) return problem(404, ErrorMessage.FILE_NOT_FOUND)
@@ -29,4 +33,3 @@ export const GET = authedRouteWithParams<IdParam>({}, async ({ userId, isPro, pa
   log.info({ userId, itemId: item.id, itemType: item.itemType.name }, 'signedDownloadUrl')
   return apiRedirect(signedUrl)
 })
-

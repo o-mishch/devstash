@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { SidebarData } from '@/types/sidebar'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useUpdateEditorPreferences } from '@/hooks/use-editor-preferences'
 import { writeLayoutCookie } from '@/lib/utils/layout-cookie'
 import { CollapsedSidebar } from './collapsed-sidebar'
 import { ExpandedSidebar } from './expanded-sidebar'
@@ -16,6 +16,7 @@ interface CollapsibleSidebarShellProps {
 
 export function CollapsibleSidebarShell({ sidebarData, initialCollapsed }: CollapsibleSidebarShellProps) {
   const [collapsed, setCollapsed] = useState(initialCollapsed)
+  const updateEditorPreferences = useUpdateEditorPreferences()
 
   // Optimistically flip the rail, mirror the cookie for the pre-hydration no-flash path, and persist
   // to the DB (editorPreferences). Roll back the local state + cookie if the save fails.
@@ -24,7 +25,7 @@ export function CollapsibleSidebarShell({ sidebarData, initialCollapsed }: Colla
     setCollapsed(next)
     writeLayoutCookie({ sidebar: next })
 
-    const ok = await useEditorPreferencesStore.getState().updatePreference('sidebarCollapsed', next)
+    const ok = await updateEditorPreferences({ sidebarCollapsed: next })
     if (!ok) {
       setCollapsed(prev)
       writeLayoutCookie({ sidebar: prev })

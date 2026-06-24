@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api, $api } from '@/lib/api/client'
 import { useInvalidate } from '@/hooks/use-cache-invalidation'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import type { components, paths } from '@/types/openapi'
 
 // Read-only AI usage meter, layered on the Redis sliding-window rate limits. This is the repo's
@@ -38,7 +38,7 @@ function usageRefetchInterval(query: { state: { data?: UsagePollData } }): numbe
  * while the tab is focused, and treats data as fresh for 30s.
  */
 export function useAiUsage() {
-  const isPro = useAppUserFlagsStore((s) => s.isPro)
+  const isPro = useIsPro()
   return $api.useQuery('get', AI_USAGE_PATH, undefined, {
     enabled: isPro,
     staleTime: 30_000,

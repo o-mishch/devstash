@@ -1,13 +1,13 @@
 'use client'
 
 import { type MouseEvent } from 'react'
-import { useRouter } from 'next/navigation'
 import { Star, MoreHorizontal, Edit2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { api } from '@/lib/api/client'
 import { useCollectionDialogsStore } from '@/stores/collection-dialogs'
 import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
+import { useInvalidateCollections } from '@/hooks/use-collections'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionCardActionsProps {
@@ -15,7 +15,7 @@ interface CollectionCardActionsProps {
 }
 
 export function CollectionCardActions({ collection }: CollectionCardActionsProps) {
-  const router = useRouter()
+  const invalidateCollections = useInvalidateCollections()
   const openEdit = useCollectionDialogsStore((s) => s.openEdit)
   const openDelete = useCollectionDialogsStore((s) => s.openDelete)
   const { value: isFavorite, toggle: toggleFavorite } = useOptimisticToggle(
@@ -28,7 +28,7 @@ export function CollectionCardActions({ collection }: CollectionCardActionsProps
       if (error) throw new Error(error.message)
     },
     {
-      onSuccess: () => router.refresh(),
+      onSuccess: () => invalidateCollections(),
       errorLabel: 'Failed to toggle favorite',
     }
   )

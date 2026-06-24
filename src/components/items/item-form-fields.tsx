@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ItemContentInput, LanguageInput } from '@/components/shared/item-content-input'
 import { CollectionSelector } from '@/components/shared/collection-selector'
+import { Badge } from '@/components/ui/badge'
 import { DrawerSection } from '@/components/items/drawer/drawer-shared'
 import { cn } from '@/lib/utils'
 import { ITEM_TYPES_WITH_CONTENT, ITEM_TYPES_WITH_LANGUAGE, ITEM_TYPES_WITH_URL } from '@/lib/utils/constants'
@@ -52,7 +53,18 @@ export interface ItemFormFieldsProps {
   form: UseFormReturn<ItemFormBaseValues>
   itemContext: ItemFileContext
   watchedLanguage?: string
-  collections: CollectionPickerItem[]
+  /**
+   * The read-only chips shown when `collectionsReadOnly` is set (the Brain Dump draft drawer's shared
+   * save target). The editable picker self-sources from the shared cache and ignores this, so it
+   * defaults to `[]` for every editable call site.
+   */
+  collections?: CollectionPickerItem[]
+  /**
+   * Render the Collections field as a read-only list of `collections` (disabled chips) instead of the
+   * editable picker. Used by the Brain Dump draft drawer, where the field shows the job's shared save
+   * target — changed from the board widget, not per-draft.
+   */
+  collectionsReadOnly?: boolean
   variant?: 'dialog' | 'drawer'
   /**
    * Dialog layout slot — lets the dialog place each field group independently:
@@ -74,7 +86,8 @@ export function ItemFormFields({
   form,
   itemContext,
   watchedLanguage,
-  collections,
+  collections = [],
+  collectionsReadOnly = false,
   variant = 'dialog',
   section,
   editorFill = false,
@@ -212,24 +225,59 @@ export function ItemFormFields({
     />
   )
 
-  const collectionsField = collections.length > 0 && (
+  // Read-only chips (or the empty state) for the Brain Dump draft drawer's shared save target. Hoisted
+  // out of the JSX so the Collections field below isn't a nested ternary (read-only ? (… ? … : …) : …).
+  const readOnlyCollectionChips =
+    collections.length > 0 ? (
+      collections.map((col) => (
+        <Badge
+          key={col.id}
+          variant="outline"
+          className="px-2 py-0.5 text-xs font-medium bg-foreground/10 text-foreground border-foreground/20"
+        >
+          {col.name}
+        </Badge>
+      ))
+    ) : (
+      <span className="text-xs text-muted-foreground">No collection set — this item won’t be added to one.</span>
+    )
+
+  // Always show the field. Editable mode lets you create from the dropdown even with none; read-only
+  // mode (the Brain Dump draft drawer) always shows the shared save target, with an empty state.
+  const collectionsField = (
     <Field
       name="collectionIds"
       label="Collections"
-      error={form.formState.errors.collectionIds?.message}
+      error={collectionsReadOnly ? undefined : form.formState.errors.collectionIds?.message}
       className={variant === 'drawer' ? 'space-y-1.5' : undefined}
     >
-      <Controller
-        control={form.control}
-        name="collectionIds"
-        render={({ field }) => (
-          <CollectionSelector
-            collections={collections}
-            selectedIds={field.value}
-            onChange={field.onChange}
-          />
-        )}
-      />
+      {collectionsReadOnly ? (
+        // Read-only mirror of the CollectionSelector trigger: a disabled-looking box of chips. The
+        // shared save target owns these — editable from the board widget, not per draft.
+        <>
+          <div
+            aria-readonly
+            className="flex min-h-9 w-full flex-wrap items-center gap-1.5 rounded-md border border-input bg-muted/30 px-3 py-1.5 opacity-90"
+          >
+            {readOnlyCollectionChips}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Set for the whole Brain Dump in “Save items to collection”.</p>
+        </>
+      ) : (
+        // Self-sources from the shared collections cache and owns its own create flow (Create row →
+        // dialog → auto-select), so no `collections` prop is threaded here.
+        <Controller
+          control={form.control}
+          name="collectionIds"
+          render={({ field }) => (
+            <CollectionSelector
+              creatable
+              selectedIds={field.value}
+              onChange={field.onChange}
+            />
+          )}
+        />
+      )}
     </Field>
   )
 

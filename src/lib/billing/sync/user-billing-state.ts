@@ -16,6 +16,8 @@ import {
 import { CHECKOUT_NOT_CONFIGURED_MESSAGE } from '@/lib/billing/messages/billing-messages.client'
 import { CacheTags } from '@/lib/infra/cache'
 import { logger } from '@/lib/infra/pino'
+import type { UsageStats } from '@/lib/db/usage'
+import type { BillingContextResponse } from '@/lib/api/schemas/billing'
 
 const log = logger.child({ tag: 'billing-state' })
 
@@ -197,5 +199,38 @@ export async function loadBillingPageContext(
     priceIdYearly,
     checkoutDisabled,
     checkoutDisabledMessage,
+  }
+}
+
+// Serializes the server billing page context (Date / Stripe enum fields) into the JSON shape that
+// GET /billing/context returns and the client `useBillingContext` query holds. Both the route handler and
+// the settings page seed call this so the network response and the SSR seed are byte-identical (no
+// Date-vs-string drift between initialData and a later refetch).
+export function toBillingContextResponse(
+  page: BillingPageContext,
+  usage: UsageStats,
+): BillingContextResponse {
+  const { billing } = page
+  return {
+    billing: billing
+      ? {
+          email: billing.email,
+          stripeCustomerId: billing.stripeCustomerId,
+          stripeSubscriptionId: billing.stripeSubscriptionId,
+          isPro: billing.isPro,
+          stripeSubscriptionStatus: billing.stripeSubscriptionStatus,
+          stripeSubscriptionStart: billing.stripeSubscriptionStart?.toISOString() ?? null,
+          stripeCurrentPeriodEnd: billing.stripeCurrentPeriodEnd?.toISOString() ?? null,
+          stripeSubscriptionInterval: billing.stripeSubscriptionInterval,
+          stripeCancelAtPeriodEnd: billing.stripeCancelAtPeriodEnd,
+        }
+      : null,
+    unavailable: page.unavailable,
+    isPro: page.isPro,
+    needsBillingRecovery: page.needsBillingRecovery,
+    checkoutDisabled: page.checkoutDisabled,
+    checkoutDisabledMessage: page.checkoutDisabledMessage,
+    canManageBilling: page.canManageBilling,
+    usage,
   }
 }

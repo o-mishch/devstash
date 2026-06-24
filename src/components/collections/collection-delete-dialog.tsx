@@ -1,7 +1,6 @@
 'use client'
 
 import { type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useMutation } from '@tanstack/react-query'
 
@@ -17,6 +16,8 @@ import { api } from '@/lib/api/client'
 import { useControllableOpen } from '@/hooks/use-controllable-open'
 import { useLastNonNull } from '@/hooks/use-last-non-null'
 import { EMPTY_COLLECTION, type CollectionWithTypes } from '@/types/collection'
+import { useInvalidateCollections, useRemoveCollectionQuery } from '@/hooks/use-collections'
+import { useInvalidateUserProfile } from '@/hooks/use-user-profile'
 
 interface CollectionDeleteDialogProps {
   collection: CollectionWithTypes | null
@@ -27,7 +28,9 @@ interface CollectionDeleteDialogProps {
 }
 
 export function CollectionDeleteDialog({ collection: activeCollection, trigger, open: controlledOpen, onOpenChange, onSuccess }: CollectionDeleteDialogProps) {
-  const router = useRouter()
+  const removeCollectionQuery = useRemoveCollectionQuery()
+  const invalidateCollections = useInvalidateCollections()
+  const invalidateUserProfile = useInvalidateUserProfile()
   const lastNonNullCollection = useLastNonNull(activeCollection)
   const displayCollection = lastNonNullCollection || EMPTY_COLLECTION
 
@@ -44,10 +47,15 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
     onSuccess: () => {
       toast.success('Collection deleted')
       handleOpenChange(false)
+      if (displayCollection.id) {
+        removeCollectionQuery(displayCollection.id)
+      }
+      invalidateCollections()
+      // Deleting a collection frees a free-tier slot, flipping canCreateCollection back to true in
+      // /profile/me (which gates the create dialog).
+      invalidateUserProfile()
       if (onSuccess) {
         onSuccess()
-      } else {
-        router.refresh()
       }
     },
     onError: (error: Error) => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import {
   loadBillingDisplayContext,
   resolveNeedsBillingRecovery,
+  type BillingPageContext,
 } from './user-billing-state'
 
 const { mockGetUserStripeInfo } = vi.hoisted(() => ({
@@ -160,5 +161,54 @@ describe('resolveCheckoutUiState', () => {
       checkoutDisabled: false,
       checkoutDisabledMessage: null,
     })
+  })
+})
+
+describe('toBillingContextResponse', () => {
+  const page = {
+    billing: {
+      email: 'user@example.com',
+      stripeCustomerId: 'cus_1',
+      stripeSubscriptionId: 'sub_1',
+      isPro: true,
+      stripeSubscriptionStatus: 'active',
+      stripeSubscriptionStart: new Date('2026-06-01T00:00:00.000Z'),
+      stripeCurrentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),
+      stripeSubscriptionInterval: 'month',
+      stripeCancelAtPeriodEnd: false,
+    },
+    unavailable: false,
+    isPro: true,
+    needsBillingRecovery: false,
+    checkoutDisabled: false,
+    checkoutDisabledMessage: null,
+    canManageBilling: true,
+    // Server-only fields the wire shape must drop:
+    checkoutConfigured: true,
+    priceIdMonthly: 'price_m',
+    priceIdYearly: 'price_y',
+  }
+
+  it('serializes Date fields to ISO strings and drops server-only config fields', async () => {
+    const { toBillingContextResponse } = await import('./user-billing-state')
+    const result = toBillingContextResponse(page as unknown as BillingPageContext, { itemsCount: 3, collectionsCount: 2 })
+
+    expect(result.billing?.stripeSubscriptionStart).toBe('2026-06-01T00:00:00.000Z')
+    expect(result.billing?.stripeCurrentPeriodEnd).toBe('2026-07-01T00:00:00.000Z')
+    expect(result.usage).toEqual({ itemsCount: 3, collectionsCount: 2 })
+    expect(result.isPro).toBe(true)
+    expect('checkoutConfigured' in result).toBe(false)
+    expect('priceIdMonthly' in result).toBe(false)
+  })
+
+  it('maps null Date fields to null and a null billing object to null', async () => {
+    const { toBillingContextResponse } = await import('./user-billing-state')
+    const nullDates = { ...page, billing: { ...page.billing, stripeSubscriptionStart: null, stripeCurrentPeriodEnd: null } }
+    const result = toBillingContextResponse(nullDates as unknown as BillingPageContext, { itemsCount: 0, collectionsCount: 0 })
+    expect(result.billing?.stripeSubscriptionStart).toBeNull()
+    expect(result.billing?.stripeCurrentPeriodEnd).toBeNull()
+
+    const noBilling = toBillingContextResponse({ ...page, billing: null } as never, { itemsCount: 0, collectionsCount: 0 })
+    expect(noBilling.billing).toBeNull()
   })
 })

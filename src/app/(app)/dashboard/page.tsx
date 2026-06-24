@@ -71,7 +71,7 @@ export default async function DashboardPage(props: {
           </p>
           <CreateItemDialog
             itemTypes={sidebarData.itemTypes}
-            collections={sidebarData.collections}
+            initialCollections={sidebarData.collections}
             trigger={<Button>Create your first item &rarr;</Button>}
           />
         </div>

@@ -110,7 +110,47 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get a single collection */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The collection details */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Collection"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Collection not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         /** Delete a collection */
@@ -877,7 +917,45 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get the current user's profile */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Profile data, account summary, and usage stats */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProfileContext"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Profile not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         /** Delete the current user's account */
@@ -1013,6 +1091,51 @@ export interface paths {
         };
         trace?: never;
     };
+    "/profile/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the current user's profile flags and capability checks */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description User profile flags */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UserProfileFlags"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profile/editor-preferences": {
         parameters: {
             query?: never;
@@ -1020,7 +1143,51 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get editor preferences */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Editor preferences */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            fontSize: number;
+                            tabSize: number;
+                            /** @enum {string} */
+                            wordWrap: "on" | "off";
+                            minimap: boolean;
+                            /** @enum {string} */
+                            appTheme: "modern-minimal" | "t3-chat" | "twitter" | "mocha-mousse" | "bubblegum" | "doom-64" | "catppuccin" | "graphite" | "perpetuity" | "kodama-grove" | "cosmic-night" | "tangerine" | "quantum-rose" | "nature" | "bold-tech" | "elegant-luxury" | "amber-minimal" | "supabase" | "neo-brutalism" | "solar-dusk" | "claymorphism" | "cyberpunk" | "pastel-dreams" | "clean-slate" | "caffeine" | "ocean-breeze" | "retro-arcade" | "midnight-bloom" | "candyland" | "northern-lights" | "vintage-paper" | "sunset-horizon" | "starry-night" | "claude" | "vercel" | "mono" | "violet-bloom" | "amethyst-haze" | "soft-pop" | "sage-garden" | "notebook" | "darkmatter" | "aurora" | "editorial" | "spatial" | "command-deck" | "orbital" | "mission-control" | "neon-grid" | "holographic";
+                            /** @enum {string} */
+                            colorMode: "light" | "dark";
+                            /** @enum {string} */
+                            editorThemeMode: "app" | "auto" | "dark";
+                            /** @enum {string} */
+                            uiSkin: "classic" | "aurora" | "editorial" | "spatial" | "command-deck" | "orbital" | "mission-control" | "neon-grid" | "holographic";
+                            sidebarCollapsed: boolean;
+                        };
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
@@ -2095,11 +2262,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List eligible stash items (text files or brain-dump notes) for the source picker */
+        /** List eligible stash items (text files or brain-dump content items) for the source picker */
         get: {
             parameters: {
                 query?: {
-                    type?: "file" | "note";
+                    type?: "file" | "content";
                 };
                 header?: never;
                 path?: never;
@@ -2107,7 +2274,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Eligible source file items */
+                /** @description Eligible source items */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2987,6 +3154,51 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get unified billing context and usage statistics */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Unified billing context */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BillingContext"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Problem"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5627,6 +5839,42 @@ export interface components {
             content: string | null;
             language: string | null;
         };
+        ProfileContext: {
+            name: string | null;
+            email: string;
+            image: string | null;
+            hasPassword: boolean;
+            credentialEmail: string | null;
+            credentialEmailVerified: boolean;
+            isPro: boolean;
+            createdAt: string;
+            accounts: {
+                id: string;
+                provider: string;
+                email: string | null;
+            }[];
+            accountTypes: string[];
+            availableEmails: string[];
+            verificationDisabled: boolean;
+            stats: {
+                totalItems: number;
+                totalCollections: number;
+                itemTypeCounts: {
+                    name: string;
+                    icon: string;
+                    color: string;
+                    count: number;
+                }[];
+            };
+        };
+        UserProfileFlags: {
+            isPro: boolean;
+            canCreateItem: boolean;
+            canCreateCollection: boolean;
+            name: string | null;
+            email: string | null;
+            image: string | null;
+        };
         AiDescription: {
             description: string;
         };
@@ -5678,6 +5926,7 @@ export interface components {
         BrainDumpSource: {
             itemId: string;
             name: string;
+            itemTypeName: string;
             sizeBytes: number | null;
         };
         BrainDumpJobSnapshot: {
@@ -5744,6 +5993,29 @@ export interface components {
             url: string;
             fields: {
                 [key: string]: string;
+            };
+        };
+        BillingContext: {
+            billing: {
+                email: string | null;
+                stripeCustomerId: string | null;
+                stripeSubscriptionId: string | null;
+                isPro: boolean;
+                stripeSubscriptionStatus: string | null;
+                stripeSubscriptionStart: string | null;
+                stripeCurrentPeriodEnd: string | null;
+                stripeSubscriptionInterval: string | null;
+                stripeCancelAtPeriodEnd: boolean;
+            } | null;
+            unavailable: boolean;
+            isPro: boolean;
+            needsBillingRecovery: boolean;
+            checkoutDisabled: boolean;
+            checkoutDisabledMessage: string | null;
+            canManageBilling: boolean;
+            usage: {
+                itemsCount: number;
+                collectionsCount: number;
             };
         };
         BillingRedirect: {

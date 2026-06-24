@@ -97,7 +97,8 @@ export async function getEditorPreferences(userId: string): Promise<EditorPrefer
 export async function getProfileData(userId: string): Promise<ProfileData | null> {
   'use cache'
   const cacheKey = CacheTags.profile(userId)
-  cacheTag(cacheKey)
+  // Item and collection counts are embedded in this query — invalidate when either group changes.
+  cacheTag(cacheKey, CacheTags.itemGroup(userId), CacheTags.collectionGroup(userId))
   cacheLife('max')
   const start = Date.now()
   const [user, itemTypes] = await Promise.all([

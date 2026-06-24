@@ -13,6 +13,8 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { SidebarData } from '@/types/sidebar'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
+import { useIsPro } from '@/hooks/use-user-profile'
+import { useCollections } from '@/hooks/use-collections'
 import { UserDropdownMenuContent } from './user-dropdown'
 import { getTypeHref, handleProGatedTypeClick } from './utils'
 
@@ -24,7 +26,9 @@ interface CollapsedSidebarProps {
 export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProps) {
   const pathname = usePathname()
   const { openPrompt } = useUpgradePromptStore()
-  const favoriteCollections = sidebarData.collections.filter((c) => c.isFavorite)
+  const isPro = useIsPro()
+  const { collections } = useCollections({ initialData: sidebarData.collections })
+  const favoriteCollections = collections.filter((c) => c.isFavorite)
 
   return (
     <TooltipProvider delay={300}>
@@ -60,7 +64,6 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
             {sidebarData.itemTypes.map((t) => {
               const typeHref = getTypeHref(t.name)
               const isCurrentPage = pathname === typeHref
-              const isPro = sidebarData.user?.isPro ?? false
               const isProGated = PRO_ITEM_TYPE_NAMES.has(t.name)
 
               return (

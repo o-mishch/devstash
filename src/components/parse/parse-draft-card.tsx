@@ -23,7 +23,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
-import { cn, ACTIONBAR_LABEL_CLASS, ACTIONBAR_BUTTON_CLASS } from '@/lib/utils'
+import { cn, actionbarLabelClass, ACTIONBAR_BUTTON_CLASS } from '@/lib/utils'
 import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Button } from '@/components/ui/button'
@@ -32,6 +32,7 @@ import { SheetTitle } from '@/components/ui/sheet'
 import { DrawerShell } from '@/components/items/drawer/drawer-shell'
 import { ItemDrawerEditContent } from '@/components/items/drawer/item-drawer-edit-content'
 import type { FullItem } from '@/types/item'
+import type { CollectionPickerItem } from '@/types/collection'
 import type { UpdateItemInput } from '@/lib/utils/validators'
 
 interface ParseDraftCardProps {
@@ -49,6 +50,9 @@ interface ParseDraftCardProps {
   failed?: boolean
   // Clear this card's failed-ring — called after a successful trash/restore/commit/edit on this card.
   onClearFailed?: () => void
+  // The job's "Save items to collection" target — shown read-only in the edit drawer so the user sees
+  // where this draft will be saved. Empty hides the field (e.g. closed-job History mode).
+  targetCollections?: CollectionPickerItem[]
   rootRef: (element: Element | null) => void
   isDragging: boolean
   // Optimistic trash/restore handlers from the board (reuse its `persistMove` — optimistic reflow with
@@ -70,6 +74,7 @@ export function ParseDraftCard({
   highlight,
   failed,
   onClearFailed,
+  targetCollections,
   rootRef,
   isDragging,
   onTrash,
@@ -215,168 +220,169 @@ export function ParseDraftCard({
     // Local provider so the card's action/duplicate tooltips appear quickly (150ms) instead of the
     // app-wide 400ms default — matching the Brain Dump entry card.
     <TooltipProvider delay={150}>
-    <div
-      ref={(el) => {
-        rootRef(el)
-        cardRef.current = el as HTMLDivElement | null
-      }}
-      role="button"
-      tabIndex={0}
-      onClick={openEditor}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          openEditor()
-        }
-      }}
-      aria-label={`Open ${item.title}`}
-      // The accent feeds the colored left border (matching the app's item cards / unified card system):
-      // a 2px left border that's neutral at rest and lights up to the item-type color on hover.
-      style={{ '--card-accent': SYSTEM_TYPE_COLORS[item.itemTypeName] ?? 'var(--primary)' } as CSSProperties}
-      // card-interactive = the same hover lift + highlight + shadow as the dashboard item rows.
-      // draggable-card = touch-action:none so a press-and-hold drags on touch screens (the whole card
-      // is the drag source) instead of the browser hijacking the gesture for scrolling.
-      className={cn(
-        // `relative` anchors the absolutely-positioned action overlay below. The overlay (not an inline
-        // flex sibling) means the text column owns the FULL row width — title/subtitle truncate against
-        // the card edge, not against a permanently-reserved icon column — so a non-hovered card shows
-        // maximally more of the title. The 2px left border picks up the type accent on hover
-        // (`hover:border-l-[var(--card-accent)]`), mirroring the app's item cards.
-        'card-interactive draggable-card group app-row relative gap-2.5 rounded-lg border border-border border-l-2 bg-card px-2.5 py-2 text-left transition-all hover:border-l-[var(--card-accent)]',
-        isDragging && 'opacity-50',
-        highlighted && 'ring-2 ring-primary ring-offset-1',
-        // A failed bulk-commit left this card behind — flash an error ring so it stands out from
-        // untouched cards. The highlight ring (deep-link) takes precedence when both are set.
-        failed && !highlighted && 'ring-2 ring-destructive ring-offset-1',
-      )}
-    >
-      <ItemTypeIcon typeName={item.itemTypeName} className="size-4 shrink-0" />
-      {/* Title owns the whole first row (no badge sibling stealing width → truncates much later). The
+      <div
+        ref={(el) => {
+          rootRef(el)
+          cardRef.current = el as HTMLDivElement | null
+        }}
+        role="button"
+        tabIndex={0}
+        onClick={openEditor}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            openEditor()
+          }
+        }}
+        aria-label={`Open ${item.title}`}
+        // The accent feeds the colored left border (matching the app's item cards / unified card system):
+        // a 2px left border that's neutral at rest and lights up to the item-type color on hover.
+        style={{ '--card-accent': SYSTEM_TYPE_COLORS[item.itemTypeName] ?? 'var(--primary)' } as CSSProperties}
+        // card-interactive = the same hover lift + highlight + shadow as the dashboard item rows.
+        // draggable-card = touch-action:none so a press-and-hold drags on touch screens (the whole card
+        // is the drag source) instead of the browser hijacking the gesture for scrolling.
+        className={cn(
+          // `relative` anchors the absolutely-positioned action overlay below. The overlay (not an inline
+          // flex sibling) means the text column owns the FULL row width — title/subtitle truncate against
+          // the card edge, not against a permanently-reserved icon column — so a non-hovered card shows
+          // maximally more of the title. The 2px left border picks up the type accent on hover
+          // (`hover:border-l-[var(--card-accent)]`), mirroring the app's item cards.
+          'card-interactive draggable-card group app-row relative gap-2.5 rounded-lg border border-border border-l-2 bg-card px-2.5 py-2 text-left transition-all hover:border-l-[var(--card-accent)]',
+          isDragging && 'opacity-50',
+          highlighted && 'ring-2 ring-primary ring-offset-1',
+          // A failed bulk-commit left this card behind — flash an error ring so it stands out from
+          // untouched cards. The highlight ring (deep-link) takes precedence when both are set.
+          failed && !highlighted && 'ring-2 ring-destructive ring-offset-1',
+        )}
+      >
+        <ItemTypeIcon typeName={item.itemTypeName} className="size-4 shrink-0" />
+        {/* Title owns the whole first row (no badge sibling stealing width → truncates much later). The
           duplicate marker drops to the subtitle line as a compact icon-chip, where it competes with the
           lower-priority preview text instead of the title. `pr-14` reserves a gutter on hover so the
           revealed action overlay never sits over the last characters of a long title/subtitle. */}
-      <div className="min-w-0 flex-1 group-hover:pr-14 group-focus-within:pr-14 touch:pr-14">
-        <p className="truncate text-sm font-medium">{item.title}</p>
-        <div className="flex min-w-0 items-center gap-1.5">
-          {!inTrash && item.duplicateOf && <DuplicateBadge match={item.duplicateOf} />}
-          {subtitle && <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{subtitle}</p>}
+        <div className="min-w-0 flex-1 group-hover:pr-14 group-focus-within:pr-14 touch:pr-14">
+          <p className="truncate text-sm font-medium">{item.title}</p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            {!inTrash && item.duplicateOf && <DuplicateBadge match={item.duplicateOf} />}
+            {subtitle && <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{subtitle}</p>}
+          </div>
         </div>
-      </div>
 
-      <div
-        data-no-drag
-        onClick={(event) => event.stopPropagation()}
-        // Absolute overlay pinned to the right edge so it reserves NO row width (per Tailwind's
-        // hover-action pattern) — the text column truncates against the card edge, not this column.
-        // Hover-reveal on desktop; always visible on touch/mobile (no hover there) via the `touch:`
-        // variant (coarse pointer OR < lg viewport) so the actions are reachable without a hover.
-        // A faint card-colored backdrop keeps the icons legible where they overlap text on a long row.
-        className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0 rounded-md bg-card/80 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100 touch:opacity-100"
-      >
-        {inTrash ? (
-          <>
-            {canRestore ? (
-              <IconAction label="Restore" onClick={restore} disabled={busy}>
-                {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Undo2 className="size-3.5" />}
+        <div
+          data-no-drag
+          onClick={(event) => event.stopPropagation()}
+          // Absolute overlay pinned to the right edge so it reserves NO row width (per Tailwind's
+          // hover-action pattern) — the text column truncates against the card edge, not this column.
+          // Hover-reveal on desktop; always visible on touch/mobile (no hover there) via the `touch:`
+          // variant (coarse pointer OR < lg viewport) so the actions are reachable without a hover.
+          // A faint card-colored backdrop keeps the icons legible where they overlap text on a long row.
+          className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0 rounded-md bg-card/80 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100 touch:opacity-100"
+        >
+          {inTrash ? (
+            <>
+              {canRestore ? (
+                <IconAction label="Restore" onClick={restore} disabled={busy}>
+                  {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Undo2 className="size-3.5" />}
+                </IconAction>
+              ) : (
+                <>
+                  <IconAction label="Edit" onClick={openEditor} disabled={busy}>
+                    <Pencil className="size-3.5" />
+                  </IconAction>
+                  <IconAction
+                    label="Save now"
+                    tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
+                    onClick={saveNow}
+                    disabled={busy}
+                  >
+                    {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+                  </IconAction>
+                </>
+              )}
+              <IconAction label="Delete forever" onClick={() => setDeleteConfirmOpen(true)} disabled={busy} destructive>
+                <Trash2 className="size-3.5" />
               </IconAction>
-            ) : (
-              <>
-                <IconAction label="Edit" onClick={openEditor} disabled={busy}>
-                  <Pencil className="size-3.5" />
-                </IconAction>
-                <IconAction
-                  label="Save now"
-                  tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
-                  onClick={saveNow}
-                  disabled={busy}
-                >
-                  {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
-                </IconAction>
-              </>
-            )}
-            <IconAction label="Delete forever" onClick={() => setDeleteConfirmOpen(true)} disabled={busy} destructive>
-              <Trash2 className="size-3.5" />
-            </IconAction>
-          </>
-        ) : (
-          <>
-            <IconAction label="Delete" tooltip="Delete (move to trash)" onClick={trash} disabled={busy} destructive>
-              <Trash2 className="size-3.5" />
-            </IconAction>
-            <IconAction
-              label="Save now"
-              tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
-              onClick={saveNow}
-              disabled={busy}
-            >
-              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
-            </IconAction>
-          </>
-        )}
-      </div>
+            </>
+          ) : (
+            <>
+              <IconAction label="Delete" tooltip="Delete (move to trash)" onClick={trash} disabled={busy} destructive>
+                <Trash2 className="size-3.5" />
+              </IconAction>
+              <IconAction
+                label="Save now"
+                tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
+                onClick={saveNow}
+                disabled={busy}
+              >
+                {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              </IconAction>
+            </>
+          )}
+        </div>
 
-      <EditDraftDrawer
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        jobId={jobId}
-        item={item}
-        patchDraft={patchDraft}
-        onEdited={(patch) => {
-          // A successful draft edit also clears a prior bulk-commit failure ring on this card.
-          onClearFailed?.()
-          onEdited(patch)
-        }}
-        busy={busy}
-        canCommit={!inTrash || !canRestore}
-        onTrash={async () => {
-          await trash()
-          setEditOpen(false)
-        }}
-        onCommit={async () => {
-          await saveNow()
-          // saveNow drops the card on success (onRemoved) and may open the collection-confirm dialog;
-          // close the drawer either way so the confirm dialog (rendered on the card) isn't behind it.
-          setEditOpen(false)
-        }}
-      />
-      <Dialog open={collectionConfirmOpen} onOpenChange={setCollectionConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create the collection for this item?</DialogTitle>
-            <DialogDescription>
-              This Brain Dump wants to save items into a new collection. Saving this item now will create
-              that collection. You can save it without the collection instead.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => confirmSaveNow(false)} disabled={busy}>
-              Save without collection
-            </Button>
-            <Button size="sm" onClick={() => confirmSaveNow(true)} disabled={busy}>
-              Create and save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete this draft permanently?</DialogTitle>
-            <DialogDescription>
-              “{item.title}” will be removed from this Brain Dump for good. This can’t be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button variant="destructive" size="sm" onClick={deleteForever} disabled={busy}>
-              Delete forever
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        <EditDraftDrawer
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          jobId={jobId}
+          item={item}
+          patchDraft={patchDraft}
+          targetCollections={targetCollections}
+          onEdited={(patch) => {
+            // A successful draft edit also clears a prior bulk-commit failure ring on this card.
+            onClearFailed?.()
+            onEdited(patch)
+          }}
+          busy={busy}
+          canCommit={!inTrash || !canRestore}
+          onTrash={async () => {
+            await trash()
+            setEditOpen(false)
+          }}
+          onCommit={async () => {
+            await saveNow()
+            // saveNow drops the card on success (onRemoved) and may open the collection-confirm dialog;
+            // close the drawer either way so the confirm dialog (rendered on the card) isn't behind it.
+            setEditOpen(false)
+          }}
+        />
+        <Dialog open={collectionConfirmOpen} onOpenChange={setCollectionConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create the collection for this item?</DialogTitle>
+              <DialogDescription>
+                This Brain Dump wants to save items into a new collection. Saving this item now will create
+                that collection. You can save it without the collection instead.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => confirmSaveNow(false)} disabled={busy}>
+                Save without collection
+              </Button>
+              <Button size="sm" onClick={() => confirmSaveNow(true)} disabled={busy}>
+                Create and save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete this draft permanently?</DialogTitle>
+              <DialogDescription>
+                “{item.title}” will be removed from this Brain Dump for good. This can’t be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button variant="destructive" size="sm" onClick={deleteForever} disabled={busy}>
+                Delete forever
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </TooltipProvider>
   )
 }
@@ -498,6 +504,9 @@ interface EditDraftDrawerProps {
   onEdited: (patch: Partial<BrainDumpDraftItem>) => void
   // Mirrors the card's busy state so the drawer's Delete/Commit lock during a card-level action.
   busy: boolean
+  // The job's "Save items to collection" target — shown read-only so the user sees where this draft will
+  // be saved (drafts have no per-item collections; they attach to the job target on commit).
+  targetCollections?: CollectionPickerItem[]
   // Commit (→ live item) is offered for live drafts and for closed-job trash drafts (still committable),
   // but not for a restorable trash draft (the user restores it first via the card).
   canCommit: boolean
@@ -538,9 +547,9 @@ function draftToFullItem(item: BrainDumpDraftItem): FullItem {
 // The draft edit drawer reuses the app's real item-edit drawer content (DRY + consistency): same title
 // editor, type-switcher, language picker, Monaco content editor, AI description/tags. Save is routed to
 // the draft PATCH endpoint via `onSubmitOverride` instead of the real-item update flow. Drafts have no
-// per-item collections (they attach to the job's collection target on commit), so the collection picker
-// is hidden by passing an empty list.
-function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, onEdited, busy, canCommit, onTrash, onCommit }: EditDraftDrawerProps) {
+// per-item collections — they attach to the job's collection target on commit — so the field shows that
+// shared target read-only (collectionsReadOnly) rather than an editable picker.
+function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCollections, onEdited, busy, canCommit, onTrash, onCommit }: EditDraftDrawerProps) {
   const saveDraft = async (payload: UpdateItemInput): Promise<void> => {
     const patch: Partial<BrainDumpDraftItem> = {
       title: payload.title,
@@ -579,7 +588,8 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, onEdited
           <ItemDrawerEditContent
             key={item.id}
             item={draftToFullItem(item)}
-            collections={[]}
+            collections={targetCollections ?? []}
+            collectionsReadOnly
             onClose={() => onOpenChange(false)}
             onCancel={() => onOpenChange(false)}
             onSave={() => onOpenChange(false)}
@@ -602,7 +612,7 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, onEdited
                         aria-label="Delete"
                       >
                         <Trash2 className="size-4" />
-                        <span className={ACTIONBAR_LABEL_CLASS}>Delete</span>
+                        <span className={actionbarLabelClass(2)}>Delete</span>
                       </Button>
                     }
                   />
@@ -614,7 +624,7 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, onEdited
                       render={
                         <Button size="sm" className={ACTIONBAR_BUTTON_CLASS} onClick={onCommit} disabled={disabled || busy} aria-label="Commit">
                           <PackageCheck className="size-4" />
-                          <span className={ACTIONBAR_LABEL_CLASS}>Commit</span>
+                          <span className={actionbarLabelClass(3)}>Commit</span>
                         </Button>
                       }
                     />

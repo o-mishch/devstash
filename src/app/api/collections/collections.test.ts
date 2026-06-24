@@ -33,7 +33,7 @@ import {
 import { canCreateCollection } from '@/lib/db/usage'
 
 import { GET, POST } from './route'
-import { PATCH, DELETE } from './[id]/route'
+import { GET as GET_BY_ID, PATCH, DELETE } from './[id]/route'
 import { PATCH as PATCH_FAVORITE } from './[id]/favorite/route'
 
 const mockSession = getCachedSession as ReturnType<typeof vi.fn>
@@ -142,6 +142,28 @@ describe('POST /collections', () => {
   })
 })
 
+describe('GET /collections/{id}', () => {
+  it('returns 401 when not signed in', async () => {
+    mockSession.mockResolvedValue(null)
+    const res = await GET_BY_ID(req('GET'), params('col-1'))
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 404 when the collection does not exist or belongs to another user', async () => {
+    mockGetById.mockResolvedValue(null)
+    const res = await GET_BY_ID(req('GET'), params('missing'))
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 200 with the collection, scoped to the session userId', async () => {
+    mockGetById.mockResolvedValue(mockCollection)
+    const res = await GET_BY_ID(req('GET'), params('col-1'))
+    expect(res.status).toBe(200)
+    expect(mockGetById).toHaveBeenCalledWith('user-1', 'col-1')
+    expect((await res.json()).id).toBe('col-1')
+  })
+})
+
 describe('PATCH /collections/{id}', () => {
   it('returns 401 when not signed in', async () => {
     mockSession.mockResolvedValue(null)
@@ -155,10 +177,9 @@ describe('PATCH /collections/{id}', () => {
   })
 
   it('returns 404 when the collection does not exist', async () => {
-    mockGetById.mockResolvedValue(null)
+    mockUpdate.mockResolvedValue(null)
     const res = await PATCH(req('PATCH', { name: 'Updated' }), params('missing'))
     expect(res.status).toBe(404)
-    expect(mockUpdate).not.toHaveBeenCalled()
   })
 
   it('returns 200 and updates isFavorite alone, scoped to the session userId', async () => {
@@ -177,14 +198,13 @@ describe('DELETE /collections/{id}', () => {
   })
 
   it('returns 404 when the collection does not exist', async () => {
-    mockGetById.mockResolvedValue(null)
+    mockDelete.mockResolvedValue(false)
     const res = await DELETE(req('DELETE'), params('missing'))
     expect(res.status).toBe(404)
-    expect(mockDelete).not.toHaveBeenCalled()
   })
 
   it('returns 204 and deletes scoped to the session userId', async () => {
-    mockDelete.mockResolvedValue(undefined)
+    mockDelete.mockResolvedValue(true)
     const res = await DELETE(req('DELETE'), params('col-1'))
     expect(res.status).toBe(204)
     expect(mockDelete).toHaveBeenCalledWith('user-1', 'col-1')

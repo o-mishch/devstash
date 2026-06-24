@@ -1,7 +1,6 @@
 'use client'
 
 import { type ReactNode, useEffect, useCallback, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
@@ -16,19 +15,18 @@ import { collectionFormSchema } from '@/lib/utils/validators'
 import { useDirtyGuard } from '@/hooks/use-dirty-guard'
 import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
+import { useApplyCollectionSave } from '@/hooks/use-collections'
+import type { CollectionWithTypes } from '@/types/collection'
 
 type FormValues = z.input<typeof collectionFormSchema>
 
-// What `onSubmitAction` resolves to — the openapi-fetch result shape (it does not throw): `error` is
-// the parsed `{ message }` body on failure; `response.status` drives the Pro-gate (403) branch.
+// What `onSubmitAction` resolves to — the openapi-fetch result shape (it does not throw): `data` is the
+// saved collection on success; `error` is the parsed `{ message }` body on failure; `response.status`
+// drives the Pro-gate (403) branch.
 interface CollectionSubmitResult {
-  error?: { message?: string }
-  response: Response
-}
-
-interface CollectionFormDefaultValues {
-  name: string
-  description: string
+  data?: CollectionWithTypes | null
+  error?: { message: string } | null
+  response?: { status: number } | null
 }
 
 interface CollectionFormDialogProps {
@@ -36,14 +34,25 @@ interface CollectionFormDialogProps {
   description: string
   submitText: string
   successMessage: string
-  defaultValues: CollectionFormDefaultValues
-  // Returns the openapi-fetch result — `{ error, response }`, never throws.
-  onSubmitAction: (data: FormValues) => Promise<CollectionSubmitResult>
+  defaultValues?: Partial<FormValues>
+  onSubmitAction: (values: FormValues) => Promise<CollectionSubmitResult>
+  // Optional: controlled (parent-driven `open`) usages render no trigger of their own.
   trigger?: ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
   idPrefix?: string
   canCreate?: boolean
+  // True for the create dialog (not edit): a new collection can push a free-tier user over the limit,
+  // flipping canCreateCollection in /profile/me. Edit never changes the count, so it skips this.
+  isCreate?: boolean
+  // Fired with the saved collection on success (used to auto-select a freshly created collection).
+  onCreated?: (collection: CollectionWithTypes) => void
+  // Desktop morph origin for a controlled (no-trigger) open — lets the dialog grow out of the element
+  // that opened it (e.g. the combobox "Create" row). Ignored when a built-in trigger captures its own.
+  morphOrigin?: MorphOrigin | null
+  // Lift the dialog above another open drawer/dialog (z-50) and dim it — set when this is opened from
+  // inside the item drawer / item-create dialog's collection picker.
+  elevated?: boolean
 }
 
 export function CollectionFormDialog({
@@ -58,10 +67,15 @@ export function CollectionFormDialog({
   onOpenChange: controlledOnOpenChange,
   idPrefix,
   canCreate = true,
+  isCreate = false,
+  onCreated,
+  morphOrigin: controlledMorphOrigin,
+  elevated = false,
 }: CollectionFormDialogProps) {
-  const router = useRouter()
+  const applyCollectionSave = useApplyCollectionSave()
   const { openPrompt } = useUpgradePromptStore()
-  const [morphOrigin, setMorphOrigin] = useState<MorphOrigin | null>(null)
+  // Set when the built-in trigger is clicked; for a controlled open the caller supplies the origin instead.
+  const [triggerMorphOrigin, setTriggerMorphOrigin] = useState<MorphOrigin | null>(null)
 
   const form = useForm<FormValues>({
     resolver: zodResolver(collectionFormSchema),
@@ -95,14 +109,15 @@ export function CollectionFormDialog({
   // onSuccess on the result rather than onError.
   const submitMutation = useMutation({
     mutationFn: (data: FormValues) => onSubmitAction(data),
-    onSuccess: ({ error, response }) => {
+    onSuccess: ({ data, error, response }) => {
       if (!error) {
         toast.success(successMessage)
         handleOpenChange(false, true)
-        router.refresh()
+        applyCollectionSave(data, { isCreate })
+        if (data) onCreated?.(data)
         return
       }
-      if (response.status === 403) {
+      if (response?.status === 403) {
         toast.warning(error.message || 'Upgrade to Pro to continue.')
       } else {
         toast.error(error.message || 'Failed to save collection')
@@ -121,7 +136,7 @@ export function CollectionFormDialog({
         openPrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
         return
       }
-      setMorphOrigin(morphOriginFromClick(e))
+      setTriggerMorphOrigin(morphOriginFromClick(e))
       handleOpenChange(true)
     }} className="contents">
       {trigger}
@@ -141,7 +156,8 @@ export function CollectionFormDialog({
         title={title}
         description={description}
         desktopClassName="sm:max-w-[440px]"
-        morphOrigin={morphOrigin}
+        morphOrigin={controlledMorphOrigin ?? triggerMorphOrigin}
+        elevated={elevated}
         mobileResizable
       >
         {(isDesktop) =>

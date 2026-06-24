@@ -3,7 +3,7 @@ name: cleanup
 description: "Run DevStash housekeeping, cleanup fixes, or a deep quality audit over the current changeset. Use when asked to clean up, check before commit, find dead code, remove console/TODO leftovers, check env var drift, verify Prisma migration sync, simplify over-engineered code, or audit uncommitted work before shipping. Supports modes: check, run, improve."
 # Claude Code specific fields — ignored by Codex
 argument-hint: check|run|improve
-allowed-tools: Agent, Glob, Grep, Read, Write, Edit, Skill, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(git *), Bash(rg *), Bash(grep *), Bash(find *), Bash(ls *), Bash(npm run *), Bash(npx prisma *), Bash(pgrep *), Bash(pkill *), Bash(sleep *), Bash(ps *), Bash(rm -rf .next)
+allowed-tools: Agent, Glob, Grep, Read, Write, Edit, Skill, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(git *), Bash(cd *), Bash(rg *), Bash(grep *), Bash(find *), Bash(ls *), Bash(cat *), Bash(head *), Bash(tail *), Bash(sed *), Bash(awk *), Bash(echo *), Bash(cut *), Bash(tr *), Bash(for *), Bash(if *), Bash(while *), Bash(test *), Bash([ *), Bash(wc *), Bash(sort *), Bash(uniq *), Bash(xargs *), Bash(npm run *), Bash(npm test *), Bash(npx *), Bash(npx prisma *), Bash(npx eslint *), Bash(npx tsc *), Bash(pgrep *), Bash(pkill *), Bash(sleep *), Bash(ps *), Bash(rm -rf .next)
 ---
 
 # DevStash Cleanup

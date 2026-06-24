@@ -1,23 +1,19 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useLayoutEffect } from 'react'
+import { useHydrateEditorPreferences } from '@/hooks/use-editor-preferences'
 import type { EditorPreferences } from '@/types/editor-preferences'
 
 interface EditorPreferencesInitializerProps {
-  preferences: EditorPreferences | null
+  preferences: EditorPreferences
 }
 
-export function EditorPreferencesInitializer({
-  preferences,
-}: EditorPreferencesInitializerProps) {
-  useEffect(() => {
-    if (preferences) {
-      useEditorPreferencesStore.getState().setPreferences(preferences)
-    } else {
-      useEditorPreferencesStore.setState({ isInitialized: true })
-    }
-  }, [preferences])
+export function EditorPreferencesInitializer({ preferences }: EditorPreferencesInitializerProps) {
+  const hydrateEditorPreferences = useHydrateEditorPreferences()
+
+  useLayoutEffect(() => {
+    hydrateEditorPreferences(preferences)
+  }, [hydrateEditorPreferences, preferences])
 
   return null
 }

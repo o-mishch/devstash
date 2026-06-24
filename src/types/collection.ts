@@ -5,7 +5,9 @@ export interface CollectionWithTypes {
   name: string
   description: string | null
   isFavorite: boolean
-  createdAt: Date
+  // ISO date-time string — fetched from the API as a string (no client-side Date coercion), only ever
+  // rendered via formatDate(Date | string) or wrapped in new Date(). Mirrors LightItem.createdAt (§6.4).
+  createdAt: string
   itemCount: number
   dominantColor: string | null
   types: ItemType[]
@@ -17,7 +19,7 @@ export const EMPTY_COLLECTION: CollectionWithTypes = {
   name: '',
   description: '',
   isFavorite: false,
-  createdAt: new Date(),
+  createdAt: new Date(0).toISOString(),
   itemCount: 0,
   dominantColor: null,
   types: [],

@@ -30,12 +30,6 @@ export interface AuthedCtxWithParams<P> extends AuthedCtx {
   params: P
 }
 
-// Shared route-param shape for the common single-`{id}` dynamic segments. Routes with a
-// differently-named or differently-typed segment declare their own param interface instead.
-export interface IdParam {
-  id: string
-}
-
 export interface AuthedRouteOptions {
   rateLimit?: RateLimitKey
 }

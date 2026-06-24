@@ -1,6 +1,7 @@
-import { authedRouteWithParams, type IdParam } from '@/lib/api/route'
+import { authedRouteWithParams } from '@/lib/api/route'
 import { json, problem, parseOr422 } from '@/lib/api/http'
 import { downloadQueryParse } from '@/lib/api/schemas/download'
+import { idParam } from '@/lib/api/schemas/common'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { getDownloadItem } from '@/lib/db/items'
 import { getSignedDownloadUrl, getSignedUrlExpiresAt } from '@/lib/storage/s3'
@@ -11,19 +12,25 @@ import type { SignedDownloadUrlResponse } from '@/types/item'
 
 const log = logger.child({ tag: 'download-url' })
 
+type RouteParams = Awaited<RouteContext<'/api/download/[id]/url'>['params']>
+
 async function signedDownloadUrlResponse(storageKey: string, fileName?: string): Promise<SignedDownloadUrlResponse> {
   const url = await getSignedDownloadUrl(storageKey, undefined, fileName)
   return { url, expiresAt: getSignedUrlExpiresAt().toISOString() }
 }
 
-export const GET = authedRouteWithParams<IdParam>({}, async ({ userId, isPro, request, params }) => {
+export const GET = authedRouteWithParams<RouteParams>({}, async ({ userId, isPro, request, params }) => {
+  const parsedParams = parseOr422(idParam, params)
+  if (!parsedParams.ok) return parsedParams.res
+  const { id } = parsedParams.data
+
   const parsed = parseOr422(downloadQueryParse, {
     preview: request.nextUrl.searchParams.get('preview') ?? undefined,
   })
   if (!parsed.ok) return parsed.res
   const preview = parsed.data.preview ?? false
 
-  const item = await getDownloadItem(userId, params.id)
+  const item = await getDownloadItem(userId, id)
   if (!item) return problem(404, ErrorMessage.FILE_NOT_FOUND)
 
   if (!PRO_ITEM_TYPE_NAMES.has(item.itemType.name)) {

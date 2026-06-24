@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { KeyRound } from 'lucide-react'
 import { SubmitButton } from '@/components/ui/button'
@@ -29,7 +28,6 @@ interface SetPasswordResult {
 export function SetPasswordDialog({ suggestedEmails, verificationDisabled, onCredentialAdded }: SetPasswordDialogProps) {
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState('')
-  const router = useRouter()
 
   const normalizedEmail = email.trim().toLowerCase()
   // The flow is driven solely by DISABLE_EMAIL_VERIFICATION. Verification enabled → a confirmation link
@@ -48,8 +46,7 @@ export function SetPasswordDialog({ suggestedEmails, verificationDisabled, onCre
     }
     setOpen(false)
     setEmail('')
-    router.refresh()
-  }, [router, onCredentialAdded])
+  }, [onCredentialAdded])
 
   const { formAction, isPending } = useApiFormAction<SetPasswordResult>(async (body) => {
     // The email input is controlled by `email`, so `normalizedEmail` is the submitted value. Adding a

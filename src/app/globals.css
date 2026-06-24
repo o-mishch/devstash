@@ -397,10 +397,3 @@
 ::view-transition-new(root) {
   z-index: 9999;
 }
-
-/* Drive the dark-light switch thumb via a data attribute so it updates synchronously
-   inside startViewTransition's callback — before React re-renders — preventing the
-   flicker where the thumb briefly appears at its old position in the "new" snapshot. */
-[data-mode='dark'] .dark-light-switch-thumb {
-  transform: translateX(calc(100% + 0.25rem));
-}

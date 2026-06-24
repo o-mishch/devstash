@@ -7,7 +7,7 @@ import type { editor } from 'monaco-editor'
 import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
 import { useIsTouch } from '@/hooks/use-is-touch'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useResolvedEditorPreferences } from '@/hooks/use-editor-preferences'
 import { getDynamicMonacoTheme } from '@/lib/editor/monaco-theme'
 import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
 
@@ -30,7 +30,7 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
   const isTouch = useIsTouch()
   const monaco = useMonaco()
 
-  const { fontSize, minimap, wordWrap, tabSize, colorMode, appTheme, editorThemeMode } = useEditorPreferencesStore()
+  const { fontSize, minimap, wordWrap, tabSize, colorMode, appTheme, editorThemeMode } = useResolvedEditorPreferences()
 
   const useMonacoNativeTheme = editorThemeMode !== 'app'
   const monacoNativeColorMode = editorThemeMode === 'dark' ? 'dark' : colorMode

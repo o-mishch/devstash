@@ -1,5 +1,8 @@
 Get recommendations and best practices from context7
 
+add all commands for which you are asking for permissions to allowed-tools in:
+.agents/skills/cleanup 
+.claude/settings.local.json
 
 
 ## Playwright MCP Prompt

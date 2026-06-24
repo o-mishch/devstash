@@ -32,6 +32,9 @@ interface SkinWidgetProps {
   skin?: UiSkin
   /** Explicit override; takes precedence over the `skin` lookup. */
   headerWrapperClassName?: string
+  /** Skins whose panel chrome already supplies the header hover affordance set this so the widget
+      doesn't add its own tint on top (avoids a double hover). */
+  headerHoverless?: boolean
 }
 
 // A skin-agnostic collapsible dashboard widget: the header doubles as the toggle (chevron +
@@ -49,6 +52,7 @@ export function SkinWidget({
   children,
   skin,
   headerWrapperClassName,
+  headerHoverless = false,
 }: SkinWidgetProps) {
   const [open, setOpen] = useState(true)
   const wrapperClass = headerWrapperClassName ?? (skin ? SKIN_HEADER_WRAPPER_CLASS[skin] : undefined)
@@ -58,7 +62,10 @@ export function SkinWidget({
       <div className={cn('group relative', wrapperClass || '-mx-2 px-2 py-1.5 rounded-md')}>
         <CollapsibleTrigger
           aria-label={`Toggle ${title} section`}
-          className="absolute inset-0 z-10 rounded-[inherit] outline-none transition-all hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            'absolute inset-0 z-10 rounded-[inherit] outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring',
+            !headerHoverless && 'hover:bg-foreground/5'
+          )}
         />
         <div
           className={cn(

@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
 import { PasswordInput } from '@/components/ui/password-input'
@@ -20,7 +19,6 @@ interface RemovePasswordDialogProps {
 export function RemovePasswordDialog({ onCredentialRemoved }: RemovePasswordDialogProps) {
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
-  const router = useRouter()
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen)
@@ -37,7 +35,6 @@ export function RemovePasswordDialog({ onCredentialRemoved }: RemovePasswordDial
       setOpen(false)
       setPassword('')
       onCredentialRemoved()
-      router.refresh()
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to delete sign-in.'),
   })

@@ -21,6 +21,9 @@ interface BottomSheetProps {
   // and releasing below a small height dismisses. The handle owns the gesture, so swipe-to-dismiss
   // is disabled and the body scrolls normally.
   resizable?: boolean
+  // Lift the sheet (backdrop + content) above another open drawer/dialog at z-50 and force its
+  // backdrop so the surface behind dims — for a bottom sheet opened from inside the item drawer.
+  elevated?: boolean
 }
 
 // h-14 app header the sheet rises just beneath; the resize gesture is clamped to leave it visible.
@@ -36,7 +39,7 @@ const DISMISS_OVERSHOOT_PX = 80
 // both feel identical on touch. Drag engages from the handle/header, or from the body once it's
 // scrolled to the top (see useSwipeToDismiss); otherwise the body scrolls normally. With
 // `resizable`, the handle instead drives a height drag (see BottomSheetProps.resizable).
-export function BottomSheet({ open, onOpenChange, title, description, children, className, resizable = false }: BottomSheetProps) {
+export function BottomSheet({ open, onOpenChange, title, description, children, className, resizable = false, elevated = false }: BottomSheetProps) {
   const { dragStyle, handlers } = useSwipeToDismiss({
     direction: 'down',
     threshold: 0.3,
@@ -206,6 +209,7 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
       <SheetContent
         side="bottom"
         showCloseButton={false}
+        elevated={elevated}
         style={{
           ...(resizable
             ? {

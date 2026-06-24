@@ -49,6 +49,18 @@ export const queryKeys = {
   /** Remote global-search results, keyed by the debounced query string. */
   search: (query: string): QueryKey => ['search', query],
   aiUsage: (): QueryKey => $api.queryOptions('get', '/ai/usage').queryKey,
+  billingContext: (): QueryKey => $api.queryOptions('get', '/billing/context').queryKey,
+  /** Full profile read (account summary, avatar, stats) behind the profile page. */
+  profile: (): QueryKey => $api.queryOptions('get', '/profile').queryKey,
+  userProfile: (): QueryKey => $api.queryOptions('get', '/profile/me').queryKey,
+  editorPreferences: (): QueryKey => $api.queryOptions('get', '/profile/editor-preferences').queryKey,
+  collections: {
+    /** Every GET /collections variant. */
+    list: (): QueryKey => $api.queryOptions('get', '/collections').queryKey,
+    /** Single-shot collection detail (GET /collections/{id}). */
+    detail: (id: string): QueryKey =>
+      $api.queryOptions('get', '/collections/{id}', { params: { path: { id } } }).queryKey,
+  },
 } as const
 
 // ── Prefix matchers for keys whose `init` varies ──────────────────────────────────────────────────
@@ -57,6 +69,12 @@ export const queryKeys = {
 export const queryKeyMatches = {
   /** Both Brain Dump job lists — active (`{}`) and History (`{ history: '1' }`). */
   brainDumpJobs: (key: QueryKey): boolean => key[0] === 'get' && key[1] === '/ai/brain-dump',
-  /** Both source-picker tabs — `file` and `note`. */
+  /** Both source-picker tabs — `file` and `content`. */
   brainDumpSources: (key: QueryKey): boolean => key[0] === 'get' && key[1] === '/ai/brain-dump/sources',
+  /** Every GET /collections variant — the list (`/collections`), detail (`/collections/{id}`), and any sub-path.
+   * Precise so a sibling path like `/collections-export` can never false-positive on a prefix match. */
+  collections: (key: QueryKey): boolean =>
+    key[0] === 'get' &&
+    typeof key[1] === 'string' &&
+    (key[1] === '/collections' || key[1] === '/collections/{id}' || key[1].startsWith('/collections/{id}/')),
 } as const

@@ -108,7 +108,8 @@ export function StatsCardsSkeleton({ isPro }: StatsCardsSkeletonProps) {
   return (
     <div className={statsCardsGridClass(isPro)}>
       {[...Array(chipCount)].map((_, i) => (
-        <div key={i} className={STAT_CHIP_BASE}>
+        // Index 2 is the Favorite Items chip — hidden on mobile to mirror StatsCards.
+        <div key={i} className={cn(STAT_CHIP_BASE, i === 2 && 'max-sm:hidden')}>
           <Skeleton className="size-8 shrink-0 rounded-lg" />
           {/* Bars kept shorter than the icon so it governs the chip height — exactly as the loaded
            * StatChipBody does. flex-1 + max-w so the label never overflows on mobile. */}

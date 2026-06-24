@@ -1,12 +1,12 @@
 'use client'
 
-import { useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { Sparkles, ArrowRight, RotateCw, Clock } from 'lucide-react'
 import type { UiSkin } from '@/types/ui-skins'
 import { NumberTicker } from '@/components/ui/number-ticker'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { useAiUsage } from '@/hooks/use-ai-usage'
+import { useMounted } from '@/hooks/use-mounted'
 import { useActiveBrainDumpJobs, BRAIN_DUMP_STATUS_LABEL } from '@/hooks/use-brain-dump'
 import { formatRenewIn } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
@@ -36,17 +36,10 @@ interface BrainDumpWidgetProps {
 export function BrainDumpWidget({ skin, className }: BrainDumpWidgetProps) {
   const { data: usage } = useAiUsage()
   const { data: jobsData } = useActiveBrainDumpJobs()
-  // Defer meter rendering until after hydration — `useAiUsage` is gated on the Zustand `isPro`
-  // flag which starts `false` (SSR default) and is only set in a `useLayoutEffect` after mount.
-  // Rendering the meter on the server would produce 0/0 which conflicts with the real values
-  // the client sees after the flag initializes, causing a hydration mismatch.
-  // `useSyncExternalStore` with a no-op subscribe is the idiomatic way to detect client-side
-  // without triggering the react-hooks/set-state-in-effect lint rule.
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  )
+  // Defer meter rendering until after hydration — `useAiUsage` is gated on `isPro`, which starts
+  // `false` (SSR default) and only resolves to the real value after mount. Rendering the meter on the
+  // server would produce 0/0 and conflict with the post-hydration values, causing a hydration mismatch.
+  const mounted = useMounted()
 
   const meter = usage?.brainDump
   const remaining = meter?.remaining ?? 0

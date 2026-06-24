@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { brainDumpInput, brainDumpItemPatchInput } from './ai'
+import { brainDumpInput, brainDumpItemPatchInput, brainDumpSourceQuery } from './ai'
 import {
   SPLIT_FILE_MAX_INPUT_CHARS,
   SPLIT_FILE_MIN_INPUT_CHARS,
@@ -32,6 +32,17 @@ describe('brainDumpInput', () => {
     expect(
       brainDumpInput.safeParse({ text: 'a'.repeat(SPLIT_FILE_MIN_INPUT_CHARS), sourceItemId: 'itm_1' }).success,
     ).toBe(false)
+  })
+})
+
+describe('brainDumpSourceQuery', () => {
+  it('defaults to file sources and accepts content sources', () => {
+    expect(brainDumpSourceQuery.parse({})).toEqual({ type: 'file' })
+    expect(brainDumpSourceQuery.safeParse({ type: 'content' }).success).toBe(true)
+  })
+
+  it('rejects the old note-only source kind', () => {
+    expect(brainDumpSourceQuery.safeParse({ type: 'note' }).success).toBe(false)
   })
 })
 

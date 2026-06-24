@@ -205,14 +205,14 @@ export const brainDumpJobSnapshotSchema = z
   .meta({ id: 'BrainDumpJobSnapshot' })
 
 // GET /ai/brain-dump/sources?type= → which durable stash items the picker lists: eligible text
-// `file`s ("My files") or `brain-dump`-tagged `note`s ("Notes"). Defaults to `file`.
+// `file`s ("My files") or `brain-dump`-tagged content items ("Items"). Defaults to `file`.
 export const brainDumpSourceQuery = z.object({
-  type: z.enum(['file', 'note']).default('file'),
+  type: z.enum(['file', 'content']).default('file'),
 })
 
 // GET /ai/brain-dump/sources → an eligible source item for the "Select from my stash" picker.
 export const brainDumpSourceSchema = z
-  .object({ itemId: z.string(), name: z.string(), sizeBytes: z.number().nullable() })
+  .object({ itemId: z.string(), name: z.string(), itemTypeName: z.string(), sizeBytes: z.number().nullable() })
   .meta({ id: 'BrainDumpSource' })
 
 export const brainDumpSourceListSchema = z.object({ sources: z.array(brainDumpSourceSchema) }).meta({ id: 'BrainDumpSourceList' })
@@ -303,7 +303,7 @@ export const brainDumpListQuery = z.object({
 })
 
 // Path params for the per-job and per-draft split routes.
-export const brainDumpJobIdParam = z.object({ jobId: z.string().min(1) })
+export const brainDumpJobIdParam = z.object({ jobId: z.string().trim().min(1, 'Job is required.') })
 export type BrainDumpJobIdParam = z.infer<typeof brainDumpJobIdParam>
 export const brainDumpItemParams = z.object({ jobId: z.string().min(1), itemId: z.string().min(1) })
 export type BrainDumpItemParams = z.infer<typeof brainDumpItemParams>

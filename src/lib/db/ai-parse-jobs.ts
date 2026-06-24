@@ -298,14 +298,14 @@ export async function getSourceItemForParse(userId: string, itemId: string): Pro
 }
 
 /**
- * Resolves the boundary-truncated parse window for a source item (resource-minimal): a **note** or **snippet** slices
- * its already-loaded `content` in memory; a **file** does a bounded S3 range read (never the whole
+ * Resolves the boundary-truncated parse window for a source item (resource-minimal): a text-content
+ * stash item slices its already-loaded `content` in memory; a **file** does a bounded S3 range read (never the whole
  * object). Throws (caller maps to 422, no token spent) when the source is ineligible/unreadable — a
  * non-text type, a `file` without a `.txt`/`.md` name, or a missing/failed S3 object. Re-validates text
  * eligibility server-side; never trusts the client.
  */
 export async function getSourceText(item: ParseSourceItem): Promise<SourceTextResult> {
-  if (item.itemTypeName === 'note' || item.itemTypeName === 'snippet') {
+  if (ITEM_TYPES_WITH_CONTENT.has(item.itemTypeName)) {
     const result = boundaryTruncate(item.content ?? '', SPLIT_FILE_MAX_INPUT_CHARS)
     return { ...result, sourceName: deriveSourceName(item) }
   }
@@ -330,38 +330,40 @@ function deriveSourceName(item: ParseSourceItem): string | null {
 export interface ParseSourceCandidate {
   itemId: string
   name: string
+  itemTypeName: string
   sizeBytes: number | null
 }
 
-/** Which durable stash items the picker lists: eligible text `file`s, or `brain-dump`-tagged `note`s and `snippet`s. */
-export type ParseSourceKind = 'file' | 'note'
+/** Which durable stash items the picker lists: eligible text `file`s, or `brain-dump`-tagged content items. */
+export type ParseSourceKind = 'file' | 'content'
 
 /**
  * Lists eligible durable stash items for the "Select from my stash" picker (IDOR-scoped). Both kinds
  * require the `brain-dump` tag, so the picker lists only sources explicitly marked for parsing (the
  * feature tags its own uploads/paste-notes; a user can tag any item to opt it in):
  * - `file` — text `file` items ending in `.txt`/`.md` and tagged `brain-dump` ("My files" tab).
- * - `note` — `note` and `snippet` items tagged `brain-dump` ("Notes" tab), so a note or snippet marked for parsing
- *   (incl. a prior paste source the feature itself tagged) can be re-dumped. `sizeBytes` is the content length.
+ * - `content` — snippet/command/prompt/note items tagged `brain-dump` ("Items" tab), so any item with
+ *   stored text content can be re-dumped. `sizeBytes` is the content length.
  */
 export async function listParseSourceCandidates(
   userId: string,
   kind: ParseSourceKind = 'file',
 ): Promise<ParseSourceCandidate[]> {
-  if (kind === 'note') {
+  if (kind === 'content') {
     const rows = await prisma.item.findMany({
       where: {
         userId,
-        itemType: { name: { in: ['note', 'snippet'] } },
+        itemType: { name: { in: [...ITEM_TYPES_WITH_CONTENT] } },
         tags: { some: { name: BRAIN_DUMP_SOURCE_TAG } },
       },
-      select: { id: true, title: true, content: true },
+      select: { id: true, title: true, content: true, itemType: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
       take: 50,
     })
     return rows.map((row) => ({
       itemId: row.id,
       name: row.title || 'Untitled source',
+      itemTypeName: row.itemType.name,
       sizeBytes: row.content ? Buffer.byteLength(row.content, 'utf8') : null,
     }))
   }
@@ -380,7 +382,12 @@ export async function listParseSourceCandidates(
     orderBy: { createdAt: 'desc' },
     take: 50,
   })
-  return rows.map((row) => ({ itemId: row.id, name: row.fileName ?? 'Untitled file', sizeBytes: row.fileSize }))
+  return rows.map((row) => ({
+    itemId: row.id,
+    name: row.fileName ?? 'Untitled file',
+    itemTypeName: 'file',
+    sizeBytes: row.fileSize,
+  }))
 }
 
 export interface DeleteJobResult {

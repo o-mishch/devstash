@@ -1,25 +1,22 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useEditorPreferences } from '@/hooks/use-editor-preferences'
 
 export function ThemeInitializer() {
-  const appTheme = useEditorPreferencesStore((state) => state.appTheme)
-  const colorMode = useEditorPreferencesStore((state) => state.colorMode)
-  const uiSkin = useEditorPreferencesStore((state) => state.uiSkin)
-  const isInitialized = useEditorPreferencesStore((state) => state.isInitialized)
+  const { data: prefs } = useEditorPreferences()
 
   useEffect(() => {
-    // The guard is intentional: the root layout already server-renders the correct
+    // Guard intentional: the root layout already server-renders the correct
     // data-theme and class from the DB, so we must not touch them until
-    // EditorPreferencesInitializer calls setPreferences() (which sets isInitialized=true).
+    // EditorPreferencesInitializer seeds the cache (which sets prefs).
     // Overwriting earlier would flash the DEFAULT_EDITOR_PREFERENCES values, not the user's.
-    if (!isInitialized) return
+    if (!prefs) return
 
     const root = document.documentElement
-    root.setAttribute('data-theme', appTheme)
+    root.setAttribute('data-theme', prefs.appTheme)
 
-    if (colorMode === 'dark') {
+    if (prefs.colorMode === 'dark') {
       root.classList.add('dark')
       root.classList.remove('light')
     } else {
@@ -27,11 +24,11 @@ export function ThemeInitializer() {
       root.classList.remove('dark')
     }
 
-    document.cookie = `ds-theme=${encodeURIComponent(`${appTheme}|${colorMode}`)}; path=/; max-age=31536000; SameSite=Lax`
+    document.cookie = `ds-theme=${encodeURIComponent(`${prefs.appTheme}|${prefs.colorMode}`)}; path=/; max-age=31536000; SameSite=Lax`
     // Persist the skin so the dashboard's route-level loading.tsx can render the matching skin
     // skeleton from a request-synchronous cookie (no DB suspense). Mirrors the ds-theme cookie.
-    document.cookie = `ds-skin=${encodeURIComponent(uiSkin)}; path=/; max-age=31536000; SameSite=Lax`
-  }, [appTheme, colorMode, uiSkin, isInitialized])
+    document.cookie = `ds-skin=${encodeURIComponent(prefs.uiSkin)}; path=/; max-age=31536000; SameSite=Lax`
+  }, [prefs])
 
   return null
 }

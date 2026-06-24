@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { Sparkles, Upload, Loader2, Clipboard, FolderOpen, StickyNote, Info, Eye } from 'lucide-react'
+import { Sparkles, Upload, Loader2, Clipboard, FolderOpen, Library, Info, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { useOpenItemInDrawer } from '@/hooks/use-item-detail'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -26,6 +26,7 @@ import {
 } from '@/hooks/use-brain-dump'
 import { useAiUsage } from '@/hooks/use-ai-usage'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
+import { SlideIndicator } from '@/components/shared/slide-indicator'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -33,7 +34,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 
-type Mode = 'paste' | 'upload' | 'select' | 'notes'
+type Mode = 'paste' | 'upload' | 'select' | 'content'
 
 interface BrainDumpCardProps {
   isPro: boolean
@@ -56,20 +57,21 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
   const pendingSourceNames = [...new Set(activeJobs?.jobs.map((job) => job.sourceName ?? 'Unknown source') ?? [])]
 
   const [mode, setMode] = useState<Mode>('paste')
+
   const [text, setText] = useState('')
   // One flag covers uploading + job creation so every CTA disables together.
   const [busy, setBusy] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
+  const [selectedContentId, setSelectedContentId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { copy } = useCopyToClipboard()
 
   // Only fetch each picker list when a Pro user is on its tab.
   const sourcesQuery = useBrainDumpSources(isPro && mode === 'select', 'file')
   const sources = sourcesQuery.data?.sources ?? []
-  const notesQuery = useBrainDumpSources(isPro && mode === 'notes', 'note')
-  const notes = notesQuery.data?.sources ?? []
+  const contentQuery = useBrainDumpSources(isPro && mode === 'content', 'content')
+  const contentSources = contentQuery.data?.sources ?? []
 
   const nonBlank = useMemo(() => text.replace(/\s/g, '').length, [text])
   const overPasteCap = useMemo(() => new TextEncoder().encode(text).length > SPLIT_FILE_MAX_PASTE_BYTES, [text])
@@ -181,24 +183,51 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
               )}
             </h2>
             <p className="text-xs text-muted-foreground">
-              Paste, upload, or pick a file or note — AI splits it into ready-to-save items.
+              Paste, upload, or pick a tagged source — AI splits it into ready-to-save items.
             </p>
           </div>
         </div>
 
-        <Tabs value={mode} onValueChange={(value) => setMode(value as Mode)} className="mt-4">
-          <TabsList>
-            <TabsTrigger value="paste">
-              <Clipboard className="size-4" /> Paste
+        <Tabs
+          value={mode}
+          onValueChange={(value) => setMode(value as Mode)}
+          className="mt-4"
+        >
+          {/* @container/bdtabs: as the card narrows, each tab's text label collapses to icon-only one at
+              a time, starting from the rightmost (Items) — never all-or-nothing. Each label reveals at an
+              increasing container width, so the left tabs keep their text longest. */}
+          <TabsList className="@container/bdtabs relative w-full">
+            <TabsTrigger
+              value="paste"
+              className="relative z-10 data-active:bg-transparent dark:data-active:bg-transparent data-active:shadow-none dark:data-active:border-transparent data-active:text-primary-foreground dark:data-active:text-primary-foreground"
+            >
+              {mode === 'paste' && <SlideIndicator layoutId="brainDumpTabIndicator" />}
+              <Clipboard className="relative z-10 size-4" />
+              <span className="relative z-10 hidden @[230px]/bdtabs:inline">Paste</span>
             </TabsTrigger>
-            <TabsTrigger value="upload">
-              <Upload className="size-4" /> Upload
+            <TabsTrigger
+              value="upload"
+              className="relative z-10 data-active:bg-transparent dark:data-active:bg-transparent data-active:shadow-none dark:data-active:border-transparent data-active:text-primary-foreground dark:data-active:text-primary-foreground"
+            >
+              {mode === 'upload' && <SlideIndicator layoutId="brainDumpTabIndicator" />}
+              <Upload className="relative z-10 size-4" />
+              <span className="relative z-10 hidden @[290px]/bdtabs:inline">Upload</span>
             </TabsTrigger>
-            <TabsTrigger value="select">
-              <FolderOpen className="size-4" /> My files
+            <TabsTrigger
+              value="select"
+              className="relative z-10 data-active:bg-transparent dark:data-active:bg-transparent data-active:shadow-none dark:data-active:border-transparent data-active:text-primary-foreground dark:data-active:text-primary-foreground"
+            >
+              {mode === 'select' && <SlideIndicator layoutId="brainDumpTabIndicator" />}
+              <FolderOpen className="relative z-10 size-4" />
+              <span className="relative z-10 hidden @[350px]/bdtabs:inline">My files</span>
             </TabsTrigger>
-            <TabsTrigger value="notes">
-              <StickyNote className="size-4" /> Notes
+            <TabsTrigger
+              value="content"
+              className="relative z-10 data-active:bg-transparent dark:data-active:bg-transparent data-active:shadow-none dark:data-active:border-transparent data-active:text-primary-foreground dark:data-active:text-primary-foreground"
+            >
+              {mode === 'content' && <SlideIndicator layoutId="brainDumpTabIndicator" />}
+              <Library className="relative z-10 size-4" />
+              <span className="relative z-10 hidden @[410px]/bdtabs:inline">Items</span>
             </TabsTrigger>
           </TabsList>
 
@@ -287,21 +316,21 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
             )}
           </TabsContent>
 
-          <TabsContent value="notes" className="mt-3">
-            {notesQuery.isLoading ? (
+          <TabsContent value="content" className="mt-3">
+            {contentQuery.isLoading ? (
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> Loading your notes…
+                <Loader2 className="size-4 animate-spin" /> Loading your tagged items…
               </p>
             ) : (
               <SourcePicker
-                sources={notes}
-                selectedId={selectedNoteId}
+                sources={contentSources}
+                selectedId={selectedContentId}
                 busy={busy}
                 rateLimited={rateLimited}
                 resetAt={renewResetAt}
-                onSelect={setSelectedNoteId}
-                onStart={() => selectedNoteId && startFromSource(selectedNoteId)}
-                emptyMessage={`No notes tagged “${BRAIN_DUMP_SOURCE_TAG}” yet. Tag a note with “${BRAIN_DUMP_SOURCE_TAG}” and it shows up here.`}
+                onSelect={setSelectedContentId}
+                onStart={() => selectedContentId && startFromSource(selectedContentId)}
+                emptyMessage={`No snippets, commands, prompts, or notes tagged “${BRAIN_DUMP_SOURCE_TAG}” yet. Tag one with “${BRAIN_DUMP_SOURCE_TAG}” and it shows up here.`}
               />
             )}
           </TabsContent>
@@ -380,6 +409,11 @@ function SourcePicker({ sources, selectedId, busy, rateLimited, resetAt, onSelec
               className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2 text-left"
             >
               <span className="min-w-0 flex-1 truncate text-xs font-medium">{source.name}</span>
+              {source.itemTypeName !== 'file' && (
+                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                  {source.itemTypeName}
+                </span>
+              )}
               {source.sizeBytes !== null && (
                 <span className="shrink-0 text-[11px] text-muted-foreground">{formatBytes(source.sizeBytes)}</span>
               )}

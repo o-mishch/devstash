@@ -1044,6 +1044,12 @@ describe('getSourceText', () => {
     expect(await getSourceText(item)).toMatchObject({ text: 'short note', truncated: false })
   })
 
+  it.each(['snippet', 'command', 'prompt', 'note'])('accepts %s items with stored content', async (itemTypeName) => {
+    const item: ParseSourceItem = { id: itemTypeName, itemTypeName, content: 'source text', fileUrl: null, fileName: null }
+    expect(await getSourceText(item)).toMatchObject({ text: 'source text', truncated: false })
+    expect(mockGetTextFromS3).not.toHaveBeenCalled()
+  })
+
   it('truncates a long note at the last paragraph break (\\n\\n) in the back half — no mid-word cut', async () => {
     const head = 'a'.repeat(30_000)
     const tail = 'b'.repeat(25_000) // pushes total past the 50k window
@@ -1119,7 +1125,7 @@ describe('listParseSourceCandidates', () => {
     mockItem.findMany.mockResolvedValue([{ id: 'f1', fileName: 'notes.md', fileSize: 123 }])
     const result = await listParseSourceCandidates('user-1')
 
-    expect(result).toEqual([{ itemId: 'f1', name: 'notes.md', sizeBytes: 123 }])
+    expect(result).toEqual([{ itemId: 'f1', name: 'notes.md', itemTypeName: 'file', sizeBytes: 123 }])
     expect(mockItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -1135,28 +1141,30 @@ describe('listParseSourceCandidates', () => {
     )
   })
 
-  it('lists brain-dump-tagged notes (by title, content byte length) when kind=note, IDOR-scoped', async () => {
-    mockItem.findMany.mockResolvedValue([{ id: 'n1', title: 'Project ideas', content: 'héllo' }])
-    const result = await listParseSourceCandidates('user-1', 'note')
+  it('lists brain-dump-tagged content items (by title, type, content byte length) when kind=content, IDOR-scoped', async () => {
+    mockItem.findMany.mockResolvedValue([
+      { id: 'n1', title: 'Project ideas', content: 'héllo', itemType: { name: 'prompt' } },
+    ])
+    const result = await listParseSourceCandidates('user-1', 'content')
 
     // 'héllo' is 6 UTF-8 bytes (é = 2 bytes) — sizeBytes is the content byte length, not char count.
-    expect(result).toEqual([{ itemId: 'n1', name: 'Project ideas', sizeBytes: 6 }])
+    expect(result).toEqual([{ itemId: 'n1', name: 'Project ideas', itemTypeName: 'prompt', sizeBytes: 6 }])
     expect(mockItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           userId: 'user-1',
-          itemType: { name: { in: ['note', 'snippet'] } },
+          itemType: { name: { in: ['snippet', 'command', 'prompt', 'note'] } },
           tags: { some: { name: 'brain-dump' } },
         }),
       }),
     )
   })
 
-  it('falls back to a placeholder name and null size for an empty untitled note', async () => {
-    mockItem.findMany.mockResolvedValue([{ id: 'n2', title: '', content: null }])
-    const result = await listParseSourceCandidates('user-1', 'note')
+  it('falls back to a placeholder name and null size for an empty untitled content item', async () => {
+    mockItem.findMany.mockResolvedValue([{ id: 'n2', title: '', content: null, itemType: { name: 'note' } }])
+    const result = await listParseSourceCandidates('user-1', 'content')
 
-    expect(result).toEqual([{ itemId: 'n2', name: 'Untitled source', sizeBytes: null }])
+    expect(result).toEqual([{ itemId: 'n2', name: 'Untitled source', itemTypeName: 'note', sizeBytes: null }])
   })
 })
 

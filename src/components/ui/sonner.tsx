@@ -1,12 +1,12 @@
 'use client'
 
 import { type CSSProperties } from 'react'
-import { useEditorPreferencesStore } from '@/stores/editor-preferences'
+import { useEditorColorMode } from '@/hooks/use-editor-preferences'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from 'lucide-react'
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const colorMode = useEditorPreferencesStore((state) => state.colorMode)
+  const colorMode = useEditorColorMode()
 
   return (
     <Sonner

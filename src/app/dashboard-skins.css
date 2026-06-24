@@ -28,6 +28,10 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
+  transition: background-color 0.3s ease;
+}
+.ds-glass:hover {
+  background: color-mix(in srgb, var(--card) 64%, var(--foreground) 2.5%);
 }
 .ds-glass::after {
   content: "";
@@ -111,6 +115,10 @@
   height: 100%;
   background: color-mix(in srgb, var(--card) 92%, #000);
   overflow: hidden;
+  transition: background-color 0.3s ease;
+}
+.ds-holo-inner:hover {
+  background: color-mix(in srgb, var(--card) 95%, var(--foreground) 1.5%);
 }
 .ds-holo-text {
   background: linear-gradient(90deg, #22d3ee, #8b5cf6, #ec4899);

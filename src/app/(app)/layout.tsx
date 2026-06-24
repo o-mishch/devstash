@@ -188,7 +188,7 @@ async function Topbar() {
         <span className="text-base font-semibold tracking-tight">DevStash</span>
       </Link>
 
-      <GlobalSearch collections={sidebarData.collections} />
+      <GlobalSearch initialCollections={sidebarData.collections} />
 
       <div className="flex shrink-0 items-center gap-2">
         {!isPro && (
@@ -219,12 +219,12 @@ async function Topbar() {
         </TooltipProvider>
 
         {/* Mobile: single + dropdown for new item / new collection */}
-        <MobileCreateMenu itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
+        <MobileCreateMenu itemTypes={sidebarData.itemTypes} initialCollections={sidebarData.collections} />
 
         {/* Desktop: separate explicit buttons */}
         <div className="hidden lg:flex items-center gap-2">
           <CollectionCreateDialog />
-          <TopbarCreateButton itemTypes={sidebarData.itemTypes} collections={sidebarData.collections} />
+          <TopbarCreateButton itemTypes={sidebarData.itemTypes} initialCollections={sidebarData.collections} />
         </div>
       </div>
     </>
@@ -241,6 +241,9 @@ async function Sidebar() {
         isPro={isPro}
         canCreateItem={userCanCreateItem}
         canCreateCollection={userCanCreateCollection}
+        name={sidebarData.user?.name ?? null}
+        email={sidebarData.user?.email ?? null}
+        image={sidebarData.user?.image ?? null}
       />
       <EditorPreferencesInitializer preferences={initialPreferences} />
       <SidebarContent sidebarData={sidebarData} collapsible initialCollapsed={initialPreferences.sidebarCollapsed} />

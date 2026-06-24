@@ -10,7 +10,7 @@ import {
   AiProHint,
   AiSuggestionPanel,
 } from '@/components/shared/ai-field-chrome'
-import { useAppUserFlagsStore } from '@/stores/app-user-flags'
+import { useIsPro } from '@/hooks/use-user-profile'
 import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
 import { aiRateLimitHint } from '@/lib/utils/constants'
 
@@ -73,7 +73,7 @@ export function AiTagsField({
   actionClassName,
   children,
 }: AiTagsFieldProps) {
-  const { isPro } = useAppUserFlagsStore()
+  const isPro = useIsPro()
   const { isLoading, suggestedTags, setSuggestedTags, run, disabled } = field
 
   const handleAccept = (tag: string) => {
