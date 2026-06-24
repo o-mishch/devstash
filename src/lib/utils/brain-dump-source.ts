@@ -1,7 +1,9 @@
-import { SPLIT_FILE_ALLOWED_EXTS, BRAIN_DUMP_SOURCE_TAG } from './constants'
+import { BRAIN_DUMP_SOURCE_TAG, SPLIT_FILE_ALLOWED_EXTS } from '@/lib/utils/constants'
 
-// The minimal item shape needed to decide parse-from-stash eligibility — satisfied by both LightItem
-// and FullItem (drawer) without pulling the full type in.
+/**
+ * The minimal item shape needed to decide parse-from-stash eligibility — satisfied by
+ * both LightItem and FullItem (drawer) without pulling the full type in.
+ */
 export interface ParseSourceEligibilityInput {
   itemType: { name: string }
   fileName: string | null
@@ -9,11 +11,10 @@ export interface ParseSourceEligibilityInput {
 }
 
 /**
- * Coarse client-side gate for the "Parse with Brain Dump" affordance. Both eligible types must carry the
- * `brain-dump` tag (the user's explicit "mark this for parsing" signal): a tagged `note`, or a tagged
- * `file` whose name also ends in an allowed text extension (.txt/.md). This only decides whether to
- * *show* the action; the route re-validates and 422s on a truly ineligible source, so it is advisory,
- * not a security boundary.
+ * Client-side gate for "can this item be used as a Brain Dump source?". Advisory only, not a
+ * security boundary — the server re-validates eligibility before acting. Eligible types: note
+ * (any), file (only extensions defined in SPLIT_FILE_ALLOWED_EXTS). Item must also carry the
+ * brain-dump source tag.
  */
 export function isParseSourceEligible(item: ParseSourceEligibilityInput): boolean {
   if (!item.tags.includes(BRAIN_DUMP_SOURCE_TAG)) return false

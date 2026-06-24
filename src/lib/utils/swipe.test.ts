@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-import { shouldDismissSwipe, SWIPE_FLICK_MIN_PX, SWIPE_FLICK_VELOCITY } from './swipe'
+import { shouldDismissSwipe, schedulePostDismissCheck, SWIPE_FLICK_MIN_PX, SWIPE_FLICK_VELOCITY } from './swipe'
 
 describe('shouldDismissSwipe', () => {
   it('dismisses when dragged past the limit, regardless of velocity', () => {
@@ -35,5 +35,60 @@ describe('shouldDismissSwipe', () => {
 
   it('handles a zero/degenerate gesture without dismissing', () => {
     expect(shouldDismissSwipe({ dragged: 0, velocity: 0, limit: 0 })).toBe(false)
+  })
+})
+
+describe('schedulePostDismissCheck', () => {
+  let rafCallback: (() => void) | null = null
+  let origRaf: typeof requestAnimationFrame
+
+  beforeEach(() => {
+    rafCallback = null
+    origRaf = globalThis.requestAnimationFrame
+    globalThis.requestAnimationFrame = ((fn: () => void) => {
+      rafCallback = fn
+      return 1
+    }) as unknown as typeof requestAnimationFrame
+  })
+
+  afterEach(() => {
+    globalThis.requestAnimationFrame = origRaf
+  })
+
+  it('calls onDeferred when element is present without data-ending-style', () => {
+    const rafRef = { current: 0 }
+    const el = { hasAttribute: () => false } as unknown as Element
+    const onDeferred = vi.fn()
+
+    schedulePostDismissCheck(rafRef, () => el, onDeferred)
+    expect(onDeferred).not.toHaveBeenCalled()
+    rafCallback!()
+    expect(onDeferred).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call onDeferred when element is absent', () => {
+    const rafRef = { current: 0 }
+    const onDeferred = vi.fn()
+
+    schedulePostDismissCheck(rafRef, () => null, onDeferred)
+    rafCallback!()
+    expect(onDeferred).not.toHaveBeenCalled()
+  })
+
+  it('does not call onDeferred when element has data-ending-style', () => {
+    const rafRef = { current: 0 }
+    const el = { hasAttribute: (attr: string) => attr === 'data-ending-style' } as unknown as Element
+    const onDeferred = vi.fn()
+
+    schedulePostDismissCheck(rafRef, () => el, onDeferred)
+    rafCallback!()
+    expect(onDeferred).not.toHaveBeenCalled()
+  })
+
+  it('stores the rAF handle in rafRef.current', () => {
+    const rafRef = { current: 0 }
+
+    schedulePostDismissCheck(rafRef, () => null, vi.fn())
+    expect(rafRef.current).toBe(1)
   })
 })

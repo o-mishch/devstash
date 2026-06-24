@@ -10,6 +10,8 @@ import { useGrabHandleDrag } from '@/hooks/use-grab-handle-drag'
 import { usePressHighlight } from '@/hooks/use-press-highlight'
 import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
 import { cn } from '@/lib/utils'
+import { SWIPE_GRIP_PILL_CLASS } from './drawer-shared'
+import { SHEET_CONTENT_SELECTOR } from '@/lib/dom/drawer-selectors'
 import type { SheetCloseRef } from '@/hooks/use-register-sheet-close'
 
 interface DrawerShellProps {
@@ -57,15 +59,12 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
   const sheetCloseRef = useRef<(() => void) | null>(null)
 
   function handleSheetOpenChange(nextOpen: boolean, eventDetails?: Dialog.Root.ChangeEventDetails) {
-    if (nextOpen) {
-      onOpenChange(true)
-      return
-    }
+    if (nextOpen) return
     // The markdown editor/viewer is portaled OUT of the drawer's DOM (on touch and in fullscreen), so a
     // press inside it reads as a base-ui "outside press". Ignore those — interacting with the editor must
     // never dismiss the drawer (otherwise every tap-to-type would pop the guard).
     if (eventDetails?.reason === 'outside-press') {
-      const target = eventDetails.event.target
+      const target = eventDetails.event?.target
       if (target instanceof Element && target.closest('[data-editor-overlay]')) {
         eventDetails.cancel()
         return
@@ -119,8 +118,9 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
     let raf = 0
     const sync = () => {
       // Query once and cache; the `??=` re-queries only until it first appears (portal may mount
-      // a frame after this effect runs). document is required: sheet is portaled outside our subtree.
-      sheetElRef.current ??= document.querySelector<HTMLElement>('[data-slot="sheet-content"][data-side="right"]')
+      // a frame after this effect runs). document.querySelector is required because the sheet is portaled
+      // outside this component's subtree, so we can't pass a ref from the Sheet component.
+      sheetElRef.current ??= document.querySelector<HTMLElement>(SHEET_CONTENT_SELECTOR)
       const rail = railRef.current
       const sheet = sheetElRef.current
       if (rail && sheet) {
@@ -193,7 +193,7 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
               {...grip.handlers}
               className="pointer-events-auto flex h-3/5 max-h-72 min-h-40 w-16 touch-none items-center justify-start pl-1"
             >
-              <div className={cn('h-14 w-1.5 rounded-full transition-colors', grip.pressed ? 'bg-primary/70' : 'bg-foreground/30')} />
+              <div className={cn(SWIPE_GRIP_PILL_CLASS, 'transition-colors', grip.pressed ? 'bg-primary/70' : 'bg-foreground/30')} />
             </div>
           </div>,
           document.body,

@@ -36,12 +36,15 @@ export function useItemUrlParamSync(open: boolean, id: string) {
       const openedOrChanged = !wasOpen || previousId !== id
       if (openedOrChanged && next.get('item') !== id) {
         next.set('item', id)
-        router.push(`${pathname}?${next.toString()}`)
+        // scroll: false — this is a same-page param toggle, not a content navigation. Next's default
+        // scroll-to-top would reset the list's scroll position to 0, racing the mobile slider's open
+        // snapshot (capturing 0 instead of the real position) and clobbering its close-time restore.
+        router.push(`${pathname}?${next.toString()}`, { scroll: false })
       }
     } else if (!open && wasOpen) {
       next.delete('item')
       const query = next.toString()
-      router.replace(query ? `${pathname}?${query}` : pathname)
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
     }
   }, [open, id, pathname, router, searchParams])
 }

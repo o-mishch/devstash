@@ -54,3 +54,27 @@ describe('itemMutationSchema.url', () => {
     expect(itemMutationSchema.safeParse({ title: 'x', url: 'nope' }).success).toBe(false)
   })
 })
+
+describe('optionalUrlSchema — protocol guard', () => {
+  it('rejects ftp:// URLs', () => {
+    expect(optionalUrlSchema.safeParse('ftp://example.com').success).toBe(false)
+  })
+
+  it('rejects javascript: URLs (XSS vector)', () => {
+    expect(optionalUrlSchema.safeParse('javascript:alert(1)').success).toBe(false)
+  })
+
+  it('rejects data: URLs', () => {
+    expect(optionalUrlSchema.safeParse('data:text/html,<h1>x</h1>').success).toBe(false)
+  })
+})
+
+describe('itemMutationSchema.url — protocol guard', () => {
+  it('rejects ftp:// URLs', () => {
+    expect(itemMutationSchema.safeParse({ title: 'x', url: 'ftp://example.com' }).success).toBe(false)
+  })
+
+  it('rejects javascript: URLs (XSS vector)', () => {
+    expect(itemMutationSchema.safeParse({ title: 'x', url: 'javascript:alert(1)' }).success).toBe(false)
+  })
+})

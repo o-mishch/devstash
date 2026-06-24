@@ -11,8 +11,7 @@ export interface LayoutCookieValue {
 const COOKIE_NAME = 'ds-layout'
 const COOKIE_MAX_AGE = 31536000 // 1 year
 
-// Pure parser for the raw cookie value — shared by the client reader (document.cookie)
-// and the server (next/headers cookies()) so both decode the persisted state identically.
+// Pure parser for the raw cookie value.
 export function parseLayoutCookie(raw: string | undefined): Partial<LayoutCookieValue> {
   if (!raw) return {}
   try {
@@ -36,6 +35,6 @@ export function writeLayoutCookie(patch: Partial<LayoutCookieValue>): void {
   // components/stores. The cookie is consumed by the pre-hydration script (theme-script.tsx) to set
   // the html[data-sidebar-collapsed] no-flash attribute on the NEXT load.
   if (typeof document !== 'undefined') {
-    document.cookie = `${COOKIE_NAME}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`
+    document.cookie = `${COOKIE_NAME}=${encodeURIComponent(JSON.stringify(next))}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`
   }
 }

@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useFetchItemDetail } from '@/hooks/use-item-detail'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 
 // Opens an item's detail drawer from a deep-link (`?item=<id>`). Fetches the item and pops the drawer;
 // the URL param persists while the drawer is open and is cleared when the drawer closes (via

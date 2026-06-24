@@ -4,7 +4,7 @@ import { Download, File, FileCode, FileImage, FileText, FileJson, XCircle } from
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemStatusIcons } from '@/components/shared/item-status-icons'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useIsPro } from '@/hooks/use-user-profile'
 import { useRestrictedDownload } from '@/hooks/use-restricted'
 import { formatDate, formatBytes } from '@/lib/utils/format'

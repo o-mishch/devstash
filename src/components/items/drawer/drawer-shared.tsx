@@ -1,3 +1,5 @@
+'use client'
+
 import { CSSProperties, ReactNode } from 'react'
 import { Calendar, FolderOpen, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -11,23 +13,52 @@ import { formatDate, cn } from '@/lib/utils'
 import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
 import type { FullItem, SlimItemType } from '@/types/item'
 
+// Swipe-to-dismiss grip pill — shared dimensions for the touch affordance rendered by BOTH drawer shells
+// (the desktop Sheet's drawer-shell and the mobile ItemFullScreenView). The colour is applied separately by
+// each (Tailwind classes vs. a Motion drag variant), but the shape is one source of truth so they can't drift.
+export const SWIPE_GRIP_PILL_CLASS = 'h-14 w-1.5 rounded-full'
+
 interface DrawerContainerProps {
   header: ReactNode
   actions: ReactNode
   children: ReactNode
   style?: CSSProperties
+  /**
+   * Full-screen mode (mobile): render as document-flow content (NOT a height-capped inner-scroll panel)
+   * so the page's <html> document is the scroller. That is the only scroller a mobile browser watches to
+   * retract its URL bar; an inner ScrollArea (the default below) never triggers it. Header + action bar
+   * stick to the top so they stay reachable as the document scrolls. Used by ItemFullScreenView.
+   */
+  fullScreen?: boolean
 }
 
-function DrawerContainer({ header, actions, children, style }: DrawerContainerProps) {
-  return (
-    <div className="flex h-full flex-col overflow-hidden" style={style}>
+function DrawerContainer({ header, actions, children, style, fullScreen = false }: DrawerContainerProps) {
+  // Shared header + action-bar chrome. In full-screen mode it sticks to the top of the document; in Sheet
+  // mode it is a non-shrinking band above the inner ScrollArea. Only `shrink-0` (irrelevant under sticky)
+  // differs, so one tree serves both. @container/actionbar: each button's label span collapses to icon-only
+  // one at a time from the right (see actionbarLabelClass) so all buttons fit on one row; flex-nowrap keeps
+  // them on a single line.
+  const chrome = (
+    <>
       <div className="flex shrink-0 items-start gap-3 px-5 pt-5 pb-4 max-sm:px-4 max-sm:pt-2.5 max-sm:pb-1.5">{header}</div>
       <Separator className="shrink-0" />
-      {/* @container/actionbar: as this row narrows, each button's label span collapses to icon-only
-          one at a time from the right (see actionbarLabelClass) so all buttons fit on one row without
-          wrapping. flex-nowrap keeps them in a single line always. */}
       <div className="@container/actionbar flex shrink-0 flex-nowrap items-center gap-y-1 gap-x-0.5 px-2 py-1.5 max-sm:py-0.5">{actions}</div>
       <Separator className="shrink-0" />
+    </>
+  )
+
+  if (fullScreen) {
+    return (
+      <div className="flex min-h-[100lvh] flex-col bg-popover" style={style}>
+        <div className="sticky top-0 z-10 bg-popover">{chrome}</div>
+        <div className="flex flex-1 flex-col gap-5 px-5 py-4">{children}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden" style={style}>
+      {chrome}
       {/* ScrollArea (not native overflow) so the drawer scrollbar matches the sidebar's.
           overscroll-behavior:contain stops the locked body from trying to scroll when
           this viewport hits its top/bottom edge (prevents URL-bar flash on iOS). */}
@@ -46,15 +77,18 @@ interface DrawerLayoutProps {
   titleArea: ReactNode
   actionArea: ReactNode
   children: ReactNode
+  /** Render document-flow full-screen (mobile) instead of the fixed inner-scroll panel. See DrawerContainer. */
+  fullScreen?: boolean
 }
 
-export function DrawerLayout({ itemType, onClose, titleArea, actionArea, children }: DrawerLayoutProps) {
+export function DrawerLayout({ itemType, onClose, titleArea, actionArea, children, fullScreen = false }: DrawerLayoutProps) {
   return (
     // One TooltipProvider for the whole drawer (delay 150 matches the dense action-bar chrome) — scopes the
     // action bar's Parse tooltip in view mode and the Save/Commit tooltips in edit mode, so neither side
     // needs its own provider.
     <TooltipProvider delay={150}>
       <DrawerContainer
+        fullScreen={fullScreen}
         style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
         header={
           <>
@@ -103,7 +137,7 @@ export function DrawerCollectionsSection({ item, onEdit }: DrawerCollectionsSect
     <DrawerSection label="Collections" icon={<FolderOpen className="size-3" />}>
       {item.collections.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
-          {item.collections.map((col: { id: string; name: string }) => (
+          {item.collections.map((col) => (
             <Badge key={col.id} variant="outline">{col.name}</Badge>
           ))}
         </div>
@@ -166,9 +200,15 @@ export function DrawerDetailsSkeleton() {
   )
 }
 
-export function DrawerSkeleton() {
+interface DrawerSkeletonProps {
+  fullScreen?: boolean
+}
+
+/** Reusable skeleton for drawer-like overlays (item drawer, draft drawer, future modals). */
+export function DrawerSkeleton({ fullScreen = false }: DrawerSkeletonProps) {
   return (
     <DrawerContainer
+      fullScreen={fullScreen}
       header={
         <>
           <Skeleton className="mt-0.5 size-9 shrink-0 rounded-full" />

@@ -11,7 +11,7 @@ import {
   CommandGroup,
   CommandItem,
 } from '@/components/ui/command'
-import { useItemDrawerStore } from '@/stores/item-drawer'
+import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import type { CollectionWithTypes } from '@/types/collection'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { itemCountLabel } from '@/lib/utils/format'

@@ -77,7 +77,7 @@ export const collectionFormSchema = z.object({
  * create/edit forms for link items), but any non-empty value must look like a URL rather than a
  * plain string.
  */
-export const optionalUrlSchema = z.union([z.literal(''), z.url('Must be a valid URL')])
+export const optionalUrlSchema = z.union([z.literal(''), z.url('Must be a valid URL').refine(url => /^https?:\/\//i.test(url), 'URL must use http or https')])
 
 export const itemFormBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -95,7 +95,7 @@ export const itemMutationSchema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
   description: z.string().trim().max(ITEM_DESCRIPTION_MAX_CHARS, 'Description is too long').optional().nullable().transform((v) => v || null),
   content: z.string().optional().nullable().transform((v) => v || null),
-  url: z.union([z.string().trim().pipe(z.url('Must be a valid URL')), z.literal('')]).optional().nullable().transform((v) => v || null),
+  url: z.union([z.string().trim().pipe(z.url('Must be a valid URL').refine(url => /^https?:\/\//i.test(url), 'URL must use http or https')), z.literal('')]).optional().nullable().transform((v) => v || null),
   language: z.string().trim().optional().nullable().transform((v) => v || null),
   tags: z.array(z.string().trim().min(1)).default([]),
   collectionIds: z.array(z.string()).default([]),
