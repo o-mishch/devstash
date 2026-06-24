@@ -11,7 +11,7 @@ import { ConnectedAccounts } from '@/components/profile/connected-accounts'
 import { ProfileToast, type ToastCode } from '@/components/profile/profile-toast'
 import { ProfileEmailSection } from '@/components/profile/profile-email-section'
 import { EditableName } from '@/components/profile/editable-name'
-import { useProfile } from '@/hooks/use-profile'
+import { useProfile } from '@/hooks/profile/use-profile'
 import type { ProfileContextResponse } from '@/lib/api/schemas/profile'
 import ProfileLoading from '@/app/(app)/profile/loading'
 

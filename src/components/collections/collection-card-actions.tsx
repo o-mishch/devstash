@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { api } from '@/lib/api/client'
 import { useCollectionDialogsStore } from '@/stores/collection-dialogs'
-import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
-import { useInvalidateCollections } from '@/hooks/use-collections'
+import { useOptimisticToggle } from '@/hooks/items/use-optimistic-toggle'
+import { useInvalidateCollections } from '@/hooks/items/use-collections'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionCardActionsProps {

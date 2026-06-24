@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { $api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/api/query-keys'
-import { useInvalidate, type InvalidateOptions } from '@/hooks/use-cache-invalidation'
+import { useInvalidate, type InvalidateOptions } from '@/hooks/items/use-cache-invalidation'
 import type { UserProfileFlagsResponse } from '@/lib/api/schemas/profile'
 
 interface UseUserProfileOptions {

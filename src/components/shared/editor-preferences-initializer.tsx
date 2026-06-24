@@ -1,7 +1,7 @@
 'use client'
 
 import { useLayoutEffect } from 'react'
-import { useHydrateEditorPreferences } from '@/hooks/use-editor-preferences'
+import { useHydrateEditorPreferences } from '@/hooks/editor/use-editor-preferences'
 import type { EditorPreferences } from '@/types/editor-preferences'
 
 interface EditorPreferencesInitializerProps {

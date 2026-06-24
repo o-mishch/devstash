@@ -11,7 +11,7 @@ import {
   getDashboardActivity,
 } from '@/lib/db/items'
 import { getEditorPreferences } from '@/lib/db/profile'
-import { loadAppSidebarData } from '@/lib/app/sidebar-data'
+import { loadAppSidebarData } from '@/lib/services/sidebar-data'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { normalizeEditorPreferences } from '@/lib/utils/editor-preferences'
 import { resolveAccessibleSkin } from '@/types/editor-preferences'

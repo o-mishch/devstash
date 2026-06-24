@@ -4,8 +4,8 @@ import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'rea
 import { useRouter } from 'next/navigation'
 import { Sparkles, Upload, Loader2, Clipboard, FolderOpen, Library, Info, Eye } from 'lucide-react'
 import { toast } from 'sonner'
-import { useOpenItemInDrawer } from '@/hooks/use-item-detail'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useOpenItemInDrawer } from '@/hooks/items/use-item-detail'
+import { useCopyToClipboard } from '@/hooks/ui/use-copy-to-clipboard'
 import {
   SPLIT_FILE_MIN_INPUT_CHARS,
   SPLIT_FILE_MAX_INPUT_CHARS,
@@ -23,8 +23,8 @@ import {
   BRAIN_DUMP_UPGRADE_PROMPT,
   type CreateBrainDumpResult,
   type BrainDumpSource,
-} from '@/hooks/use-brain-dump'
-import { useAiUsage } from '@/hooks/use-ai-usage'
+} from '@/hooks/items/use-brain-dump'
+import { useAiUsage } from '@/hooks/ai/use-ai-usage'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { SlideIndicator } from '@/components/shared/slide-indicator'
 import { Button } from '@/components/ui/button'

@@ -3,7 +3,7 @@ import { json, noContent, problem, problemFrom, parseOr422 } from '@/lib/api/htt
 import { optionalPasswordInput, profileContextSchema } from '@/lib/api/schemas/profile'
 import { signOut } from '@/auth'
 import { getUserAuthMethods, deleteUserById } from '@/lib/db/users'
-import { loadProfileContext, verifyPasswordFromBody } from '@/lib/app/profile-helpers'
+import { loadProfileContext, verifyPasswordFromBody } from '@/lib/services/profile-helpers'
 import { teardownStripeBillingForUser } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 import { logger } from '@/lib/infra/pino'
 

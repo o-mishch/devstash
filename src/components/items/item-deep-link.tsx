@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { useFetchItemDetail } from '@/hooks/use-item-detail'
+import { useFetchItemDetail } from '@/hooks/items/use-item-detail'
 import { useItemDrawerStore } from '@/stores/item-drawer-store'
 
 // Opens an item's detail drawer from a deep-link (`?item=<id>`). Fetches the item and pops the drawer;

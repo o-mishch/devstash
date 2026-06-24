@@ -3,7 +3,7 @@
 import { type ReactNode } from 'react'
 import { api } from '@/lib/api/client'
 import { CollectionFormDialog } from './collection-form-dialog'
-import { useLastNonNull } from '@/hooks/use-last-non-null'
+import { useLastNonNull } from '@/hooks/ui/use-last-non-null'
 import { EMPTY_COLLECTION, type CollectionWithTypes } from '@/types/collection'
 
 interface CollectionEditDialogProps {

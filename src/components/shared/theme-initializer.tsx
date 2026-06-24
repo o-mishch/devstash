@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useEditorPreferences } from '@/hooks/use-editor-preferences'
+import { useEditorPreferences } from '@/hooks/editor/use-editor-preferences'
 
 export function ThemeInitializer() {
   const { data: prefs } = useEditorPreferences()

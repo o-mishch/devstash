@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { api } from '@/lib/api/client'
 import { SubmitButton } from '@/components/ui/button'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 
 interface ConfirmEmailChangeFormProps {
   token: string

@@ -1,4 +1,4 @@
-import { useResolvedEditorPreferences } from '@/hooks/use-editor-preferences'
+import { useResolvedEditorPreferences } from '@/hooks/editor/use-editor-preferences'
 
 export interface EditorBgStyle {
   backgroundColor: string

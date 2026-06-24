@@ -5,9 +5,9 @@ import { createPortal } from 'react-dom'
 import { motion, useMotionValue, animate } from 'motion/react'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useVisualViewport } from '@/hooks/use-visual-viewport'
-import { useEditorHeaderDrag } from '@/hooks/use-editor-header-drag'
-import { useIsTouch } from '@/hooks/use-is-touch'
+import { useVisualViewport } from '@/hooks/ui/use-visual-viewport'
+import { useEditorHeaderDrag } from '@/hooks/editor/use-editor-header-drag'
+import { useIsTouch } from '@/hooks/ui/use-is-touch'
 import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
 
 // Past this downward drag (or a faster flick) the maximized editor collapses; below it the window

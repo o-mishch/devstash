@@ -78,7 +78,7 @@ Next.js runs code in two runtimes: the Node.js server and the browser. Server Co
 | `src/lib/storage/`     | S3 file uploads — secret keys, Node.js only                            |
 | `src/lib/ai/`          | OpenAI client + tag/description generation — secret key, Node.js only   |
 | `src/lib/emails/`      | Resend transactional senders (link / credential / verify / reset)       |
-| `src/lib/app/`         | App shell data fetchers (sidebar, action utils) — DB / session access  |
+| `src/lib/services/`    | App shell data fetchers (sidebar, action utils) — DB / session access  |
 | `src/lib/session.ts`   | Session helpers — reads cookies / auth, Node.js only                   |
 | `src/lib/api/index.ts` | Route wrappers — `NextRequest` / `NextResponse`, Node.js only          |
 
@@ -123,7 +123,6 @@ export async function createItem(formData: FormData) { ... }
 | ----------------------------- | ------------------------------------------------------------------------------------------ |
 | `src/lib/utils/`              | Pure TypeScript — constants, formatters, validators, no secret env vars                    |
 | `src/lib/dom/`                | Browser-effect helpers (View Transitions, DOM triggers) — client-only, no secrets          |
-| `src/lib/editor/`             | Monaco config / themes — used in client editor components                                  |
 | `src/lib/api/schemas/**`      | Bare Zod request/response schemas — browser-safe (imported by `paths.ts` + route handlers) |
 | `src/lib/api/openapi/**`      | `paths.ts` + `spec.ts` — pure schema declarations, no secrets                              |
 | `src/lib/api/http.ts`         | `json` / `noContent` / `problem` / `parseOr422` — pure Response builders                   |
@@ -131,12 +130,12 @@ export async function createItem(formData: FormData) { ... }
 | `src/lib/api/query-keys.ts`   | TanStack Query key registry — client-only key factory over `$api`; never imported server-side |
 | `src/types/`                  | Type definitions only                                                                      |
 | `src/stores/`                 | Zustand stores — client state, no server imports                                           |
-| `src/hooks/`                  | React hooks — client-only by design                                                        |
+| `src/hooks/`                  | React hooks — client-only by design; organized into `ai/`, `items/`, `billing/`, `profile/`, `editor/`, `ui/` |
 | `src/components/`             | React components — RSC or `'use client'`                                                   |
 
 ### Never import Node.js-only modules from client files
 
-A `'use client'` file must never import from `src/lib/db/`, `src/lib/infra/`, `src/lib/auth/`, `src/lib/billing/`, `src/lib/storage/`, `src/lib/session.ts`, or `src/lib/api/route.ts`.
+A `'use client'` file must never import from `src/lib/db/`, `src/lib/infra/`, `src/lib/auth/`, `src/lib/billing/`, `src/lib/storage/`, `src/lib/services/`, `src/lib/session.ts`, or `src/lib/api/route.ts`.
 
 ```typescript
 // ✅ correct — client component mutates via the typed route-handler client
@@ -163,7 +162,7 @@ import { getItems } from '@/lib/db/items'
   - `src/lib/storage/` **[S]** — file uploads (AWS S3)
   - `src/lib/ai/` **[S]** — OpenAI client + tag/description generation (secret key; pure response parsers are the shared exception)
   - `src/lib/emails/` **[S]** — transactional email senders + templates (Resend via `infra`); all outbound sends go through `sendEmail()` which no-ops when `DISABLE_EMAIL_VERIFICATION=true` (see `security.md`)
-  - `src/lib/app/` **[S]** — app shell helpers (sidebar data, action utils)
+  - `src/lib/services/` **[S]** — app shell helpers (sidebar data, profile action utils)
   - `src/lib/session.ts` **[S]** — session + action auth helpers (root exception)
   - `src/lib/api/route.ts` **[S]** — `authedRoute` / `authedRouteWithParams` / `publicRoute` (route handlers and wrappers)
   - `src/lib/api/http.ts` **[C]** — `json` / `noContent` / `problem` / `parseOr422` Response builders
@@ -171,9 +170,10 @@ import { getItems } from '@/lib/db/items'
   - `src/lib/api/openapi/**` **[C]** — `paths.ts` + `spec.ts` (OpenAPI doc source)
   - `src/lib/api/client.ts` **[C]** — `api` + `$api` (browser route-handler client)
   - `src/lib/api/query-keys.ts` **[C]** — central TanStack Query key registry (client-only; the FE mirror of the server `CacheTags` boundary — never cross-import)
-  - `src/lib/editor/` **[C]** — editor themes and config
-  - `src/lib/dom/` **[C]** — browser-effect helpers (View Transitions, DOM triggers); client-only, no secrets
+  - `src/lib/dom/` **[C]** — browser-effect helpers, DOM utilities, Monaco theme — client-only, no secrets
+  - `src/lib/storage-client/` **[C]** — client-side S3 upload helpers (`s3-upload-client.ts`, `upload-file-item-client.ts`) — browser XHR with progress tracking, no secret keys
   - `src/lib/utils/` **[C]** — shared constants, formatters, validators (no DB/Stripe)
+- Hooks: `src/hooks/<domain>/use-name.ts` — domain folders: `ai/`, `items/`, `billing/`, `profile/`, `editor/`, `ui/`
 - Zustand stores (client UI state): `src/stores/[name]-store.ts` — **never** `createContext`
 
 ## State Management
@@ -248,7 +248,7 @@ const virtualizer = useVirtualizer({ count, getScrollElement, estimateSize })
 
 - Server components fetch via `src/lib/db/` helpers (not `prisma.*` inline)
 - Client components fetch and mutate via the route-handler client (`api` / `$api` from `@/lib/api/client`) — not Server Actions (see [Where each mutation / fetch goes](#where-each-mutation--fetch-goes))
-- Never use `fetch()` or `axios` directly for our API — call `api` / `$api`. (Direct-to-S3 uploads with progress are the one exception: `uploadToS3` in `src/lib/storage/s3-upload-client.ts`.)
+- Never use `fetch()` or `axios` directly for our API — call `api` / `$api`. (Direct-to-S3 uploads with progress are the one exception: `uploadToS3` in `src/lib/storage-client/s3-upload-client.ts`.)
 
 ## Validation
 

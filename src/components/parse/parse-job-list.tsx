@@ -9,7 +9,7 @@ import {
   useDiscardBrainDumpJob,
   useInvalidateBrainDumpJobs,
   BRAIN_DUMP_STATUS_LABEL,
-} from '@/hooks/use-brain-dump'
+} from '@/hooks/items/use-brain-dump'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

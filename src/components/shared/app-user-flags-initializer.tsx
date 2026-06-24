@@ -1,7 +1,7 @@
 'use client'
 
 import { useLayoutEffect } from 'react'
-import { useHydrateUserProfile, useUserProfile } from '@/hooks/use-user-profile'
+import { useHydrateUserProfile, useUserProfile } from '@/hooks/profile/use-user-profile'
 
 interface AppUserFlagsInitializerProps {
   isPro: boolean

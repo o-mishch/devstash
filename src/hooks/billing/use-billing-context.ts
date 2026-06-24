@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react'
 import { $api } from '@/lib/api/client'
-import { useInvalidate, type InvalidateOptions } from '@/hooks/use-cache-invalidation'
-import { useUserProfile, usePatchUserProfile } from '@/hooks/use-user-profile'
+import { useInvalidate, type InvalidateOptions } from '@/hooks/items/use-cache-invalidation'
+import { useUserProfile, usePatchUserProfile } from '@/hooks/profile/use-user-profile'
 import type { BillingContextResponse } from '@/lib/api/schemas/billing'
 
 interface UseBillingContextOptions {

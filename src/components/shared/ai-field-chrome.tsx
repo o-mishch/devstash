@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Sparkles, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { useIsPro } from '@/hooks/use-user-profile'
+import { useIsPro } from '@/hooks/profile/use-user-profile'
 import { cn } from '@/lib/utils'
 
 interface AiFieldFrameProps {

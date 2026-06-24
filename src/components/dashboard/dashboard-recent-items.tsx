@@ -1,7 +1,7 @@
 'use client'
 
 import { ItemRow } from '@/components/dashboard/item-row'
-import { useInfiniteItems } from '@/hooks/use-infinite-items'
+import { useInfiniteItems } from '@/hooks/items/use-infinite-items'
 import type { ItemsPage } from '@/types/item'
 
 // Cap on recent items shown on the dashboard across all skins — a short, fixed list (no infinite

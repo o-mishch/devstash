@@ -2,7 +2,7 @@ import { authedRoute } from '@/lib/api/route'
 import { noContent, problemFrom, parseOr422 } from '@/lib/api/http'
 import { changePasswordInput } from '@/lib/api/schemas/profile'
 import { changeUserPassword } from '@/lib/auth/auth-service'
-import { verifyPasswordOrFail } from '@/lib/app/profile-helpers'
+import { verifyPasswordOrFail } from '@/lib/services/profile-helpers'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'api-profile' })

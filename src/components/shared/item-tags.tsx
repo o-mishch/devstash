@@ -3,7 +3,7 @@
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useCopyToClipboard } from '@/hooks/ui/use-copy-to-clipboard'
 
 interface ItemTagsProps {
   tags: string[]

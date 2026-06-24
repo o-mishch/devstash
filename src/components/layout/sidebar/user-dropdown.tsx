@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Settings, User, LogOut, Sun, Moon } from 'lucide-react'
-import { useResolvedEditorPreferences, useUpdateEditorPreferences } from '@/hooks/use-editor-preferences'
+import { useResolvedEditorPreferences, useUpdateEditorPreferences } from '@/hooks/editor/use-editor-preferences'
 import { startThemeTransition } from '@/lib/dom/theme-transition'
 
 import {
@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { signOut } from 'next-auth/react'
-import { useResetProfile } from '@/hooks/use-profile'
+import { useResetProfile } from '@/hooks/profile/use-profile'
 
 interface UserDropdownMenuContentProps {
   side: 'top' | 'right' | 'bottom' | 'left'

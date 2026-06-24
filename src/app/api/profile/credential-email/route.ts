@@ -3,7 +3,7 @@ import { authedRoute } from '@/lib/api/route'
 import { noContent, problem, problemFrom, parseOr422 } from '@/lib/api/http'
 import { requestCredentialEmailInput } from '@/lib/api/schemas/profile'
 import { requestCredentialEmail } from '@/lib/auth/auth-service'
-import { requireAuthMethods, verifyPasswordFromBody } from '@/lib/app/profile-helpers'
+import { requireAuthMethods, verifyPasswordFromBody } from '@/lib/services/profile-helpers'
 
 // Authed + per-user rate-limited. In the normal (verification-enabled) flow it always returns 204
 // regardless of whether the address was free, so the response can't be used to enumerate which emails

@@ -8,7 +8,7 @@ import {
   useClosedBrainDumpJobs,
   useDiscardBrainDumpJob,
   useInvalidateBrainDumpJobs,
-} from '@/hooks/use-brain-dump'
+} from '@/hooks/items/use-brain-dump'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

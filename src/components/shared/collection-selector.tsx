@@ -8,7 +8,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { morphOriginFromClick, type MorphOrigin } from '@/components/ui/responsive-form-dialog'
 import { CollectionCreateDialog } from '@/components/collections/collection-create-dialog'
-import { useCollections } from '@/hooks/use-collections'
+import { useCollections } from '@/hooks/items/use-collections'
 
 import type { CollectionPickerItem } from '@/types/collection'
 

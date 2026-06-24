@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { $api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/api/query-keys'
-import { useInvalidate } from '@/hooks/use-cache-invalidation'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import { previewCredentialEmailChange, previewCredentialEmailRemoval } from '@/lib/utils/auth'
 import type { ProfileContextResponse } from '@/lib/api/schemas/profile'
 

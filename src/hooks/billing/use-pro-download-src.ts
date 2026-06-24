@@ -4,7 +4,7 @@ import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { $api } from '@/lib/api/client'
 import { getDownloadUrl } from '@/lib/utils/url'
-import { useIsPro } from '@/hooks/use-user-profile'
+import { useIsPro } from '@/hooks/profile/use-user-profile'
 import {
   SIGNED_URL_GC_TIME,
   DEFAULT_PREVIEW_SEED_TTL_MS,

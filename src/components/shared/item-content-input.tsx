@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR, languagesForItemType } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
-import { useMonacoLanguage } from '@/hooks/use-monaco-language'
+import { useMonacoLanguage } from '@/hooks/editor/use-monaco-language'
 
 import { CodeEditor, MarkdownEditor } from './dynamic-editors'
 

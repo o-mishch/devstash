@@ -3,14 +3,14 @@
 import { useCallback } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { Textarea } from '@/components/ui/textarea'
-import { useAiMutation } from '@/hooks/use-ai-usage'
+import { useAiMutation } from '@/hooks/ai/use-ai-usage'
 import {
   AiDescriptionField,
   useAiDescriptionField,
   AI_DESCRIPTION_INPUT_CLASS,
   type UseAiDescriptionFieldResult,
 } from '@/components/shared/ai-description-field'
-import { useItemAiContext } from '@/hooks/use-item-ai-context'
+import { useItemAiContext } from '@/hooks/ai/use-item-ai-context'
 import type { ItemFileContext } from '@/lib/ai/item-context'
 import type { ItemFormBaseValues } from '@/lib/utils/validators'
 

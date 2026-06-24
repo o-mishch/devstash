@@ -5,10 +5,10 @@ import { Keyboard } from 'lucide-react'
 import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
 import { cn } from '@/lib/utils'
-import { useResolvedEditorPreferences } from '@/hooks/use-editor-preferences'
-import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
+import { useResolvedEditorPreferences } from '@/hooks/editor/use-editor-preferences'
+import { useEditorBgStyle } from '@/hooks/editor/use-editor-bg-style'
 import { MarkdownViewer } from '@/components/shared/dynamic-editors'
-import { useIsTouch } from '@/hooks/use-is-touch'
+import { useIsTouch } from '@/hooks/ui/use-is-touch'
 
 interface MarkdownEditorProps {
   value: string

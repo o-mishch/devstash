@@ -13,11 +13,11 @@ import {
 } from '@/components/ui/dialog'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 import { api } from '@/lib/api/client'
-import { useControllableOpen } from '@/hooks/use-controllable-open'
-import { useLastNonNull } from '@/hooks/use-last-non-null'
+import { useControllableOpen } from '@/hooks/ui/use-controllable-open'
+import { useLastNonNull } from '@/hooks/ui/use-last-non-null'
 import { EMPTY_COLLECTION, type CollectionWithTypes } from '@/types/collection'
-import { useInvalidateCollections, useRemoveCollectionQuery } from '@/hooks/use-collections'
-import { useInvalidateUserProfile } from '@/hooks/use-user-profile'
+import { useInvalidateCollections, useRemoveCollectionQuery } from '@/hooks/items/use-collections'
+import { useInvalidateUserProfile } from '@/hooks/profile/use-user-profile'
 
 interface CollectionDeleteDialogProps {
   collection: CollectionWithTypes | null

@@ -3,7 +3,7 @@ import { noContent, problem, problemFrom, parseOr422 } from '@/lib/api/http'
 import { updateMainEmailInput } from '@/lib/api/schemas/profile'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { getProfileData } from '@/lib/db/profile'
-import { verifyPasswordFromBody, applyOwnedEmailChange } from '@/lib/app/profile-helpers'
+import { verifyPasswordFromBody, applyOwnedEmailChange } from '@/lib/services/profile-helpers'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'api-profile' })

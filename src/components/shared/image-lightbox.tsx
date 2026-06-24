@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { X, Loader2 } from 'lucide-react'
-import { useIsPro } from '@/hooks/use-user-profile'
-import { useDownloadSrcActions } from '@/hooks/use-pro-download-src'
+import { useIsPro } from '@/hooks/profile/use-user-profile'
+import { useDownloadSrcActions } from '@/hooks/billing/use-pro-download-src'
 
 interface ImageLightboxProps {
   open: boolean

@@ -10,9 +10,9 @@ import {
   useCommitBrainDumpDraftItem,
   type BrainDumpDraftItem,
   type BrainDumpCommitResult,
-} from '@/hooks/use-brain-dump'
-import { useItemUrlParamSync } from '@/hooks/use-item-url-param-sync'
-import { useFetchItemDetail } from '@/hooks/use-item-detail'
+} from '@/hooks/items/use-brain-dump'
+import { useItemUrlParamSync } from '@/hooks/items/use-item-url-param-sync'
+import { useFetchItemDetail } from '@/hooks/items/use-item-detail'
 import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import {
   Dialog,

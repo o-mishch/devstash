@@ -7,11 +7,11 @@ import { SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 import { api } from '@/lib/api/client'
 import { credentialEmailPrimaryMoveNote } from '@/lib/utils/auth'
 import { ProfileFormDialog } from './profile-form-dialog'
-import { usePatchUserProfile } from '@/hooks/use-user-profile'
+import { usePatchUserProfile } from '@/hooks/profile/use-user-profile'
 
 interface ChangeCredentialEmailDialogProps {
   currentEmail: string

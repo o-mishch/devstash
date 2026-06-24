@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { toastError } from '@/lib/utils/toast-error'
+import { toastError } from '@/lib/dom/toast-error'
 
 interface UseAiFieldGenerateParams<T> {
   canGenerate: boolean

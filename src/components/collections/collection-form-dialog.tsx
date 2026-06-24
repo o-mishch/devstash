@@ -12,10 +12,10 @@ import { CollectionFormFields } from '@/components/shared/collection-form-fields
 import { FormDialogFooter } from '@/components/shared/form-dialog-footer'
 import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog'
 import { collectionFormSchema } from '@/lib/utils/validators'
-import { useDirtyGuard } from '@/hooks/use-dirty-guard'
+import { useDirtyGuard } from '@/hooks/ui/use-dirty-guard'
 import { FREE_TIER_COLLECTION_LIMIT } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
-import { useApplyCollectionSave } from '@/hooks/use-collections'
+import { useApplyCollectionSave } from '@/hooks/items/use-collections'
 import type { CollectionWithTypes } from '@/types/collection'
 
 type FormValues = z.input<typeof collectionFormSchema>

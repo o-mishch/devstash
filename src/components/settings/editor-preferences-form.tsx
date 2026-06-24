@@ -2,7 +2,7 @@
 
 import { type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { useResolvedEditorPreferences, useUpdateEditorPreferences } from '@/hooks/use-editor-preferences'
+import { useResolvedEditorPreferences, useUpdateEditorPreferences } from '@/hooks/editor/use-editor-preferences'
 import {
   EDITOR_FONT_SIZE_OPTIONS,
   EDITOR_TAB_SIZE_OPTIONS,
@@ -17,7 +17,7 @@ import {
   type UiSkin,
   type EditorThemeMode,
 } from '@/types/editor-preferences'
-import { useIsPro } from '@/hooks/use-user-profile'
+import { useIsPro } from '@/hooks/profile/use-user-profile'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { CollapsibleCard } from '@/components/shared/collapsible-card'
 import { Label } from '@/components/ui/label'

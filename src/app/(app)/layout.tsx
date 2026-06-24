@@ -5,7 +5,7 @@ import { Archive, Home, Search, Star, Zap } from 'lucide-react'
 import type { WithChildren } from '@/types/common'
 
 import { getCachedSession } from '@/lib/session'
-import { loadAppSidebarData } from '@/lib/app/sidebar-data'
+import { loadAppSidebarData } from '@/lib/services/sidebar-data'
 import { getEditorPreferences } from '@/lib/db/profile'
 import { canCreateCollection, canCreateItem } from '@/lib/db/usage'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'

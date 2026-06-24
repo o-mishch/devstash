@@ -4,10 +4,10 @@ import { useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 import { api } from '@/lib/api/client'
-import { useUserProfile, usePatchUserProfile } from '@/hooks/use-user-profile'
-import { usePatchProfile } from '@/hooks/use-profile'
+import { useUserProfile, usePatchUserProfile } from '@/hooks/profile/use-user-profile'
+import { usePatchProfile } from '@/hooks/profile/use-profile'
 
 interface EditableNameProps {
   name: string | null

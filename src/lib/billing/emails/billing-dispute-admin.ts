@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { getNotificationRecipientEmail, sendEmail } from '@/lib/infra/resend'
 import { buildEmailTemplate } from '@/lib/emails/template-builder'
 import billingDisputeAdminHtml from './billing-dispute-admin.html'

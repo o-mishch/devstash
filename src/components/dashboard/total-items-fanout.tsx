@@ -7,7 +7,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { Package } from 'lucide-react'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { StatChipBody, statAccentStyle, STAT_CHIP_CLASS, STAT_COLORS } from './stat-chip'
-import { useMediaQuery } from '@/hooks/use-media-query'
+import { useMediaQuery } from '@/hooks/ui/use-media-query'
 import { getDashboardTypeShortcuts } from './type-shortcuts'
 
 interface TotalItemsFanoutProps {

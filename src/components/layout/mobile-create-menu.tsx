@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { CreateItemDialog } from '@/components/items/item-create-dialog'
 
 import { getInitialTypeFromPathname, getCollectionIdFromPathname } from '@/lib/utils/url'
-import { useUserProfile } from '@/hooks/use-user-profile'
+import { useUserProfile } from '@/hooks/profile/use-user-profile'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'

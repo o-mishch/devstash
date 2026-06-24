@@ -3,7 +3,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
-import { useResolvedEditorPreferences } from '@/hooks/use-editor-preferences'
+import { useResolvedEditorPreferences } from '@/hooks/editor/use-editor-preferences'
 
 interface MarkdownViewerProps {
   value: string

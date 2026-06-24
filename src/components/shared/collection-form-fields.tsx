@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { useAiMutation } from '@/hooks/use-ai-usage'
+import { useAiMutation } from '@/hooks/ai/use-ai-usage'
 import {
   AiDescriptionField,
   useAiDescriptionField,

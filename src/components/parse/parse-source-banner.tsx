@@ -2,8 +2,8 @@
 
 import { type ReactNode } from 'react'
 import { FileText, Scissors, Loader2 } from 'lucide-react'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { useOpenItemInDrawer, useItemDetail } from '@/hooks/use-item-detail'
+import { useCopyToClipboard } from '@/hooks/ui/use-copy-to-clipboard'
+import { useOpenItemInDrawer, useItemDetail } from '@/hooks/items/use-item-detail'
 import { SPLIT_FILE_MAX_INPUT_CHARS, BRAIN_DUMP_SOURCE_TAG } from '@/lib/utils/constants'
 import { cn } from '@/lib/utils'
 

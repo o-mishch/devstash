@@ -7,7 +7,7 @@ import { SubmitButton } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AuthFormField } from '@/components/auth/auth-form-field'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 import { api } from '@/lib/api/client'
 import { ProfileFormDialog } from './profile-form-dialog'
 

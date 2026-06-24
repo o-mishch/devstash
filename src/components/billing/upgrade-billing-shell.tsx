@@ -9,7 +9,7 @@ import { PendingFormButton } from '@/components/shared/pending-form-button'
 import { PricingProPrice } from '@/components/billing/pricing-cards-display'
 import { CHECKOUT_DISABLED_RECOVERY_MESSAGE } from '@/lib/billing/messages/billing-messages.client'
 import type { BillingPeriod } from '@/lib/billing/config/billing-pricing.client'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 import { useUpgradeBillingStore } from '@/stores/upgrade-billing'
 
 interface UpgradeBillingShellProps {

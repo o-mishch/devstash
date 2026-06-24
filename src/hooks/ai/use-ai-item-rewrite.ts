@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
-import { useUpdateItem } from '@/hooks/use-update-item'
+import { useUpdateItem } from '@/hooks/items/use-update-item'
 import type { FullItem } from '@/types/item'
 
 // Result of a single AI generation call: the produced text, or a user-facing error message.

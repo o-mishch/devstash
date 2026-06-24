@@ -6,10 +6,10 @@ import type { editor } from 'monaco-editor'
 
 import { EditorChromeShell, EDITOR_CHROME_COPY_BUTTON_CLASS } from '@/components/ui/editor-chrome'
 import { CopyButton } from '@/components/shared/copy-button'
-import { useIsTouch } from '@/hooks/use-is-touch'
-import { useResolvedEditorPreferences } from '@/hooks/use-editor-preferences'
-import { getDynamicMonacoTheme } from '@/lib/editor/monaco-theme'
-import { useEditorBgStyle } from '@/hooks/use-editor-bg-style'
+import { useIsTouch } from '@/hooks/ui/use-is-touch'
+import { useResolvedEditorPreferences } from '@/hooks/editor/use-editor-preferences'
+import { getDynamicMonacoTheme } from '@/lib/dom/monaco-theme'
+import { useEditorBgStyle } from '@/hooks/editor/use-editor-bg-style'
 
 interface CodeEditorProps {
   value: string

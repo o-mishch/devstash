@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { buttonVariants, SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { api } from '@/lib/api/client'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 
 export function ForgotPasswordForm() {
   const router = useRouter()

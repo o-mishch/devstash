@@ -28,18 +28,18 @@ import {
 } from '@/components/ui/select'
 import { CollectionFormFields } from '@/components/shared/collection-form-fields'
 
-import { useCreateItem } from '@/hooks/use-create-item'
+import { useCreateItem } from '@/hooks/items/use-create-item'
 import { api } from '@/lib/api/client'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { ITEM_TYPES_WITH_URL, ITEM_TYPES_WITH_FILE, ITEM_TYPES_WITH_CONTENT, PRO_ITEM_TYPE_NAMES, FREE_TIER_COLLECTION_LIMIT, type FileItemType } from '@/lib/utils/constants'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
-import { useUserProfile, useIsPro } from '@/hooks/use-user-profile'
-import { useCollections, useApplyCollectionSave } from '@/hooks/use-collections'
+import { useUserProfile, useIsPro } from '@/hooks/profile/use-user-profile'
+import { useCollections, useApplyCollectionSave } from '@/hooks/items/use-collections'
 
 import { itemFormBaseSchema, collectionFormSchema, type ItemFormBaseValues } from '@/lib/utils/validators'
 import { parseTagString } from '@/lib/utils/format'
 import { cn } from '@/lib/utils'
-import { useDirtyGuard } from '@/hooks/use-dirty-guard'
+import { useDirtyGuard } from '@/hooks/ui/use-dirty-guard'
 import type { SidebarItemType } from '@/types/item'
 import type { CollectionWithTypes } from '@/types/collection'
 

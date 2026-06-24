@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { queryOptions, skipToken, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
-import { useSeedSearchResultsCache } from '@/hooks/use-infinite-items'
+import { useSeedSearchResultsCache } from '@/hooks/items/use-infinite-items'
 import { queryKeys } from '@/lib/api/query-keys'
 import type { LightItem, ItemsPage } from '@/types/item'
 import type { SidebarCollection } from '@/types/collection'

@@ -8,7 +8,7 @@ import { CollectionCreateDialog } from './collection-create-dialog'
 import { CollectionCard } from './collection-card'
 import { CollectionDialogMount } from './collection-dialog-mount'
 import type { CollectionWithTypes } from '@/types/collection'
-import { useCollections } from '@/hooks/use-collections'
+import { useCollections } from '@/hooks/items/use-collections'
 
 type CollectionComparator = (a: CollectionWithTypes, b: CollectionWithTypes) => number
 

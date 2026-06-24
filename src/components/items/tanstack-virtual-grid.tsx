@@ -3,8 +3,8 @@
 
 import { useVirtualizer, useWindowVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react'
-import { useVirtualContainer } from '@/hooks/use-virtual-container'
-import { useIsTouch } from '@/hooks/use-is-touch'
+import { useVirtualContainer } from '@/hooks/ui/use-virtual-container'
+import { useIsTouch } from '@/hooks/ui/use-is-touch'
 import { useItemDrawerStore } from '@/stores/item-drawer-store'
 
 // Stable reference for single-column list callers so the grid's ResizeObserver effect doesn't

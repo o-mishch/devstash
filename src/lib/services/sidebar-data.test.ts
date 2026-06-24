@@ -17,7 +17,7 @@ import {
   resolveLayoutBillingSidebarOptions,
   loadAppSidebarData,
   SIDEBAR_DEFAULT_OPTIONS,
-} from '@/lib/app/sidebar-data'
+} from '@/lib/services/sidebar-data'
 
 const mockMaybeReconcileBilling = vi.mocked(maybeReconcileBillingStateForUser)
 const mockMaybeReconcileOrphan = vi.mocked(maybeReconcileOrphanSubscriptionForUser)

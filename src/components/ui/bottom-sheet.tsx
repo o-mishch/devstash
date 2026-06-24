@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type UIEvent, type PointerEvent } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
-import { useSwipeToDismiss } from '@/hooks/use-swipe-to-dismiss'
-import { usePressHighlight } from '@/hooks/use-press-highlight'
-import { useVisualViewport } from '@/hooks/use-visual-viewport'
+import { useSwipeToDismiss } from '@/hooks/ui/use-swipe-to-dismiss'
+import { usePressHighlight } from '@/hooks/ui/use-press-highlight'
+import { useVisualViewport } from '@/hooks/ui/use-visual-viewport'
 import { cn } from '@/lib/utils'
 
 interface BottomSheetProps {

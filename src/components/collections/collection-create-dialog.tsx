@@ -4,7 +4,7 @@ import { type ReactNode } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api/client'
-import { useUserProfile } from '@/hooks/use-user-profile'
+import { useUserProfile } from '@/hooks/profile/use-user-profile'
 import { type MorphOrigin } from '@/components/ui/responsive-form-dialog'
 import { CollectionFormDialog } from './collection-form-dialog'
 

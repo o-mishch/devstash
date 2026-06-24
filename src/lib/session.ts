@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { auth } from '@/auth'

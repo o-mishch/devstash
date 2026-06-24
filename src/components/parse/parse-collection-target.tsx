@@ -1,6 +1,6 @@
 'use client'
 
-import { useItemDetail } from '@/hooks/use-item-detail'
+import { useItemDetail } from '@/hooks/items/use-item-detail'
 import { CollectionSelector } from '@/components/shared/collection-selector'
 import { deriveCollectionName } from '@/lib/utils/derive-source-label'
 import type { CollectionPickerItem } from '@/types/collection'

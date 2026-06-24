@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { sendEmail, type EmailSendResult } from '@/lib/infra/resend'
 import { buildEmailTemplate } from '@/lib/emails/template-builder'
 import { billingPortalCtaHtml } from './billing-portal-cta'

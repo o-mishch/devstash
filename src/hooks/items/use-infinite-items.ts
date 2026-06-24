@@ -7,8 +7,8 @@ import {
   type Query,
 } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
-import { itemDetailQueryKey } from '@/hooks/use-item-detail'
-import { useInvalidate } from '@/hooks/use-cache-invalidation'
+import { itemDetailQueryKey } from '@/hooks/items/use-item-detail'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import { queryKeys } from '@/lib/api/query-keys'
 import type { FetchItemsQuery, ItemsPage, LightItem } from '@/types/item'
 

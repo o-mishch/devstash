@@ -21,7 +21,7 @@ import {
   BillingProUnavailableSection,
 } from './billing-settings-sections'
 import type Stripe from 'stripe'
-import { useBillingContext, useReconcileProFlag } from '@/hooks/use-billing-context'
+import { useBillingContext, useReconcileProFlag } from '@/hooks/billing/use-billing-context'
 import type { BillingContextResponse } from '@/lib/api/schemas/billing'
 
 interface BillingSettingsProps {

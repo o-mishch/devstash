@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useLayoutEffect } from 'react'
-import { useControllableOpen } from '@/hooks/use-controllable-open'
+import { useControllableOpen } from '@/hooks/ui/use-controllable-open'
 
 interface UseDirtyGuardOptions {
   open?: boolean

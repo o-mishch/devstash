@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api/client'
 import { SubmitButton } from '@/components/ui/button'
 import { PasswordFields } from '@/components/auth/password-fields'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 
 // Both token-confirm endpoints share the same `{ token, password, confirmPassword }` body, so the
 // path can be passed in (serializable from the server-component page) without losing type safety.

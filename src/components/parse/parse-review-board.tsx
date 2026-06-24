@@ -38,14 +38,14 @@ import {
   isStreamingPhase,
   type BrainDumpDraftItem,
   type BrainDumpStreamSeed,
-} from '@/hooks/use-brain-dump'
+} from '@/hooks/items/use-brain-dump'
 import { ParseProgress } from '@/components/parse/parse-progress'
 import { ParseSourceBanner } from '@/components/parse/parse-source-banner'
 import { ParseDraftCard } from '@/components/parse/parse-draft-card'
 import { ParseCollectionTarget } from '@/components/parse/parse-collection-target'
 import { BentoMasonry, type BentoMasonryTile } from '@/components/parse/bento-masonry'
 import { GlowBorder } from '@/components/ui/glow-border'
-import { useCollections } from '@/hooks/use-collections'
+import { useCollections } from '@/hooks/items/use-collections'
 import type { CollectionWithTypes, CollectionPickerItem } from '@/types/collection'
 
 // The splitter only ever produces these five text types (file/image need an upload), so they are the

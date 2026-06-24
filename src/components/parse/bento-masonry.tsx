@@ -2,7 +2,7 @@
 
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'motion/react'
-import { useMediaQuery } from '@/hooks/use-media-query'
+import { useMediaQuery } from '@/hooks/ui/use-media-query'
 
 export interface BentoMasonryTile {
   // Stable identity across re-packs — the bucket group name. Drives the Motion key so a tile keeps

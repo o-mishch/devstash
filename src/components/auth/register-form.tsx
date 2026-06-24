@@ -6,7 +6,7 @@ import { SubmitButton } from '@/components/ui/button'
 import { AuthFormField } from '@/components/auth/auth-form-field'
 import { PasswordFields } from '@/components/auth/password-fields'
 import { api } from '@/lib/api/client'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 
 export function RegisterForm() {
   const router = useRouter()

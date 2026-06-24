@@ -16,8 +16,8 @@ import type { CollectionWithTypes } from '@/types/collection'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { itemCountLabel } from '@/lib/utils/format'
 
-import { useGlobalSearch } from '@/hooks/use-global-search'
-import { useCollections } from '@/hooks/use-collections'
+import { useGlobalSearch } from '@/hooks/ui/use-global-search'
+import { useCollections } from '@/hooks/items/use-collections'
 
 interface GlobalSearchProps {
   /** Server-fetched collections seeding the shared useCollections cache (the local-first search source). */

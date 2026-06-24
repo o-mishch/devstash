@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { api } from '@/lib/api/client'
-import { useResetProfile } from '@/hooks/use-profile'
+import { useResetProfile } from '@/hooks/profile/use-profile'
 import { DestructiveDialogFooter } from '@/components/shared/destructive-dialog-footer'
 
 interface DeleteAccountDialogProps {

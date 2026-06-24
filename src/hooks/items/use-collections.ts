@@ -4,8 +4,8 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { $api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/api/query-keys'
-import { useInvalidate, type InvalidateOptions } from '@/hooks/use-cache-invalidation'
-import { useInvalidateUserProfile } from '@/hooks/use-user-profile'
+import { useInvalidate, type InvalidateOptions } from '@/hooks/items/use-cache-invalidation'
+import { useInvalidateUserProfile } from '@/hooks/profile/use-user-profile'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface UseCollectionsOptions {

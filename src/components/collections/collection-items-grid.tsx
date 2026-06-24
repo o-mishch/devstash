@@ -1,6 +1,6 @@
 'use client'
 
-import { useInfiniteItems } from '@/hooks/use-infinite-items'
+import { useInfiniteItems } from '@/hooks/items/use-infinite-items'
 import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'
 import { EmptyCard } from '@/components/shared/empty-card'

@@ -17,9 +17,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
-import { useAiUsage } from '@/hooks/use-ai-usage'
+import { useAiUsage } from '@/hooks/ai/use-ai-usage'
 import { formatRenewIn } from '@/lib/utils/format'
-import { isStreamingPhase, type BrainDumpPhase } from '@/hooks/use-brain-dump'
+import { isStreamingPhase, type BrainDumpPhase } from '@/hooks/items/use-brain-dump'
 
 interface PhaseMeta {
   Icon: LucideIcon

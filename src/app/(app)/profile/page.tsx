@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { getCurrentUserId } from '@/lib/session'
-import { loadProfileContext } from '@/lib/app/profile-helpers'
+import { loadProfileContext } from '@/lib/services/profile-helpers'
 import { ProfileContent } from '@/components/profile/profile-content'
 import { type ToastCode } from '@/components/profile/profile-toast'
 import ProfileLoading from './loading'

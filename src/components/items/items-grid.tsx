@@ -1,6 +1,6 @@
 'use client'
 
-import { useInfiniteItems } from '@/hooks/use-infinite-items'
+import { useInfiniteItems } from '@/hooks/items/use-infinite-items'
 import { TanStackVirtualGrid, singleColumn } from '@/components/items/tanstack-virtual-grid'
 import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'

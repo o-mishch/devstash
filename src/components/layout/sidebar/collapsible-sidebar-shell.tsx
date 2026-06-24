@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { SidebarData } from '@/types/sidebar'
-import { useUpdateEditorPreferences } from '@/hooks/use-editor-preferences'
+import { useUpdateEditorPreferences } from '@/hooks/editor/use-editor-preferences'
 import { writeLayoutCookie } from '@/lib/dom/layout-cookie'
 import { CollapsedSidebar } from './collapsed-sidebar'
 import { ExpandedSidebar } from './expanded-sidebar'

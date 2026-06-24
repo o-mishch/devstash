@@ -1,6 +1,6 @@
 'use client'
 
-import { useCollections } from '@/hooks/use-collections'
+import { useCollections } from '@/hooks/items/use-collections'
 import { FavoriteCollectionRow } from '@/components/favorites/favorite-collection-row'
 import { FavoritesEmpty } from '@/components/favorites/favorites-empty'
 import type { CollectionWithTypes } from '@/types/collection'

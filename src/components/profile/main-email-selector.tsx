@@ -23,8 +23,8 @@ import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api/client'
 import { WarningBanner } from '@/components/shared/warning-banner'
-import { usePatchUserProfile } from '@/hooks/use-user-profile'
-import { usePatchProfile } from '@/hooks/use-profile'
+import { usePatchUserProfile } from '@/hooks/profile/use-user-profile'
+import { usePatchProfile } from '@/hooks/profile/use-profile'
 
 interface MainEmailSelectorProps {
   currentEmail: string

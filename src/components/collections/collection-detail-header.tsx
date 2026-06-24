@@ -2,7 +2,7 @@
 
 import { type CSSProperties } from 'react'
 import { Folder } from 'lucide-react'
-import { useCollection } from '@/hooks/use-collections'
+import { useCollection } from '@/hooks/items/use-collections'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { itemCountLabel } from '@/lib/utils/format'
 import { CollectionHeaderActions } from '@/components/collections/collection-header-actions'

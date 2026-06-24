@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { BottomSheet } from '@/components/ui/bottom-sheet'
-import { useMediaQuery } from '@/hooks/use-media-query'
+import { useMediaQuery } from '@/hooks/ui/use-media-query'
 
 // Offset of the trigger's click point from the viewport centre, in px — the point the desktop
 // dialog grows out of. See `.dialog-morph` in globals.css and `morphOrigin` below.

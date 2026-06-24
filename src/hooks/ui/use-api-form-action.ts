@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { toastError } from '@/lib/utils/toast-error'
+import { toastError } from '@/lib/dom/toast-error'
 
 type SubmitFn<T> = (body: Record<string, string>) => Promise<T>
 

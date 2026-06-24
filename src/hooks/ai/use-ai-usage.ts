@@ -3,8 +3,8 @@
 import { useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api, $api } from '@/lib/api/client'
-import { useInvalidate } from '@/hooks/use-cache-invalidation'
-import { useIsPro } from '@/hooks/use-user-profile'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
+import { useIsPro } from '@/hooks/profile/use-user-profile'
 import type { components, paths } from '@/types/openapi'
 
 // Read-only AI usage meter, layered on the Redis sliding-window rate limits. This is the repo's

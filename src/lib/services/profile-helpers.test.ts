@@ -29,7 +29,7 @@ import { getProfileData, updateUserEmail } from '@/lib/db/profile'
 import { isEmailTakenByAnotherUser } from '@/lib/db/users'
 import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 import { invalidateProfileCache } from '@/lib/infra/cache'
-import { applyOwnedEmailChange, loadProfileContext } from '@/lib/app/profile-helpers'
+import { applyOwnedEmailChange, loadProfileContext } from '@/lib/services/profile-helpers'
 
 const mockGetProfile = vi.mocked(getProfileData)
 const mockIsEmailTaken = vi.mocked(isEmailTakenByAnotherUser)

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import { useIntersectionObserver } from '@/hooks/use-intersection-observer';
+import { useIntersectionObserver } from '@/hooks/ui/use-intersection-observer';
 
 interface FadeInProps {
   children: ReactNode;

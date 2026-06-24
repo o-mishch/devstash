@@ -10,8 +10,8 @@ import {
   AiProHint,
   AiSuggestionPanel,
 } from '@/components/shared/ai-field-chrome'
-import { useIsPro } from '@/hooks/use-user-profile'
-import { useAiFieldGenerate } from '@/hooks/use-ai-field-generate'
+import { useIsPro } from '@/hooks/profile/use-user-profile'
+import { useAiFieldGenerate } from '@/hooks/ai/use-ai-field-generate'
 import { aiRateLimitHint } from '@/lib/utils/constants'
 
 interface UseAiTagsFieldParams {

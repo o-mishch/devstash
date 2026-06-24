@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button'
 import { CollectionEditDialog } from '@/components/collections/collection-edit-dialog'
 import { CollectionDeleteDialog } from '@/components/collections/collection-delete-dialog'
 import { api } from '@/lib/api/client'
-import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle'
-import { useInvalidateCollections } from '@/hooks/use-collections'
+import { useOptimisticToggle } from '@/hooks/items/use-optimistic-toggle'
+import { useInvalidateCollections } from '@/hooks/items/use-collections'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionHeaderActionsProps {

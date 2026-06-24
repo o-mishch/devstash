@@ -5,14 +5,14 @@ import { ArrowRight } from 'lucide-react'
 import { api } from '@/lib/api/client'
 import { buttonVariants } from '@/components/ui/button'
 import { PendingFormButton } from '@/components/shared/pending-form-button'
-import { useApiFormAction } from '@/hooks/use-api-form-action'
+import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 import { cn } from '@/lib/utils'
 import {
   BILLING_CANCEL_FALLBACK_ERROR,
   BILLING_PORTAL_FALLBACK_ERROR,
   BILLING_REACTIVATE_FALLBACK_ERROR,
 } from '@/lib/billing/messages/billing-messages.client'
-import { useInvalidateBillingContext } from '@/hooks/use-billing-context'
+import { useInvalidateBillingContext } from '@/hooks/billing/use-billing-context'
 
 interface BillingPortalFormProps {
   className?: string

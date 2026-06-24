@@ -10,7 +10,7 @@ import {
   useChangeCredentialLogin,
   useRemoveCredentialLogin,
   useRemoveLinkedAccount,
-} from '@/hooks/use-profile'
+} from '@/hooks/profile/use-profile'
 import type { OAuthProvider } from '@/lib/utils/constants'
 import type { LinkedAccount } from '@/types/profile'
 import { ProfileActionDialog } from './profile-action-dialog'

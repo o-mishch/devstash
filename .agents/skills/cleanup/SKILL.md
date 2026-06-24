@@ -3,7 +3,7 @@ name: cleanup
 description: "Run DevStash housekeeping, cleanup fixes, or a deep quality audit over the current changeset. Use when asked to clean up, check before commit, find dead code, remove console/TODO leftovers, check env var drift, verify Prisma migration sync, simplify over-engineered code, or audit uncommitted work before shipping. Supports modes: check, run, improve."
 # Claude Code specific fields — ignored by Codex
 argument-hint: check|run|improve
-allowed-tools: Agent, Glob, Grep, Read, Write, Edit, Skill, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(git *), Bash(cd *), Bash(cd * && grep *), Bash(cd *; grep *), Bash(cd * && rg *), Bash(cd *; rg *), Bash(cd * && find *), Bash(cd *; find *), Bash(rg *), Bash(rg *; *), Bash(rg *| head *), Bash(grep *), Bash(grep * 2>/dev/null*), Bash(find *), Bash(find * 2>/dev/null*), Bash(ls *), Bash(ls *; *), Bash(ls *| head *), Bash(ls *2>/dev/null*), Bash(cat *), Bash(head *), Bash(tail *), Bash(sed *), Bash(awk *), Bash(echo *), Bash(cut *), Bash(tr *), Bash(for *), Bash(if *), Bash(while *), Bash(test *), Bash([ *), Bash(wc *), Bash(sort *), Bash(uniq *), Bash(xargs *), Bash(npm run *), Bash(npm test *), Bash(npx *), Bash(npx prisma *), Bash(npx eslint *), Bash(npx tsc *), Bash(pgrep *), Bash(pkill *), Bash(lsof *), Bash(sleep *), Bash(ps *), Bash(rm -rf .next), Bash(ffmpeg *), Bash(ffprobe *), Bash(avconvert *), Bash(swift *), Bash(swift * 2>&1 | tail *), Bash(swift *| tail *), Bash(swift *; *), Bash(rm -rf frames*)
+allowed-tools: Agent, Glob, Grep, Read, Write, Edit, Skill, mcp__context7__resolve-library-id, mcp__context7__query-docs, Bash(git *), Bash(cd *), Bash(cd * && grep *), Bash(cd *; grep *), Bash(cd * && rg *), Bash(cd *; rg *), Bash(cd * && find *), Bash(cd *; find *), Bash(rg *), Bash(rg *; *), Bash(rg *| head *), Bash(grep *), Bash(grep * 2>/dev/null*), Bash(find *), Bash(find * 2>/dev/null*), Bash(ls *), Bash(ls *; *), Bash(ls *| head *), Bash(ls *2>/dev/null*), Bash(cat *), Bash(head *), Bash(tail *), Bash(sed *), Bash(awk *), Bash(echo *), Bash(cut *), Bash(tr *), Bash(for *), Bash(if *), Bash(while *), Bash(test *), Bash([ *), Bash(wc *), Bash(sort *), Bash(uniq *), Bash(xargs *), Bash(npm run *), Bash(npm test *), Bash(npx *), Bash(npx prisma *), Bash(npx eslint *), Bash(npx tsc *), Bash(pgrep *), Bash(pkill *), Bash(lsof *), Bash(sleep *), Bash(ps *), Bash(mkdir *), Bash(mv *), Bash(ffmpeg *), Bash(ffprobe *), Bash(avconvert *), Bash(swift *), Bash(swift * 2>&1 | tail *), Bash(swift *| tail *), Bash(swift *; *)
 ---
 
 # DevStash Cleanup
@@ -19,11 +19,11 @@ Use this skill to inspect or improve the current DevStash changeset. Resolve the
 
 ## Usage
 
-| Mode | Behavior | Time | When to use |
-| --- | --- | --- | --- |
-| `check` | Read-only scan, numbered report, no edits | ~2–3 min | Before commit or before asking for fixes |
-| `run` | Scan, ask which findings to fix, edit only approved items, verify | ~3–4 min | Basic cleanup with low ambiguity |
-| `improve` | Deep audit with finding IDs, then ask what to fix | ~5–10 min | Before shipping or after a broad refactor |
+| Mode      | Behavior                                                          | Time      | When to use                               |
+| --------- | ----------------------------------------------------------------- | --------- | ----------------------------------------- |
+| `check`   | Read-only scan, numbered report, no edits                         | ~2–3 min  | Before commit or before asking for fixes  |
+| `run`     | Scan, ask which findings to fix, edit only approved items, verify | ~3–4 min  | Basic cleanup with low ambiguity          |
+| `improve` | Deep audit with finding IDs, then ask what to fix                 | ~5–10 min | Before shipping or after a broad refactor |
 
 ## Scope Snapshot
 
@@ -37,30 +37,30 @@ Treat the dirty worktree as shared user work. Never revert unrelated changes.
 
 ## Required Context
 
-| File | check | run | improve |
-| --- |:---:|:---:|:---:|
-| `.agents/rules/ai-interaction.md` | ✓ | ✓ | ✓ |
-| `.agents/rules/coding-standards.md` | ✓ | ✓ | ✓ |
-| `context/current-feature.md` | ✓ | ✓ | ✓ |
-| `.agents/rules/nextjs-architecture.md` | scope | scope | ✓ |
-| `.agents/rules/database.md` | scope | scope | ✓ |
-| `.agents/rules/security.md` | scope | scope | ✓ |
-| `.agents/rules/api-contract.md` | scope | scope | ✓ |
-| `.agents/rules/testing.md` | scope | scope | ✓ |
-| `references/improve-checklist.md` | — | — | ✓ |
-| `references/improve-report.md` | — | — | ✓ |
+| File                                   | check |  run  | improve |
+| -------------------------------------- | :---: | :---: | :-----: |
+| `.agents/rules/ai-interaction.md`      |   ✓   |   ✓   |    ✓    |
+| `.agents/rules/coding-standards.md`    |   ✓   |   ✓   |    ✓    |
+| `context/current-feature.md`           |   ✓   |   ✓   |    ✓    |
+| `.agents/rules/nextjs-architecture.md` | scope | scope |    ✓    |
+| `.agents/rules/database.md`            | scope | scope |    ✓    |
+| `.agents/rules/security.md`            | scope | scope |    ✓    |
+| `.agents/rules/api-contract.md`        | scope | scope |    ✓    |
+| `.agents/rules/testing.md`             | scope | scope |    ✓    |
+| `references/improve-checklist.md`      |   —   |   —   |    ✓    |
+| `references/improve-report.md`         |   —   |   —   |    ✓    |
 
 **✓** = always read. **scope** = read only when changed paths match the table below. **—** = skip.
 
 Path triggers for scope-gated rule files:
 
-| Changed paths | Rule file |
-| --- | --- |
-| `src/**/*.ts`, `src/**/*.tsx` | `nextjs-architecture.md` |
-| `src/lib/db/**/*`, `prisma/**/*` | `database.md` |
-| `src/app/api/**/*`, `src/actions/**/*`, `src/auth.ts`, `src/auth.config.ts`, `src/lib/auth/**/*`, `src/lib/infra/rate-limit.ts`, `src/lib/db/**/*`, `prisma/**/*` | `security.md` |
-| `src/app/api/**/*`, `src/actions/**/*`, `src/lib/api/**/*`, `src/types/api.ts` | `api-contract.md` |
-| `src/**/*.test.ts`, `src/test/**/*`, `vitest.config*` | `testing.md` |
+| Changed paths                                                                                                                                                     | Rule file                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `src/**/*.ts`, `src/**/*.tsx`                                                                                                                                     | `nextjs-architecture.md` |
+| `src/lib/db/**/*`, `prisma/**/*`                                                                                                                                  | `database.md`            |
+| `src/app/api/**/*`, `src/actions/**/*`, `src/auth.ts`, `src/auth.config.ts`, `src/lib/auth/**/*`, `src/lib/infra/rate-limit.ts`, `src/lib/db/**/*`, `prisma/**/*` | `security.md`            |
+| `src/app/api/**/*`, `src/actions/**/*`, `src/lib/api/**/*`, `src/types/api.ts`                                                                                    | `api-contract.md`        |
+| `src/**/*.test.ts`, `src/test/**/*`, `vitest.config*`                                                                                                             | `testing.md`             |
 
 Honor `context/current-feature.md` when it explicitly supersedes a standing rule for files in scope.
 
