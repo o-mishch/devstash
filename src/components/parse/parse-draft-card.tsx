@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
-import { motion } from 'motion/react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Trash2, Check, Loader2, Undo2, CopyCheck, PackageCheck } from 'lucide-react'
 import { toast } from 'sonner'
@@ -30,13 +29,9 @@ import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { SheetTitle } from '@/components/ui/sheet'
-import { DrawerShell } from '@/components/items/drawer/drawer-shell'
 import { ItemDrawerEditContent } from '@/components/items/drawer/item-drawer-edit-content'
-import { SWIPE_GRIP_PILL_CLASS, GRIP_VARIANTS } from '@/components/items/drawer/drawer-shared'
-import { useIsTouch } from '@/hooks/ui/use-is-touch'
+import type { SheetCloseRef } from '@/hooks/ui/use-register-sheet-close'
 import { useDraftDrawerStore } from '@/stores/draft-drawer-store'
-import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
-import { useMotionSwipeClose } from '@/hooks/ui/use-motion-swipe-close'
 import { draftToFullItem } from '@/lib/utils/brain-dump-draft'
 import type { CollectionPickerItem } from '@/types/collection'
 import type { UpdateItemInput } from '@/lib/utils/validators'
@@ -93,7 +88,18 @@ export function ParseDraftCard({
   const patchDraft = usePatchBrainDumpDraftItem()
   const deleteDraft = useDeleteBrainDumpDraftItem()
   const commitDraft = useCommitBrainDumpDraftItem()
+  // `editOpen` is the card's local intent to have THIS draft's drawer open. The drawer itself is rendered by
+  // DraftDrawerProvider from the global DraftDrawerStore; EditDraftDrawer (below) mirrors `editOpen` into the
+  // store. To keep the two in sync on close-from-anywhere (provider Cancel/X/swipe, or another card opening),
+  // a store subscription resets `editOpen` whenever the store is no longer open for this draft — so the
+  // `?item=` URL sync and reopen behaviour stay correct with the store as the single source of truth.
   const [editOpen, setEditOpen] = useState(false)
+  useEffect(() => {
+    if (!editOpen) return
+    return useDraftDrawerStore.subscribe((state) => {
+      if (!(state.open && state.item?.id === item.id)) setEditOpen(false)
+    })
+  }, [editOpen, item.id])
   const [busy, setBusy] = useState(false)
   const [highlighted, setHighlighted] = useState(highlight ?? false)
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -219,7 +225,14 @@ export function ParseDraftCard({
       wasDraggingRef.current = false
       return
     }
-    if (!busy) setEditOpen(true)
+    if (busy) return
+    // Capture the board's scroll SYNCHRONOUSLY at the click into the store — BEFORE setEditOpen(true) triggers
+    // the mobile slider to pin the window to 0. The store's openDrawer runs later (from EditDraftDrawer's
+    // effect), by which point window.scrollY is already 0; this click handler is the only place it's still the
+    // real position. The slider restores it on close (otherwise the board jumps to the top). window.scrollY:
+    // document-level scroll has no React/Next equivalent. 0 on desktop (the slider ignores it).
+    if (typeof window !== 'undefined') useDraftDrawerStore.getState().setOpenScrollY(window.scrollY)
+    setEditOpen(true)
   }
 
   return (
@@ -360,8 +373,8 @@ export function ParseDraftCard({
         {/* Both confirm dialogs portal to <body> in the DOM, but in the REACT tree they sit under the card's
             clickable root (onClick={openEditor}), and React bubbles synthetic clicks along the REACT tree —
             so clicking any dialog button (notably Cancel, which leaves the card mounted) would bubble up and
-            open the draft editor. Stop propagation here so dialog clicks never reach openEditor. (The
-            EditDraftDrawer above already does this via DrawerShell's stopPropagation prop.) */}
+            open the draft editor. Stop propagation here so dialog clicks never reach openEditor. (The drawer
+            itself is now provider-mounted, not nested under the card, so it no longer needs this guard.) */}
         <div onClick={(event) => event.stopPropagation()}>
           <Dialog open={collectionConfirmOpen} onOpenChange={setCollectionConfirmOpen}>
             <DialogContent>
@@ -585,14 +598,17 @@ interface EditDraftDrawerProps {
   onCommit: () => void
 }
 
-export interface MobileDraftFullScreenViewProps {
-  item: BrainDumpDraftItem | null
-  open: boolean
+export interface DraftEditBodyProps {
+  item: BrainDumpDraftItem
   targetCollections?: CollectionPickerItem[]
   onSave: (payload: UpdateItemInput) => Promise<void>
   onOpenChange: (open: boolean) => void
-  isSettled: boolean
-  onSwipeCloseStart?: () => void
+  // Registered by ItemDrawerEditContent so the shell (desktop Sheet's Esc/backdrop/swipe, mobile swipe) can
+  // route close through the dirty guard before discarding an unsaved edit.
+  sheetCloseRef: SheetCloseRef
+  // Document-flow full-screen layout (mobile) vs the Sheet's inner-scroll panel (desktop). Drives both the
+  // heading element (plain <h1> vs Radix SheetTitle) and ItemDrawerEditContent's fullScreen/stickyHeader.
+  fullScreen?: boolean
   busy: boolean
   canCommit: boolean
   inTrash: boolean
@@ -602,17 +618,19 @@ export interface MobileDraftFullScreenViewProps {
   onCommit: () => void
 }
 
-// Full-screen mobile view for the draft edit drawer. Mirrors ItemFullScreenView: renders as document-flow
-// content (no Sheet) so the page scrolls and the browser URL bar can retract. Swipe-right closes via
-// Motion's drag gesture — same thresholds and fly-off as ItemFullScreenView.
-export function MobileDraftFullScreenView({
+// The single draft edit body shared by BOTH drawer shells — the desktop Sheet (DraftDrawerProvider) and the
+// mobile full-screen host (MobileDrawerHost). It reuses the app's real item-edit content (ItemDrawerEditContent
+// via draftToFullItem) with the draft action bar (Restore / Delete / Delete-forever / Commit), routing Save to
+// the draft PATCH via onSubmitOverride. Drafts have no per-item collections — they attach to the job's target
+// on commit — so the collections field shows that shared target read-only. Only the heading element and the
+// fullScreen/stickyHeader layout differ between shells, both driven by `fullScreen`.
+export function DraftEditBody({
   item,
-  open,
   targetCollections,
   onSave,
   onOpenChange,
-  isSettled,
-  onSwipeCloseStart,
+  sheetCloseRef,
+  fullScreen = false,
   busy,
   canCommit,
   inTrash,
@@ -620,72 +638,28 @@ export function MobileDraftFullScreenView({
   onRestore,
   onDeleteForever,
   onCommit,
-}: MobileDraftFullScreenViewProps) {
-  const editorFullscreen = useEditorFullscreenStore((s) => s.fullscreen)
-  const sheetCloseRef = useRef<(() => void) | null>(null)
-
-  const requestClose = () => {
-    const guardedClose = sheetCloseRef.current
-    if (guardedClose) guardedClose()
-    else onOpenChange(false)
-  }
-
-  const { x, panelRef, gripPressed, setGripPressed, dragEnabled, handleDrag, handleDragEnd } = useMotionSwipeClose({
-    isOpen: open,
-    isSettled,
-    editorFullscreen,
-    onSwipeCloseStart,
-    requestClose,
-  })
-
-  // Reset scroll and drag offset when item changes while settled.
-  const itemId = item?.id ?? null
-  useLayoutEffect(() => {
-    if (itemId === null || !isSettled) return
-    // document required: in settled mode the draft pane IS the page document.
-    const scroller = document.scrollingElement ?? document.documentElement
-    scroller.scrollTop = 0
-    // x is a stable useMotionValue ref — intentionally excluded from deps.
-    x.set(0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemId, isSettled])
-
-  if (!item) return null
+}: DraftEditBodyProps) {
   return (
-    <motion.div
-      ref={panelRef}
-      drag={dragEnabled ? 'x' : false}
-      dragDirectionLock
-      whileDrag="dragging"
-      onDrag={handleDrag}
-      onDragEnd={handleDragEnd}
-      style={{ x }}
-      className="app-dot-grid relative min-h-[100lvh] touch-pan-y bg-background shadow-[-8px_0_24px_rgba(0,0,0,0.25)]"
-    >
-      {!editorFullscreen ? (
-        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-[55] w-2">
-          <div className="sticky top-0 flex h-[100lvh] flex-col items-start justify-center pl-1">
-            <motion.div
-              className={cn(SWIPE_GRIP_PILL_CLASS, 'pointer-events-auto touch-none')}
-              variants={GRIP_VARIANTS}
-              initial="idle"
-              animate={gripPressed ? 'dragging' : 'idle'}
-              onPointerDown={() => setGripPressed(true)}
-              onPointerUp={() => setGripPressed(false)}
-              onPointerCancel={() => setGripPressed(false)}
-              onPointerLeave={() => setGripPressed(false)}
-            />
-          </div>
-        </div>
-      ) : null}
-      <h1 className="sr-only">Edit draft</h1>
+    <>
+      {/* SheetTitle is a Radix Dialog primitive — only valid inside the desktop Sheet. Full-screen mobile has
+          no Sheet, so use a plain visually-hidden heading for the same screen-reader labelling. */}
+      {fullScreen ? (
+        <h1 className="sr-only">Edit draft</h1>
+      ) : (
+        <SheetTitle className="sr-only">Edit draft</SheetTitle>
+      )}
+      {/* Key on the draft id ONLY — keying on title/content would full-remount the form whenever a stream
+        * re-emit updates this draft, silently dropping the user's in-progress edits (and bypassing the dirty
+        * guard). ItemDrawerEditContent snapshots `item` into the form on mount and does NOT reconcile later
+        * field changes — the id `key` is the only remount seam, so an open edit is never overwritten by a
+        * background re-emit. */}
       <ItemDrawerEditContent
         key={item.id}
         item={draftToFullItem(item)}
         collections={targetCollections ?? []}
         collectionsReadOnly
-        fullScreen
-        stickyHeader
+        fullScreen={fullScreen}
+        stickyHeader={fullScreen}
         onClose={() => onOpenChange(false)}
         onCancel={() => onOpenChange(false)}
         onSave={() => onOpenChange(false)}
@@ -698,6 +672,9 @@ export function MobileDraftFullScreenView({
           <>
             {inTrash ? (
               <>
+                {/* Distinct ascending priorities so labels collapse one at a time from the right as the bar
+                    narrows. Same priority on two siblings makes them collapse together, leaving the rightmost
+                    (Delete) clipped before either label drops — the bug this avoids. */}
                 <DrawerAction
                   icon={<Undo2 className="size-4" />}
                   label="Restore"
@@ -733,7 +710,7 @@ export function MobileDraftFullScreenView({
                 icon={<PackageCheck className="size-4" />}
                 label="Commit"
                 labelPriority={4}
-                tooltip="Commit this draft to your stash"
+                tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
                 onClick={onCommit}
                 disabled={disabled || busy}
                 primary
@@ -742,23 +719,45 @@ export function MobileDraftFullScreenView({
           </>
         )}
       />
-    </motion.div>
+    </>
   )
 }
 
-// The draft edit drawer reuses the app's real item-edit drawer content (DRY + consistency): same title
-// editor, type-switcher, language picker, Monaco content editor, AI description/tags. Save is routed to
-// the draft PATCH endpoint via `onSubmitOverride` instead of the real-item update flow. Drafts have no
-// per-item collections — they attach to the job's collection target on commit — so the field shows that
-// shared target read-only (collectionsReadOnly) rather than an editable picker.
-//
-// On touch/mobile: writes open state + callbacks into DraftDrawerStore so DraftDrawerProvider
-// (rendered above <main> in the app layout) drives MobileItemPaneSlider from outside <main>'s
-// overflow-x:clip containing block — matching the pattern used by ItemDrawerProvider for the
-// main dashboard item drawer. On desktop: the existing DrawerShell (right-side Sheet).
-function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCollections, onEdited, busy, canCommit, inTrash, onTrash, onRestore, onDeleteForever, onCommit }: EditDraftDrawerProps) {
-  const isTouch = useIsTouch()
+export interface MobileDraftFullScreenViewProps {
+  item: BrainDumpDraftItem | null
+  targetCollections?: CollectionPickerItem[]
+  onSave: (payload: UpdateItemInput) => Promise<void>
+  onOpenChange: (open: boolean) => void
+  // Provided by MobileDrawerHost — the edit body registers its guarded close (dirty-prompt) into it so a
+  // swipe-dismiss prompts before discarding an unsaved draft edit.
+  sheetCloseRef: SheetCloseRef
+  busy: boolean
+  canCommit: boolean
+  inTrash: boolean
+  onTrash: () => void
+  onRestore: () => void
+  onDeleteForever: () => void
+  onCommit: () => void
+}
 
+// The draft edit drawer's mobile BODY — document-flow content rendered inside MobileDrawerHost's shared panel
+// (the same host the live item drawer uses). Thin wrapper over the shared DraftEditBody in full-screen mode;
+// returns null until an item is latched. The panel / slider / swipe-close scaffolding all live in the host.
+export function MobileDraftFullScreenView({ item, ...rest }: MobileDraftFullScreenViewProps) {
+  if (!item) return null
+  return <DraftEditBody item={item} fullScreen {...rest} />
+}
+
+// The draft edit drawer is now RENDER-FREE: it only syncs this card's open state + callbacks into the global
+// DraftDrawerStore. DraftDrawerProvider (mounted above <main> in the app layout) renders the actual drawer —
+// the desktop Sheet and the mobile MobileDrawerHost — from that store, both feeding the shared DraftEditBody.
+// This unifies the draft and live-item drawers onto a single provider-driven mount path per platform (the
+// live item drawer works the same way via ItemDrawerProvider), instead of a per-card DrawerShell.
+//
+// The draft body reuses the app's real item-edit content (same title editor, type-switcher, language picker,
+// Monaco editor, AI description/tags); Save routes to the draft PATCH via `onSubmitOverride`. Drafts have no
+// per-item collections — they attach to the job's collection target on commit — so the field is read-only.
+function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCollections, onEdited, busy, canCommit, inTrash, onTrash, onRestore, onDeleteForever, onCommit }: EditDraftDrawerProps) {
   const saveDraft = async (payload: UpdateItemInput): Promise<void> => {
     const patch: Partial<BrainDumpDraftItem> = {
       title: payload.title,
@@ -780,20 +779,26 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
     onOpenChange(false)
   }
 
-  // Mobile: the global DraftDrawerStore has one slot but every draft card mounts an EditDraftDrawer,
-  // so only the card whose drawer is currently open writes to it — and a card only clears the store if it
-  // still owns the current item (an ownership guard) so a sibling re-render can't slam the open card shut.
-  // While open we re-sync whenever the live props change (busy/canCommit/inTrash) so the provider's chrome
-  // stays current; the callbacks close over those same props, so re-syncing on them also refreshes them.
-  useEffect(() => {
-    if (!isTouch || !open) return
+  // The global DraftDrawerStore has one slot but every draft card mounts an EditDraftDrawer, so only the card
+  // whose drawer is currently open writes to it — and a card only clears the store if it still owns the current
+  // item (an ownership guard) so a sibling re-render can't slam the open card shut. While open we re-sync
+  // whenever the live props change (busy/canCommit/inTrash) so the provider's chrome stays current; the
+  // callbacks close over those same props, so re-syncing on them also refreshes them. Fires on BOTH platforms
+  // now (desktop + mobile) since the provider renders both shells.
+  //
+  // useLayoutEffect (NOT useEffect): the store open must commit in the SAME paint as the `open` render. On iOS
+  // Safari a passive-effect (useEffect) open ran one paint late — the mobile slider mounted and pinned the
+  // window to 0 a frame before the backdrop's saved scrollTop was applied, so a swipe-close briefly revealed
+  // the board at the TOP behind the sliding drawer (the scroll still restored correctly once it landed). Opening
+  // synchronously before paint closes that gap so the backdrop shows the captured position from the first frame.
+  useLayoutEffect(() => {
+    if (!open) return
     useDraftDrawerStore.getState().openDrawer(item, {
       targetCollections,
       busy,
       canCommit,
       inTrash,
       onSave: saveDraft,
-      onOpenChange,
       onTrash,
       onRestore,
       onDeleteForever,
@@ -806,90 +811,7 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
     // Re-sync only on identity/prop changes, not on every render (closures rebuild each render but
     // capture only these values + the stable targetCollections); cleanup clears the owning card's entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTouch, open, item.id, busy, canCommit, inTrash])
+  }, [open, item.id, busy, canCommit, inTrash])
 
-  if (isTouch) return null
-
-  // Desktop: right-side Sheet shell (resize, swipe-to-dismiss, grab handle, close-ref plumbing).
-  // `stopPropagation` is on because this Sheet sits under the draft card's clickable root in the React
-  // tree — React bubbles synthetic events along the React tree, not the DOM tree, so a click inside
-  // the drawer would otherwise bubble up to the card's onClick and reopen it.
-  return (
-    <DrawerShell open={open} onOpenChange={onOpenChange} stopPropagation>
-      {(sheetCloseRef) => (
-        <>
-          <SheetTitle className="sr-only">Edit draft</SheetTitle>
-          {/* Key on the draft id ONLY — keying on title/content would full-remount the form whenever a
-           * stream re-emit updates this draft, silently dropping the user's in-progress edits (and
-           * bypassing the dirty guard). ItemDrawerEditContent snapshots `item` into the form on mount and
-           * does NOT reconcile later field changes (there is no reconciliation effect) — the id `key` is
-           * the only remount seam, so an open edit is never overwritten by a background re-emit. */}
-          <ItemDrawerEditContent
-            key={item.id}
-            item={draftToFullItem(item)}
-            collections={targetCollections ?? []}
-            collectionsReadOnly
-            onClose={() => onOpenChange(false)}
-            onCancel={() => onOpenChange(false)}
-            onSave={() => onOpenChange(false)}
-            onSubmitOverride={saveDraft}
-            showDetailsSection={false}
-            sheetCloseRef={sheetCloseRef}
-            saveLabel="Save draft"
-            saveTooltip="Save your edits to this draft (stays in review)"
-            renderExtraActions={({ disabled }) => (
-              <>
-                {inTrash ? (
-                  <>
-                    {/* Distinct ascending priorities so labels collapse one at a time from the right as the
-                        bar narrows. Same priority on two siblings makes them collapse together, leaving the
-                        rightmost (Delete) clipped before either label drops — the bug this avoids. */}
-                    <DrawerAction
-                      icon={<Undo2 className="size-4" />}
-                      label="Restore"
-                      labelPriority={2}
-                      tooltip="Restore draft from trash"
-                      onClick={onRestore}
-                      disabled={disabled || busy}
-                    />
-                    <DrawerAction
-                      icon={<Trash2 className="size-4" />}
-                      label="Delete"
-                      ariaLabel="Delete forever"
-                      labelPriority={3}
-                      tooltip="Delete permanently"
-                      onClick={onDeleteForever}
-                      disabled={disabled || busy}
-                      destructive
-                    />
-                  </>
-                ) : (
-                  <DrawerAction
-                    icon={<Trash2 className="size-4" />}
-                    label="Delete"
-                    labelPriority={3}
-                    tooltip="Delete (move to trash)"
-                    onClick={onTrash}
-                    disabled={disabled || busy}
-                    destructive
-                  />
-                )}
-                {canCommit && (
-                  <DrawerAction
-                    icon={<PackageCheck className="size-4" />}
-                    label="Commit"
-                    labelPriority={4}
-                    tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
-                    onClick={onCommit}
-                    disabled={disabled || busy}
-                    primary
-                  />
-                )}
-              </>
-            )}
-          />
-        </>
-      )}
-    </DrawerShell>
-  )
+  return null
 }

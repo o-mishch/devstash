@@ -7,7 +7,7 @@ import { useItemUrlParamSync } from '@/hooks/items/use-item-url-param-sync'
 import { useCacheItemDetail } from '@/hooks/items/use-item-detail'
 import { useIsTouch } from '@/hooks/ui/use-is-touch'
 import { ItemDetailDrawer, ItemFullScreenView } from '@/components/items/drawer/item-detail-drawer'
-import { MobileItemPaneSlider } from '@/components/items/drawer/mobile-item-pane-slider'
+import { MobileDrawerHost } from '@/components/items/drawer/drawer-shared'
 import type { WithChildren } from '@/types/common'
 import type { LightItem, FullItem } from '@/types/item'
 
@@ -68,22 +68,25 @@ export function ItemDrawerProvider({ children }: WithChildren) {
 
   return (
     <>
-      {/* Touch: MobileItemPaneSlider owns the page↔item paired slide (page slides left, item slides in from
-          the right) and, once settled, renders the item as document content so the mobile URL bar retracts.
-          It always renders `children` from one stable slot, so the app page never remounts. Desktop: the
-          page renders straight through and the right-side Sheet drawer handles items. */}
+      {/* Touch: MobileDrawerHost (shared with the brain-dump draft drawer) owns the page↔item paired slide
+          (page slides left, item slides in from the right) and, once settled, renders the item as document
+          content so the mobile URL bar retracts. It always renders `children` from one stable slot, so the
+          app page never remounts. Desktop: the page renders straight through and the right-side Sheet drawer
+          handles items. */}
       {isTouch ? (
-        <MobileItemPaneSlider
+        <MobileDrawerHost
           page={children}
           open={isOpen}
           openScrollY={openScrollY}
-          renderPane={({ isSettled, onSwipeCloseStart }) => (
+          decoration="blobs"
+          resetKey={paneItem?.id ?? null}
+          onOpenChange={handleOpenChange}
+          renderBody={({ sheetCloseRef }) => (
             <ItemFullScreenView
               item={paneItem}
               onOpenChange={handleOpenChange}
               onFullItemFetched={handleFullItemFetched}
-              isSettled={isSettled}
-              onSwipeCloseStart={onSwipeCloseStart}
+              sheetCloseRef={sheetCloseRef}
             />
           )}
         />
