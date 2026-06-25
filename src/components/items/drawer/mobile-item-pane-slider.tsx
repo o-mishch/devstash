@@ -2,7 +2,6 @@
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { motion, useReducedMotion, type Transition } from 'motion/react'
-import { cn } from '@/lib/utils'
 
 // Open/close slide timing. Easing mirrors the old Sheet shell's cubic-bezier.
 const SLIDE: Transition = { duration: 0.32, ease: [0.32, 0.72, 0, 1] }
@@ -91,8 +90,8 @@ export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: Mo
   // covering the viewport, so the document underneath can be scrolled back to openScrollY without a visible
   // jump — then the handoff to document flow is seamless. Waiting for `idle` left the window pinned at 0 for
   // the whole close slide and then jumped 0→openScrollY at the handoff — the visible "minor movement" of the
-  // base page. (Swipe-close is unaffected: there the board is revealed through the flown-off panel via the
-  // fixed-backdrop `pageScrollRef`, already at openScrollY, so it never shows the top.) Opening (sliding with
+  // base page. (Swipe-close is unaffected here: there the board is revealed through the flown-off panel via the
+  // fixed backdrop's transform offset, already at openScrollY, so it never shows the top.) Opening (sliding with
   // open=true) and settled still pin to 0 so the item shows from its header.
   const itemIsLeaving = phase === 'sliding' && !open
   const restorePageScroll = pageIsDocument || itemIsLeaving
@@ -152,30 +151,29 @@ export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: Mo
   // the swap. So the fixed-backdrop scrollTop positioning is only needed while OPENING/settled, not closing.
   const pageActsAsDocument = pageIsDocument || itemIsLeaving
 
-  // The page's own scroller while it's the fixed backdrop (item up, opening/settled) — keep it at the saved
-  // position so what shows through a swipe gap is where the user actually was. Not needed while the page acts
-  // as the document (idle, or the closing slide where the window scroll itself carries openScrollY).
-  const pageScrollRef = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    if (page === null || pageActsAsDocument || !pageScrollRef.current) return
-    pageScrollRef.current.scrollTop = openScrollY
-  }, [page, pageActsAsDocument, openScrollY])
-
   const settled = phase === 'settled'
 
-  // The page — mounted ONCE in this persistent wrapper. `pageLayer` always sits at position 0 of the same
-  // Fragment so React never remounts it regardless of whether the motion.div (item) is present — React
-  // reconciles by position, and a root-type change (div ↔ Fragment) would destroy and recreate the subtree.
-  // The wrapper's CSS class toggles between roles: `contents` (page is the document — idle AND the closing
-  // slide, so the window scroll restores to openScrollY before the item finishes leaving) and
-  // `fixed inset-0 -z-10` (backdrop while opening/settled, positioned via pageScrollRef).
+  // The page — mounted ONCE in this persistent two-div wrapper. The OUTER and INNER divs ALWAYS render (same
+  // nesting in every phase), so `page` keeps a stable tree position and React never remounts it; only the divs'
+  // CSS classes/style toggle between roles. Changing the nesting depth instead (e.g. one wrapper vs two) would
+  // move `page` and destroy + recreate its subtree — the very thing this shell exists to avoid.
+  //  • document mode (`pageActsAsDocument`: idle, AND the closing slide where the window scroll carries
+  //    openScrollY and the still-covering item hides the swap) — both divs are `contents` (transparent to
+  //    layout), so the page is the normal document scroller.
+  //  • fixed backdrop (opening / settled) — the outer div is a `fixed inset-0 -z-10 overflow-hidden` clip and
+  //    the inner div is shifted up by `translateY(-openScrollY)` so the saved scroll position shows through a
+  //    swipe gap. A CSS transform (NOT scrollTop) is essential: iOS Safari does not reliably honour `scrollTop`
+  //    on a `position: fixed` overflow container — during the swipe fly-off it reset the backdrop to the top, so
+  //    the revealed board flashed its header. A transform is GPU-composited and behaves identically everywhere.
   // When `page` is null there is no managed backdrop; the pageLayer is omitted entirely.
   const pageLayer = page !== null ? (
-    <div
-      ref={pageScrollRef}
-      className={cn(pageActsAsDocument ? 'contents' : 'fixed inset-0 -z-10 w-screen overflow-y-auto')}
-    >
-      {page}
+    <div className={pageActsAsDocument ? 'contents' : 'fixed inset-0 -z-10 w-screen overflow-hidden'}>
+      <div
+        className={pageActsAsDocument ? 'contents' : undefined}
+        style={pageActsAsDocument ? undefined : { transform: `translateY(${-openScrollY}px)` }}
+      >
+        {page}
+      </div>
     </div>
   ) : null
 
