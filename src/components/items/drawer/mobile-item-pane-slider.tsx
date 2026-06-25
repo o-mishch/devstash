@@ -86,14 +86,24 @@ export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: Mo
 
   const pageIsDocument = phase === 'idle'
 
-  // While the item is up, pin the window to the top so the item shows from its header. On return to idle the
-  // page is the document scroller again — restore its window scroll to where the user left it. The page DOM
-  // is preserved by the stable wrapper, but the document-level window scroll is not React state, so we re-assert it
-  // here. The list virtualizes/grows over a few frames, so a single scrollTo can land short — retry over a
-  // few rAFs until it sticks; a no-op once it already matches.
+  // Restore the page's window scroll as soon as the item starts LEAVING via a slide-close (Cancel / X), not
+  // only once it's fully idle. During that close slide the item is a `fixed inset-0` overlay (see `pane`)
+  // covering the viewport, so the document underneath can be scrolled back to openScrollY without a visible
+  // jump — then the handoff to document flow is seamless. Waiting for `idle` left the window pinned at 0 for
+  // the whole close slide and then jumped 0→openScrollY at the handoff — the visible "minor movement" of the
+  // base page. (Swipe-close is unaffected: there the board is revealed through the flown-off panel via the
+  // fixed-backdrop `pageScrollRef`, already at openScrollY, so it never shows the top.) Opening (sliding with
+  // open=true) and settled still pin to 0 so the item shows from its header.
+  const itemIsLeaving = phase === 'sliding' && !open
+  const restorePageScroll = pageIsDocument || itemIsLeaving
+
+  // While the item is up (opening / settled), pin the window to the top so the item shows from its header.
+  // The page DOM is preserved by the stable wrapper, but the document-level window scroll is not React state,
+  // so we re-assert it here. The list virtualizes/grows over a few frames, so a single scrollTo can land short
+  // — retry over a few rAFs until it sticks; a no-op once it already matches.
   useLayoutEffect(() => {
     if (page === null) return
-    if (!pageIsDocument) {
+    if (!restorePageScroll) {
       // window.scrollTo: document-level scroll has no React/Next equivalent. behavior:'instant' is REQUIRED:
       // <html> carries `scroll-smooth` (globals), so a plain scrollTo here would animate the pin-to-0.
       window.scrollTo({ top: 0, behavior: 'instant' })
@@ -134,28 +144,36 @@ export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: Mo
     }
     restore()
     return () => { cancelled = true; cancelAnimationFrame(raf) }
-  }, [page, pageIsDocument, openScrollY])
+  }, [page, restorePageScroll, openScrollY])
 
-  // The page's own scroller while it's the fixed backdrop (item up) — keep it at the saved position so what
-  // shows through the swipe gap is where the user actually was. Detached (null) while idle (page = document).
+  // During the CLOSING slide the page returns to document flow (`contents`) even though the item is still
+  // sliding off over it — see `pageActsAsDocument`. The window-scroll restore (above) needs the document at
+  // full height to reach openScrollY, which only `contents` provides; the still-covering item overlay hides
+  // the swap. So the fixed-backdrop scrollTop positioning is only needed while OPENING/settled, not closing.
+  const pageActsAsDocument = pageIsDocument || itemIsLeaving
+
+  // The page's own scroller while it's the fixed backdrop (item up, opening/settled) — keep it at the saved
+  // position so what shows through a swipe gap is where the user actually was. Not needed while the page acts
+  // as the document (idle, or the closing slide where the window scroll itself carries openScrollY).
   const pageScrollRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
-    if (page === null || pageIsDocument || !pageScrollRef.current) return
+    if (page === null || pageActsAsDocument || !pageScrollRef.current) return
     pageScrollRef.current.scrollTop = openScrollY
-  }, [page, pageIsDocument, openScrollY])
+  }, [page, pageActsAsDocument, openScrollY])
 
   const settled = phase === 'settled'
 
   // The page — mounted ONCE in this persistent wrapper. `pageLayer` always sits at position 0 of the same
   // Fragment so React never remounts it regardless of whether the motion.div (item) is present — React
   // reconciles by position, and a root-type change (div ↔ Fragment) would destroy and recreate the subtree.
-  // The wrapper's CSS class toggles between roles: `contents` (idle — page is the document) and
-  // `fixed inset-0 -z-10` (backdrop when the item overlay is up).
+  // The wrapper's CSS class toggles between roles: `contents` (page is the document — idle AND the closing
+  // slide, so the window scroll restores to openScrollY before the item finishes leaving) and
+  // `fixed inset-0 -z-10` (backdrop while opening/settled, positioned via pageScrollRef).
   // When `page` is null there is no managed backdrop; the pageLayer is omitted entirely.
   const pageLayer = page !== null ? (
     <div
       ref={pageScrollRef}
-      className={cn(pageIsDocument ? 'contents' : 'fixed inset-0 -z-10 w-screen overflow-y-auto')}
+      className={cn(pageActsAsDocument ? 'contents' : 'fixed inset-0 -z-10 w-screen overflow-y-auto')}
     >
       {page}
     </div>

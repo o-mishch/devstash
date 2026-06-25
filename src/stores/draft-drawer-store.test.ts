@@ -14,7 +14,6 @@ function makeOpts(overrides: Partial<Parameters<ReturnType<typeof useDraftDrawer
     canCommit: true,
     inTrash: false,
     onSave: async () => {},
-    onOpenChange: () => {},
     onTrash: () => {},
     onRestore: () => {},
     onDeleteForever: () => {},
@@ -31,6 +30,7 @@ function resetStore() {
     busy: false,
     canCommit: false,
     inTrash: false,
+    openScrollY: 0,
     callbacks: null,
   })
 }
@@ -38,7 +38,7 @@ function resetStore() {
 describe('useDraftDrawerStore.openDrawer', () => {
   beforeEach(resetStore)
 
-  it('seeds every field and packs the six callbacks', () => {
+  it('seeds every field and packs the five callbacks', () => {
     const opts = makeOpts({ busy: true, inTrash: true, canCommit: false })
     useDraftDrawerStore.getState().openDrawer(ITEM, opts)
 
@@ -51,12 +51,18 @@ describe('useDraftDrawerStore.openDrawer', () => {
     expect(state.inTrash).toBe(true)
     expect(state.callbacks).toEqual({
       onSave: opts.onSave,
-      onOpenChange: opts.onOpenChange,
       onTrash: opts.onTrash,
       onRestore: opts.onRestore,
       onDeleteForever: opts.onDeleteForever,
       onCommit: opts.onCommit,
     })
+  })
+
+  it('preserves openScrollY set before openDrawer (captured at the click)', () => {
+    useDraftDrawerStore.getState().setOpenScrollY(240)
+    useDraftDrawerStore.getState().openDrawer(ITEM, makeOpts())
+    // openDrawer must NOT reset openScrollY — the card captured it before the open pinned the window to 0.
+    expect(useDraftDrawerStore.getState().openScrollY).toBe(240)
   })
 
   it('replaces the previous item and callbacks when a different draft opens', () => {
