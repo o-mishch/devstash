@@ -9,7 +9,7 @@ import { CollectionEditDialog } from '@/components/collections/collection-edit-d
 import { CollectionDeleteDialog } from '@/components/collections/collection-delete-dialog'
 import { api } from '@/lib/api/client'
 import { useOptimisticToggle } from '@/hooks/items/use-optimistic-toggle'
-import { useInvalidateCollections } from '@/hooks/items/use-collections'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionHeaderActionsProps {
@@ -18,10 +18,10 @@ interface CollectionHeaderActionsProps {
 
 export function CollectionHeaderActions({ collection }: CollectionHeaderActionsProps) {
   const router = useRouter()
-  const invalidateCollections = useInvalidateCollections()
+  const invalidate = useInvalidate()
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  // Optimistic so the star flips instantly: invalidateCollections() marks the cache stale and refetches
+  // Optimistic so the star flips instantly: invalidate('collections') marks the cache stale and refetches
   // in the background, so the icon never reverts while the GET /collections query settles.
   const { value: isFavorite, toggle: toggleFavorite } = useOptimisticToggle(
     collection.isFavorite,
@@ -33,7 +33,7 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
       if (error) throw new Error(error.message)
     },
     {
-      onSuccess: () => invalidateCollections(),
+      onSuccess: () => invalidate('collections'),
       errorLabel: 'Failed to toggle favorite',
     },
   )

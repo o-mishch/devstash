@@ -2,7 +2,6 @@
 
 import { useEffect } from 'react'
 import { $api } from '@/lib/api/client'
-import { useInvalidate, type InvalidateOptions } from '@/hooks/items/use-cache-invalidation'
 import { useUserProfile, usePatchUserProfile } from '@/hooks/profile/use-user-profile'
 import type { BillingContextResponse } from '@/lib/api/schemas/billing'
 
@@ -14,26 +13,15 @@ export function useBillingContext(options?: UseBillingContextOptions) {
   // init `undefined` (not `{}`) so the observed key is `['get','/billing/context']` — matching
   // queryKeys.billingContext() exactly so invalidation reaches this observer. `initialData` seeds
   // the shared cache on first mount.
-  const query = $api.useQuery(
-    'get',
-    '/billing/context',
-    undefined,
-    {
-      initialData: options?.initialData,
-      meta: { errorMessage: 'Failed to load billing details' },
-    }
-  )
+  const query = $api.useQuery('get', '/billing/context', undefined, {
+    initialData: options?.initialData,
+    meta: { errorMessage: 'Failed to load billing details' },
+  })
 
   return {
     ...query,
     billingContext: query.data,
   }
-}
-
-export function useInvalidateBillingContext() {
-  const invalidate = useInvalidate()
-  return (refetchType?: InvalidateOptions['refetchType']) =>
-    invalidate('billingContext', refetchType ? { refetchType } : undefined)
 }
 
 /**

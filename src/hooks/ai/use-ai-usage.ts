@@ -48,17 +48,6 @@ export function useAiUsage() {
   })
 }
 
-/**
- * AI-usage cache invalidator — a thin alias over the central registry (`invalidate('aiUsage')`), which
- * derives the same `['get', '/ai/usage']` key from `queryKeys.aiUsage()`. Fire-and-forget; with the
- * default `refetchType: 'active'` it is a true no-op when the widget is unmounted, so callers can invoke
- * it unconditionally.
- */
-export function useInvalidateAiUsage(): () => void {
-  const invalidate = useInvalidate()
-  return useCallback(() => invalidate('aiUsage'), [invalidate])
-}
-
 // ── AI mutation wrapper ─────────────────────────────────────────────────────────────────────────
 // Every consuming AI mutation routes through here so the usage meter refetches after the budget is
 // spent. `api.POST('/ai/…')` is banned elsewhere by the `no-restricted-syntax` ESLint rule.
@@ -123,7 +112,7 @@ export function useAiMutation(): <P extends AiMutationPath>(
   body: AiMutationBodyArg<P>,
   ...paramsArgs: AiMutationParamsArgs<P>
 ) => Promise<AiMutationResult<P>> {
-  const invalidate = useInvalidateAiUsage()
+  const invalidate = useInvalidate()
   const { mutateAsync } = useMutation({
     mutationFn: async ({ path, body, params }: AiMutationVariables): Promise<AiMutationResult<AiMutationPath>> => {
       // `api.POST` is overloaded per concrete path; the union-typed `path` here can't collapse to one
@@ -131,7 +120,7 @@ export function useAiMutation(): <P extends AiMutationPath>(
       // body are exactly what the route contract expects.
       return (await api.POST(path, { body, params } as never)) as AiMutationResult<AiMutationPath>
     },
-    onSettled: () => invalidate(),
+    onSettled: () => invalidate('aiUsage'),
   })
   return useCallback(
     <P extends AiMutationPath>(

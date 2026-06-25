@@ -1,17 +1,15 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useLayoutEffect } from 'react'
 import { useMotionValue, animate, type PanInfo } from 'motion/react'
 import { shouldDismissSwipe } from '@/lib/utils/swipe'
 
 interface UseMotionSwipeCloseOptions {
+  isOpen: boolean
   isSettled: boolean
   editorFullscreen: boolean
   onSwipeCloseStart?: () => void
   requestClose: () => void
-  // Called after the fly-off animation completes. Return true if the close was deferred (e.g. a
-  // dirty-edit guard opened a dialog) so the panel should spring back to x:0.
-  getIsOpen: () => boolean
 }
 
 interface UseMotionSwipeCloseResult {
@@ -28,11 +26,11 @@ interface UseMotionSwipeCloseResult {
 // MobileDraftFullScreenView). Handles drag clamping, fly-off tween, spring-back on deferred close,
 // and grip-pill press state. The caller wires the returned values into a <motion.div>.
 export function useMotionSwipeClose({
+  isOpen,
   isSettled,
   editorFullscreen,
   onSwipeCloseStart,
   requestClose,
-  getIsOpen,
 }: UseMotionSwipeCloseOptions): UseMotionSwipeCloseResult {
   const x = useMotionValue(0)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -40,14 +38,21 @@ export function useMotionSwipeClose({
 
   const dragEnabled = isSettled && !editorFullscreen
 
+  // Keep a ref in sync with the `isOpen` state so the spring-back rAF reads the live value
+  // without creating a stale closure.
+  const openRef = useRef(isOpen)
+  useLayoutEffect(() => {
+    openRef.current = isOpen
+  }, [isOpen])
+
   const commitSwipeClose = () => {
     onSwipeCloseStart?.()
     requestClose()
     // Spring back if the close was DEFERRED (dirty-guard opened a discard dialog): the panel is still
-    // open and must return to x:0 so the dialog sits over it in place. The caller's getIsOpen() reads
+    // open and must return to x:0 so the dialog sits over it in place. The openRef reads
     // the live open state synchronously on the next frame — false for a clean close, true for deferred.
     requestAnimationFrame(() => {
-      if (getIsOpen()) animate(x, 0, { type: 'spring', stiffness: 500, damping: 40 })
+      if (openRef.current) animate(x, 0, { type: 'spring', stiffness: 500, damping: 40 })
     })
   }
 

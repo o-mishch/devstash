@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { $api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/api/query-keys'
-import { useInvalidate, type InvalidateOptions } from '@/hooks/items/use-cache-invalidation'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import type { UserProfileFlagsResponse } from '@/lib/api/schemas/profile'
 
 interface UseUserProfileOptions {
@@ -64,18 +64,5 @@ export function usePatchUserProfile() {
       invalidate('userProfile', { refetchType: 'none' })
     },
     [queryClient, invalidate],
-  )
-}
-
-/**
- * Invalidates the `/profile/me` cache. The query stays enabled so limit-changing item/collection
- * mutations can refetch the free-tier gates after the server has invalidated its cache tags.
- */
-export function useInvalidateUserProfile() {
-  const invalidate = useInvalidate()
-  return useCallback(
-    (refetchType?: InvalidateOptions['refetchType']) =>
-      invalidate('userProfile', refetchType ? { refetchType } : undefined),
-    [invalidate],
   )
 }

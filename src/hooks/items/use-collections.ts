@@ -4,8 +4,7 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { $api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/api/query-keys'
-import { useInvalidate, type InvalidateOptions } from '@/hooks/items/use-cache-invalidation'
-import { useInvalidateUserProfile } from '@/hooks/profile/use-user-profile'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface UseCollectionsOptions {
@@ -55,12 +54,6 @@ export function useCollection(id: string, initialData?: CollectionWithTypes) {
   }
 }
 
-export function useInvalidateCollections() {
-  const invalidate = useInvalidate()
-  return (refetchType?: InvalidateOptions['refetchType']) =>
-    invalidate('collections', refetchType ? { refetchType } : undefined)
-}
-
 /**
  * Writes a created/updated collection straight into the `GET /collections` list cache so every reader
  * (sidebar, grids, the Brain Dump collection picker) shows it immediately — no refetch round-trip. Per
@@ -102,14 +95,13 @@ export function useRemoveCollectionQuery() {
  */
 export function useApplyCollectionSave() {
   const upsertCollectionCache = useUpsertCollectionCache()
-  const invalidateCollections = useInvalidateCollections()
-  const invalidateUserProfile = useInvalidateUserProfile()
+  const invalidate = useInvalidate()
   return useCallback(
     (collection: CollectionWithTypes | null | undefined, opts?: { isCreate?: boolean }) => {
       if (collection) upsertCollectionCache(collection)
-      invalidateCollections()
-      if (opts?.isCreate) invalidateUserProfile()
+      invalidate('collections')
+      if (opts?.isCreate) invalidate('userProfile')
     },
-    [upsertCollectionCache, invalidateCollections, invalidateUserProfile],
+    [upsertCollectionCache, invalidate],
   )
 }

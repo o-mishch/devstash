@@ -16,8 +16,8 @@ import { api } from '@/lib/api/client'
 import { useControllableOpen } from '@/hooks/ui/use-controllable-open'
 import { useLastNonNull } from '@/hooks/ui/use-last-non-null'
 import { EMPTY_COLLECTION, type CollectionWithTypes } from '@/types/collection'
-import { useInvalidateCollections, useRemoveCollectionQuery } from '@/hooks/items/use-collections'
-import { useInvalidateUserProfile } from '@/hooks/profile/use-user-profile'
+import { useRemoveCollectionQuery } from '@/hooks/items/use-collections'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 
 interface CollectionDeleteDialogProps {
   collection: CollectionWithTypes | null
@@ -29,8 +29,7 @@ interface CollectionDeleteDialogProps {
 
 export function CollectionDeleteDialog({ collection: activeCollection, trigger, open: controlledOpen, onOpenChange, onSuccess }: CollectionDeleteDialogProps) {
   const removeCollectionQuery = useRemoveCollectionQuery()
-  const invalidateCollections = useInvalidateCollections()
-  const invalidateUserProfile = useInvalidateUserProfile()
+  const invalidate = useInvalidate()
   const lastNonNullCollection = useLastNonNull(activeCollection)
   const displayCollection = lastNonNullCollection || EMPTY_COLLECTION
 
@@ -50,10 +49,10 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
       if (displayCollection.id) {
         removeCollectionQuery(displayCollection.id)
       }
-      invalidateCollections()
+      invalidate('collections')
       // Deleting a collection frees a free-tier slot, flipping canCreateCollection back to true in
       // /profile/me (which gates the create dialog).
-      invalidateUserProfile()
+      invalidate('userProfile')
       if (onSuccess) {
         onSuccess()
       }

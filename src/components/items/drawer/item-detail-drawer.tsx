@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
-import { motion, type Variants } from 'motion/react'
+import { motion } from 'motion/react'
 import { SheetTitle } from '@/components/ui/sheet'
 import { DrawerShell } from './drawer-shell'
 import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
@@ -9,7 +9,7 @@ import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useItemDetails, useItemContent } from '@/hooks/items/use-item-detail'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
-import { DrawerSkeleton, SWIPE_GRIP_PILL_CLASS } from './drawer-shared'
+import { DrawerSkeleton, SWIPE_GRIP_PILL_CLASS, GRIP_VARIANTS } from './drawer-shared'
 import { useMotionSwipeClose } from '@/hooks/ui/use-motion-swipe-close'
 import type { SheetCloseRef } from '@/hooks/ui/use-register-sheet-close'
 import { cn } from '@/lib/utils'
@@ -17,13 +17,6 @@ import { ITEM_TYPES_WITH_CONTENT } from '@/lib/utils/constants'
 import type { LightItem, FullItem, ItemDetails, ItemContent } from '@/types/item'
 import { isFullItem } from '@/types/item'
 
-// Swipe-grip pill states. The parent drag panel's `whileDrag="dragging"` propagates to this child variant
-// (Motion variants flow down the tree), so the pill colours itself while a drag is active — primary at 70%,
-// muted foreground at 30% otherwise — without any React state. color-mix mirrors Tailwind's `/NN` alpha.
-const GRIP_VARIANTS: Variants = {
-  idle: { backgroundColor: 'color-mix(in oklch, var(--foreground) 30%, transparent)' },
-  dragging: { backgroundColor: 'color-mix(in oklch, var(--primary) 70%, transparent)' },
-}
 
 interface ItemDetailDrawerProps {
   item: LightItem | FullItem | null
@@ -235,13 +228,14 @@ export function ItemFullScreenView({
     else onOpenChange(false)
   }
 
+  const isOpen = useItemDrawerStore((s) => s.isOpen)
+
   const { x, panelRef, gripPressed, setGripPressed, dragEnabled, handleDrag, handleDragEnd } = useMotionSwipeClose({
+    isOpen,
     isSettled,
     editorFullscreen,
     onSwipeCloseStart,
     requestClose,
-    // Zustand's set() is synchronous, so getState().isOpen is already false by the rAF for a clean close.
-    getIsOpen: () => useItemDrawerStore.getState().isOpen,
   })
 
   // Switching directly from one open item to another (no unmount) — jump back to the top so the new item

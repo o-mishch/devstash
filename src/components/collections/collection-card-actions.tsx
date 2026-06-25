@@ -7,7 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { api } from '@/lib/api/client'
 import { useCollectionDialogsStore } from '@/stores/collection-dialogs'
 import { useOptimisticToggle } from '@/hooks/items/use-optimistic-toggle'
-import { useInvalidateCollections } from '@/hooks/items/use-collections'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import type { CollectionWithTypes } from '@/types/collection'
 
 interface CollectionCardActionsProps {
@@ -15,7 +15,7 @@ interface CollectionCardActionsProps {
 }
 
 export function CollectionCardActions({ collection }: CollectionCardActionsProps) {
-  const invalidateCollections = useInvalidateCollections()
+  const invalidate = useInvalidate()
   const openEdit = useCollectionDialogsStore((s) => s.openEdit)
   const openDelete = useCollectionDialogsStore((s) => s.openDelete)
   const { value: isFavorite, toggle: toggleFavorite } = useOptimisticToggle(
@@ -28,7 +28,7 @@ export function CollectionCardActions({ collection }: CollectionCardActionsProps
       if (error) throw new Error(error.message)
     },
     {
-      onSuccess: () => invalidateCollections(),
+      onSuccess: () => invalidate('collections'),
       errorLabel: 'Failed to toggle favorite',
     }
   )

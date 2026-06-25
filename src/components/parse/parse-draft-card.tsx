@@ -33,7 +33,7 @@ import { SheetTitle } from '@/components/ui/sheet'
 import { DrawerShell } from '@/components/items/drawer/drawer-shell'
 import { ItemDrawerEditContent } from '@/components/items/drawer/item-drawer-edit-content'
 import { MobileItemPaneSlider } from '@/components/items/drawer/mobile-item-pane-slider'
-import { SWIPE_GRIP_PILL_CLASS } from '@/components/items/drawer/drawer-shared'
+import { SWIPE_GRIP_PILL_CLASS, GRIP_VARIANTS } from '@/components/items/drawer/drawer-shared'
 import { useIsTouch } from '@/hooks/ui/use-is-touch'
 import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
 import { useMotionSwipeClose } from '@/hooks/ui/use-motion-swipe-close'
@@ -631,19 +631,12 @@ function MobileDraftFullScreenView({
   }
 
   const { x, panelRef, gripPressed, setGripPressed, dragEnabled, handleDrag, handleDragEnd } = useMotionSwipeClose({
+    isOpen: open,
     isSettled,
     editorFullscreen,
     onSwipeCloseStart,
     requestClose,
-    // The draft drawer's open state is tracked by `open` prop in EditDraftDrawer (no Zustand store).
-    // Pass a ref-backed getter so the spring-back rAF reads the live value without a stale closure.
-    getIsOpen: () => openRef.current,
   })
-
-  // Ref kept in sync with the `open` prop so `getIsOpen` above reads the current value on the rAF frame,
-  // not the value captured when useMotionSwipeClose was called.
-  const openRef = useRef(open)
-  useLayoutEffect(() => { openRef.current = open })
 
   // Reset scroll and drag offset when item changes while settled.
   const itemId = item?.id ?? null
@@ -672,8 +665,11 @@ function MobileDraftFullScreenView({
       {!editorFullscreen ? (
         <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-[55] w-2">
           <div className="sticky top-0 flex h-[100lvh] flex-col items-start justify-center pl-1">
-            <div
-              className={cn(SWIPE_GRIP_PILL_CLASS, 'pointer-events-auto touch-none transition-colors', gripPressed ? 'bg-primary/70' : 'bg-foreground/30')}
+            <motion.div
+              className={cn(SWIPE_GRIP_PILL_CLASS, 'pointer-events-auto touch-none')}
+              variants={GRIP_VARIANTS}
+              initial="idle"
+              animate={gripPressed ? 'dragging' : 'idle'}
               onPointerDown={() => setGripPressed(true)}
               onPointerUp={() => setGripPressed(false)}
               onPointerCancel={() => setGripPressed(false)}

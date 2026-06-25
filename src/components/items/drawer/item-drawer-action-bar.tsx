@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Star, Pin, Pencil, Trash2, XCircle, Sparkles, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { usePatchItem, useRemoveItem, useToggleFavoriteInCache } from '@/hooks/items/use-infinite-items'
-import { useInvalidateCollections } from '@/hooks/items/use-collections'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import { useRestrictedAction } from '@/hooks/billing/use-restricted'
 import { useStartBrainDumpFromSource, BRAIN_DUMP_UPGRADE_PROMPT } from '@/hooks/items/use-brain-dump'
 import { useAiUsage } from '@/hooks/ai/use-ai-usage'
@@ -16,7 +16,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatRenewIn } from '@/lib/utils/format'
 import { api } from '@/lib/api/client'
 import { useItemDrawerStore } from '@/stores/item-drawer-store'
-import { useIsPro, useInvalidateUserProfile } from '@/hooks/profile/use-user-profile'
+import { useIsPro } from '@/hooks/profile/use-user-profile'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { usePinnedItemsStore } from '@/stores/pinned-items'
 import { useOptimisticToggle } from '@/hooks/items/use-optimistic-toggle'
@@ -37,8 +37,7 @@ interface ItemDrawerActionBarProps {
 export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted }: ItemDrawerActionBarProps) {
   const patchItem = usePatchItem()
   const removeItem = useRemoveItem()
-  const invalidateCollections = useInvalidateCollections()
-  const invalidateUserProfile = useInvalidateUserProfile()
+  const invalidate = useInvalidate()
   const toggleFavoriteInCache = useToggleFavoriteInCache()
   const { setPinnedOverride, removePinnedOverride } = usePinnedItemsStore()
   const { closeDrawer } = useItemDrawerStore()
@@ -147,12 +146,9 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
       setDeleteDialogOpen(false)
       removeItem(item.id)
       removePinnedOverride(item.id)
-      // Deleting an item drops it from any collection it belonged to, changing that collection's
-      // itemCount / type chips / dominant color on the cards — mark the shared /collections cache stale
-      // so mounted grid/sidebar/header readers update after the route handler invalidates server tags.
-      invalidateCollections()
+      invalidate('collections')
       // Deleting an item frees a free-tier slot, flipping canCreateItem back to true in /profile/me.
-      invalidateUserProfile()
+      invalidate('userProfile')
       onDeleted()
     },
     onError: (error: Error) => {

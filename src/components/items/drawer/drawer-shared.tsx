@@ -1,6 +1,7 @@
 'use client'
 
 import { CSSProperties, ReactNode, useRef, useState, useLayoutEffect } from 'react'
+import { type Variants } from 'motion/react'
 import { Calendar, FolderOpen, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,10 +14,17 @@ import { formatDate, cn } from '@/lib/utils'
 import { SYSTEM_TYPE_COLORS } from '@/lib/utils/constants'
 import type { FullItem, SlimItemType } from '@/types/item'
 
-// Swipe-to-dismiss grip pill — shared dimensions for the touch affordance rendered by BOTH drawer shells
-// (the desktop Sheet's drawer-shell and the mobile ItemFullScreenView). The colour is applied separately by
-// each (Tailwind classes vs. a Motion drag variant), but the shape is one source of truth so they can't drift.
+// Swipe-to-dismiss grip pill — shared dimensions and Motion variants for the touch affordance rendered by
+// BOTH drawer shells (the desktop Sheet's drawer-shell and the mobile full-screen views). The shape and
+// colour transitions are one source of truth so they can't drift between consumers.
 export const SWIPE_GRIP_PILL_CLASS = 'h-14 w-1.5 rounded-full'
+
+// Motion drag variants for the grip pill. The parent panel's `whileDrag="dragging"` propagates to any
+// `<motion.* variants={GRIP_VARIANTS}>` child, so the pill highlights while a drag is active — no React state.
+export const GRIP_VARIANTS: Variants = {
+  idle: { backgroundColor: 'color-mix(in oklch, var(--foreground) 30%, transparent)' },
+  dragging: { backgroundColor: 'color-mix(in oklch, var(--primary) 70%, transparent)' },
+}
 
 interface DrawerContainerProps {
   header: ReactNode

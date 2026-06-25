@@ -5,8 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
 import { useDownloadSrcActions } from '@/hooks/billing/use-pro-download-src'
 import { usePrependItem, useReplaceItem, useRemoveItem, useInvalidateItems } from '@/hooks/items/use-infinite-items'
-import { useInvalidateCollections } from '@/hooks/items/use-collections'
-import { useInvalidateUserProfile } from '@/hooks/profile/use-user-profile'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import type { CreateItemInput } from '@/lib/utils/validators'
 import type { LightItem } from '@/types/item'
 
@@ -31,8 +30,7 @@ export function useCreateItem() {
   const replaceItem = useReplaceItem()
   const tqRemoveItem = useRemoveItem()
   const invalidateItems = useInvalidateItems()
-  const invalidateCollections = useInvalidateCollections()
-  const invalidateUserProfile = useInvalidateUserProfile()
+  const invalidate = useInvalidate()
   const { seed: seedPreviewCache, clear: clearDownloadSrcCache } = useDownloadSrcActions()
 
   // Fire-and-forget optimistic create as a useMutation: onMutate prepends the temp card (the caller
@@ -72,14 +70,10 @@ export function useCreateItem() {
       }
       replaceItem(tempId, data)
       invalidateItems('none')
-      // Creating into a collection changes its itemCount/type chips — mark the shared /collections
-      // cache stale and refetch active collection readers (grid/sidebar/header) after the route handler
-      // has invalidated the server cache tags. Skip when no collection was selected (the common case) —
-      // nothing about the collection list changed, so a refetch would be wasted.
-      if (payload.collectionIds && payload.collectionIds.length > 0) invalidateCollections()
+      if (payload.collectionIds && payload.collectionIds.length > 0) invalidate('collections')
       // A new item can push a free-tier user over the item limit, flipping canCreateItem in /profile/me
       // (which gates the create dialog).
-      invalidateUserProfile()
+      invalidate('userProfile')
     },
     onError: (error: Error, { options }, context) => {
       if (context?.tempId) tqRemoveItem(context.tempId)

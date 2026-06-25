@@ -12,7 +12,7 @@ import {
   BILLING_PORTAL_FALLBACK_ERROR,
   BILLING_REACTIVATE_FALLBACK_ERROR,
 } from '@/lib/billing/messages/billing-messages.client'
-import { useInvalidateBillingContext } from '@/hooks/billing/use-billing-context'
+import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 
 interface BillingPortalFormProps {
   className?: string
@@ -80,7 +80,7 @@ export function BillingActions({
   showUpgradeCta = true,
   billingUnavailable = false,
 }: BillingActionsProps) {
-  const invalidateBillingContext = useInvalidateBillingContext()
+  const invalidate = useInvalidate()
 
   const { formAction: cancelFormAction } = useApiFormAction(async () => {
     const { error } = await api.POST('/billing/cancel')
@@ -89,14 +89,14 @@ export function BillingActions({
     fallbackError: BILLING_CANCEL_FALLBACK_ERROR,
     // The cancel route busts the server cache synchronously (revalidateTag expire:0) before it
     // responds, so an active refetch here reads fresh state and the mounted settings UI updates.
-    onSuccess: () => invalidateBillingContext(),
+    onSuccess: () => invalidate('billingContext'),
   })
   const { formAction: reactivateFormAction } = useApiFormAction(async () => {
     const { error } = await api.POST('/billing/reactivate')
     if (error) throw new Error(error.message)
   }, {
     fallbackError: BILLING_REACTIVATE_FALLBACK_ERROR,
-    onSuccess: () => invalidateBillingContext(),
+    onSuccess: () => invalidate('billingContext'),
   })
 
   if (isPro && billingUnavailable) {
