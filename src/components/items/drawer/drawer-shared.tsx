@@ -38,9 +38,15 @@ interface DrawerContainerProps {
    * stick to the top so they stay reachable as the document scrolls. Used by ItemFullScreenView.
    */
   fullScreen?: boolean
+  /**
+   * When true, the full-screen header uses `sticky top-0` instead of `fixed inset-x-0 top-0`. Use when
+   * the container itself is a `fixed inset-0 overflow-y-auto` overlay (draft drawer's noPage mode) — in
+   * that context sticky works correctly and fixed would escape to the viewport and fight app chrome.
+   */
+  stickyHeader?: boolean
 }
 
-function DrawerContainer({ header, actions, children, style, fullScreen = false }: DrawerContainerProps) {
+function DrawerContainer({ header, actions, children, style, fullScreen = false, stickyHeader = false }: DrawerContainerProps) {
   // Shared header + action-bar chrome. In full-screen mode it sticks to the top of the document; in Sheet
   // mode it is a non-shrinking band above the inner ScrollArea. Only `shrink-0` (irrelevant under sticky)
   // differs, so one tree serves both. @container/actionbar: each button's label span collapses to icon-only
@@ -56,7 +62,7 @@ function DrawerContainer({ header, actions, children, style, fullScreen = false 
   )
 
   if (fullScreen) {
-    return <FullScreenDrawerContainer chrome={chrome} style={style}>{children}</FullScreenDrawerContainer>
+    return <FullScreenDrawerContainer chrome={chrome} style={style} stickyHeader={stickyHeader}>{children}</FullScreenDrawerContainer>
   }
 
   return (
@@ -78,32 +84,53 @@ interface FullScreenDrawerContainerProps {
   chrome: ReactNode
   children: ReactNode
   style?: CSSProperties
+  stickyHeader?: boolean
 }
 
-// Mobile full-screen drawer: the DOCUMENT is the scroller (so the browser URL bar can retract). A plain
-// `position: sticky` header drifts partially out of view on a real mobile browser — the URL-bar show/hide
-// scrolls the visual viewport independently of the layout viewport, and the sticky header tracks the wrong
-// one (only its lower band stays pinned: the reported partial scroll). `position: fixed` instead anchors
-// the header to the visual viewport, so it stays strictly bound to the top exactly like the draft drawer's
-// fixed Sheet header. The fixed header lives INSIDE the drag panel, so during a swipe-close it inherits the
-// panel's transform (the panel becomes the fixed header's containing block while it is transformed) and
-// rides off with the rest of the drawer — no special-casing. A spacer of the measured header height holds
-// its place in the document flow so the scrollable content starts right below it. `data-drawer-sticky-header`
-// lets the editor overlay's clip-path (editor-chrome) clamp itself below the header.
-function FullScreenDrawerContainer({ chrome, children, style }: FullScreenDrawerContainerProps) {
+// Mobile full-screen drawer: by default the DOCUMENT is the scroller (so the browser URL bar can retract).
+// A plain `position: sticky` header drifts partially out of view on a real mobile browser — the URL-bar
+// show/hide scrolls the visual viewport independently of the layout viewport, and the sticky header tracks
+// the wrong one (only its lower band stays pinned: the reported partial scroll). `position: fixed` instead
+// anchors the header to the visual viewport, so it stays strictly bound to the top exactly like the draft
+// drawer's fixed Sheet header. The fixed header lives INSIDE the drag panel, so during a swipe-close it
+// inherits the panel's transform (the panel becomes the fixed header's containing block while it is
+// transformed) and rides off with the rest of the drawer — no special-casing. A spacer of the measured
+// header height holds its place in the document flow so the scrollable content starts right below it.
+// `data-drawer-sticky-header` lets the editor overlay's clip-path (editor-chrome) clamp itself below
+// the header.
+//
+// Exception — `stickyHeader`: when the container itself is a `fixed inset-0 overflow-y-auto` overlay (the
+// draft drawer's noPage mode), `fixed` would escape to the viewport and fight the app topbar at the same
+// z-level. In that mode `sticky top-0` is correct: it stays bound to the scroll container's top, the
+// URL-bar drift issue doesn't apply (fixed overlay has its own scroll, not the document), and no spacer
+// measurement is needed.
+function FullScreenDrawerContainer({ chrome, children, style, stickyHeader = false }: FullScreenDrawerContainerProps) {
   const headerRef = useRef<HTMLDivElement>(null)
   const [headerHeight, setHeaderHeight] = useState(0)
 
   // Mirror the header's measured height into the spacer so the content never sits under the fixed header.
   // A ResizeObserver catches title wraps, badge changes, and the action bar's responsive label collapse.
+  // Only needed in fixed-header mode; sticky mode needs no spacer (the header is in-flow).
   useLayoutEffect(() => {
+    if (stickyHeader) return
     const el = headerRef.current
     if (!el) return
     setHeaderHeight(el.offsetHeight)
     const ro = new ResizeObserver(() => setHeaderHeight(el.offsetHeight))
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [stickyHeader])
+
+  if (stickyHeader) {
+    return (
+      <div className="relative flex min-h-[100lvh] flex-col bg-popover" style={style}>
+        <div data-drawer-sticky-header className="sticky top-0 z-20 bg-popover">
+          {chrome}
+        </div>
+        <div className="flex flex-1 flex-col gap-5 px-5 py-4">{children}</div>
+      </div>
+    )
+  }
 
   return (
     <div className="relative flex min-h-[100lvh] flex-col bg-popover" style={style}>
@@ -125,9 +152,11 @@ interface DrawerLayoutProps {
   children: ReactNode
   /** Render document-flow full-screen (mobile) instead of the fixed inner-scroll panel. See DrawerContainer. */
   fullScreen?: boolean
+  /** See DrawerContainer.stickyHeader. */
+  stickyHeader?: boolean
 }
 
-export function DrawerLayout({ itemType, onClose, titleArea, actionArea, children, fullScreen = false }: DrawerLayoutProps) {
+export function DrawerLayout({ itemType, onClose, titleArea, actionArea, children, fullScreen = false, stickyHeader = false }: DrawerLayoutProps) {
   return (
     // One TooltipProvider for the whole drawer (delay 150 matches the dense action-bar chrome) — scopes the
     // action bar's Parse tooltip in view mode and the Save/Commit tooltips in edit mode, so neither side
@@ -135,6 +164,7 @@ export function DrawerLayout({ itemType, onClose, titleArea, actionArea, childre
     <TooltipProvider delay={150}>
       <DrawerContainer
         fullScreen={fullScreen}
+        stickyHeader={stickyHeader}
         style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
         header={
           <>
