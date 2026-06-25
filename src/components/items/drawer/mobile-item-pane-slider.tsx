@@ -2,9 +2,7 @@
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { motion, useReducedMotion, type Transition } from 'motion/react'
-import { ItemFullScreenView } from './item-detail-drawer'
 import { cn } from '@/lib/utils'
-import type { LightItem, FullItem } from '@/types/item'
 
 // Open/close slide timing. Easing mirrors the old Sheet shell's cubic-bezier.
 const SLIDE: Transition = { duration: 0.32, ease: [0.32, 0.72, 0, 1] }
@@ -15,15 +13,22 @@ interface MobileItemPaneSliderProps {
   // Screen 1 — the live app page (list/dashboard). Mounted ONCE inside a single persistent wrapper whose
   // className is toggled (document flow ⇄ fixed backdrop). `page` never changes tree position or parent
   // element TYPE, so React never remounts it — its DOM, scroll, and virtualized-list state all persist.
-  page: ReactNode
+  // Pass null when there is no page backdrop (e.g. the draft drawer: the parse board is already visible
+  // under the overlay without a managed backdrop layer). The pageLayer is skipped entirely in that case.
+  page: ReactNode | null
   open: boolean
-  item: LightItem | FullItem | null
   // Window scroll position captured (in the store) at the open click. The page is kept mounted, but the
   // document-level window scroll is pinned to 0 while the item is up — so it's restored from this on close
   // (React preserves component state via stable tree position, not the browser's document scroll value).
   openScrollY: number
-  onOpenChange: (open: boolean) => void
-  onFullItemFetched: (item: FullItem) => void
+  /**
+   * Renders the full-screen pane content. Receives `isSettled` (true once the open slide finishes and the
+   * pane IS the document scroller) and `onSwipeCloseStart` (call synchronously when a swipe has already
+   * animated the pane off-screen so the slider skips its own reverse slide). The callback is `undefined`
+   * while the pane is still sliding in (not yet settled) — the implementor must disable swipe-to-close
+   * until it is provided.
+   */
+  renderPane: (props: { isSettled: boolean; onSwipeCloseStart?: () => void }) => ReactNode
 }
 
 // Touch-only mobile shell. The app page is kept PERMANENTLY MOUNTED so opening an item never destroys it.
@@ -43,17 +48,9 @@ interface MobileItemPaneSliderProps {
 //
 // Mount preservation comes from the STABLE wrapper position alone: the wrapper stays a `<div>` in every
 // state, so `page` never changes parent type and is never remounted.
-export function MobileItemPaneSlider({ page, open, item, openScrollY, onOpenChange, onFullItemFetched }: MobileItemPaneSliderProps) {
+export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: MobileItemPaneSliderProps) {
   const reduceMotion = useReducedMotion()
   const transition = reduceMotion ? { duration: 0 } : SLIDE
-
-  // The item shown in the overlay. Latched locally so it survives the close slide (the store clears `item`
-  // immediately on close, but the sliding-away overlay must keep rendering the last item until it's gone).
-  const [paneItem, setPaneItem] = useState<LightItem | FullItem | null>(item)
-  // Identity comparison is safe: openDrawer callers always pass a fresh list-object reference, so
-  // different items always have different references AND the same item re-opened gets a new object.
-  // Switch to id comparison as a belt-and-suspenders guard against callers that reuse references.
-  if (open && item && item.id !== paneItem?.id) setPaneItem(item)
 
   // A swipe-close has ALREADY animated the item off-screen via the drag's own `x`, so it must NOT trigger the
   // slider's reverse slide — that would re-render the item at x:0% (fully open) and slide it off again (the
@@ -95,6 +92,7 @@ export function MobileItemPaneSlider({ page, open, item, openScrollY, onOpenChan
   // here. The list virtualizes/grows over a few frames, so a single scrollTo can land short — retry over a
   // few rAFs until it sticks; a no-op once it already matches.
   useLayoutEffect(() => {
+    if (page === null) return
     if (!pageIsDocument) {
       // window.scrollTo: document-level scroll has no React/Next equivalent. behavior:'instant' is REQUIRED:
       // <html> carries `scroll-smooth` (globals), so a plain scrollTo here would animate the pin-to-0.
@@ -136,14 +134,15 @@ export function MobileItemPaneSlider({ page, open, item, openScrollY, onOpenChan
     }
     restore()
     return () => { cancelled = true; cancelAnimationFrame(raf) }
-  }, [pageIsDocument, openScrollY])
+  }, [page, pageIsDocument, openScrollY])
 
   // The page's own scroller while it's the fixed backdrop (item up) — keep it at the saved position so what
   // shows through the swipe gap is where the user actually was. Detached (null) while idle (page = document).
   const pageScrollRef = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
-    if (!pageIsDocument && pageScrollRef.current) pageScrollRef.current.scrollTop = openScrollY
-  }, [pageIsDocument, openScrollY])
+    if (page === null || pageIsDocument || !pageScrollRef.current) return
+    pageScrollRef.current.scrollTop = openScrollY
+  }, [page, pageIsDocument, openScrollY])
 
   const settled = phase === 'settled'
 
@@ -152,14 +151,15 @@ export function MobileItemPaneSlider({ page, open, item, openScrollY, onOpenChan
   // reconciles by position, and a root-type change (div ↔ Fragment) would destroy and recreate the subtree.
   // The wrapper's CSS class toggles between roles: `contents` (idle — page is the document) and
   // `fixed inset-0 -z-10` (backdrop when the item overlay is up).
-  const pageLayer = (
+  // When `page` is null there is no managed backdrop; the pageLayer is omitted entirely.
+  const pageLayer = page !== null ? (
     <div
       ref={pageScrollRef}
       className={cn(pageIsDocument ? 'contents' : 'fixed inset-0 -z-10 w-screen overflow-y-auto')}
     >
       {page}
     </div>
-  )
+  ) : null
 
   // Always return a Fragment so `pageLayer` (and its `page` subtree) stays at a stable tree position across
   // all phases. The motion.div is conditionally rendered at position 1 — only it mounts/unmounts as the item
@@ -180,13 +180,10 @@ export function MobileItemPaneSlider({ page, open, item, openScrollY, onOpenChan
           transition={transition}
           onAnimationComplete={reduceMotion ? undefined : () => setPhase(openRef.current ? 'settled' : 'idle')}
         >
-          <ItemFullScreenView
-            item={paneItem}
-            onOpenChange={onOpenChange}
-            onFullItemFetched={onFullItemFetched}
-            onSwipeCloseStart={settled ? () => setSwipeClosing(true) : undefined}
-            isSettled={settled}
-          />
+          {renderPane({
+            isSettled: settled,
+            onSwipeCloseStart: settled ? () => setSwipeClosing(true) : undefined,
+          })}
         </motion.div>
       )}
     </>

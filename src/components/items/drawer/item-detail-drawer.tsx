@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
-import { motion, useMotionValue, animate, type PanInfo, type Variants } from 'motion/react'
+import { motion, type Variants } from 'motion/react'
 import { SheetTitle } from '@/components/ui/sheet'
 import { DrawerShell } from './drawer-shell'
 import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
@@ -10,12 +10,12 @@ import { useItemDetails, useItemContent } from '@/hooks/items/use-item-detail'
 import { ItemDrawerViewContent } from './item-drawer-view-content'
 import { ItemDrawerEditContent } from './item-drawer-edit-content'
 import { DrawerSkeleton, SWIPE_GRIP_PILL_CLASS } from './drawer-shared'
+import { useMotionSwipeClose } from '@/hooks/ui/use-motion-swipe-close'
 import type { SheetCloseRef } from '@/hooks/ui/use-register-sheet-close'
 import { cn } from '@/lib/utils'
 import { ITEM_TYPES_WITH_CONTENT } from '@/lib/utils/constants'
 import type { LightItem, FullItem, ItemDetails, ItemContent } from '@/types/item'
 import { isFullItem } from '@/types/item'
-import { shouldDismissSwipe } from '@/lib/utils/swipe'
 
 // Swipe-grip pill states. The parent drag panel's `whileDrag="dragging"` propagates to this child variant
 // (Motion variants flow down the tree), so the pill colours itself while a drag is active — primary at 70%,
@@ -227,24 +227,22 @@ export function ItemFullScreenView({
   // (mirrors DrawerShell), so a horizontal swipe over the editor can't close the view underneath it.
   const editorFullscreen = useEditorFullscreenStore((s) => s.fullscreen)
 
-  // `x` is the live horizontal swipe-drag position (px); `panelRef` is the dragged panel. Declared up here
-  // so the scroll-reset effect below can also clear `x` on an item switch (see that effect). Motion's
-  // `drag="x"` + `dragDirectionLock` only locks an axis after the first pointer movement, so a VERTICAL-first
-  // gesture locks to Y, Motion does NOT capture it, and native document scroll proceeds (URL-bar retraction).
-  const x = useMotionValue(0)
-  const panelRef = useRef<HTMLDivElement>(null)
+  // Route a close request through the body's guarded close (sheetCloseRef) so an unsaved edit prompts
+  // first; once cleared the body calls onOpenChange(false). Falls back to a direct close in view mode.
+  const requestClose = () => {
+    const guardedClose = sheetCloseRef.current
+    if (guardedClose) guardedClose()
+    else onOpenChange(false)
+  }
 
-  // Press-highlight for the swipe grip: a plain tap on the indicator lights it up (matching the desktop
-  // Sheet's grip via usePressHighlight), even before any drag begins — `whileDrag` only covers the drag
-  // itself. We do NOT use usePressHighlight here because it pointer-captures the handle: the full-screen
-  // panel's swipe is Motion's pointer-based `drag`, so capturing on the grip would steal the move events
-  // and break swipe-from-grip. Instead the grip stays event-transparent to the drag (no capture) — the
-  // pointerdown still bubbles to the panel and starts Motion's drag — and we only flip a visual flag.
-  const [gripPressed, setGripPressed] = useState(false)
-
-  // Open/close ANIMATION is owned by MobileItemPaneSlider (the paired page↔item slide). This view is just
-  // the settled, static content: body + app background + swipe-to-close. Closing simply calls
-  // onOpenChange(false) — the slider plays the reverse slide and commits the store close.
+  const { x, panelRef, gripPressed, setGripPressed, dragEnabled, handleDrag, handleDragEnd } = useMotionSwipeClose({
+    isSettled,
+    editorFullscreen,
+    onSwipeCloseStart,
+    requestClose,
+    // Zustand's set() is synchronous, so getState().isOpen is already false by the rAF for a clean close.
+    getIsOpen: () => useItemDrawerStore.getState().isOpen,
+  })
 
   // Switching directly from one open item to another (no unmount) — jump back to the top so the new item
   // starts at its header instead of inheriting the previous item's scroll. ONLY in settled mode (signalled
@@ -265,88 +263,6 @@ export function ItemFullScreenView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openItemId, isSettled])
 
-  // Route a close request through the body's guarded close (sheetCloseRef) so an unsaved edit prompts
-  // first; once cleared the body calls onOpenChange(false). Falls back to a direct close in view mode.
-  const requestClose = () => {
-    const guardedClose = sheetCloseRef.current
-    if (guardedClose) guardedClose()
-    else onOpenChange(false)
-  }
-
-  // Commit a swipe close AFTER the fly-off has animated the item off-screen. The swipe must NOT bypass the
-  // dirty-edit guard (data loss on swipe), so the close always runs through `requestClose`:
-  //  • Clean — the guard closes synchronously; `onSwipeCloseStart` told the slider to skip its reverse slide,
-  //    so it goes straight to idle with no double animation.
-  //  • Dirty — the guard opens the discard dialog instead of closing. We detect that on the next frame (the
-  //    drawer is still open in the store) and spring the item back to x:0 so it sits in place behind the
-  //    dialog; the `onSwipeCloseStart` skip flag is harmless because no close commits until the user confirms.
-  const commitSwipeClose = () => {
-    onSwipeCloseStart?.()
-    requestClose()
-    // Spring back if the close was DEFERRED (dirty-guard opened a discard dialog): the item is still
-    // open and must return to x:0 so the dialog sits over it in place. Zustand's set() is synchronous,
-    // so getState().isOpen is already false by this rAF for a clean close — no state-flush race.
-    // Sequential (not concurrent): this rAF fires AFTER the fly-off tween's onComplete, so x is already at
-    // target. A second animate(x, 0) here springs it back from that parked position — Motion treats them as
-    // two separate animations, not a cancellation race.
-    requestAnimationFrame(() => {
-      if (useItemDrawerStore.getState().isOpen) animate(x, 0, { type: 'spring', stiffness: 500, damping: 40 })
-    })
-  }
-
-  // --- Swipe-right-to-close, built on Motion's drag gesture (out-of-the-box) ---
-  // (`x` / `panelRef` declared above.) A clear rightward drag locks to X and moves the item; `onDragEnd`
-  // decides dismiss from offset+velocity.
-
-  // Clamp leftward travel to 0 ourselves instead of via dragConstraints. Any `dragConstraints`/`dragElastic`/
-  // `dragMomentum` hooks Motion's BUILT-IN release animator, which fires its own settle on `x` at pointer-up
-  // and races our handleDragEnd animation on the same value — the item snaps to fully-open for a frame, then
-  // our fly-off/unmount runs ("appears fully open, then disappears"). With no constraints, handleDragEnd is
-  // the sole animator on release; here we only stop the live drag from pulling the panel past its left edge.
-  const handleDrag = (_event: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) => {
-    if (info.offset.x < 0) x.set(0)
-  }
-
-  const handleDragEnd = (_event: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) => {
-    // Dismiss on a clear rightward throw, via the shared swipe decision (same thresholds as the Sheet's
-    // grab handle): past 90px OR a fast rightward flick that also cleared the minimum distance. Motion's
-    // velocity is px/s; shouldDismissSwipe expects px/ms, so /1000.
-    if (shouldDismissSwipe({ dragged: info.offset.x, velocity: info.velocity.x / 1000, limit: 90 })) {
-      // CONTINUE the close from the release point: fly the item off the right edge starting at its CURRENT
-      // x (carrying the release velocity), then commit the close. `onDragEnd` is the SOLE animator of `x` —
-      // we deliberately do NOT use `dragSnapToOrigin`, because that prop fires its own spring-to-origin on
-      // every release and races this fly-off, snapping the item back to fully-open for a frame before it
-      // leaves (the visible "jump"). The parallax page is coupled to `x`, so it settles into place as the
-      // item clears. commitSwipeClose runs the close through the dirty guard and signals the slider (via
-      // onSwipeCloseStart) that this close is already animated, so it skips its reverse track and lands at idle.
-      //
-      // Target = the panel's full width, read LIVE from the element at release (panelRef.offsetWidth). This
-      // must never be a stale or zero value: animating `x` toward a target SMALLER than its current value
-      // would spring the item leftward back to ~origin (looks "fully open") and complete almost instantly,
-      // then unmount — the exact "snap fully open, then immediately disappear" bug. offsetWidth is always
-      // the real on-screen width, so the spring always travels rightward off-screen from wherever x is.
-      // Fallback x.get() + 1 ensures remaining > 0 for safe duration calculation.
-      const target = panelRef.current?.offsetWidth ?? x.get() + 1
-      // Fly off with a fixed-duration TWEEN, not a velocity-seeded spring. A spring seeded with the release
-      // velocity (px/s — a flick is easily 1500–3000) plus restDelta:1 reaches rest within ~1 frame: the
-      // item is effectively gone instantly, reading as "closed with no animation". A duration tween always
-      // plays the full rightward travel over a perceptible, release-independent time, so the close visibly
-      // continues moving right from wherever the finger lifted. Duration scales mildly with remaining
-      // distance so a near-edge release isn't artificially slow.
-      const remaining = Math.max(0, target - x.get())
-      const duration = target > 0 ? Math.min(0.32, 0.18 + (remaining / target) * 0.16) : 0.18
-      animate(x, target, {
-        type: 'tween',
-        ease: [0.32, 0.72, 0, 1],
-        duration,
-        onComplete: commitSwipeClose,
-      })
-      return
-    }
-    // Below threshold — spring the item back to origin ourselves (no dragSnapToOrigin, see above).
-    animate(x, 0, { type: 'spring', stiffness: 500, damping: 40 })
-  }
-
   if (!item) return null
   return (
     /* Drag wrapper: Motion's drag gesture carries the item (with its own opaque app background) so a
@@ -362,7 +278,7 @@ export function ItemFullScreenView({
           height. */
     <motion.div
       ref={panelRef}
-      drag={isSettled && !editorFullscreen ? 'x' : false}
+      drag={dragEnabled ? 'x' : false}
       dragDirectionLock
       whileDrag="dragging"
       onDrag={handleDrag}

@@ -1,15 +1,15 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useRef } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useItemUrlParamSync } from '@/hooks/items/use-item-url-param-sync'
 import { useCacheItemDetail } from '@/hooks/items/use-item-detail'
 import { useIsTouch } from '@/hooks/ui/use-is-touch'
-import { ItemDetailDrawer } from '@/components/items/drawer/item-detail-drawer'
+import { ItemDetailDrawer, ItemFullScreenView } from '@/components/items/drawer/item-detail-drawer'
 import { MobileItemPaneSlider } from '@/components/items/drawer/mobile-item-pane-slider'
 import type { WithChildren } from '@/types/common'
-import type { FullItem } from '@/types/item'
+import type { LightItem, FullItem } from '@/types/item'
 
 // Keeps `?item=<id>` in the URL in sync with the drawer open state (shared `useItemUrlParamSync`):
 // - drawer opens (any source) → pushes `?item=<id>` so the URL is shareable/bookmarkable
@@ -62,6 +62,10 @@ export function ItemDrawerProvider({ children }: WithChildren) {
     if (!newOpen) useItemDrawerStore.getState().closeDrawer()
   }
 
+  // Latch the last non-null item so the closing slide keeps rendering it after the store clears `item`.
+  const [paneItem, setPaneItem] = useState<LightItem | FullItem | null>(openItem)
+  if (isOpen && openItem && openItem.id !== paneItem?.id) setPaneItem(openItem)
+
   return (
     <>
       {/* Touch: MobileItemPaneSlider owns the page↔item paired slide (page slides left, item slides in from
@@ -72,10 +76,16 @@ export function ItemDrawerProvider({ children }: WithChildren) {
         <MobileItemPaneSlider
           page={children}
           open={isOpen}
-          item={openItem}
           openScrollY={openScrollY}
-          onOpenChange={handleOpenChange}
-          onFullItemFetched={handleFullItemFetched}
+          renderPane={({ isSettled, onSwipeCloseStart }) => (
+            <ItemFullScreenView
+              item={paneItem}
+              onOpenChange={handleOpenChange}
+              onFullItemFetched={handleFullItemFetched}
+              isSettled={isSettled}
+              onSwipeCloseStart={onSwipeCloseStart}
+            />
+          )}
         />
       ) : (
         children
