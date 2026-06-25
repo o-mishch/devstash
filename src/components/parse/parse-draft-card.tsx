@@ -32,9 +32,9 @@ import { Badge } from '@/components/ui/badge'
 import { SheetTitle } from '@/components/ui/sheet'
 import { DrawerShell } from '@/components/items/drawer/drawer-shell'
 import { ItemDrawerEditContent } from '@/components/items/drawer/item-drawer-edit-content'
-import { MobileItemPaneSlider } from '@/components/items/drawer/mobile-item-pane-slider'
 import { SWIPE_GRIP_PILL_CLASS, GRIP_VARIANTS } from '@/components/items/drawer/drawer-shared'
 import { useIsTouch } from '@/hooks/ui/use-is-touch'
+import { useDraftDrawerStore } from '@/stores/draft-drawer-store'
 import { useEditorFullscreenStore } from '@/stores/editor-fullscreen'
 import { useMotionSwipeClose } from '@/hooks/ui/use-motion-swipe-close'
 import { draftToFullItem } from '@/lib/utils/brain-dump-draft'
@@ -585,7 +585,7 @@ interface EditDraftDrawerProps {
   onCommit: () => void
 }
 
-interface MobileDraftFullScreenViewProps {
+export interface MobileDraftFullScreenViewProps {
   item: BrainDumpDraftItem | null
   open: boolean
   targetCollections?: CollectionPickerItem[]
@@ -605,7 +605,7 @@ interface MobileDraftFullScreenViewProps {
 // Full-screen mobile view for the draft edit drawer. Mirrors ItemFullScreenView: renders as document-flow
 // content (no Sheet) so the page scrolls and the browser URL bar can retract. Swipe-right closes via
 // Motion's drag gesture — same thresholds and fly-off as ItemFullScreenView.
-function MobileDraftFullScreenView({
+export function MobileDraftFullScreenView({
   item,
   open,
   targetCollections,
@@ -685,6 +685,7 @@ function MobileDraftFullScreenView({
         collections={targetCollections ?? []}
         collectionsReadOnly
         fullScreen
+        stickyHeader
         onClose={() => onOpenChange(false)}
         onCancel={() => onOpenChange(false)}
         onSave={() => onOpenChange(false)}
@@ -751,9 +752,10 @@ function MobileDraftFullScreenView({
 // per-item collections — they attach to the job's collection target on commit — so the field shows that
 // shared target read-only (collectionsReadOnly) rather than an editable picker.
 //
-// On touch/mobile: renders via MobileItemPaneSlider + MobileDraftFullScreenView (document-flow content,
-// no Sheet) so the browser URL bar can retract on scroll and swiping down feels native — matching the
-// behaviour of the main dashboard item drawer. On desktop: the existing DrawerShell (right-side Sheet).
+// On touch/mobile: writes open state + callbacks into DraftDrawerStore so DraftDrawerProvider
+// (rendered above <main> in the app layout) drives MobileItemPaneSlider from outside <main>'s
+// overflow-x:clip containing block — matching the pattern used by ItemDrawerProvider for the
+// main dashboard item drawer. On desktop: the existing DrawerShell (right-side Sheet).
 function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCollections, onEdited, busy, canCommit, inTrash, onTrash, onRestore, onDeleteForever, onCommit }: EditDraftDrawerProps) {
   const isTouch = useIsTouch()
 
@@ -778,36 +780,35 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
     onOpenChange(false)
   }
 
-  // Latch the item so the closing slide keeps rendering it after the parent clears it.
-  const [paneItem, setPaneItem] = useState<BrainDumpDraftItem | null>(item)
-  if (open && item.id !== paneItem?.id) setPaneItem(item)
+  // Mobile: the global DraftDrawerStore has one slot but every draft card mounts an EditDraftDrawer,
+  // so only the card whose drawer is currently open writes to it — and a card only clears the store if it
+  // still owns the current item (an ownership guard) so a sibling re-render can't slam the open card shut.
+  // While open we re-sync whenever the live props change (busy/canCommit/inTrash) so the provider's chrome
+  // stays current; the callbacks close over those same props, so re-syncing on them also refreshes them.
+  useEffect(() => {
+    if (!isTouch || !open) return
+    useDraftDrawerStore.getState().openDrawer(item, {
+      targetCollections,
+      busy,
+      canCommit,
+      inTrash,
+      onSave: saveDraft,
+      onOpenChange,
+      onTrash,
+      onRestore,
+      onDeleteForever,
+      onCommit,
+    })
+    return () => {
+      const store = useDraftDrawerStore.getState()
+      if (store.item?.id === item.id) store.closeDrawer()
+    }
+    // Re-sync only on identity/prop changes, not on every render (closures rebuild each render but
+    // capture only these values + the stable targetCollections); cleanup clears the owning card's entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTouch, open, item.id, busy, canCommit, inTrash])
 
-  const sharedProps = { busy, canCommit, inTrash, onTrash, onRestore, onDeleteForever, onCommit }
-
-  if (isTouch) {
-    // Mobile: full-screen document-flow content so URL bar retracts and swipe-down feels native.
-    // The brain dump board page is the `page` backdrop; the draft slides in over it.
-    // `stopPropagation` is not needed here — the slider renders outside the card's React subtree.
-    return (
-      <MobileItemPaneSlider
-        page={null}
-        open={open}
-        openScrollY={0}
-        renderPane={({ isSettled, onSwipeCloseStart }) => (
-          <MobileDraftFullScreenView
-            item={paneItem}
-            open={open}
-            targetCollections={targetCollections}
-            onSave={saveDraft}
-            onOpenChange={onOpenChange}
-            isSettled={isSettled}
-            onSwipeCloseStart={onSwipeCloseStart}
-            {...sharedProps}
-          />
-        )}
-      />
-    )
-  }
+  if (isTouch) return null
 
   // Desktop: right-side Sheet shell (resize, swipe-to-dismiss, grab handle, close-ref plumbing).
   // `stopPropagation` is on because this Sheet sits under the draft card's clickable root in the React

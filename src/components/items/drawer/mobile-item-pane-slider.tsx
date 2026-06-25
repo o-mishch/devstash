@@ -166,26 +166,28 @@ export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: Mo
   // opens and closes. ItemFullScreenView stays in ONE persistent slot inside the motion.div across `sliding`
   // and `settled` — its swipe drag state and scroll-reset effect survive the open animation's completion.
   //  • sliding — a fixed z-40 overlay translating in/out over the still-visible page backdrop.
-  //  • settled — the item is the sole DOCUMENT content (URL bar retracts). The page sits behind, visible-but-
-  //    occluded; a swipe-right reveals it instantly; onSwipeCloseStart signals the slider to skip its reverse
-  //    slide and go straight to idle so there is no double animation.
+  //  • settled (page mode) — the item is the sole DOCUMENT content (URL bar retracts). The page sits behind.
+  //  • settled (noPage mode) — stays fixed inset-0 z-40 throughout (no backdrop to swap into document flow).
+  const noPageMode = page === null
+  const pane = !pageIsDocument ? (
+    <motion.div
+      className={settled && !noPageMode ? '' : 'fixed inset-0 z-40 overflow-y-auto'}
+      initial={settled ? false : { x: open ? '100%' : '0%' }}
+      animate={settled ? { x: '0%' } : { x: open ? '0%' : '100%' }}
+      transition={transition}
+      onAnimationComplete={reduceMotion ? undefined : () => setPhase(openRef.current ? 'settled' : 'idle')}
+    >
+      {renderPane({
+        isSettled: settled,
+        onSwipeCloseStart: settled ? () => setSwipeClosing(true) : undefined,
+      })}
+    </motion.div>
+  ) : null
+
   return (
     <>
       {pageLayer}
-      {!pageIsDocument && (
-        <motion.div
-          className={settled ? '' : 'fixed inset-0 z-40 overflow-y-auto'}
-          initial={settled ? false : { x: open ? '100%' : '0%' }}
-          animate={settled ? { x: '0%' } : { x: open ? '0%' : '100%' }}
-          transition={transition}
-          onAnimationComplete={reduceMotion ? undefined : () => setPhase(openRef.current ? 'settled' : 'idle')}
-        >
-          {renderPane({
-            isSettled: settled,
-            onSwipeCloseStart: settled ? () => setSwipeClosing(true) : undefined,
-          })}
-        </motion.div>
-      )}
+      {pane}
     </>
   )
 }

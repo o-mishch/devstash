@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CollectionCreateDialog } from '@/components/collections/collection-create-dialog'
 import { UpgradePromptProvider } from '@/providers/upgrade-prompt-provider'
 import { ItemDrawerProvider } from '@/providers/item-drawer-provider'
+import { DraftDrawerProvider } from '@/providers/draft-drawer-provider'
 import { EditorPreloader } from '@/components/shared/dynamic-editors'
 import { RootProviderShell } from '@/components/shared/root-provider-shell'
 import { ThemeInitializer } from '@/components/shared/theme-initializer'
@@ -35,12 +36,14 @@ export default async function DashboardLayout({ children }: WithChildren) {
     <RootProviderShell theme={appTheme} colorMode={colorMode} themeScript>
       <ThemeInitializer />
       <ItemDrawerProvider>
-        <EditorPreloader />
-        {/* The chrome (topbar + sidebar) awaits session/sidebar data and
-         * suspends on its own. `children` is passed through so it streams
-         * independently of that fetch — each route's own `loading.tsx` fills
-         * the content area instead of a hardcoded dashboard skeleton. */}
-        <DashboardLayoutInner>{children}</DashboardLayoutInner>
+        <DraftDrawerProvider>
+          <EditorPreloader />
+          {/* The chrome (topbar + sidebar) awaits session/sidebar data and
+           * suspends on its own. `children` is passed through so it streams
+           * independently of that fetch — each route's own `loading.tsx` fills
+           * the content area instead of a hardcoded dashboard skeleton. */}
+          <DashboardLayoutInner>{children}</DashboardLayoutInner>
+        </DraftDrawerProvider>
       </ItemDrawerProvider>
     </RootProviderShell>
   )

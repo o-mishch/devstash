@@ -89,12 +89,14 @@ interface ItemDrawerEditContentProps {
   collectionsReadOnly?: boolean
   /** Mobile full-screen mode: render as document-flow content so the browser URL bar can collapse. */
   fullScreen?: boolean
+  /** See DrawerContainer.stickyHeader — pass true when fullScreen is used inside a fixed-inset overlay. */
+  stickyHeader?: boolean
 }
 
 // The four text types, in canonical order, rendered as the type-switch options.
 const TEXT_TYPE_OPTIONS = SYSTEM_TYPE_ORDER.filter((name) => TEXT_ITEM_TYPE_NAMES.has(name))
 
-export function ItemDrawerEditContent({ item, collections = [], onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions, collectionsReadOnly, fullScreen = false }: ItemDrawerEditContentProps) {
+export function ItemDrawerEditContent({ item, collections = [], onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions, collectionsReadOnly, fullScreen = false, stickyHeader = false }: ItemDrawerEditContentProps) {
   const { itemType } = item
   const committedType = itemType.name
   const updateItem = useUpdateItem()
@@ -317,6 +319,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
     <>
       <DrawerLayout
         fullScreen={fullScreen}
+        stickyHeader={stickyHeader}
         itemType={headerItemType}
         onClose={() => guardedAction(onClose)}
         titleArea={
