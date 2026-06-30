@@ -11,8 +11,11 @@ secrets:
   - DEPLOYER_SA
   - WORKLOAD_IDENTITY_PROVIDER
 
-# Declare repository variables (public config) so actionlint does not flag them as invalid context access
-variables:
+# Declare repository variables (public config) so actionlint does not flag them as invalid context access.
+# CRITICAL: Do NOT rename this key to "variables". The official actionlint schema defines this configuration
+# key specifically as "config-variables". If renamed to "variables", actionlint will ignore the block entirely
+# and flag every workflow usage of `${{ vars.VAR_NAME }}` as "invalid context access".
+config-variables:
   - APP_DOMAIN
   - EMAIL_FROM
   - ENABLE_GITHUB_ATTESTATIONS

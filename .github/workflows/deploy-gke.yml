@@ -289,8 +289,12 @@ jobs:
           # Resource requests set to GKE Autopilot's 50m CPU minimum per container.
           # ESO chart defaults to 10m, which Autopilot silently mutates — explicit
           # values here eliminate the mutation warning and make billing predictable.
+          #
+          # CRITICAL: Do NOT use "--rollback-on-failure". GitHub Actions runner (ubuntu-latest)
+          # runs Helm 3 which does not support it and fails the build. Use "--atomic" which
+          # is supported in both Helm 3 and Helm 4 (deprecated but functional).
           helm upgrade --install external-secrets external-secrets/external-secrets \
-            -n external-secrets --create-namespace --wait --timeout 5m --rollback-on-failure \
+            -n external-secrets --create-namespace --wait --timeout 5m --atomic \
             --version "$ESO_VERSION" \
             --set resources.requests.cpu=50m \
             --set resources.requests.memory=128Mi \
@@ -310,8 +314,12 @@ jobs:
           helm repo add stakater https://stakater.github.io/stakater-charts
           helm repo update stakater
           # Resource requests set to Autopilot's 50m CPU floor (same rationale as ESO above).
+          #
+          # CRITICAL: Do NOT use "--rollback-on-failure". GitHub Actions runner (ubuntu-latest)
+          # runs Helm 3 which does not support it and fails the build. Use "--atomic" which
+          # is supported in both Helm 3 and Helm 4 (deprecated but functional).
           helm upgrade --install reloader stakater/reloader \
-            -n reloader --create-namespace --wait --timeout 5m --rollback-on-failure \
+            -n reloader --create-namespace --wait --timeout 5m --atomic \
             --version "$RELOADER_VERSION" \
             --set reloader.deployment.resources.requests.cpu=50m \
             --set reloader.deployment.resources.requests.memory=128Mi
