@@ -215,12 +215,49 @@ jobs:
 
       # The control plane has no public IP endpoint (enable_private_endpoint = true);
       # access is via the IAM-gated DNS-based endpoint, so request DNS-based creds.
+      #
+      # This step reads the cluster over the always-on regional container.googleapis.com
+      # API, so it SUCCEEDS even when the DNS endpoint refuses external traffic. If this
+      # step is green but the first helm/kubectl step below dies with
+      # "Kubernetes cluster unreachable: ... Error 403 (Forbidden)!!1 ... That's an error",
+      # that generic Google HTML page is the DNS endpoint's Front End rejecting this
+      # runner's EXTERNAL traffic at the network layer — NOT an IAM/credentials problem.
+      # Fix: ensure allow_external_traffic is applied on the live cluster — see
+      # infra/terraform/modules/gke/main.tf (control_plane_endpoints_config) for the
+      # describe/reconcile commands. Do not touch this step or the deployer IAM condition.
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@64bc7249bbcf78056bb92f14d3cedc2da193946c # v2
         with:
           cluster_name: ${{ env.CLUSTER }}
           location: ${{ env.REGION }}
           use_dns_based_endpoint: true
+
+      # Preflight: prove the control plane is actually reachable over the DNS endpoint
+      # BEFORE the build spends time on Helm. The creds step above can be green while the
+      # DNS endpoint silently refuses this runner's external traffic (allow_external_traffic
+      # drift — see infra/terraform/modules/gke/main.tf). Helm surfaces that as a cryptic
+      # "Kubernetes cluster unreachable: <html> 403" that reads like a Helm/chart fault.
+      # This probe hits the API server's /readyz health path; if the Google Front End
+      # rejects external traffic the response is the generic 403 HTML page, which we detect
+      # and translate into the exact remediation instead of a misleading downstream error.
+      - name: Verify control plane reachable (DNS endpoint)
+        run: |
+          if out="$(kubectl get --raw='/readyz' 2>&1)"; then
+            echo "Control plane reachable via DNS endpoint: ${out}"
+            exit 0
+          fi
+          # Distinguish the GFE external-traffic rejection (generic Google HTML 403) from a
+          # genuine IAM denial (which names the permission) or any other connectivity fault.
+          if printf '%s' "$out" | grep -qiE '403 \(Forbidden\)|That.{0,3}s an error'; then
+            echo "::error::GKE DNS endpoint refused this runner's EXTERNAL traffic (HTTP 403 at the Google Front End)."
+            echo "::error::This is NOT an IAM/credentials fault — the live cluster has allow_external_traffic effectively OFF (drift from Terraform)."
+            echo "::error::Confirm:  gcloud container clusters describe ${CLUSTER} --region ${REGION} --format='value(controlPlaneEndpointsConfig.dnsEndpointConfig.allowExternalTraffic)'"
+            echo "::error::Reconcile: tofu apply  (from infra/terraform/envs/dev)  — or hotfix: gcloud container clusters update ${CLUSTER} --region ${REGION} --enable-dns-access"
+          else
+            echo "::error::Control plane not reachable over the DNS endpoint (not the external-traffic 403 signature):"
+            printf '%s\n' "$out"
+          fi
+          exit 1
 
       # Inject the real per-environment values into the overlay's single
       # source of truth (settings.yaml). Kustomize `replacements` fan these

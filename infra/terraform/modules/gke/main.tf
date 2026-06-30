@@ -48,6 +48,36 @@ resource "google_container_cluster" "primary" {
   # already holds (container.developer) using
   # `gcloud container clusters get-credentials --dns-endpoint`
   # (get-gke-credentials action: use_dns_based_endpoint: true). No public IP, no allowlist.
+  #
+  # allow_external_traffic = true is REQUIRED and CORRECT — DO NOT change it to false
+  # and DO NOT delete this block. GitHub-hosted runners are OUTSIDE Google Cloud; with
+  # external traffic disabled, the DNS endpoint's Google Front End refuses their packets
+  # at the network layer, before IAM or kube-apiserver ever see them.
+  #
+  # ── FAILURE SIGNATURE / DRIFT GUARD ───────────────────────────────────────────
+  # If a CI deploy fails at the first helm/kubectl call with:
+  #     Error: Kubernetes cluster unreachable: <!DOCTYPE html> ... Error 403 (Forbidden)!!1
+  #     ... That's an error. ... That's all we know.
+  # that GENERIC Google HTML page is the GFE rejecting external traffic — it is NOT an
+  # IAM problem. (An IAM denial instead names the permission:
+  #     Permission 'container.clusters.connect' denied on resource ...
+  # — see modules/iam/main.tf deployer_gke. Do NOT go remove that IAM condition chasing
+  # this symptom.) The get-gke-credentials step still SUCCEEDS in this state because it
+  # reads the cluster over the always-on regional container.googleapis.com API, not the
+  # DNS endpoint — so a green "Get GKE credentials" step followed by a 403 on the first
+  # API call is the tell.
+  #
+  # The generic 403 means the LIVE cluster has external traffic effectively off while
+  # this code says true — i.e. drift (the attribute was added/changed but never applied,
+  # or the cluster predates it). This is a NON-DESTRUCTIVE field, so reconcile in place:
+  #     # confirm live state (read-only; expect True after the fix):
+  #     gcloud container clusters describe devstash-dev-gke --region us-central1 \
+  #       --format='value(controlPlaneEndpointsConfig.dnsEndpointConfig.allowExternalTraffic)'
+  #     # reconcile (authoritative — applies exactly this block):
+  #     tofu apply           # from infra/terraform/envs/dev
+  #     # gcloud equivalent for a hotfix without a full apply:
+  #     gcloud container clusters update devstash-dev-gke --region us-central1 --enable-dns-access
+  # The fix is to APPLY this config, never to edit the value here — it is already right.
   control_plane_endpoints_config {
     dns_endpoint_config {
       allow_external_traffic = true

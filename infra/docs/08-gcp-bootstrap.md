@@ -1143,6 +1143,50 @@ gcloud container binauthz attestors create devstash-slsa \
 
 ## 11. Типові помилки та усунення
 
+### `Kubernetes cluster unreachable` / `Error 403 (Forbidden)!!1` — DNS-ендпоінт відхиляє зовнішній трафік
+
+> **Статус:** конфіг у коді вже коректний (`allow_external_traffic = true` у
+> `modules/gke/main.tf`). Якщо помилка виникає — це **дрейф**: жива конфігурація кластера
+> ще не має цього значення. Усувається через `tofu apply`; значення в коді **не чіпати**.
+
+Деплой (CI або локальний) падає на **першому виклику `helm`/`kubectl`**, хоча
+`get-gke-credentials` / `gcloud … get-credentials` відпрацював **успішно**:
+
+```
+Error: Kubernetes cluster unreachable: <!DOCTYPE html> … Error 403 (Forbidden)!!1
+… That's an error. … That's all we know.
+```
+
+**Першопричина:** ця **загальна Google-HTML сторінка 403** — це Google Front End
+DNS-ендпоінта (`*.gke.goog`), який відхиляє **зовнішній трафік** на мережевому рівні, ще
+до IAM і kube-apiserver. Це **не** проблема IAM (відмова IAM натомість назвала б дозвіл:
+`Permission 'container.clusters.connect' denied on resource …`) і **не** IAM-condition на
+`roles/container.developer` (та умова вже проходить `container.clusters.get` на кроці
+отримання кредів, а `container.googleapis.com/Cluster` підтримує умови за `resource.name`).
+Крок креди працює, бо читає кластер через завжди-доступний регіональний API
+`container.googleapis.com`, а **не** через DNS-ендпоінт. Жива конфігурація має
+`allow_external_traffic` фактично **вимкненим** — дрейф від Terraform, який уже декларує
+`allow_external_traffic = true`.
+
+**Рішення (значення в коді вже правильне — не міняти):**
+
+```bash
+# Підтвердити живий стан (read-only; очікувано True після фіксу, ймовірно False/порожньо зараз):
+gcloud container clusters describe devstash-dev-gke --region us-central1 \
+  --format='value(controlPlaneEndpointsConfig.dnsEndpointConfig.allowExternalTraffic)'
+
+# Узгодити дрейф (авторитетно — застосовує саме цей блок):
+tofu apply        # з infra/terraform/envs/dev
+# або hotfix без повного apply:
+gcloud container clusters update devstash-dev-gke --region us-central1 --enable-dns-access
+```
+
+Увімкнення зовнішнього трафіку на DNS-ендпоінті — **non-destructive** зміна (кластер не
+перестворюється). CI має fail-fast крок **`Verify control plane reachable (DNS endpoint)`**
+у `deploy-gke.yml`, який ловить цей підпис 403 і друкує точне рішення замість оманливої
+помилки Helm. **Не** змінювати `allow_external_traffic` на false і **не** прибирати
+IAM-condition (`modules/iam/main.tf`), женучись за цим симптомом.
+
 ### `orgpolicy.googleapis.com` — `403 SERVICE_DISABLED` / quota project not set
 
 > **Статус:** ця помилка більше не виникає в поточній конфігурації. Terraform-ресурс

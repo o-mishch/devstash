@@ -148,6 +148,20 @@ resource "google_artifact_registry_repository_iam_member" "deployer_artifact_reg
 # the project binding with an IAM Condition over the supported Cluster resource type.
 # Keep the full resource name aligned with modules/gke/main.tf; a mismatch prevents CI
 # from obtaining credentials or using the Kubernetes API.
+#
+# This condition IS compatible with DNS-based-endpoint access: container.developer
+# grants container.clusters.connect, container.googleapis.com/Cluster is a resource type
+# that supports resource.name/resource.type conditions (see
+# cloud.google.com/iam/docs/conditions-resource-attributes), and the same condition
+# already passes container.clusters.get at the get-gke-credentials step. So do NOT
+# blame this condition for a "Kubernetes cluster unreachable / Error 403 (Forbidden)!!1
+# / That's an error" failure — that GENERIC Google HTML page is the DNS endpoint's
+# Front End refusing EXTERNAL traffic at the network layer (see
+# modules/gke/main.tf control_plane_endpoints_config / allow_external_traffic), not an
+# IAM denial. A real IAM denial here would instead read
+# "Permission 'container.clusters.connect' denied on resource ...". DO NOT relax or
+# remove this condition to chase a generic-HTML 403; it would weaken least-privilege
+# without touching the actual cause.
 resource "google_project_iam_member" "deployer_gke" {
   project = var.project_id
   role    = "roles/container.developer"
