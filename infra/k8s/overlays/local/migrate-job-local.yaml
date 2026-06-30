@@ -50,9 +50,9 @@ spec:
           image: devstash-migrate:local
           imagePullPolicy: Never  # always use the kind-loaded image, never pull
           env:
-            # DB_LOCAL=1 → node-postgres adapter (same as GCP with Cloud SQL).
-            - name: DB_LOCAL
-              value: "1"
+            # DB_DRIVER=pg → node-postgres adapter (same as GCP with Cloud SQL).
+            - name: DB_DRIVER
+              value: "pg"
           envFrom:
             # devstash-secrets is materialized from overlays/local/secret.local.yaml
             # (applied by run.sh as part of kubectl apply -k overlays/local before this job).

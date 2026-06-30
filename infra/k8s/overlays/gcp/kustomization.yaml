@@ -99,7 +99,7 @@ configMapGenerator:
       # Managed Cloud SQL speaks plain Postgres → select Prisma's node-postgres
       # adapter (src/lib/infra/db-local.ts), not the Neon serverless driver. This
       # is the real Neon→Cloud SQL adapter swap, gated by env, app code unchanged.
-      - DB_LOCAL=1
+      - DB_DRIVER=pg
       # Per-pod node-postgres pool ceiling. db-f1-micro real connection limit is ~25
       # (RAM-based, the max_connections flag is ignored on shared-core instances).
       # maxReplicas(10) * DB_POOL_MAX(2) = 20 connections, leaving headroom for the
@@ -108,9 +108,16 @@ configMapGenerator:
       # Non-secret constants that would otherwise live in Secret Manager. Visible
       # in `kubectl describe configmap devstash-config` — never put sensitive values here.
       - EMAIL_FROM=DevStash <noreply@devstash.one>
+      # GCS S3-interop endpoint + region sentinel (modules/iam: HMAC creds only stay in
+      # Secret Manager; these two are fixed, environment-independent constants, not
+      # secrets). See the s3_interop_secrets comment in modules/iam/main.tf.
+      - AWS_ENDPOINT_URL_S3=https://storage.googleapis.com
+      - AWS_REGION=auto
       # NEXTAUTH_URL is injected entirely by the replacement below (data.nextAuthUrl
       # from settings.yaml at deploy time). Do not set it here — the replacement
       # always wins and a literal here is dead code that misleads readers.
+      # AWS_S3_BUCKET is injected entirely by the replacement below (data.s3Bucket) —
+      # same reasoning as NEXTAUTH_URL above.
 
 # --- Single-source-of-truth fan-out ---------------------------------------
 # Every per-environment value lives once in settings.yaml; these replacements
@@ -203,3 +210,14 @@ replacements:
           name: devstash-backendconfig
         fieldPaths:
           - spec.securityPolicy.name
+  # s3Bucket -> AWS_S3_BUCKET (whole value) — deterministic from projectId, not a secret
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.s3Bucket
+    targets:
+      - select:
+          kind: ConfigMap
+          name: devstash-config
+        fieldPaths:
+          - data.AWS_S3_BUCKET

@@ -1,10 +1,10 @@
 # Postgres for the local run. The app connects directly over TCP via Prisma's
-# standard node-postgres adapter (DB_LOCAL=1, see src/lib/infra/db-local.ts) — no
+# standard node-postgres adapter (DB_DRIVER=pg, see src/lib/infra/db-local.ts) — no
 # proxy needed, and interactive transactions work.
 #
 # PostgreSQL 16 self-hosted in-cluster: the local analog of GKE's managed Cloud SQL
 # (modules/cloudsql, database_version = "POSTGRES_16"). Both are plain PostgreSQL
-# reached over TCP by the same node-postgres adapter (DB_LOCAL=1) running the same
+# reached over TCP by the same node-postgres adapter (DB_DRIVER=pg) running the same
 # migrations — so the local run stays "fully local, no cloud, no cost" while matching
 # GCP exactly on PostgreSQL major version, sslmode handling, and the pg_trgm extension
 # that prisma/schema.prisma requires.

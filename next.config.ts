@@ -25,7 +25,7 @@ const nextConfig: NextConfig = {
   //
   // Vercel boundary — the split is enforced at TWO levels:
   //   1. Runtime gate: self-hosted deps are only reached through `require()` guards
-  //      (DB_LOCAL=1 in db-local.ts, REDIS_URL in redis.ts, SMTP_HOST in
+  //      (DB_DRIVER=pg in db-local.ts, REDIS_URL in redis.ts, SMTP_HOST in
   //      email-local.ts) that never fire on Vercel. The Neon/Upstash/Resend paths
   //      are the unconditional defaults; the GKE paths are conditional overrides.
   //   2. Bundle gate (this list): marking a package as external prevents Next.js
@@ -36,8 +36,8 @@ const nextConfig: NextConfig = {
   // Vercel/Neon path (present on all deployments):
   //   @prisma/client, @prisma/adapter-neon, @neondatabase/serverless, @aws-sdk/client-s3
   // GKE/local path (gated by env vars — never loaded on Vercel, never bundled):
-  //   @prisma/adapter-pg → node-postgres Prisma adapter (DB_LOCAL=1)
-  //   pg                 → node-postgres driver (DB_LOCAL=1)
+  //   @prisma/adapter-pg → node-postgres Prisma adapter (DB_DRIVER=pg)
+  //   pg                 → node-postgres driver (DB_DRIVER=pg)
   //   ioredis            → native TCP Redis client (REDIS_URL set)
   //   nodemailer         → SMTP email transport (SMTP_HOST set)
   //

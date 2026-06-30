@@ -89,9 +89,9 @@ RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 --ingroup nodejs nextjs
 USER nextjs
 # Apply pending migrations, then idempotently seed the system item types.
-# DB_LOCAL=1 selects the node-postgres adapter — managed Cloud SQL speaks plain
+# DB_DRIVER=pg selects the node-postgres adapter — managed Cloud SQL speaks plain
 # Postgres over TCP, not the Neon serverless protocol. The Job may override this CMD.
-CMD ["sh", "-c", "npx prisma migrate deploy && DB_LOCAL=1 SEED_ITEM_TYPES_ONLY=1 npx tsx prisma/seed.ts"]
+CMD ["sh", "-c", "npx prisma migrate deploy && DB_DRIVER=pg SEED_ITEM_TYPES_ONLY=1 npx tsx prisma/seed.ts"]
 
 # ---- runner: minimal runtime image ----------------------------------------
 FROM node:${NODE_VERSION} AS runner

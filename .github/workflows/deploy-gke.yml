@@ -289,6 +289,11 @@ jobs:
           # terraform.tfvars (e.g. "dev" → "prod"), update BOTH literals below AND the
           # CLUSTER env var at the top of this file to match. Mismatch = Ingress loses
           # its static IP + BackendConfig gets no WAF policy — silent kubectl apply success.
+          # s3Bucket follows the same "derive, don't read Terraform state" approach as
+          # ingressIpName/armorPolicyName above: module.gcs.bucket_name's naming formula
+          # is "${project_id}-${name_prefix}-uploads" (modules/gcs/main.tf) — deterministic
+          # from PROJECT_ID, so no Secret Manager round-trip is needed for this non-secret
+          # bucket name. WHEN TO UPDATE: same trigger as ingressIpName/armorPolicyName.
           yq -i '
             .data.projectId       = strenv(PROJECT_ID) |
             .data.saEmail         = "devstash-app@" + strenv(PROJECT_ID) + ".iam.gserviceaccount.com" |
@@ -296,7 +301,8 @@ jobs:
             .data.emailFrom       = strenv(EMAIL_FROM) |
             .data.nextAuthUrl     = "https://" + strenv(APP_DOMAIN) |
             .data.ingressIpName   = "devstash-dev-ip" |
-            .data.armorPolicyName = "devstash-dev-armor"
+            .data.armorPolicyName = "devstash-dev-armor" |
+            .data.s3Bucket        = strenv(PROJECT_ID) + "-devstash-dev-uploads"
           ' settings.yaml
           # Pin the web image to the immutable registry digest returned by BuildKit.
           # WHY select(.name == "devstash") not .images[0]: positional index is fragile

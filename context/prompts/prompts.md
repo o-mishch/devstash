@@ -1,7 +1,7 @@
 Get recommendations, best practices, and modern approaches from context7
 Get recommendations, best practices, and modern approaches from websearch, eventually from context7
 
-what does it mean `type: NodePort`?
+
 
 add all commands for which you are asking for permissions to allowed-tools in:
 .agents/skills/cleanup 
@@ -10,8 +10,6 @@ add all commands for which you are asking for permissions to allowed-tools in:
 
 
 Critically review all flows related to GCP deployment, to verify that nothing is missed or anything can be improved.
-double check the correctness of each config (decision), add an appropriate comment, to avoid further drifting/touching of  the same config by the other AI agent attempts!
-Get recommendations, best practices, and modern approaches from context7, eventually websearch.
 
 
 1. Verify that GCP config fully satisfies and complies with recommendations, best practices, and modern approaches. All features present in the application utilize the existing GCP components.
@@ -20,11 +18,12 @@ Get recommendations, best practices, and modern approaches from context7, eventu
 4. Keep strict boundaries between Vercel and GCP/Local codebases:
 - the existing codebase should be touched as little as possible, fewer invasions;
 - the different branches of application should load of that dependecies/modules which used in this particular branch, not bom all dependencies.
-5. @infra/gcp-run/run.sh covers everything that can be automated?
-6. everything properly documented
+1. @infra/gcp-run/run.sh covers everything that can be automated?
+2. everything properly documented
 
+Get recommendations, best practices, and modern approaches from websearch, eventually from context7. Ask if you need!
 Before changing values in the existing config, read the comment before it and challenge the correctness of each config (decision). Double-check the correctness of each config (decision) and add an appropriate comment to avoid further drifting/touching the same config by other AI agents' attempts!
-Get recommendations, best practices, and modern approaches from context7 and websearch.
+
 
 
 

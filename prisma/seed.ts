@@ -3,18 +3,30 @@ import bcrypt from 'bcryptjs'
 import { PrismaClient } from '../src/generated/prisma/client'
 import { ContentType } from '../src/generated/prisma'
 import type { SqlDriverAdapterFactory } from '@prisma/client/runtime/client'
+import { resolveDbSsl } from '../src/lib/utils/db-ssl'
 
 // Branch-isolated DB adapter: production/Neon seeding uses @prisma/adapter-neon;
-// local-run (kind, DB_LOCAL=1) seeds a plain Postgres over TCP via @prisma/adapter-pg
-// (the Neon serverless driver can't handshake a plain connection). Each adapter is
+// any node-postgres target (DB_DRIVER='pg') seeds over TCP via @prisma/adapter-pg — both
+// local-run (kind, plain Postgres) AND the GCP overlay (managed Cloud SQL, TLS), since
+// the Neon serverless driver can't handshake either plain connection. Each adapter is
 // loaded with a DYNAMIC import on its own branch so the OTHER branch's package is
 // never parsed/loaded — keeping the Vercel/Neon path free of the local-only pg deps
 // (mirrors the dynamic-import pattern in src/lib/infra/email-local.ts).
 async function createAdapter(): Promise<SqlDriverAdapterFactory> {
   const connectionString = process.env.DIRECT_URL
-  if (process.env.DB_LOCAL === '1') {
+  if (process.env.DB_DRIVER === 'pg') {
     const { PrismaPg } = await import('@prisma/adapter-pg')
-    return new PrismaPg({ connectionString })
+    // Explicit node-postgres TLS via the shared resolveDbSsl (src/lib/utils/db-ssl.ts) — the
+    // same policy the app's runtime adapter (src/lib/infra/db-local.ts) uses, lifted into a
+    // client-safe util precisely so this standalone seed can reuse it (db-local.ts itself is
+    // `import 'server-only'` and can't load here). The full verify-full rationale lives in
+    // db-ssl.ts; what's seed-specific: DIRECT_URL uses sslmode=require against Cloud SQL's
+    // PRIVATE IP, which Prisma 7's pg bundle now treats as verify-full and fails (P1011
+    // TlsConnectionError, prisma/prisma#29060). The explicit `ssl` overrides that. Do NOT drop
+    // back to `{ connectionString }`, and do NOT "fix" it by editing sslmode in DIRECT_URL —
+    // the URL is Terraform-generated (modules/cloudsql) and require is correct.
+    const ssl = resolveDbSsl(process.env.DATABASE_CA_CERT)
+    return new PrismaPg({ connectionString, ssl })
   }
   const { PrismaNeon } = await import('@prisma/adapter-neon')
   return new PrismaNeon({ connectionString })

@@ -38,7 +38,7 @@ data:
   domain: gke.devstash.one
   # Sender email address — non-secret constant fanned out by Kustomize replacements.
   # Overwritten in CI by strenuous EMAIL_FROM variable.
-  emailFrom: DevStash <admin@devstash.one>
+  emailFrom: DevStash <noreply@devstash.one>
   # Full NEXTAUTH_URL — keep in sync with `domain`.
   nextAuthUrl: https://gke.devstash.one
   # Name of the global static IP reserved in Terraform (network module). Must
@@ -49,3 +49,9 @@ data:
   # Attached to the BackendConfig so the LB enforces WAF + rate limiting at the edge.
   # Must match `${name_prefix}-armor` = devstash-dev-armor.
   armorPolicyName: devstash-dev-armor
+  # GCS uploads bucket name (modules/gcs: "${project_id}-${name_prefix}-uploads").
+  # Non-secret, deterministic from projectId above — fed into AWS_S3_BUCKET via
+  # the ConfigMap replacement instead of round-tripping through Secret Manager.
+  # REAL value (not a placeholder), derived the same way saEmail is.
+  # CI overwrites via `yq -i '.data.s3Bucket = strenv(PROJECT_ID)+"-devstash-dev-uploads"'`.
+  s3Bucket: project-39965ce5-4c4b-495e-8d4-devstash-dev-uploads

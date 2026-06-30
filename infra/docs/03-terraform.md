@@ -283,7 +283,7 @@ Re-platforming — це не лише інфраструктура; частин
 
 | Звідки | Куди | Вплив на код застосунку |
 |------|----|-----------------|
-| Neon (`@neondatabase/serverless` WS-драйвер + `@prisma/adapter-neon`) | managed Cloud SQL for PostgreSQL | Без зміни коду: overlay вмикає `DB_LOCAL=1` → node-postgres адаптер (`createLocalDbAdapter()`); `DATABASE_URL` вказує на приватний IP Cloud SQL. Той самий SQL, ті самі міграції. |
+| Neon (`@neondatabase/serverless` WS-драйвер + `@prisma/adapter-neon`) | managed Cloud SQL for PostgreSQL | Без зміни коду: overlay вмикає `DB_DRIVER=pg` → node-postgres адаптер (`createLocalDbAdapter()`); `DATABASE_URL` вказує на приватний IP Cloud SQL. Той самий SQL, ті самі міграції. |
 | Upstash Redis (REST API) | Memorystore | Без зміни коду: app ходить нативно по TCP через `ioredis` прямо в Memorystore, увімкнено `REDIS_URL` (`src/lib/infra/redis-tcp.ts`). На Vercel `REDIS_URL` не задано → лишається `@upstash/redis` REST. |
 | AWS S3 | GCS | Або лишити S3 SDK проти **S3-сумісного** ендпоінта GCS з HMAC-ключами, або перейти на GCS SDK. |
 | секрети в env-змінних | Secret Manager + Workload Identity | Читати секрети за ідентичністю (CSI driver / External Secrets), а не з вшитого env. |

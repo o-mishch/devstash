@@ -10,7 +10,7 @@ kind: Kustomization
 #   - nginx ingressClassName (kind's ingress-nginx, not GCE)
 #   - NetworkPolicy egress: adds MinIO + Mailpit ports, keeps only port 6379 for Redis
 #   - MinIO localhost-shim sidecar (native sidecar, socat pod :9000 → minio:9000)
-#   - DB_LOCAL=1 in ConfigMap (node-postgres adapter, same as GCP with Cloud SQL)
+#   - DB_DRIVER=pg in ConfigMap (node-postgres adapter, same as GCP with Cloud SQL)
 #
 # Render with: kubectl kustomize infra/k8s/overlays/local
 # Apply with:  bash infra/k8s/local-run/run.sh [up|deploy]
@@ -73,12 +73,24 @@ configMapGenerator:
   - name: devstash-config
     behavior: merge
     literals:
-      # DB_LOCAL=1: node-postgres adapter for in-cluster Postgres over plain TCP.
-      # Mirrors the GCP overlay (Cloud SQL also uses node-postgres via DB_LOCAL=1).
-      - DB_LOCAL=1
+      # DB_DRIVER=pg: node-postgres adapter for in-cluster Postgres over plain TCP.
+      # Mirrors the GCP overlay (Cloud SQL also uses node-postgres via DB_DRIVER=pg).
+      - DB_DRIVER=pg
       # Non-secret sender address. Belongs in ConfigMap (not Secret) per K8s design:
       # ConfigMaps are for non-confidential data; Secrets are for credentials only.
       - EMAIL_FROM=DevStash <dev@devstash.local>
+      # GCS via S3 interop (MinIO locally) — non-secret config; only the HMAC-style
+      # AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY pair stays in secret.local.yaml.
+      # AWS_ENDPOINT_URL_S3 = localhost:9000 so presigned URLs are valid for BOTH the
+      # browser (kind maps host :9000 → MinIO) AND the server (minio-localhost-shim
+      # socat sidecar forwards pod's :9000 → minio:9000). SigV4 signs the Host header
+      # so host must be byte-identical on both sides.
+      - AWS_ENDPOINT_URL_S3=http://localhost:9000
+      - AWS_REGION=us-east-1
+      - AWS_S3_BUCKET=devstash-uploads
+      # Mailpit SMTP — non-secret config (GCP uses Resend instead, no SMTP_HOST there).
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
       # NEXTAUTH_URL: overridden to the local URL. The Secret also sets this key
       # (Secret wins over ConfigMap on duplicates in envFrom order), so either path
       # works — the ConfigMap value is the safe fallback if the Secret key is removed.

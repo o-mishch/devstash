@@ -50,20 +50,25 @@ spec:
           # The image's default CMD runs two steps:
           #   1. `prisma migrate deploy` — uses the Prisma CLI's own Rust engine with
           #      DIRECT_URL (sslmode=require, encryption only, no CA pinning). The CLI
-          #      ignores DB_LOCAL and the Node.js adapter entirely; DB_LOCAL has no
+          #      ignores DB_DRIVER and the Node.js adapter entirely; DB_DRIVER has no
           #      effect on this step.
           #   2. `npx tsx prisma/seed.ts` (SEED_ITEM_TYPES_ONLY=1) — runs via Node.js
-          #      and calls createLocalDbAdapter() from db-local.ts, which reads DB_LOCAL.
-          #      DB_LOCAL=1 here selects the node-postgres adapter for the seed so it
+          #      and reads DB_DRIVER in seed.ts's own createAdapter(). It can't import
+          #      db-local.ts (`import 'server-only'`), so it reuses the shared, client-safe
+          #      resolveDbSsl() from src/lib/utils/db-ssl.ts — the same TLS policy the app's
+          #      runtime adapter uses (see the guard comment in seed.ts).
+          #      DB_DRIVER=pg here selects the node-postgres adapter for the seed so it
           #      connects over plain TCP (Cloud SQL private IP), not the Neon WebSocket
-          #      driver which requires an HTTP endpoint.
+          #      driver which requires an HTTP endpoint. The seed passes an explicit `ssl`
+          #      object (verify-CA via DATABASE_CA_CERT) — required since Prisma 7's pg
+          #      bundle treats sslmode=require as verify-full (see audit R12).
           env:
-            # DB_LOCAL=1 applies ONLY to the seed (step 2 above).
+            # DB_DRIVER=pg applies ONLY to the seed (step 2 above).
             # prisma migrate deploy (step 1) is unaffected — it uses its own engine.
             # Explicit here so that if the CMD is ever overridden in CI, the seed still
             # routes to node-postgres rather than the incompatible Neon driver.
-            - name: DB_LOCAL
-              value: "1"
+            - name: DB_DRIVER
+              value: "pg"
             # WHY TMPDIR=/tmp: readOnlyRootFilesystem: true makes /app (the working
             # directory) and all paths under it read-only; only the /tmp emptyDir
             # volume is writable. tsx (esbuild-based transpiler) and npm/npx may write

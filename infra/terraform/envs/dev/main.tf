@@ -172,7 +172,10 @@ module "iam" {
   # ExternalSecret. DATABASE_URL/DIRECT_URL are NOT in tfvars — they point at the
   # managed Cloud SQL private IP and are derived from the generated password here.
   app_secrets = merge(var.third_party_secrets, {
-    uploads-bucket = module.gcs.bucket_name
+    # uploads-bucket is NOT here: module.gcs.bucket_name is deterministic
+    # ("${project_id}-${name_prefix}-uploads", see modules/gcs/main.tf) and non-secret,
+    # so AWS_S3_BUCKET is computed by the same CI yq formula as saEmail instead of
+    # round-tripping through Secret Manager. See deploy-gke.yml + settings.yaml.
 
     # Managed Cloud SQL (modules/cloudsql). The app + migrate Job read these; the
     # URL targets the PRIVATE IP (in-VPC, no allowlist). Prisma uses the same URL

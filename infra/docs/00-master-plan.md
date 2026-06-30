@@ -179,7 +179,7 @@ Dockerfile, .dockerignore   # repo root
 2. **`serverExternalPackages` у `next.config.ts`** — перераховані пакети не потрапляють у webpack-бандл і резолвяться через рідний `require()` у runtime. На Vercel вони просто не викликаються (div. нижче).
 
 3. **Env-ворота з lazy `require()`** — код `src/lib/infra/` перевіряє env-змінні перед тим, як доторкнутись до GKE-пакетів:
-   - `DB_LOCAL=1` → `require('@prisma/adapter-pg')` у [`src/lib/infra/db-local.ts`](../../src/lib/infra/db-local.ts)
+   - `DB_DRIVER=pg` → `require('@prisma/adapter-pg')` у [`src/lib/infra/db-local.ts`](../../src/lib/infra/db-local.ts)
    - `REDIS_URL` → `require('ioredis')` у [`src/lib/infra/redis.ts`](../../src/lib/infra/redis.ts)
    - `SMTP_HOST` → `import('nodemailer')` (Mailpit SMTP) у [`src/lib/infra/email-local.ts`](../../src/lib/infra/email-local.ts)
    - `AWS_ENDPOINT_URL_S3` → `forcePathStyle` для MinIO/GCS у [`src/lib/storage/s3-local.ts`](../../src/lib/storage/s3-local.ts)

@@ -40,7 +40,7 @@ git push → CI (test gate → build → push → deploy → rollout gate)
 | Аспект | Було | Стало | Зміна в застосунку |
 |---|---|---|---|
 | Compute | Vercel | GKE | контейнеризація; standalone output |
-| База даних | Neon | managed Cloud SQL | без зміни коду: `DB_LOCAL=1` → node-postgres адаптер |
+| База даних | Neon | managed Cloud SQL | без зміни коду: `DB_DRIVER=pg` → node-postgres адаптер |
 | Кеш | Upstash (REST) | Memorystore | без зміни коду: нативний `ioredis` по TCP (`REDIS_URL`); на Vercel лишається Upstash REST |
 | Файли | AWS S3 | GCS | S3 SDK на GCS S3-interop endpoint, або GCS SDK |
 | Registry | — | Artifact Registry | нове |
@@ -133,7 +133,7 @@ Ready-поди; HPA масштабує за навантаженням; Cluster 
   замість Upstash REST, S3 SDK на GCS S3-interop endpoint) **повністю реалізовані** в
   `src/lib/infra/` (`db-local.ts`, `redis-tcp.ts`, `email-local.ts`) і перевірені
   локально на kind (`07-local-run.md`). На Vercel ці шляхи недосяжні — вони за
-  гейтами наявності connection-конфігу (`DB_LOCAL=1`, `REDIS_URL`, `SMTP_HOST`), тому Vercel-деплой
+  гейтами наявності connection-конфігу (`DB_DRIVER=pg`, `REDIS_URL`, `SMTP_HOST`), тому Vercel-деплой
   нічого не відчуває. Не реалізовано лише живий GCP-apply (вартість $300 trial).
 
 ## Фінальний чек-лист

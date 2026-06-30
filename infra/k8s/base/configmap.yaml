@@ -24,3 +24,8 @@ data:
   # local/non-GCE overlays. The replacement is the authoritative source of truth.
   # DO NOT change this independently — update settings.yaml instead.
   NEXTAUTH_URL: "https://gke.devstash.one"
+  # AWS_S3_BUCKET placeholder — same mechanism as NEXTAUTH_URL above: the GCP overlay's
+  # kustomize replacement (kustomization.yaml → replacements → data.s3Bucket from
+  # settings.yaml) overwrites this with the real bucket name at render time. The local
+  # overlay instead sets a real literal via configMapGenerator. Never applied as-is.
+  AWS_S3_BUCKET: "REPLACE_via_gcp_overlay_replacement"

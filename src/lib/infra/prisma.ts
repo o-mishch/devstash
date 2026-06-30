@@ -8,7 +8,7 @@ import { logger } from '@/lib/infra/pino'
 const log = logger.child({ tag: 'prisma' })
 
 function createPrismaClient() {
-  // In local dev (DB_LOCAL=1) use the standard node-postgres adapter so interactive
+  // In local dev (DB_DRIVER=pg) use the standard node-postgres adapter so interactive
   // transactions work against in-cluster Postgres; otherwise the production Neon
   // serverless adapter, unchanged.
   const adapter = createLocalDbAdapter() ?? new PrismaNeon({ connectionString: process.env.DATABASE_URL })

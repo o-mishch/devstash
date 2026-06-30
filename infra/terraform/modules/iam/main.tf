@@ -23,21 +23,20 @@ resource "google_service_account_iam_member" "workload_identity" {
 # Secrets Operator, see infra/k8s/overlays/gcp/external-secrets.yaml) by the
 # identity above — they are NOT baked into the image or a plaintext K8s Secret.
 #
-# Merge the caller-supplied secrets with the GCS S3-interop credentials minted
+# Merge the caller-supplied secrets with the GCS S3-interop HMAC credentials minted
 # here (the HMAC key depends on the app SA this module owns, so it can't be
 # threaded in via var.app_secrets without a cycle). The `secret` is sensitive;
 # `merged_secrets` is therefore sensitive and only referenced inside resource
 # bodies, never as a for_each key.
+#
+# AWS_ENDPOINT_URL_S3 ("https://storage.googleapis.com") and AWS_REGION ("auto" — the
+# region string Google officially requires for GCS S3-interop, see cloud.google.com/
+# storage/docs/aws-simple-migration; GCS ignores the SigV4 region, the SDK just needs a
+# non-empty value) are NOT secrets — they are fixed, environment-independent constants —
+# so they live as plain ConfigMap literals (infra/k8s/overlays/gcp/kustomization.yaml)
+# instead of Secret Manager. Only the actual HMAC credential pair stays here.
 locals {
   s3_interop_secrets = {
-    s3-endpoint = "https://storage.googleapis.com"
-    # "auto" is the region string Google officially requires for GCS S3-interop — used
-    # in all language examples in the GCS migration docs (cloud.google.com/storage/docs/
-    # aws-simple-migration). GCS ignores the region in the SigV4 signature; the SDK
-    # needs *some* non-empty value and "auto" is the documented sentinel. Do NOT change
-    # this to a GCP region ("us-central1") or an AWS region ("us-east-1") — neither is
-    # accepted. The bucket location is determined by the GCS bucket itself, not this value.
-    s3-region    = "auto"
     s3-access-id = google_storage_hmac_key.uploads.access_id
     s3-secret    = google_storage_hmac_key.uploads.secret
   }

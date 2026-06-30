@@ -28,11 +28,11 @@
 
 ## 0. Передумова: який саме «free» ти використовуєш
 
-| Варіант | Вартість | Чого вистачає | Обмеження |
-|---|---|---|---|
-| **$300 trial** (новий акаунт) | $0 на 90 днів | Увесь стек: Autopilot Pods + Cloud SQL + Memorystore + GCS + Artifact Registry. `apply → тест → destroy`. | Без GPU/Gemini/Marketplace; не підвищити квоти |
-| **Always-Free** (постійно) | частково $0 | $74.40 GKE credit/місяць покриває management fee одного Autopilot cluster; GCS 5 GB сукупно в `us-west1/us-central1/us-east1` | Autopilot Pod compute, Cloud SQL і Memorystore — платні; Artifact Registry/cache теж може вийти за free quota |
-| **Cloud Shell** | $0 | `gcloud`/`kubectl`/`tofu` вже встановлені, авторизація автоматична | Ефемерний диск; довгі apply краще з локалі |
+| Варіант                       | Вартість      | Чого вистачає                                                                                                                 | Обмеження                                                                                                     |
+| ----------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **$300 trial** (новий акаунт) | $0 на 90 днів | Увесь стек: Autopilot Pods + Cloud SQL + Memorystore + GCS + Artifact Registry. `apply → тест → destroy`.                     | Без GPU/Gemini/Marketplace; не підвищити квоти                                                                |
+| **Always-Free** (постійно)    | частково $0   | $74.40 GKE credit/місяць покриває management fee одного Autopilot cluster; GCS 5 GB сукупно в `us-west1/us-central1/us-east1` | Autopilot Pod compute, Cloud SQL і Memorystore — платні; Artifact Registry/cache теж може вийти за free quota |
+| **Cloud Shell**               | $0            | `gcloud`/`kubectl`/`tofu` вже встановлені, авторизація автоматична                                                            | Ефемерний диск; довгі apply краще з локалі                                                                    |
 
 **Висновок для цього репо:** стек тепер повністю керований — **Cloud SQL** (БД) +
 **Memorystore** (Redis, нативний ioredis) + GCS + Artifact Registry. Cloud SQL і
@@ -241,13 +241,13 @@ cd infra/terraform/envs/dev
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-| Змінна | Звідки взяти | Приклад |
-|---|---|---|
-| `project_id` | з кроку 1.2 | `project-39965ce5-4c4b-495e-8d4` |
-| `region` | Має збігатися з CI; GCS Always Free — лише `us-west1`, `us-central1`, `us-east1` | `us-central1` |
-| `github_repository` | `owner/repo` твого форку | `o-mishch/devstash` |
-| `github_owner_id` | **числовий** ID власника (immutable — пінить WIF-умову): `curl -s https://api.github.com/users/o-mishch \| jq .id` | `5354532` |
-| `app_domain` | домен, яким володієш (для DNS + managed cert) | `gke.devstash.one` |
+| Змінна              | Звідки взяти                                                                                                       | Приклад                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| `project_id`        | з кроку 1.2                                                                                                        | `project-39965ce5-4c4b-495e-8d4` |
+| `region`            | Має збігатися з CI; GCS Always Free — лише `us-west1`, `us-central1`, `us-east1`                                   | `us-central1`                    |
+| `github_repository` | `owner/repo` твого форку                                                                                           | `o-mishch/devstash`              |
+| `github_owner_id`   | **числовий** ID власника (immutable — пінить WIF-умову): `curl -s https://api.github.com/users/o-mishch \| jq .id` | `5354532`                        |
+| `app_domain`        | домен, яким володієш (для DNS + managed cert)                                                                      | `gke.devstash.one`               |
 
 > `github_owner_id` — це не назва, а число. Саме воно захищає WIF від репозиторія-двійника
 > з такою ж назвою (WIF-умова пінить immutable `repository_owner_id`, а не лише назву репо).
@@ -261,7 +261,7 @@ environment       = "dev"
 github_repository = "o-mishch/devstash"
 github_owner_id   = "5354532"
 app_domain        = "gke.devstash.one"
-email_from        = "DevStash <admin@devstash.one>"
+email_from        = "DevStash <noreply@devstash.one>"
 
 third_party_secrets = {
   "auth-secret"             = "..."   # openssl rand -base64 32
@@ -375,22 +375,22 @@ kubectl get nodes   # має показати вузли кластера
 
 **Переглянути все в GCP Console** ([console.cloud.google.com](https://console.cloud.google.com) → проєкт `project-39965ce5-4c4b-495e-8d4`):
 
-| Що створив Terraform | Розділ Console |
-|---|---|
-| GKE кластер | **Kubernetes Engine → Clusters** |
-| Cloud SQL | **SQL** |
-| Memorystore (Redis) | **Memorystore → Redis** |
-| VPC, subnet, Cloud NAT | **VPC network → VPC networks** |
-| Статична IP (Ingress) | **VPC network → IP addresses** |
-| Artifact Registry | **Artifact Registry → Repositories** |
-| GCS bucket (uploads) | **Cloud Storage → Buckets** |
-| Secret Manager секрети | **Security → Secret Manager** |
-| Service Accounts | **IAM & Admin → Service accounts** |
-| IAM ролі | **IAM & Admin → IAM** |
-| Workload Identity pool | **IAM & Admin → Workload Identity Federation** |
-| Binary Authorization policy | **Security → Binary Authorization** |
-| Org policy override | **IAM & Admin → Organization policies** |
-| Увімкнені API | **APIs & Services → Enabled APIs** |
+| Що створив Terraform        | Розділ Console                                 |
+| --------------------------- | ---------------------------------------------- |
+| GKE кластер                 | **Kubernetes Engine → Clusters**               |
+| Cloud SQL                   | **SQL**                                        |
+| Memorystore (Redis)         | **Memorystore → Redis**                        |
+| VPC, subnet, Cloud NAT      | **VPC network → VPC networks**                 |
+| Статична IP (Ingress)       | **VPC network → IP addresses**                 |
+| Artifact Registry           | **Artifact Registry → Repositories**           |
+| GCS bucket (uploads)        | **Cloud Storage → Buckets**                    |
+| Secret Manager секрети      | **Security → Secret Manager**                  |
+| Service Accounts            | **IAM & Admin → Service accounts**             |
+| IAM ролі                    | **IAM & Admin → IAM**                          |
+| Workload Identity pool      | **IAM & Admin → Workload Identity Federation** |
+| Binary Authorization policy | **Security → Binary Authorization**            |
+| Org policy override         | **IAM & Admin → Organization policies**        |
+| Увімкнені API               | **APIs & Services → Enabled APIs**             |
 
 > Всі ресурси одразу — **Cloud Asset Inventory** (пошук у Console): фільтруй по типу і бачиш весь проєкт в одному місці.
 
@@ -565,12 +565,12 @@ tofu -chdir=infra/terraform/envs/dev output -raw ingress_ip_address
      додавати **там**, де зараз обслуговується зона. Перевір: `dig NS devstash.one +short`.
 3. Натисни **Add Record** і заповни:
 
-   | Поле | Значення |
-   |---|---|
-   | **Type** | `A` |
-   | **Host** (Name) | `gke`  ← лише піддомен, не `gke.devstash.one` і не `@` |
-   | **Value / Address** | `8.232.44.235` (статична IP Ingress з Terraform) |
-   | **TTL** | `5 min` (на час налаштування; потім можна збільшити) |
+   | Поле                | Значення                                               |
+   | ------------------- | ------------------------------------------------------ |
+   | **Type**            | `A`                                                    |
+   | **Host** (Name)     | `gke`  ← лише піддомен, не `gke.devstash.one` і не `@` |
+   | **Value / Address** | `8.232.44.235` (статична IP Ingress з Terraform)       |
+   | **TTL**             | `5 min` (на час налаштування; потім можна збільшити)   |
 
 4. **Save**. `@` (apex) і `www` лиши без змін — вони ведуть на Vercel.
 
@@ -625,21 +625,21 @@ kubectl -n devstash get managedcertificate devstash-cert -o wide
 `devstash-redis-url` (`rediss://…@memorystore`, нативний ioredis; AUTH + in-transit
 TLS) і `devstash-redis-ca-cert` (server CA для перевірки сертифіката). Усе це
 `random_password`/похідні модулів `cloudsql`/`memorystore` у
-[`main.tf`](../terraform/envs/dev/main.tf) — у tfvars їх **немає**. `DB_LOCAL=1`
+[`main.tf`](../terraform/envs/dev/main.tf) — у tfvars їх **немає**. `DB_DRIVER=pg`
 (вибір node-postgres адаптера) — не секрет, у ConfigMap.
 
 ESO очікує саме такі імена секретів (`remoteRef.key`) — **це лише сторонні креди,
 які Terraform не може вивести**:
 
-| Secret Manager key | Env-змінна в app | Звідки взяти |
-|---|---|---|
-| `devstash-auth-secret` | `AUTH_SECRET` | `openssl rand -base64 32` |
-| `devstash-auth-github-id` / `-secret` | `AUTH_GITHUB_*` | GitHub OAuth App |
-| `devstash-auth-google-id` / `-secret` | `AUTH_GOOGLE_*` | Google OAuth Client |
-| `devstash-resend-api-key` | `RESEND_API_KEY` | Resend |
-| `devstash-stripe-secret-key` / `-publishable-key` / `-webhook-secret` | `STRIPE_*` | Stripe |
-| `devstash-stripe-price-id-monthly` / `-yearly` | `STRIPE_PRICE_ID_*` | Stripe Prices |
-| `devstash-openai-api-key` | `OPENAI_API_KEY` | OpenAI |
+| Secret Manager key                                                    | Env-змінна в app    | Звідки взяти              |
+| --------------------------------------------------------------------- | ------------------- | ------------------------- |
+| `devstash-auth-secret`                                                | `AUTH_SECRET`       | `openssl rand -base64 32` |
+| `devstash-auth-github-id` / `-secret`                                 | `AUTH_GITHUB_*`     | GitHub OAuth App          |
+| `devstash-auth-google-id` / `-secret`                                 | `AUTH_GOOGLE_*`     | Google OAuth Client       |
+| `devstash-resend-api-key`                                             | `RESEND_API_KEY`    | Resend                    |
+| `devstash-stripe-secret-key` / `-publishable-key` / `-webhook-secret` | `STRIPE_*`          | Stripe                    |
+| `devstash-stripe-price-id-monthly` / `-yearly`                        | `STRIPE_PRICE_ID_*` | Stripe Prices             |
+| `devstash-openai-api-key`                                             | `OPENAI_API_KEY`    | OpenAI                    |
 
 **Два способи їх додати:**
 
@@ -734,10 +734,10 @@ printf %s "whsec_…" | gcloud secrets versions add devstash-stripe-webhook-secr
 > `https://www.devstash.one/…`) — видалення одразу зламає OAuth-вхід у виробничому
 > додатку на Vercel.
 
-| Провайдер | Де додати | Значення |
-|---|---|---|
+| Провайдер  | Де додати                                                                                                                                  | Значення                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
 | **GitHub** | OAuth App → *Authorization callback URL* (можна додати лише один; для GKE створи **окремий** OAuth App або GitHub App з кількома callback) | `https://gke.devstash.one/api/auth/callback/github` |
-| **Google** | Cloud Console → APIs & Services → Credentials → OAuth client → *Authorized redirect URIs* (підтримує кілька) | `https://gke.devstash.one/api/auth/callback/google` |
+| **Google** | Cloud Console → APIs & Services → Credentials → OAuth client → *Authorized redirect URIs* (підтримує кілька)                               | `https://gke.devstash.one/api/auth/callback/google` |
 
 > Google дозволяє кілька redirect URI на один client — просто додай GKE-URL поряд з
 > Vercel. GitHub OAuth App має лише **один** callback; якщо прод на Vercel вже його
@@ -1011,25 +1011,25 @@ bash infra/gcp-run/run.sh down           # tofu destroy (з підтвердже
 Кожен крок ідемпотентний — `describe`/`list` перед `create`, тож повторний запуск нічого
 не дублює й не ламає.
 
-| # | Крок скрипта | Що робить | Аналог розділу |
-|---|---|---|---|
-| 1 | **preflight** | Перевіряє, що встановлені `gcloud`, `tofu`, `gh`, `kubectl`, `helm`, `jq`; інакше падає з посиланням на встановлення. | — |
-| 2 | **ensure_tfvars** | Якщо `terraform.tfvars` немає — копіює з `.example` і зупиняється (щоб ти вписав реальні значення). Якщо є — читає `project_id`/`region`/`app_domain` і попереджає про плейсхолдери в `third_party_secrets`. | 5, 7b |
-| 3 | **gcloud auth login** | Якщо немає активного акаунта — відкриває браузер для входу. | 1.1 |
-| 4 | **project create + set** | Створює проєкт (якщо ще не існує) і робить активним. | 1.2–1.3 |
-| 5 | **billing link** | Прив'язує білінг: бере `BILLING_ACCOUNT` або перший відкритий акаунт. | 1.4 |
-| 6 | **ADC login** | Якщо немає Application Default Credentials — відкриває браузер (їх читає Terraform-провайдер). | 2 |
-| 7 | **state bucket** | Створює `gs://project-39965ce5-4c4b-495e-8d4-tfstate-dev` + PAP, uniform access і versioning (chicken-and-egg перед `tofu init`). | 3 |
-| 8 | **enable APIs** | Вмикає 14 потрібних API (compute, container, sqladmin, redis, secretmanager, iam, orgpolicy, cloudresourcemanager, binaryauthorization, containeranalysis, …). | 4 |
-| 9 | **tofu init + plan + apply** | Піднімає всю інфру: VPC, GKE Autopilot, Memorystore, IAM+WIF, Artifact Registry, GCS, статичну Ingress-IP, Secret Manager. Питає підтвердження перед платним apply. | 6 |
-| 10 | **get-credentials** | Прописує kubeconfig на новий кластер. | — |
-| 10a | **eso** | `helm upgrade --install` External Secrets Operator (`-n external-secrets`, `--wait`) + чекає webhook — ставить CRD SecretStore/ExternalSecret ще ДО першого `kubectl apply -k`. Також встановлює **Stakater Reloader** (`-n reloader`) — автоматичний rolling restart при зміні Secret/ConfigMap. Раз на кластер, ідемпотентно. | 7.0 |
-| 11 | **gh secrets** | Заливає `GCP_PROJECT_ID`, `DEPLOYER_SA`, `WORKLOAD_IDENTITY_PROVIDER` + `APP_DOMAIN` з `tofu output`. | 7 |
-| 12 | **dns_hint** | Друкує IP Ingress + готовий рядок A-запису й нагадує про Stripe/OAuth. | 7a |
-| 13 | **deploy** | `gh workflow run deploy-gke.yml` → CI збирає web+migrate, проганяє migrate Job (`migrate deploy` + seed item_types) і викочує застосунок. | «Deploy» |
-| 13a | **smoke** | `gh run watch --exit-status` (чекає CI) + `curl /api/health?deep=1` (перевіряє live health). Підтверджує успішний end-to-end деплой. | — |
-| 13b | **verify-secrets** | Порівнює всі очікувані `devstash-*` ключі в Secret Manager зі списком; попереджає про відсутні. Зручно після першого bootstrap або при `CreateContainerConfigError`. | 7b |
-| 14 | **logs** | `kubectl -n devstash logs -l app…=devstash --tail=100 --prefix` — хвіст логів усіх app-подів; зручно одразу після деплою або при дебазі. | — |
+| #   | Крок скрипта                 | Що робить                                                                                                                                                                                                                                                                                                                       | Аналог розділу |
+| --- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| 1   | **preflight**                | Перевіряє, що встановлені `gcloud`, `tofu`, `gh`, `kubectl`, `helm`, `jq`; інакше падає з посиланням на встановлення.                                                                                                                                                                                                           | —              |
+| 2   | **ensure_tfvars**            | Якщо `terraform.tfvars` немає — копіює з `.example` і зупиняється (щоб ти вписав реальні значення). Якщо є — читає `project_id`/`region`/`app_domain` і попереджає про плейсхолдери в `third_party_secrets`.                                                                                                                    | 5, 7b          |
+| 3   | **gcloud auth login**        | Якщо немає активного акаунта — відкриває браузер для входу.                                                                                                                                                                                                                                                                     | 1.1            |
+| 4   | **project create + set**     | Створює проєкт (якщо ще не існує) і робить активним.                                                                                                                                                                                                                                                                            | 1.2–1.3        |
+| 5   | **billing link**             | Прив'язує білінг: бере `BILLING_ACCOUNT` або перший відкритий акаунт.                                                                                                                                                                                                                                                           | 1.4            |
+| 6   | **ADC login**                | Якщо немає Application Default Credentials — відкриває браузер (їх читає Terraform-провайдер).                                                                                                                                                                                                                                  | 2              |
+| 7   | **state bucket**             | Створює `gs://project-39965ce5-4c4b-495e-8d4-tfstate-dev` + PAP, uniform access і versioning (chicken-and-egg перед `tofu init`).                                                                                                                                                                                               | 3              |
+| 8   | **enable APIs**              | Вмикає 14 потрібних API (compute, container, sqladmin, redis, secretmanager, iam, orgpolicy, cloudresourcemanager, binaryauthorization, containeranalysis, …).                                                                                                                                                                  | 4              |
+| 9   | **tofu init + plan + apply** | Піднімає всю інфру: VPC, GKE Autopilot, Memorystore, IAM+WIF, Artifact Registry, GCS, статичну Ingress-IP, Secret Manager. Питає підтвердження перед платним apply.                                                                                                                                                             | 6              |
+| 10  | **get-credentials**          | Прописує kubeconfig на новий кластер.                                                                                                                                                                                                                                                                                           | —              |
+| 10a | **eso**                      | `helm upgrade --install` External Secrets Operator (`-n external-secrets`, `--wait`) + чекає webhook — ставить CRD SecretStore/ExternalSecret ще ДО першого `kubectl apply -k`. Також встановлює **Stakater Reloader** (`-n reloader`) — автоматичний rolling restart при зміні Secret/ConfigMap. Раз на кластер, ідемпотентно. | 7.0            |
+| 11  | **gh secrets**               | Заливає `GCP_PROJECT_ID`, `DEPLOYER_SA`, `WORKLOAD_IDENTITY_PROVIDER` + `APP_DOMAIN` з `tofu output`.                                                                                                                                                                                                                           | 7              |
+| 12  | **dns_hint**                 | Друкує IP Ingress + готовий рядок A-запису й нагадує про Stripe/OAuth.                                                                                                                                                                                                                                                          | 7a             |
+| 13  | **deploy**                   | `gh workflow run deploy-gke.yml` → CI збирає web+migrate, проганяє migrate Job (`migrate deploy` + seed item_types) і викочує застосунок.                                                                                                                                                                                       | «Deploy»       |
+| 13a | **smoke**                    | `gh run watch --exit-status` (чекає CI) + `curl /api/health?deep=1` (перевіряє live health). Підтверджує успішний end-to-end деплой.                                                                                                                                                                                            | —              |
+| 13b | **verify-secrets**           | Порівнює всі очікувані `devstash-*` ключі в Secret Manager зі списком; попереджає про відсутні. Зручно після першого bootstrap або при `CreateContainerConfigError`.                                                                                                                                                            | 7b             |
+| 14  | **logs**                     | `kubectl -n devstash logs -l app…=devstash --tail=100 --prefix` — хвіст логів усіх app-подів; зручно одразу після деплою або при дебазі.                                                                                                                                                                                        | —              |
 
 > `third_party_secrets`, які ти вписав у `terraform.tfvars`, Terraform сам кладе в Secret
 > Manager і дає app-SA доступ (Спосіб А з 7b) — тобто крок 7b теж покритий, **якщо**
@@ -1047,7 +1047,7 @@ CLI цього репо. Роби їх у такому порядку:
 2. `github_repository` — `owner/repo` твого форку (приклад: `o-mishch/devstash`).
 3. `github_owner_id` — числовий ID: `curl -s https://api.github.com/users/o-mishch | jq .id` → `5354532`.
 4. `app_domain` — піддомен, яким володієш (приклад: `gke.devstash.one`).
-5. `email_from` — несекретна адреса відправника (напр. `DevStash <admin@devstash.one>`).
+5. `email_from` — несекретна адреса відправника (напр. `DevStash <noreply@devstash.one>`).
    Це окрема змінна, не секрет: зберігається в ConfigMap, не в Secret Manager.
 6. `third_party_secrets` — реальні креди (детальна таблиця ключів у **7b**):
    - `auth-secret` = `openssl rand -base64 32`
@@ -1125,16 +1125,16 @@ gcloud container binauthz attestors create devstash-slsa \
 
 Деякі кроки тривалі — щоб не думати, що щось зависло:
 
-| Крок | Типовий час | Що відбувається |
-|---|---|---|
-| `tofu init` | 1–2 хв | Завантаження провайдерів Google (~150 MB) |
-| `tofu plan` | 30–60 с | API GCP читає стан ресурсів |
-| `tofu apply` (перший раз) | **10–20 хв** | GKE Autopilot + Cloud SQL + Memorystore — усі три повільні при першому створенні |
-| `helm install` ESO | 1–3 хв | Завантаження чарту + чекання готовності webhook |
-| `gh workflow run` → CI | 5–10 хв | docker build (multi-stage) + push + migrate Job + rollout |
-| DNS-поширення A-запису | 0–30 хв | Залежить від TTL реєстратора і кешу резолверів |
-| Google-managed cert | **15–60 хв** | ACME-challenge через Google; вимагає, щоб DNS вже резолвився |
-| Перший rollout (pod cold start) | 2–5 хв | Завантаження образу + startup probe (до 60 с) |
+| Крок                            | Типовий час  | Що відбувається                                                                  |
+| ------------------------------- | ------------ | -------------------------------------------------------------------------------- |
+| `tofu init`                     | 1–2 хв       | Завантаження провайдерів Google (~150 MB)                                        |
+| `tofu plan`                     | 30–60 с      | API GCP читає стан ресурсів                                                      |
+| `tofu apply` (перший раз)       | **10–20 хв** | GKE Autopilot + Cloud SQL + Memorystore — усі три повільні при першому створенні |
+| `helm install` ESO              | 1–3 хв       | Завантаження чарту + чекання готовності webhook                                  |
+| `gh workflow run` → CI          | 5–10 хв      | docker build (multi-stage) + push + migrate Job + rollout                        |
+| DNS-поширення A-запису          | 0–30 хв      | Залежить від TTL реєстратора і кешу резолверів                                   |
+| Google-managed cert             | **15–60 хв** | ACME-challenge через Google; вимагає, щоб DNS вже резолвився                     |
+| Перший rollout (pod cold start) | 2–5 хв       | Завантаження образу + startup probe (до 60 с)                                    |
 
 > Якщо `tofu apply` завис і нема жодного виводу — перевір `gcloud container clusters list`.
 > GKE Autopilot іноді мовчить 5–7 хв під час provision control plane. Це нормально.
@@ -1241,6 +1241,42 @@ failed to authorize: failed to fetch oauth token: … 403 Forbidden
 у `modules/iam/main.tf` — **`roles/artifactregistry.reader`**, обмежений цим репозиторієм
 (least-privilege, дзеркало writer-біндингу deployer-а), для default Compute SA. Джерело:
 Google «Troubleshoot image pulls».
+
+### Seed падає: `unable to verify the first certificate` (`P1011` / `TlsConnectionError`)
+
+> **Статус:** вирішено. Seed-скрипт має передавати явний `ssl`-обʼєкт у `@prisma/adapter-pg`,
+> через спільний `resolveDbSsl()` з `src/lib/utils/db-ssl.ts` (той самий, який імпортує й
+> рантайм-адаптер `src/lib/infra/db-local.ts`). Без нього Prisma 7 трактує `sslmode=require`
+> як `verify-full` і TLS-рукостискання падає.
+
+Коли Job нарешті тягне образ (вище), **крок 1 `prisma migrate deploy` застосовує всі міграції
+успішно**, а далі **крок 2 `prisma/seed.ts` падає** з:
+
+```
+SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+…
+Error opening a TLS connection: unable to verify the first certificate
+code: 'P1011', DriverAdapterError: TlsConnectionError
+```
+
+**Першопричина:** Prisma 7 тягне `pg` 8.22 / `pg-connection-string`, які тепер підвищують
+`sslmode=require/prefer/verify-ca` до **`verify-full`** (перевірка ланцюга CA **і** збігу
+хостнейму) — `prisma/prisma#29060`. `DIRECT_URL` використовує `sslmode=require` до
+**приватного IP** Cloud SQL, тож `verify-full` не має CA для звірки та провалює перевірку
+хостнейму. `prisma migrate deploy` (крок 1) не зачеплено — CLI на Rust-конекторі трактує
+`require` як «лише шифрування»; **падає тільки seed** (крок 2, node-postgres). Ознака:
+міграції проходять, seed падає на TLS. Рантайм-адаптер застосунку (`db-local.ts`) цієї вади
+не мав — він уже передає явний `ssl`; seed просто не повторював цю логіку.
+
+**Рішення:** у `prisma/seed.ts` `createAdapter()` передаємо явний `ssl` через спільний
+`resolveDbSsl()`: `DATABASE_CA_CERT` заданий (Cloud SQL) → `{ ca, rejectUnauthorized: true,
+checkServerIdentity: () => undefined }` (verify-CA: звіряємо ланцюг із серверним CA Google,
+пропускаємо хостнейм, бо конект по приватному IP); не заданий (локальний kind) → `undefined`
+(шануємо `sslmode=disable` з URL). Явний `ssl` **перекриває** `sslmode` з URL і повністю
+обходить підвищення до `verify-full`. Резолвер живе у спільному клієнт-безпечному
+`src/lib/utils/db-ssl.ts`, який імпортують **і** seed, **і** `db-local.ts` — сам `db-local.ts`
+має `import 'server-only'` і не вантажиться в seed-скрипт, але чиста функція вантажиться, тож
+джерело істини одне, без копії. Деталі — аудит R12.
 
 ### `orgpolicy.googleapis.com` — `403 SERVICE_DISABLED` / quota project not set
 
