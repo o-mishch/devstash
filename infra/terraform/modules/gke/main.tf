@@ -54,30 +54,26 @@ resource "google_container_cluster" "primary" {
   # external traffic disabled, the DNS endpoint's Google Front End refuses their packets
   # at the network layer, before IAM or kube-apiserver ever see them.
   #
-  # ── FAILURE SIGNATURE / DRIFT GUARD ───────────────────────────────────────────
-  # If a CI deploy fails at the first helm/kubectl call with:
+  # ── FAILURE SIGNATURE (resolved) ──────────────────────────────────────────────
+  # CI once failed at the first helm/kubectl call with:
   #     Error: Kubernetes cluster unreachable: <!DOCTYPE html> ... Error 403 (Forbidden)!!1
   #     ... That's an error. ... That's all we know.
-  # that GENERIC Google HTML page is the GFE rejecting external traffic — it is NOT an
-  # IAM problem. (An IAM denial instead names the permission:
-  #     Permission 'container.clusters.connect' denied on resource ...
-  # — see modules/iam/main.tf deployer_gke. Do NOT go remove that IAM condition chasing
-  # this symptom.) The get-gke-credentials step still SUCCEEDS in this state because it
-  # reads the cluster over the always-on regional container.googleapis.com API, not the
-  # DNS endpoint — so a green "Get GKE credentials" step followed by a 403 on the first
-  # API call is the tell.
+  # That GENERIC Google HTML page is a Google-Front-End rejection at the DNS endpoint.
+  # CONFIRMED CAUSE (commit a051ad7, verified green afterwards): an IAM Condition on the
+  # deployer's container role pinned resource.name to the cluster path, which the DNS
+  # endpoint does NOT match when checking container.clusters.connect — so the GFE returned
+  # this page. Removing that condition fixed it (see modules/iam/main.tf deployer_gke).
+  # allow_external_traffic was already ON; it was NOT the cause this time.
+  # The get-gke-credentials step still SUCCEEDS under this 403 because it reads the cluster
+  # over the always-on regional container.googleapis.com API, not the DNS endpoint — so a
+  # green "Get GKE credentials" followed by a 403 on the first API call is the tell.
   #
-  # The generic 403 means the LIVE cluster has external traffic effectively off while
-  # this code says true — i.e. drift (the attribute was added/changed but never applied,
-  # or the cluster predates it). This is a NON-DESTRUCTIVE field, so reconcile in place:
-  #     # confirm live state (read-only; expect True after the fix):
-  #     gcloud container clusters describe devstash-dev-gke --region us-central1 \
-  #       --format='value(controlPlaneEndpointsConfig.dnsEndpointConfig.allowExternalTraffic)'
-  #     # reconcile (authoritative — applies exactly this block):
-  #     tofu apply           # from infra/terraform/envs/dev
-  #     # gcloud equivalent for a hotfix without a full apply:
-  #     gcloud container clusters update devstash-dev-gke --region us-central1 --enable-dns-access
-  # The fix is to APPLY this config, never to edit the value here — it is already right.
+  # If this 403 ever RECURS, check BOTH gates before editing code:
+  #   (a) this value is actually applied on the LIVE cluster (drift) —
+  #       gcloud container clusters describe devstash-dev-gke --region us-central1 \
+  #         --format='value(controlPlaneEndpointsConfig.dnsEndpointConfig.allowExternalTraffic)'  # expect True
+  #       tofu apply   # from infra/terraform/envs/dev (applies this block authoritatively)
+  #   (b) no resource-name IAM Condition was re-added to the deployer (modules/iam/main.tf).
   control_plane_endpoints_config {
     dns_endpoint_config {
       allow_external_traffic = true

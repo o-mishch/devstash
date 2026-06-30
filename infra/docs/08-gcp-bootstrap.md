@@ -1143,11 +1143,11 @@ gcloud container binauthz attestors create devstash-slsa \
 
 ## 11. Типові помилки та усунення
 
-### `Kubernetes cluster unreachable` / `Error 403 (Forbidden)!!1` — DNS-ендпоінт відхиляє зовнішній трафік
+### `Kubernetes cluster unreachable` / `Error 403 (Forbidden)!!1` — DNS-ендпоінт відхиляє запит
 
-> **Статус:** конфіг у коді вже коректний (`allow_external_traffic = true` у
-> `modules/gke/main.tf`). Якщо помилка виникає — це **дрейф**: жива конфігурація кластера
-> ще не має цього значення. Усувається через `tofu apply`; значення в коді **не чіпати**.
+> **Статус:** вирішено (commit `a051ad7`). Першопричина — **IAM-condition на біндингу
+> deployer-а**, а **не** зовнішній трафік. `allow_external_traffic = true` уже було
+> ввімкнено і причиною НЕ було.
 
 Деплой (CI або локальний) падає на **першому виклику `helm`/`kubectl`**, хоча
 `get-gke-credentials` / `gcloud … get-credentials` відпрацював **успішно**:
@@ -1157,35 +1157,62 @@ Error: Kubernetes cluster unreachable: <!DOCTYPE html> … Error 403 (Forbidden)
 … That's an error. … That's all we know.
 ```
 
-**Першопричина:** ця **загальна Google-HTML сторінка 403** — це Google Front End
-DNS-ендпоінта (`*.gke.goog`), який відхиляє **зовнішній трафік** на мережевому рівні, ще
-до IAM і kube-apiserver. Це **не** проблема IAM (відмова IAM натомість назвала б дозвіл:
-`Permission 'container.clusters.connect' denied on resource …`) і **не** IAM-condition на
-`roles/container.developer` (та умова вже проходить `container.clusters.get` на кроці
-отримання кредів, а `container.googleapis.com/Cluster` підтримує умови за `resource.name`).
-Крок креди працює, бо читає кластер через завжди-доступний регіональний API
-`container.googleapis.com`, а **не** через DNS-ендпоінт. Жива конфігурація має
-`allow_external_traffic` фактично **вимкненим** — дрейф від Terraform, який уже декларує
-`allow_external_traffic = true`.
+**Першопричина (підтверджена):** ця **загальна Google-HTML сторінка 403** — це Google
+Front End DNS-ендпоінта (`*.gke.goog`), що відхиляє запит. Біндинг deployer-а мав
+**IAM-condition**, який прив'язував `resource.name` до шляху кластера
+(`projects/…/clusters/…`). Через DNS-ендпоінт дозвіл `container.clusters.connect`
+перевіряється на **ресурсі DNS-ендпоінта, а не на шляху кластера**, тому умова ніколи не
+збігалася і GFE повертав цю сторінку (а **не** іменовану помилку дозволу). Крок креди
+працює, бо читає кластер через завжди-доступний регіональний API
+`container.googleapis.com`, а **не** через DNS-ендпоінт — тож зелений крок креди + 403 на
+першому API-виклику і є ознакою.
 
-**Рішення (значення в коді вже правильне — не міняти):**
+**Рішення (commit `a051ad7`):** прибрано IAM-condition з
+`google_project_iam_member.deployer_gke` (`modules/iam/main.tf`). Перевірено: CI після
+цього доходить до `helm`/`kubectl`. **Не** додавати знову condition з `resource.name` на
+кластер — DNS-ендпоінт не може його задовольнити. `allow_external_traffic = true` тримати
+як окрему передумову:
 
 ```bash
-# Підтвердити живий стан (read-only; очікувано True після фіксу, ймовірно False/порожньо зараз):
+# Перевірити, що зовнішній трафік увімкнено на живому кластері (окрема передумова, очікувано True):
 gcloud container clusters describe devstash-dev-gke --region us-central1 \
   --format='value(controlPlaneEndpointsConfig.dnsEndpointConfig.allowExternalTraffic)'
 
-# Узгодити дрейф (авторитетно — застосовує саме цей блок):
+# Узгодити будь-який дрейф (авторитетно — застосовує конфіг):
 tofu apply        # з infra/terraform/envs/dev
-# або hotfix без повного apply:
-gcloud container clusters update devstash-dev-gke --region us-central1 --enable-dns-access
 ```
 
-Увімкнення зовнішнього трафіку на DNS-ендпоінті — **non-destructive** зміна (кластер не
-перестворюється). CI має fail-fast крок **`Verify control plane reachable (DNS endpoint)`**
-у `deploy-gke.yml`, який ловить цей підпис 403 і друкує точне рішення замість оманливої
-помилки Helm. **Не** змінювати `allow_external_traffic` на false і **не** прибирати
-IAM-condition (`modules/iam/main.tf`), женучись за цим симптомом.
+CI має fail-fast крок **`Verify control plane reachable (DNS endpoint)`** у `deploy-gke.yml`,
+який ловить цей підпис 403 і друкує **обидва** можливі шлюзи (IAM-condition та
+`allow_external_traffic`) замість оманливої помилки Helm.
+
+### `helm upgrade external-secrets` падає: `cannot patch ClusterRole … requires container.clusterRoles.update`
+
+> **Статус:** вирішено. deployer-у потрібна роль **`roles/container.admin`** (не
+> `container.developer` і не `container.clusterAdmin`) для керування RBAC-обʼєктами кластера.
+
+Після усунення 403 (вище) CI доходить до `helm upgrade --install external-secrets`, але той
+падає:
+
+```
+cannot patch "external-secrets-controller" with kind ClusterRole … is forbidden:
+requires one of ["container.clusterRoles.update"] permission(s) in Cloud IAM …
+```
+
+(аналогічно для `ClusterRoleBinding`, `Role`, `RoleBinding`, `ValidatingWebhookConfiguration`).
+
+**Першопричина:** системні Helm-чарти (external-secrets, reloader) створюють/патчать
+**RBAC-обʼєкти рівня кластера** та webhook-конфіги. `roles/container.developer` дає на них
+лише `get`/`list`, без `create`/`update`/`delete`. Перевірено через
+`gcloud iam roles describe`: і `container.developer`, і `container.clusterAdmin` **не**
+мають `container.clusterRoles.update` тощо; має лише **`roles/container.admin`** (а також
+`customResourceDefinitions.*`).
+
+**Рішення:** підвищено `google_project_iam_member.deployer_gke` до **`roles/container.admin`**
+(`modules/iam/main.tf`) — найвужча **передвизначена** роль, що керує RBAC у кластері. **Не**
+«знижувати до `clusterAdmin` заради least-privilege» — у неї немає RBAC-дозволів і вона
+мовчки знову зламає цей крок. SA призначений лише для деплоїв одного репо (WIF лише з
+`refs/heads/main`), тож проєктна `container.admin` — прийнятний обсяг.
 
 ### `orgpolicy.googleapis.com` — `403 SERVICE_DISABLED` / quota project not set
 
