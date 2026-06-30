@@ -1,6 +1,66 @@
 {
   "version": 1,
   "skills": {
+    "gcloud": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/gcloud/SKILL.md",
+      "computedHash": "23294abb27c0569af44578e1a9547dff021d51620f27c4f37a8acff29b400350"
+    },
+    "gke-cluster-creation": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/gke-cluster-creation/SKILL.md",
+      "computedHash": "3b3a5fb7b2bd3abb6c361e959b41f1031d8efa28a1926ccab87c2bddf98778d7"
+    },
+    "gke-golden-path": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/gke-golden-path/SKILL.md",
+      "computedHash": "99ef5fad5ec4fda9a6be4d080e277aa3b40382383aaed83148e97a734e42bcee"
+    },
+    "gke-networking": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/gke-networking/SKILL.md",
+      "computedHash": "92092c1bdbd27e8a70ab8118b12971d4610c476f6a56ecea185df0ec7d3bd2b5"
+    },
+    "gke-security": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/gke-security/SKILL.md",
+      "computedHash": "7d3ff4c1b1bbb714bf6e0989a0349804fc0f58e04dbca6a7b61e23724ecf8f8a"
+    },
+    "gke-upgrades": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/gke-upgrades/SKILL.md",
+      "computedHash": "c6895f2f5e976c26feeec79595f224e400a7d2f0eb62ee510a0c4cb7343523ad"
+    },
+    "google-cloud-waf-cost-optimization": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/google-cloud-waf-cost-optimization/SKILL.md",
+      "computedHash": "91374b65de9b05fcfd3253f589594373b153f195e9aef0303a6d29a15cbde906"
+    },
+    "google-cloud-waf-operational-excellence": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/google-cloud-waf-operational-excellence/SKILL.md",
+      "computedHash": "bdc6a9f415f6400fa85e1dcf77d961ea37f5f264eafc23108a297ff5d044d46b"
+    },
+    "google-cloud-waf-reliability": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/google-cloud-waf-reliability/SKILL.md",
+      "computedHash": "30c24286a8ac8b2281f76b694c85300ac99272b22600c4a199b92c60b047d59e"
+    },
+    "google-cloud-waf-security": {
+      "source": "google/skills",
+      "sourceType": "github",
+      "skillPath": "skills/cloud/google-cloud-waf-security/SKILL.md",
+      "computedHash": "2571b2b741265530c46636051029ef88aad59952a1f1ae88c6f0a41db8b39d5f"
+    },
     "stripe-best-practices": {
       "source": "docs.stripe.com",
       "sourceType": "well-known",

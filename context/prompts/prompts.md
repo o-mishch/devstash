@@ -3,10 +3,9 @@ Get recommendations, best practices, and modern approaches from websearch, event
 
 
 
-add all commands for which you are asking for permissions to allowed-tools in:
-.agents/skills/cleanup 
+Allow, and add all commands for which you are asking for permissions to allowed-tools in:
 .claude/settings.local.json
-
+.agents/skills/cleanup 
 
 
 Critically review all flows related to GCP deployment, to verify that nothing is missed or anything can be improved.
