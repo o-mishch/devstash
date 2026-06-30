@@ -307,7 +307,12 @@ secrets() {
   gh variable set APP_DOMAIN              --body "$(tofu_ output -raw app_domain)"
   gh variable set EMAIL_FROM              --body "$(tofu_ output -raw email_from)"
   gh variable set ENABLE_GITHUB_ATTESTATIONS --body "false"
-  ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS set as variables"
+  # Binary Authorization attestor/KMS resource names (non-secret) — read by the
+  # "Sign images for Binary Authorization" CI step. See modules/gke/main.tf.
+  gh variable set BINAUTHZ_ATTESTOR       --body "$(tofu_ output -raw binauthz_attestor_name)"
+  gh variable set BINAUTHZ_KMS_KEYRING    --body "$(tofu_ output -raw binauthz_kms_keyring)"
+  gh variable set BINAUTHZ_KMS_KEY        --body "$(tofu_ output -raw binauthz_kms_key)"
+  ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS / BINAUTHZ_* set as variables"
 
   log "Verifying GitHub Actions secrets are present"
   # Use JSON output so column-aligned table text never causes a false miss.
@@ -345,6 +350,15 @@ secrets() {
   else
     ok "ENABLE_GITHUB_ATTESTATIONS variable = $attest_val"
   fi
+  local binauthz_var binauthz_val
+  for binauthz_var in BINAUTHZ_ATTESTOR BINAUTHZ_KMS_KEYRING BINAUTHZ_KMS_KEY; do
+    binauthz_val="$(gh variable list --json name,value -q ".[] | select(.name==\"$binauthz_var\") | .value" 2>/dev/null || true)"
+    if [[ -z "$binauthz_val" ]]; then
+      warn "$binauthz_var variable not found in GitHub — gh variable set may have failed; re-run 'secrets'"
+    else
+      ok "$binauthz_var variable = $binauthz_val"
+    fi
+  done
 }
 
 # dns_hint: print the DNS A-record the user must create after `apply`.

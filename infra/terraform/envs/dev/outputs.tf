@@ -42,12 +42,30 @@ output "deployer_service_account_email" {
 #   gh secret set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
 #   gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_email)"
 #   gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
+#
+# And these repo VARIABLES (non-secret — attestor/KMS resource names, not credentials)
+# consumed by the "Sign images for Binary Authorization" step:
+#   gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
+#   gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
+#   gh variable set BINAUTHZ_KMS_KEY --body "$(tofu output -raw binauthz_kms_key)"
 output "gcp_project_id" {
   value = var.project_id
 }
 
 output "wif_provider" {
   value = module.iam.wif_provider
+}
+
+output "binauthz_attestor_name" {
+  value = module.gke.binauthz_attestor_name
+}
+
+output "binauthz_kms_keyring" {
+  value = module.gke.binauthz_kms_keyring
+}
+
+output "binauthz_kms_key" {
+  value = module.gke.binauthz_kms_key
 }
 
 # --- Ingress / DNS --------------------------------------------------------

@@ -499,11 +499,16 @@ helm upgrade --install reloader stakater/reloader \
   --set reloader.deployment.resources.requests.cpu=50m \
   --set reloader.deployment.resources.requests.memory=128Mi
 
-# 7.1 GitHub Actions — 3 секрети + 1 змінна (значення з tofu output)
+# 7.1 GitHub Actions — 3 секрети + 4 змінні (значення з tofu output)
 gh secret set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
 gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_email)"
 gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 gh variable set APP_DOMAIN --body "$(tofu output -raw app_domain)"
+# Binary Authorization attestor/KMS — non-secret resource names read by the
+# "Sign images for Binary Authorization" CI step (deploy-gke.yml).
+gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
+gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
+gh variable set BINAUTHZ_KMS_KEY --body "$(tofu output -raw binauthz_kms_key)"
 
 # 7.2 DNS: A-запис для app_domain → IP Ingress (managed cert провіжиниться лише після резолву)
 tofu output -raw ingress_ip_address
@@ -514,7 +519,8 @@ tofu output -raw ingress_ip_address
 ```bash
 gh secret list | grep -E 'GCP_PROJECT_ID|DEPLOYER_SA|WORKLOAD_IDENTITY_PROVIDER'
 gh variable get APP_DOMAIN
-# Очікувано: три рядки зі статусом "set" і значення app_domain
+gh variable get BINAUTHZ_ATTESTOR
+# Очікувано: статус "set" і значення для кожного
 ```
 
 > 📚 **Для співбесіди — навіщо External Secrets Operator (ESO).** Секрети живуть у
@@ -799,6 +805,9 @@ gh secret set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
 gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_email)"
 gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 gh variable set APP_DOMAIN --body "$(tofu output -raw app_domain)"
+gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
+gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
+gh variable set BINAUTHZ_KMS_KEY --body "$(tofu output -raw binauthz_kms_key)"
 # DNS на Spaceship: A-запис host=gke → $(tofu output -raw ingress_ip_address)
 #   (apex devstash.one + www лишаються на Vercel — див. розділ 7a)
 
@@ -1024,7 +1033,7 @@ bash infra/gcp-run/run.sh down           # tofu destroy (з підтвердже
 | 9   | **tofu init + plan + apply** | Піднімає всю інфру: VPC, GKE Autopilot, Memorystore, IAM+WIF, Artifact Registry, GCS, статичну Ingress-IP, Secret Manager. Питає підтвердження перед платним apply.                                                                                                                                                             | 6              |
 | 10  | **get-credentials**          | Прописує kubeconfig на новий кластер.                                                                                                                                                                                                                                                                                           | —              |
 | 10a | **eso**                      | `helm upgrade --install` External Secrets Operator (`-n external-secrets`, `--wait`) + чекає webhook — ставить CRD SecretStore/ExternalSecret ще ДО першого `kubectl apply -k`. Також встановлює **Stakater Reloader** (`-n reloader`) — автоматичний rolling restart при зміні Secret/ConfigMap. Раз на кластер, ідемпотентно. | 7.0            |
-| 11  | **gh secrets**               | Заливає `GCP_PROJECT_ID`, `DEPLOYER_SA`, `WORKLOAD_IDENTITY_PROVIDER` + `APP_DOMAIN` з `tofu output`.                                                                                                                                                                                                                           | 7              |
+| 11  | **gh secrets**               | Заливає `GCP_PROJECT_ID`, `DEPLOYER_SA`, `WORKLOAD_IDENTITY_PROVIDER` + `APP_DOMAIN`/`EMAIL_FROM`/`ENABLE_GITHUB_ATTESTATIONS`/`BINAUTHZ_*` з `tofu output`.                                                                                                                                                                    | 7              |
 | 12  | **dns_hint**                 | Друкує IP Ingress + готовий рядок A-запису й нагадує про Stripe/OAuth.                                                                                                                                                                                                                                                          | 7a             |
 | 13  | **deploy**                   | `gh workflow run deploy-gke.yml` → CI збирає web+migrate, проганяє migrate Job (`migrate deploy` + seed item_types) і викочує застосунок.                                                                                                                                                                                       | «Deploy»       |
 | 13a | **smoke**                    | `gh run watch --exit-status` (чекає CI) + `curl /api/health?deep=1` (перевіряє live health). Підтверджує успішний end-to-end деплой.                                                                                                                                                                                            | —              |

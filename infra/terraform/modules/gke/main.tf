@@ -140,22 +140,99 @@ resource "google_container_cluster" "primary" {
   deletion_protection = var.deletion_protection
 }
 
+# --- Binary Authorization attestor: KMS-backed signing key + Container Analysis note.
+#
+# This provisions the FULL signing pipeline (step 1 of the enforcement path below) and
+# CI now signs every deployed digest (step 2, see .github/workflows/deploy-gke.yml
+# "Sign images for Binary Authorization"). The cluster admission rule further below is
+# DELIBERATELY left at ALWAYS_ALLOW (step 3 NOT applied yet) — see that resource's
+# comment for the exact, verified-safe flip-over steps. Do not flip it as part of
+# applying this block; the two are independent and sequenced on purpose.
+#
+# KMS-backed (not a locally-generated PGP/PKIX keypair): the private key material never
+# leaves Google Cloud KMS, consistent with this stack's existing keyless-auth posture
+# (Workload Identity for pods, WIF for CI — no exported credentials anywhere). CI signs
+# by invoking KMS (roles/cloudkms.signerVerifier, granted to the deployer SA in
+# modules/iam/main.tf), never by handling a private key file.
+resource "google_kms_key_ring" "binauthz" {
+  name     = "${var.name_prefix}-binauthz-keyring"
+  location = "global" # Binary Authorization attestors are global resources.
+}
+
+resource "google_kms_crypto_key" "binauthz_signer" {
+  name     = "${var.name_prefix}-binauthz-signer"
+  key_ring = google_kms_key_ring.binauthz.id
+  purpose  = "ASYMMETRIC_SIGN"
+
+  version_template {
+    algorithm = "EC_SIGN_P256_SHA256"
+  }
+
+  # Asymmetric signing keys back live attestations; destroying this key invalidates
+  # every attestation CI has created and would (once enforcement is ever turned on)
+  # block every image pull until re-signed. Mirrors deletion_protection elsewhere in
+  # this module.
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# KMS auto-creates version "1" for a new asymmetric key; read its public key (PEM) to
+# register with the attestor below. No private key material is ever read here.
+data "google_kms_crypto_key_version" "binauthz_signer_version" {
+  crypto_key = google_kms_crypto_key.binauthz_signer.id
+}
+
+resource "google_container_analysis_note" "devstash_slsa" {
+  name = "${var.name_prefix}-slsa"
+
+  attestation_authority {
+    hint {
+      human_readable_name = "DevStash Binary Authorization attestor (${var.name_prefix})"
+    }
+  }
+}
+
+resource "google_binary_authorization_attestor" "devstash_slsa" {
+  name = "${var.name_prefix}-slsa"
+
+  attestation_authority_note {
+    note_reference = google_container_analysis_note.devstash_slsa.name
+
+    public_keys {
+      id = data.google_kms_crypto_key_version.binauthz_signer_version.name
+
+      pkix_public_key {
+        public_key_pem      = data.google_kms_crypto_key_version.binauthz_signer_version.public_key[0].pem
+        signature_algorithm = "ECDSA_P256_SHA256"
+      }
+    }
+  }
+}
+
 # Binary Authorization project-level policy.
 # PROJECT_SINGLETON_POLICY_ENFORCE (set above) reads this policy. The default is
 # ALWAYS_DENY so any future cluster has to opt in explicitly; this cluster has an
-# ALWAYS_ALLOW exception until a real Binary Authorization attestor is provisioned.
+# ALWAYS_ALLOW exception until enforcement is deliberately turned on (see below).
 #
 # GitHub artifact attestations remain useful for `gh attestation verify`, but are a
 # separate trust system and do not satisfy REQUIRE_ATTESTATION here.
 #
 # Full enforcement path:
-#   1. Manage a Binary Authorization attestor and its Container Analysis note/key:
-#      gcloud container binauthz attestors create devstash-slsa \
-#        --attestation-authority-note=projects/<project>/notes/devstash-slsa \
-#        --attestation-authority-note-public-keys=...
-#   2. Have CI create a Binary Authorization attestation for each deployed digest.
-#   3. Replace ALWAYS_ALLOW below with REQUIRE_ATTESTATION + require_attestations_by.
-# Do not switch step 3 first: it blocks the web, migrator, and third-party init images.
+#   1. DONE — google_binary_authorization_attestor.devstash_slsa above (KMS-backed).
+#   2. DONE — CI signs every deployed digest in deploy-gke.yml ("Sign images for
+#      Binary Authorization"). Confirm attestations are actually landing before
+#      proceeding to step 3:
+#        gcloud container binauthz attestations list \
+#          --attestor=devstash_slsa --attestor-project=<project>
+#      Check this after a few real deploys, not just once — a single success can hide
+#      an intermittent signing failure.
+#   3. NOT DONE (intentionally) — once step 2 is verified across multiple deploys,
+#      replace the ALWAYS_ALLOW cluster_admission_rules block below with:
+#        evaluation_mode        = "REQUIRE_ATTESTATION"
+#        require_attestations_by = [google_binary_authorization_attestor.devstash_slsa.name]
+#      Do not switch step 3 first or before step 2 is verified: it blocks the web,
+#      migrator, and third-party init images immediately on the next pod schedule.
 resource "google_binary_authorization_policy" "default" {
   # Inherit Google's curated allow-list for GKE system images so the control plane
   # components are never blocked by the default deny rule.

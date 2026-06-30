@@ -1,9 +1,6 @@
 {
   "permissions": {
-    "allow": [
-      "Skill(deep-research)",
-      "Skill(deep-research:*)"
-    ],
+    "allow": [],
     "deny": [
       "Bash(npx prisma db push*)",
       "Bash(prisma db push*)",

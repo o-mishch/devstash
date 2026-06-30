@@ -1,4 +1,3 @@
-Get recommendations, best practices, and modern approaches from context7
 Get recommendations, best practices, and modern approaches from websearch, eventually from context7
 
 

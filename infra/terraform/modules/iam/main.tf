@@ -169,6 +169,42 @@ resource "google_artifact_registry_repository_iam_member" "deployer_artifact_reg
   member     = "serviceAccount:${google_service_account.deployer.email}"
 }
 
+# --- Binary Authorization signing + vulnerability-gate read access ---------------
+# Lets CI (the deployer SA) sign an attestation for each deployed digest
+# (`gcloud container binauthz attestations sign-and-create`, see deploy-gke.yml) and
+# read Artifact Analysis vulnerability findings for the CI vulnerability gate. Both
+# are scoped to the single key/note this module is handed — not project-wide KMS or
+# Container Analysis access — mirroring the repo-scoped Artifact Registry grant above.
+resource "google_kms_crypto_key_iam_member" "deployer_binauthz_signer" {
+  crypto_key_id = var.binauthz_kms_crypto_key_id
+  role          = "roles/cloudkms.signerVerifier"
+  member        = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+resource "google_container_analysis_note_iam_member" "deployer_binauthz_attacher" {
+  project = var.project_id
+  note    = var.binauthz_note_id
+  role    = "roles/containeranalysis.notes.attacher"
+  member  = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+# Attestor metadata is read-only project-level lookup (binaryauthorization.attestors.get);
+# Binary Authorization has no per-attestor IAM resource to scope this to.
+resource "google_project_iam_member" "deployer_binauthz_viewer" {
+  project = var.project_id
+  role    = "roles/binaryauthorization.attestorsViewer"
+  member  = "serviceAccount:${google_service_account.deployer.email}"
+}
+
+# Vulnerability findings (Artifact Analysis occurrences) are project-level Container
+# Analysis resources, not sub-resources of the Artifact Registry repository — there is
+# no narrower IAM scope than the project for read access to them.
+resource "google_project_iam_member" "deployer_vulnerability_viewer" {
+  project = var.project_id
+  role    = "roles/containeranalysis.occurrences.viewer"
+  member  = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 # GKE IAM roles can only be granted on the project, not directly on a cluster
 # (`google_container_cluster_iam_member` is not a Google provider resource).
 #

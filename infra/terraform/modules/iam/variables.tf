@@ -16,6 +16,12 @@ variable "k8s_service_account" {
 variable "uploads_bucket_name" { type = string }
 variable "artifact_registry_repository_id" { type = string }
 
+# Binary Authorization attestor wiring (modules/gke outputs) — grants the deployer SA
+# permission to sign attestations during CI, without granting it broader KMS/Container
+# Analysis access than this one key/note.
+variable "binauthz_note_id" { type = string }
+variable "binauthz_kms_crypto_key_id" { type = string }
+
 # GitHub repo allowed to federate as the deployer SA, "owner/repo" form.
 variable "github_repository" {
   type        = string

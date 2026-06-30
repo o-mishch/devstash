@@ -37,7 +37,7 @@ so future AI/human reviewers don't retry the same wrong fixes.
 |---|---|---|---|
 | K1 | `google_project_organization_policy` (v1) is less capable than v2 — no tag-based conditions, no dry-run mode | Active — using v1 as a workaround for provider bug #18281 | Switch to `google_org_policy_policy` (v2) once #18281 is fixed or when Terraform is authenticated as a SA (not user ADC). See comment in `main.tf`. |
 | K2 | Operator secrets (Stripe, OAuth, etc.) visible in Terraform state | Active — see increment 5 below | State bucket has PAP + uniform access + no public access. Rotate secrets post-bootstrap. |
-| K3 | Binary Authorization in `ALWAYS_ALLOW` mode (no attestation enforcement) | Active — see increment 3 below | API and provenance storage are wired; enforcement is the next step. |
+| K3 | Binary Authorization in `ALWAYS_ALLOW` mode (no attestation enforcement) | Active — attestor + CI signing now built, enforcement deliberately not yet flipped | KMS-backed attestor (`modules/gke/main.tf`) and CI signing (`deploy-gke.yml` "Sign images for Binary Authorization") are live. Before flipping `cluster_admission_rules.evaluation_mode` to `REQUIRE_ATTESTATION`, verify attestations are landing across several real deploys: `gcloud container binauthz attestations list --attestor=devstash_slsa --attestor-project=<project>`. |
 | K4 | `kubernetes.io/ingress.class: "gce"` annotation is deprecated in upstream Kubernetes | Active — must keep; see below | GKE GCE Ingress controller **requires** the annotation; `spec.ingressClassName` is not supported by the GCE controller. The kubectl deprecation warning is a Kubernetes-generic warning; GKE docs say to ignore it. Do not "fix" this annotation. Source: [GKE Ingress docs](https://cloud.google.com/kubernetes-engine/docs/how-to/load-balance-ingress). |
 | K5 | No container image in Artifact Registry — Deployment pods stay `Pending` | **Blocking** — pods cannot run without a real image | Trigger CI from `main` branch: `gh workflow run deploy-gke.yml --ref main` (WIF `attribute_condition` blocks auth from any other branch). CI builds + pushes the image and applies the overlay with a real digest. See `08-gcp-bootstrap.md` §9 (`run.sh deploy`). |
 | K6 | DNS A-record `gke.devstash.one` → `8.232.44.235` not yet added | **Blocking** for TLS — `ManagedCertificate` stays `Provisioning` until DNS resolves | Add A-record in Spaceship DNS: Host=`gke`, Value=`8.232.44.235`, TTL=5 min. Cert becomes `Active` 15–60 min after global DNS propagation. See `08-gcp-bootstrap.md §7a`. |
@@ -52,11 +52,21 @@ so future AI/human reviewers don't retry the same wrong fixes.
 2. **Scope the deployer's RBAC** — move ESO/Reloader installation to a platform workflow
    and give the app deployer namespace-scoped RBAC. CI stays broad only while it installs
    cluster-scoped CRDs and webhooks.
-3. **Enforce Binary Authorization** — provision an attestor, create native attestations
-   for every image digest, then switch the cluster rule from `ALWAYS_ALLOW` to
-   `REQUIRE_ATTESTATION`.
-4. **Vulnerability gate** — add an Artifact Analysis severity gate plus an exception
-   workflow. Enabling the API and storing provenance alone do not block vulnerable images.
+3. **Enforce Binary Authorization** — DONE (attestor + CI signing): `modules/gke/main.tf`
+   provisions a KMS-backed attestor and Container Analysis note; `deploy-gke.yml` signs
+   every deployed digest. REMAINING: switch the cluster rule from `ALWAYS_ALLOW` to
+   `REQUIRE_ATTESTATION` once attestations are confirmed landing across several real
+   deploys (see K3 above). Intentionally not flipped yet — flipping before verifying
+   blocks the web, migrator, and third-party init images immediately.
+4. **Vulnerability gate** — DONE: `deploy-gke.yml` "Check image vulnerabilities" gates
+   on unlisted CRITICAL/HIGH Artifact Analysis findings, with exceptions tracked in
+   `infra/security/vulnerability-exceptions.yaml`. CAVEAT: the step fails OPEN (warns,
+   doesn't block) if scan results aren't ready within 5 minutes of push — a deliberate
+   tradeoff on scanner latency, not on findings. Tighten to fail-closed once real-world
+   scan latency for this project is observed. The JSON field paths used to parse
+   `gcloud artifacts docker images describe --show-package-vulnerability` output are
+   best-effort from Google's documented schema and unverified against a live scan —
+   confirm on the first real deploy.
 5. **Get operator secrets out of Terraform state** — move operator-supplied secret
    versions out of state. Existing state is sensitive and must stay access-restricted
    until that migration lands.

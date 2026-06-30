@@ -16,7 +16,8 @@ resource "google_project_service" "apis" {
     "iam.googleapis.com",                 # Workload Identity Federation pool/provider
     "iamcredentials.googleapis.com",      # SA impersonation via federated tokens
     "sts.googleapis.com",                 # OIDC -> short-lived GCP token exchange
-    "binaryauthorization.googleapis.com",  # Binary Authorization cluster enforcement
+    "binaryauthorization.googleapis.com", # Binary Authorization cluster enforcement
+    "cloudkms.googleapis.com",            # KMS signing key for the Binary Authorization attestor
     # The v1 resource (google_project_organization_policy) uses
     # cloudresourcemanager.googleapis.com, NOT orgpolicy.googleapis.com.
     # cloudresourcemanager.googleapis.com is enabled by default in most projects;
@@ -115,6 +116,12 @@ module "gke" {
   deletion_protection = var.deletion_protection
   # Autopilot: no node_machine_type / min_nodes / max_nodes — Google manages nodes.
   # Pod resources are controlled via K8s resource requests in the Deployment.
+  #
+  # Explicit (not just transitive via module.network): this module also creates the
+  # Binary Authorization KMS keyring directly, which needs cloudkms.googleapis.com
+  # enabled before it — don't rely solely on the module.network reference above to
+  # imply that ordering.
+  depends_on = [google_project_service.apis]
 }
 
 # Database: managed Cloud SQL for PostgreSQL. Private IP for the app (in-VPC),
@@ -164,6 +171,11 @@ module "iam" {
   github_repository               = var.github_repository
   github_owner_id                 = var.github_owner_id
   labels                          = local.common_labels
+
+  # Binary Authorization attestor (modules/gke) — grants the deployer SA permission
+  # to sign attestations + read vulnerability findings for the CI gate.
+  binauthz_note_id           = module.gke.binauthz_note_id
+  binauthz_kms_crypto_key_id = module.gke.binauthz_kms_crypto_key_id
 
   # Secrets stored in Secret Manager and readable by the app SA via Workload Identity.
   # Infra creds come from module outputs / generated here; real 3rd-party creds
