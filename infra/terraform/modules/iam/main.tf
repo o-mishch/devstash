@@ -30,7 +30,7 @@ resource "google_service_account_iam_member" "workload_identity" {
 # bodies, never as a for_each key.
 locals {
   s3_interop_secrets = {
-    s3-endpoint  = "https://storage.googleapis.com"
+    s3-endpoint = "https://storage.googleapis.com"
     # "auto" is the region string Google officially requires for GCS S3-interop — used
     # in all language examples in the GCS migration docs (cloud.google.com/storage/docs/
     # aws-simple-migration). GCS ignores the region in the SigV4 signature; the SDK
@@ -146,26 +146,40 @@ resource "google_artifact_registry_repository_iam_member" "deployer_artifact_reg
 # GKE IAM roles can only be granted on the project, not directly on a cluster
 # (`google_container_cluster_iam_member` is not a Google provider resource).
 #
-# CRITICAL CORRECTION:
-# Previously, this binding used an IAM Condition (`devstash_cluster_only`) limiting
-# it to the GKE cluster name. However, GKE's DNS-based endpoint authenticates via a
-# Google API gateway proxy. When `kubectl` or `helm` connects via the DNS endpoint,
-# the GFE evaluates `container.clusters.connect` on the caller, but the request does
-# NOT supply the GKE cluster resource context. Because the resource name is absent or
-# evaluated at the project level, the IAM Condition fails to match, resulting in a
-# GFE-returned generic Google HTML "403 Forbidden" error page.
+# ── TWO settled decisions, both verified in CI — do NOT relitigate ─────────────
 #
-# To enable DNS-based endpoint access from the public internet (GHA runners), the
-# GKE developer role MUST be granted at the project level without a cluster-limiting
-# IAM condition. Since the deployer service account is dedicated solely to this
-# GKE deployment project, this does not violate least-privilege.
-# DO NOT re-add the IAM Condition as it will immediately break the GHA pipeline.
+# (1) NO IAM Condition on this binding.
+# An earlier version scoped this with an IAM Condition pinning resource.name to the
+# cluster path (projects/<p>/locations/<r>/clusters/<name>). That BROKE DNS-endpoint
+# access: a client reaching the control plane over the *.gke.goog DNS endpoint has
+# container.clusters.connect evaluated against the DNS-endpoint resource, not the
+# cluster-path resource — so the condition never matched and the Google Front End
+# returned a GENERIC HTML "403 (Forbidden)" page (not a named-permission error).
+# Removing the condition (commit a051ad7) fixed it — VERIFIED: CI then reached the
+# first helm/kubectl call. DO NOT re-add a cluster-resource-name condition here.
+#
+# (2) Role is roles/container.admin — NOT developer, and NOT clusterAdmin.
+# Installing system Helm charts (external-secrets, reloader) creates/patches
+# cluster-scoped RBAC (ClusterRole, ClusterRoleBinding), namespaced RBAC (Role,
+# RoleBinding) and ValidatingWebhookConfiguration. Checked against the live role
+# definitions (`gcloud iam roles describe`):
+#   - container.developer   → RBAC objects: get/list ONLY (no create/update) → 403
+#   - container.clusterAdmin → cluster LIFECYCLE only; ZERO in-cluster RBAC verbs → 403
+#   - container.admin        → has container.{clusterRoles,clusterRoleBindings,roles,
+#                              roleBindings,validatingWebhookConfigurations}.{create,update,
+#                              delete} (+ customResourceDefinitions) → chart install succeeds
+# container.admin is the NARROWEST PREDEFINED role that manages in-cluster RBAC.
+# DO NOT "downgrade to clusterAdmin for least privilege" — it lacks the RBAC verbs and
+# silently re-breaks the external-secrets step. The only tighter option is a custom role
+# with exactly those verbs; not worth the maintenance for this dedicated, WIF-scoped SA.
+#
+# This SA is dedicated to one repo's deploys (WIF-restricted to refs/heads/main of the
+# single repo, see below), so project-level container.admin is an acceptable scope.
 resource "google_project_iam_member" "deployer_gke" {
   project = var.project_id
-  role    = "roles/container.developer"
+  role    = "roles/container.admin"
   member  = "serviceAccount:${google_service_account.deployer.email}"
 }
-
 
 # --- Workload Identity Federation: GitHub Actions OIDC -> deployer SA -------
 # GitHub's OIDC token is exchanged for short-lived GCP credentials — NO exported

@@ -129,5 +129,7 @@ History is ordered oldest to newest. New entries are appended to the END.
 - **Vercel Ignored Build Step** - Added `scripts/vercel-ignore.sh` and `vercel.json` to prevent unnecessary Vercel builds triggered by Dependabot commits or branches matching `chore(deps)` (Completed)
 - **Actionlint & GHA Helm Flag Fixes** - Fixed GHA workflow warnings by changing `variables:` to `config-variables:` in `.github/actionlint.yaml`, and resolved the GHA Helm v3-incompatible `--rollback-on-failure` flag by using `--atomic` in `.github/workflows/deploy-gke.yml` while retaining `--rollback-on-failure` for local laptop execution (Helm v4) (Completed)
 - **GKE DNS-based Endpoint IAM Condition Fix** - Removed the GKE cluster name IAM condition from the deployer service account's role binding in Terraform to resolve GHA DNS-based endpoint connection authentication failures (HTTP 403) during GKE deployments; key files changed `infra/terraform/modules/iam/main.tf` (Completed)
+- **GKE Deployer IAM Role Upgrade to container.admin** - Upgraded the GKE deployer service account's role in Terraform from `roles/container.developer` to `roles/container.admin` to grant permissions required to create and manage cluster-scoped RBAC and Webhook resources during Helm chart deployments; key files changed `infra/terraform/modules/iam/main.tf` (Completed)
+
 
 
