@@ -133,3 +133,4 @@ History is ordered oldest to newest. New entries are appended to the END.
 
 
 
+- **GKE Server-Side Apply force-conflicts** - Added `--force-conflicts` to both `kubectl apply --server-side` steps in the GHA GKE deploy to perform the one-time client-side→server-side field-ownership transfer, resolving the `ExternalSecret` `.spec.data` conflict with the legacy `kubectl-client-side-apply` manager; verified safe (only declared fields are forced, web Deployment omits `replicas` so HPA is never stomped); key files changed `.github/workflows/deploy-gke.yml`, `infra/docs/09-gcp-audit.md` (Completed)

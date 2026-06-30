@@ -377,8 +377,27 @@ jobs:
           # BackendConfig, ManagedCertificate, HPA, PDB. Any existing web pods keep
           # serving the PREVIOUS image until the post-migration rollout below — so new
           # code never reaches users ahead of its schema migration.
+          #
+          # --force-conflicts is REQUIRED and CORRECT — DO NOT remove it.
+          # This pipeline is the single declarative owner of these objects' spec fields.
+          # An object first created by a client-side `kubectl apply` (an earlier deploy,
+          # or a manual `kubectl apply -f`) owns its fields under the legacy field manager
+          # `kubectl-client-side-apply`. Server-side apply then refuses to overwrite those
+          # fields and fails the build with, e.g.:
+          #     error: Apply failed with 1 conflict: conflict with
+          #     "kubectl-client-side-apply" using external-secrets.io/v1: .spec.data
+          # --force-conflicts performs the one-time CSA→SSA ownership transfer the
+          # Kubernetes docs prescribe (it moves the field to this SSA manager, then is a
+          # no-op on every subsequent run). This is the same posture ArgoCD and Flux use
+          # by default for SSA syncs. It is SAFE here because we only ever conflict on
+          # fields THIS manifest declares; controller-owned fields we don't declare
+          # (status, defaulted nodePorts, GKE-added Ingress annotations) are never in the
+          # stream, so they are never forced. The web Deployment is applied separately
+          # below and base/deployment.yaml deliberately omits `replicas`, so forcing never
+          # fights the HPA. Do NOT "fix" a recurring conflict by reverting to client-side
+          # apply — that just re-creates the legacy manager and the conflict returns.
           yq 'select(.kind != "Deployment")' /tmp/rendered.yaml \
-            | kubectl apply --server-side -f -
+            | kubectl apply --server-side --force-conflicts -f -
 
       - name: Wait for secrets to sync (ESO)
         run: |
@@ -446,11 +465,15 @@ jobs:
       - name: Roll out the web Deployment (post-migration)
         run: |
           # Migrations have landed — now apply the digest-pinned web Deployment from the
-          # same render. Same server-side field manager as the infra apply (no
-          # imperative `kubectl set image`, so no field-ownership conflict on the image
-          # field). This is what triggers the rolling update to the new code.
+          # same render. Same server-side field manager and same --force-conflicts posture
+          # as the infra apply above (see that step for the full rationale): no imperative
+          # `kubectl set image`, and a Deployment first created by a client-side apply would
+          # otherwise conflict on the legacy `kubectl-client-side-apply` manager exactly as
+          # the ExternalSecret did. Forcing is safe — base/deployment.yaml deliberately omits
+          # `replicas` (the HPA is its sole owner), so this never stomps the HPA's scaling.
+          # This is what triggers the rolling update to the new code.
           yq 'select(.kind == "Deployment")' /tmp/rendered.yaml \
-            | kubectl apply --server-side -f -
+            | kubectl apply --server-side --force-conflicts -f -
 
       - name: Wait for rollout
         run: |
