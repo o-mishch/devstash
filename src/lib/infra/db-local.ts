@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { SqlDriverAdapterFactory } from '@prisma/client/runtime/client'
-import { resolveDbSsl } from '@/lib/utils/db-ssl'
+import { resolveDbSsl, stripSslModeParam } from '@/lib/utils/db-ssl'
 
 // Local-development database adapter: when DB_DRIVER='pg' (set only by the local and
 // GCP Kubernetes overlays), use Prisma's STANDARD node-postgres adapter (@prisma/adapter-pg)
@@ -50,5 +50,7 @@ export function createLocalDbAdapter(): SqlDriverAdapterFactory | null {
   // verify-CA when DATABASE_CA_CERT is set (Cloud SQL); undefined locally → the adapter
   // honors the URL's sslmode (disable on kind). See resolveDbSsl above.
   const ssl = resolveDbSsl(process.env.DATABASE_CA_CERT)
-  return new PrismaPg({ connectionString: process.env.DATABASE_URL, max, ssl })
+  // Strip sslmode only when we're pinning our own ssl config — see stripSslModeParam.
+  const connectionString = ssl ? stripSslModeParam(process.env.DATABASE_URL) : process.env.DATABASE_URL
+  return new PrismaPg({ connectionString, max, ssl })
 }

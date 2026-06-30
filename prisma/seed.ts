@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import { PrismaClient } from '../src/generated/prisma/client'
 import { ContentType } from '../src/generated/prisma'
 import type { SqlDriverAdapterFactory } from '@prisma/client/runtime/client'
-import { resolveDbSsl } from '../src/lib/utils/db-ssl'
+import { resolveDbSsl, stripSslModeParam } from '../src/lib/utils/db-ssl'
 
 // Branch-isolated DB adapter: production/Neon seeding uses @prisma/adapter-neon;
 // any node-postgres target (DB_DRIVER='pg') seeds over TCP via @prisma/adapter-pg — both
@@ -20,13 +20,15 @@ async function createAdapter(): Promise<SqlDriverAdapterFactory> {
     // same policy the app's runtime adapter (src/lib/infra/db-local.ts) uses, lifted into a
     // client-safe util precisely so this standalone seed can reuse it (db-local.ts itself is
     // `import 'server-only'` and can't load here). The full verify-full rationale lives in
-    // db-ssl.ts; what's seed-specific: DIRECT_URL uses sslmode=require against Cloud SQL's
-    // PRIVATE IP, which Prisma 7's pg bundle now treats as verify-full and fails (P1011
-    // TlsConnectionError, prisma/prisma#29060). The explicit `ssl` overrides that. Do NOT drop
-    // back to `{ connectionString }`, and do NOT "fix" it by editing sslmode in DIRECT_URL —
-    // the URL is Terraform-generated (modules/cloudsql) and require is correct.
+    // db-ssl.ts; what's seed-specific: DIRECT_URL's `sslmode=require` is parsed by
+    // pg-connection-string and conflicts with the explicit `ssl` object below — confirmed
+    // against the live GCP migrate Job (P1011 TlsConnectionError even with a verified-correct
+    // CA). stripSslModeParam removes that conflicting source; do NOT drop back to
+    // `{ connectionString }` unstripped, and do NOT "fix" it by editing sslmode in the
+    // Terraform-generated DIRECT_URL itself — require is still correct for the URL.
+    // Full debug session and root-cause writeup: infra/docs/09-gcp-audit.md R13.
     const ssl = resolveDbSsl(process.env.DATABASE_CA_CERT)
-    return new PrismaPg({ connectionString, ssl })
+    return new PrismaPg({ connectionString: ssl ? stripSslModeParam(connectionString) : connectionString, ssl })
   }
   const { PrismaNeon } = await import('@prisma/adapter-neon')
   return new PrismaNeon({ connectionString })

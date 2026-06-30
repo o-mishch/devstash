@@ -45,3 +45,27 @@ export function resolveDbSsl(caCert: string | undefined): DbSslConfig | undefine
   if (!caCert) return undefined
   return { ca: caCert, rejectUnauthorized: true, checkServerIdentity: () => undefined }
 }
+
+// node-postgres always runs the connection string through pg-connection-string, which
+// derives its own SSL config from a `sslmode` query param — even when an explicit `ssl`
+// object (resolveDbSsl above) is also passed to the Client/Pool constructor. The two
+// sources conflict: verified directly against the GCP migrate Job, `pg` rejected the
+// correct, chain-valid CA pinned via `ssl` (and even with rejectUnauthorized: false),
+// while a raw `tls.connect()` using the identical CA succeeded. Stripping `sslmode` removes
+// the conflicting source so the explicit `ssl` object is the only one `pg` honors.
+// Full debug session and root-cause writeup: infra/docs/09-gcp-audit.md R13.
+// Only call this when pairing with a defined resolveDbSsl() result — passing `undefined`
+// through unchanged keeps the local-kind path (no CA, URL's sslmode used as-is) intact.
+// Wraps the `new URL()` parse failure in a clear, named-context Error (cause preserved) so a
+// malformed DATABASE_URL/DIRECT_URL surfaces as a diagnosable message instead of a bare
+// TypeError, while staying a plain Error per coding-standards.md (no custom Error subclass).
+export function stripSslModeParam(connectionString: string | undefined): string | undefined {
+  if (!connectionString) return connectionString
+  try {
+    const url = new URL(connectionString)
+    url.searchParams.delete('sslmode')
+    return url.toString()
+  } catch (error) {
+    throw new Error('stripSslModeParam: connection string is not a valid URL', { cause: error })
+  }
+}
