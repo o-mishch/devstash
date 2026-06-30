@@ -1,16 +1,38 @@
 Get recommendations, best practices, and modern approaches from context7
+Get recommendations, best practices, and modern approaches from websearch, eventually from context7
 
+what does it mean `type: NodePort`?
 
 add all commands for which you are asking for permissions to allowed-tools in:
 .agents/skills/cleanup 
 .claude/settings.local.json
 
 
+
+Critically review all flows related to GCP deployment, to verify that nothing is missed or anything can be improved.
+double check the correctness of each config (decision), add an appropriate comment, to avoid further drifting/touching of  the same config by the other AI agent attempts!
+Get recommendations, best practices, and modern approaches from context7, eventually websearch.
+
+
+1. Verify that GCP config fully satisfies and complies with recommendations, best practices, and modern approaches. All features present in the application utilize the existing GCP components.
+2. Verify that the local run cluster is aligned with GCP, etc.
+3. The Vercel deployment shouldn't be affected
+4. Keep strict boundaries between Vercel and GCP/Local codebases:
+- the existing codebase should be touched as little as possible, fewer invasions;
+- the different branches of application should load of that dependecies/modules which used in this particular branch, not bom all dependencies.
+5. @infra/gcp-run/run.sh covers everything that can be automated?
+6. everything properly documented
+
+Before changing values in the existing config, read the comment before it and challenge the correctness of each config (decision). Double-check the correctness of each config (decision) and add an appropriate comment to avoid further drifting/touching the same config by other AI agents' attempts!
+Get recommendations, best practices, and modern approaches from context7 and websearch.
+
+
+
 ## Playwright MCP Prompt
 
 ```text
 Use the Playwright MCP to test
-CRUD functionality. Log in with the user demo@devstash.io with the password 12345679. Click on the "New Item" button in the top bar and add a new snippet.
+CRUD functionality. Log in with the user demo@devstash.one with the password 12345679. Click on the "New Item" button in the top bar and add a new snippet.
 Then proceed to edit the title of that snippet and update it.
 Finally, delete the snippet.
 ```
@@ -53,7 +75,7 @@ ui-reviewer.md
 use Antigravity optimization (browser_subagent), etc.
 Use the UI reviewer to check the website's user interface and provide feedback.
 Check the homepage and the dashboard pages (items, collections), view item in drawl, create new item and collection, assign item to collection, add to favorite and pin item, favorit page, User profile page, user settings page, etc.
-Use the user demo@devstash.io/12345678 to access protected areas
+Use the user demo@devstash.one/12345678 to access protected areas
 
 
 Create two feature spec files for Stripe integration - Phase 1 (core infrastructure) and Phase 2 (integration & UI). Use @docs/stripe-integration-plan. 

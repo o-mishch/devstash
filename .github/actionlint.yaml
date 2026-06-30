@@ -1,0 +1,18 @@
+# .github/actionlint.yaml
+# Static analysis settings for actionlint.
+# Reference: https://github.com/rhysd/actionlint/blob/main/docs/config.md
+
+# Allow custom/self-hosted runners if needed
+self-hosted-runner: true
+
+# Declare repository secrets so actionlint does not flag them as invalid context access
+secrets:
+  - GCP_PROJECT_ID
+  - DEPLOYER_SA
+  - WORKLOAD_IDENTITY_PROVIDER
+
+# Declare repository variables (public config) so actionlint does not flag them as invalid context access
+variables:
+  - APP_DOMAIN
+  - EMAIL_FROM
+  - ENABLE_GITHUB_ATTESTATIONS

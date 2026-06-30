@@ -1,0 +1,160 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+spec:
+  # Do not set `replicas` while the HPA owns scaling. Re-applying any explicit value
+  # can reset the scale subresource and fight the HPA; server-side apply does not make
+  # that safe automatically. hpa.yaml is the sole source of truth (minReplicas: 2).
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: devstash
+      app.kubernetes.io/component: web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Zero-downtime deploys: never drop below desired count, add at most 1 extra
+      # pod at a time. New pods must pass readiness before old ones are torn down.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: devstash
+        app.kubernetes.io/component: web
+      annotations:
+        # Stakater Reloader: roll pods automatically when the Secret (devstash-secrets)
+        # changes — i.e., when ESO refreshes values from Secret Manager. Without this,
+        # `envFrom` env vars are set at pod start and stale until the next deploy.
+        secret.reloader.stakater.com/reload: "devstash-secrets"
+    spec:
+      # The web process uses the materialized Kubernetes Secret and GCS HMAC keys; it
+      # never calls the Kubernetes API. Do not mount a bearer token into the container.
+      automountServiceAccountToken: false
+      # Graceful shutdown for NEG-backed load balancing. Current GKE guidance allows
+      # for drain-trigger latency plus NEG detach latency: BackendConfig drains for
+      # 60s, preStop keeps the server alive for 120s, and the 210s grace period leaves
+      # up to 90s after SIGTERM. Treat these three values as one unit. The local
+      # overlay shortens them because kind has no Google load-balancer deprogramming.
+      terminationGracePeriodSeconds: 210
+      # Prefer spreading replicas across availability zones. ScheduleAnyway is a soft
+      # constraint: Autopilot tries to reduce skew but can co-locate pods when capacity
+      # requires it, so this improves availability without claiming a hard guarantee.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: devstash
+              app.kubernetes.io/component: web
+      # Pod-level hardening — matches the non-root image from Layer 1.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          # Overlays patch this to the real Artifact Registry path + tag.
+          image: devstash:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          # 120s is GKE's current suggested buffer for drain initiation + NEG detach.
+          # `sleep` is available in the Alpine image.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 120"]
+          # Non-secret config (PORT, NODE_ENV, public URLs) from the ConfigMap;
+          # secrets (DB URL, API keys) from the Secret. Both keyed by env name.
+          envFrom:
+            - configMapRef:
+                name: devstash-config
+            - secretRef:
+                name: devstash-secrets
+          # --- Probes (wired to the Layer 1 health route) -------------------
+          # Startup: give a cold Next.js server time to boot before liveness/readiness
+          # begin. Until this passes kubelet does not run the other probes, so a slow
+          # start never triggers a restart loop. 12 × 5s = up to 60s startup window.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 12   # up to 60s to become live
+          # Liveness: is the process wedged? If this fails, kubelet restarts the
+          # container. Shallow check only — a DB blip must NOT restart healthy pods.
+          # No initialDelaySeconds needed: startupProbe gates liveness until the
+          # server is up.
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness: can this pod serve traffic right now? Deep check pings the
+          # DB; on failure the pod is pulled from the Service endpoints (no traffic)
+          # without being restarted.
+          # initialDelaySeconds: 5 gives the node-postgres pool a moment to
+          # establish its first connection after startupProbe passes, preventing a
+          # false "not ready" on cold start before the pool is warmed.
+          readinessProbe:
+            httpGet:
+              path: /api/health?deep=1
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # --- Resources ----------------------------------------------------
+          # requests = what the scheduler reserves (and what the HPA measures % of).
+          # limits   = hard ceiling; exceeding memory limit = OOMKill.
+          #
+          # Autopilot charges/admission use the mutated request, not merely this YAML.
+          # Because this pod has topologySpreadConstraints, current Autopilot workload-
+          # separation minimums are 500m CPU + 512Mi memory. Declare those effective
+          # values explicitly so cost, HPA utilization, and capacity planning are honest.
+          # Keep the memory limit above the request to leave V8 GC burst headroom.
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+              ephemeral-storage: 512Mi
+          # Container-level hardening beyond PSA restricted: readOnlyRootFilesystem is
+          # not required by that profile, but materially limits post-exploit writes.
+          # seccomp is repeated here for audit clarity even though the pod-level value
+          # already satisfies PSA for every container.
+          # The writable paths Next.js needs (/tmp for scratch, /app/.next/cache for
+          # compiled route cache) are covered by the emptyDir volumes below.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nextjs-cache
+              mountPath: /app/.next/cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+        - name: nextjs-cache
+          emptyDir:
+            sizeLimit: 256Mi

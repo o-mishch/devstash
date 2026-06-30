@@ -1,0 +1,205 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# GCP overlay — for a real GKE cluster. Renders with:
+#   kubectl kustomize infra/k8s/overlays/gcp
+# CI renders and applies this overlay to the real GKE cluster. A local render is only
+# structural validation because committed settings and image values are placeholders.
+namespace: devstash
+
+resources:
+  - ../../base
+  - namespace.yaml
+  - serviceaccount.yaml
+  - backendconfig.yaml
+  - frontendconfig.yaml
+  - managed-cert.yaml
+  - settings.yaml  # local-config: per-env values (projectId/domain/IP), not applied
+  # Database = managed Cloud SQL, Redis = managed Memorystore (both Terraform). The
+  # app reaches them over the VPC private IP; no in-cluster DB/Redis manifests.
+  - external-secrets.yaml  # ESO SecretStore + ExternalSecret → devstash-secrets
+
+# Real image in Artifact Registry. CI (deploy-gke.yml) pins newName/digest to this
+# build's repo + immutable registry digest (via `yq` on this file) before rendering — the
+# web Deployment is then applied AFTER migrations, so no `kubectl set image` and no
+# server-side-apply field conflict. The committed image remains a renderable placeholder;
+# never apply this overlay manually without first setting a real digest.
+images:
+  - name: devstash
+    newName: REGION-docker.pkg.dev/PROJECT_ID/devstash/web
+    newTag: latest
+
+patches:
+  # GCE ingress → provisions a Google Cloud HTTP(S) Load Balancer. Attach the
+  # managed cert + the static IP (name injected from settings.yaml below), and
+  # wire the BackendConfig via the Service.
+  #
+  # ── kubernetes.io/ingress.global-static-ip-name placeholder ─────────────────
+  # The literal "devstash-dev-ip" below is a PLACEHOLDER only. It is immediately
+  # overwritten by the `ingressIpName` replacement further down (which sources
+  # the real value from settings.yaml.data.ingressIpName). The replacement is the
+  # single source of truth — do not update this literal to track a renamed IP; update
+  # settings.yaml and the CI yq injection in deploy-gke.yml instead.
+  # ────────────────────────────────────────────────────────────────────────────
+  - target:
+      kind: Ingress
+      name: devstash-web
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value:
+          networking.gke.io/v1beta1.FrontendConfig: "devstash-frontendconfig"
+          # DO NOT replace with spec.ingressClassName — GKE GCE Ingress requires
+          # the annotation form. `spec.ingressClassName` is NOT supported by the
+          # GCE ingress controller. The deprecation warning from kubectl is a
+          # Kubernetes-generic warning; GKE docs explicitly say to ignore it and
+          # keep the annotation. Removing it breaks Ingress provisioning silently.
+          # Source: https://cloud.google.com/kubernetes-engine/docs/how-to/load-balance-ingress
+          kubernetes.io/ingress.class: "gce"
+          kubernetes.io/ingress.global-static-ip-name: "devstash-dev-ip"
+          networking.gke.io/managed-certificates: "devstash-cert"
+  # Associate the Service with the BackendConfig (health check + timeouts) and
+  # make it a NEG-backed Service (container-native load balancing on GKE).
+  - target:
+      kind: Service
+      name: devstash-web
+    patch: |
+      - op: add
+        path: /metadata/annotations
+        value:
+          cloud.google.com/backend-config: '{"default":"devstash-backendconfig"}'
+          cloud.google.com/neg: '{"ingress": true}'
+  # Scope the NetworkPolicy ingress on port 3000 to Google's health-checker ranges
+  # (130.211.0.0/22 and 35.191.0.0/16). The base leaves `from:` absent to stay
+  # compatible with local and non-GCE overlays; here we narrow it to only the LB.
+  #
+  # ── op: add, NOT op: replace — DO NOT change ────────────────────────────────
+  # The base networkpolicy.yaml ingress[0] rule has only a `ports` key; there is
+  # no `from` key at all. RFC 6902 JSON Patch requires the target path to already
+  # exist for `replace` — using replace on a missing path is an error and causes
+  # `kubectl kustomize` to fail at render time. `add` works on both new and
+  # existing paths (RFC 6902 §4.1), so it is correct here.
+  # ────────────────────────────────────────────────────────────────────────────
+  - target:
+      kind: NetworkPolicy
+      name: devstash-web
+    patch: |
+      - op: add
+        path: /spec/ingress/0/from
+        value:
+          - ipBlock:
+              cidr: 130.211.0.0/22
+          - ipBlock:
+              cidr: 35.191.0.0/16
+
+configMapGenerator:
+  - name: devstash-config
+    behavior: merge
+    literals:
+      # Managed Cloud SQL speaks plain Postgres → select Prisma's node-postgres
+      # adapter (src/lib/infra/db-local.ts), not the Neon serverless driver. This
+      # is the real Neon→Cloud SQL adapter swap, gated by env, app code unchanged.
+      - DB_LOCAL=1
+      # Per-pod node-postgres pool ceiling. db-f1-micro real connection limit is ~25
+      # (RAM-based, the max_connections flag is ignored on shared-core instances).
+      # maxReplicas(10) * DB_POOL_MAX(2) = 20 connections, leaving headroom for the
+      # migrate Job + Cloud SQL internal connections.
+      - DB_POOL_MAX=2
+      # Non-secret constants that would otherwise live in Secret Manager. Visible
+      # in `kubectl describe configmap devstash-config` — never put sensitive values here.
+      - EMAIL_FROM=DevStash <noreply@devstash.one>
+      # NEXTAUTH_URL is injected entirely by the replacement below (data.nextAuthUrl
+      # from settings.yaml at deploy time). Do not set it here — the replacement
+      # always wins and a literal here is dead code that misleads readers.
+
+# --- Single-source-of-truth fan-out ---------------------------------------
+# Every per-environment value lives once in settings.yaml; these replacements
+# drop each WHOLE value into its target (no delimiter splitting → nothing can be
+# truncated). Keeps the PROJECT_ID / domain / static-IP placeholders out of the
+# committed manifests without literal duplication. CI sets the real values
+# in settings.yaml at deploy time; committed values stay safe placeholders.
+replacements:
+  # saEmail -> ServiceAccount Workload-Identity annotation (whole value)
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.saEmail
+    targets:
+      - select:
+          kind: ServiceAccount
+          name: devstash
+        fieldPaths:
+          - metadata.annotations.[iam.gke.io/gcp-service-account]
+  # domain -> ManagedCertificate domains[0] + Ingress host rule (whole value)
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.domain
+    targets:
+      - select:
+          kind: ManagedCertificate
+          name: devstash-cert
+        fieldPaths:
+          - spec.domains.0
+      - select:
+          kind: Ingress
+          name: devstash-web
+        fieldPaths:
+          - spec.rules.0.host
+  # nextAuthUrl -> NEXTAUTH_URL (whole value)
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.nextAuthUrl
+    targets:
+      - select:
+          kind: ConfigMap
+          name: devstash-config
+        fieldPaths:
+          - data.NEXTAUTH_URL
+  # emailFrom -> EMAIL_FROM (whole value)
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.emailFrom
+    targets:
+      - select:
+          kind: ConfigMap
+          name: devstash-config
+        fieldPaths:
+          - data.EMAIL_FROM
+  # ingressIpName -> Ingress static-IP annotation (whole value)
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.ingressIpName
+    targets:
+      - select:
+          kind: Ingress
+          name: devstash-web
+        fieldPaths:
+          - metadata.annotations.[kubernetes.io/ingress.global-static-ip-name]
+  # projectId -> ESO SecretStore gcpsm.projectID + workloadIdentity.clusterProjectID
+  # (both fields must carry the same project ID; both are whole-value replacements).
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.projectId
+    targets:
+      - select:
+          kind: SecretStore
+          name: gcp-secret-manager
+        fieldPaths:
+          - spec.provider.gcpsm.projectID
+          - spec.provider.gcpsm.auth.workloadIdentity.clusterProjectID
+  # armorPolicyName -> BackendConfig securityPolicy.name (whole value)
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.armorPolicyName
+    targets:
+      - select:
+          kind: BackendConfig
+          name: devstash-backendconfig
+        fieldPaths:
+          - spec.securityPolicy.name

@@ -3030,6 +3030,7 @@ export interface paths {
                     "application/json": {
                         fileName: string;
                         fileSize: number;
+                        thumbSize?: number;
                     };
                 };
             };
@@ -5985,15 +5986,14 @@ export interface components {
             }[];
         };
         UploadUrlResult: {
-            original: components["schemas"]["PresignedPostCredential"];
-            thumb: components["schemas"]["PresignedPostCredential"] | null;
+            original: components["schemas"]["PresignedPutCredential"];
+            thumb: components["schemas"]["PresignedPutCredential"] | null;
             expiresAt: string;
         };
-        PresignedPostCredential: {
+        PresignedPutCredential: {
             url: string;
-            fields: {
-                [key: string]: string;
-            };
+            key: string;
+            contentType: string;
         };
         BillingContext: {
             billing: {

@@ -1,0 +1,41 @@
+# kind cluster config for the full local run.
+# Maps NodePorts on the kind node to host ports so services are reachable from
+# the host without `kubectl port-forward`:
+#   30080 → localhost:8080   (the app)
+#   30090 → localhost:8090   (Headlamp — cluster management UI)
+#   30432 → localhost:55432  (Postgres — direct DB access, e.g. psql / a GUI)
+#   30825 → localhost:8025   (Mailpit — captured-email web UI)
+#   30900 → localhost:9000   (MinIO — S3 API; browser uploads/downloads hit this)
+#   30901 → localhost:9001   (MinIO — object-storage web console)
+#   30978 → localhost:8978   (pgAdmin — Postgres web UI)
+#   30801 → localhost:8001   (RedisInsight — Redis web UI)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: devstash
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 30090
+        hostPort: 8090
+        protocol: TCP
+      - containerPort: 30432
+        hostPort: 55432
+        protocol: TCP
+      - containerPort: 30825
+        hostPort: 8025
+        protocol: TCP
+      - containerPort: 30900
+        hostPort: 9000
+        protocol: TCP
+      - containerPort: 30901
+        hostPort: 9001
+        protocol: TCP
+      - containerPort: 30978
+        hostPort: 8978
+        protocol: TCP
+      - containerPort: 30801
+        hostPort: 8001
+        protocol: TCP

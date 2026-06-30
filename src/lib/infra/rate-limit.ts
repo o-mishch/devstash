@@ -1,7 +1,8 @@
 import 'server-only'
 import { Ratelimit, type Duration } from '@upstash/ratelimit'
 import { headers } from 'next/headers'
-import { getRedis, RATE_LIMIT_NS } from '@/lib/infra/redis'
+import { getRedis, isTcpRedis, RATE_LIMIT_NS } from '@/lib/infra/redis'
+import { tcpCheck, tcpResetBucket } from '@/lib/infra/rate-limit-tcp'
 import { logger } from '@/lib/infra/pino'
 import { AI_FEATURE_HOURLY_LIMIT } from '@/lib/utils/constants'
 import type { ActionState } from '@/types/actions'
@@ -100,6 +101,9 @@ async function check(key: RateLimitKey, identifier: string) {
   const denyWhenUnavailable = { success: false as const, remaining: 0, retryAfter: 60 }
 
   try {
+    // ioredis path (Memorystore / local): @upstash/ratelimit needs the REST client,
+    // so the TCP backend runs the same algorithm in rate-limit-tcp.ts.
+    if (isTcpRedis()) return await tcpCheck(key, identifier, LIMIT_CONFIG[key])
     const l = getLimiters()
     if (!l) return failClosed ? denyWhenUnavailable : allowWhenUnavailable
     const { success, remaining, reset } = await l[key].limit(identifier)
@@ -133,6 +137,10 @@ const rateLimitLog = logger.child({ tag: 'rate-limit' })
 /** Resets the full usage counter for the window (i.e. refunds all consumed tokens in the current window). */
 export async function resetRateLimit(key: RateLimitKey, identifier: string): Promise<void> {
   try {
+    if (isTcpRedis()) {
+      await tcpResetBucket(key, identifier)
+      return
+    }
     const l = getLimiters()
     if (!l) return
     // WARNING: Upstash resetUsedTokens zeroes the entire window (all consumed tokens), not just one decrement.

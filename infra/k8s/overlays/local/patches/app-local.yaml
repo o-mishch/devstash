@@ -1,0 +1,56 @@
+# Local-only delta on top of the base web Deployment.
+# Strategic-merge: `replicas` is replaced and the sidecar is merged into
+# `initContainers` by name. kind has no Google NEG detach/drain latency, so this
+# patch deliberately shortens the GCP-oriented termination timings from the base.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devstash-web
+spec:
+  replicas: 1
+  template:
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: web
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+      # NATIVE SIDECAR (initContainer + restartPolicy: Always, GA in k8s 1.29+).
+      # S3-endpoint shim: the app signs presigned S3 URLs against http://localhost:9000
+      # (AWS_ENDPOINT_URL_S3) so the SAME endpoint is valid for the BROWSER (kind maps
+      # host :9000 → MinIO) AND for SigV4 (the signed Host header matches what the
+      # browser sends). A pod's localhost is its OWN loopback, so this socat forwards
+      # the pod's :9000 → the in-cluster minio service, letting server-side S3 calls
+      # reach MinIO via the identical host. As a native sidecar it starts and passes
+      # readiness BEFORE `web`, so the app never races a not-yet-listening socat at
+      # boot, and the kubelet restarts it if it dies. Listens DUAL-STACK ([::] accepts
+      # IPv4-mapped too) because Node resolves `localhost` to ::1 first — an IPv4-only
+      # bind=127.0.0.1 → ECONNREFUSED. Runs as the base pod's non-root uid 1001 on an
+      # unprivileged port. Local-only; GCP has no AWS_ENDPOINT_URL_S3 and talks to GCS.
+      initContainers:
+        - name: minio-localhost-shim
+          image: alpine/socat:latest
+          restartPolicy: Always # makes this a native sidecar, not a run-once init step
+          args: ['TCP6-LISTEN:9000,fork,reuseaddr,bind=[::]', 'TCP:minio:9000']
+          readinessProbe:
+            tcpSocket: { port: 9000 }
+            initialDelaySeconds: 1
+            periodSeconds: 5
+          # PSA restricted requires non-root/no-escalation/drop-all; read-only root is
+          # additional hardening. The namespace enforces the v1.31 policy semantics.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi

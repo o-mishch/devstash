@@ -9,7 +9,7 @@ vi.mock('@/lib/infra/rate-limit', () => ({
 }))
 vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }))
 vi.mock('@/lib/storage/s3', () => ({
-  getPresignedPostCredential: vi.fn(),
+  getPresignedPutCredential: vi.fn(),
   getSignedUrlExpiresAt: vi.fn(() => new Date('2026-01-01T00:00:00.000Z')),
 }))
 vi.mock('@/lib/storage/image-thumbnails', () => ({
@@ -26,7 +26,7 @@ vi.mock('@/lib/storage/upload-tokens', () => ({
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit } from '@/lib/infra/rate-limit'
-import { getPresignedPostCredential } from '@/lib/storage/s3'
+import { getPresignedPutCredential } from '@/lib/storage/s3'
 import { writePendingUpload, deletePendingUpload } from '@/lib/storage/upload-tokens'
 import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 
@@ -36,7 +36,7 @@ import { DELETE } from './route'
 const mockSession = getCachedSession as ReturnType<typeof vi.fn>
 const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockPresigned = getPresignedPostCredential as ReturnType<typeof vi.fn>
+const mockPresigned = getPresignedPutCredential as ReturnType<typeof vi.fn>
 const mockWritePending = writePendingUpload as ReturnType<typeof vi.fn>
 const mockDeleteStored = deleteStoredFile as ReturnType<typeof vi.fn>
 const mockDeletePending = deletePendingUpload as ReturnType<typeof vi.fn>
@@ -54,7 +54,11 @@ beforeEach(() => {
   mockSession.mockResolvedValue({ user: { id: 'user-1' } })
   mockIsPro.mockResolvedValue(true)
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
-  mockPresigned.mockResolvedValue({ url: 'https://s3', fields: { key: 'user-1/abc.png' } })
+  // Echo the signed key back (mirrors getPresignedPutCredential returning the key it signs) so
+  // assertions can prove the server-authoritative key reaches the response verbatim.
+  mockPresigned.mockImplementation((key: string, contentType: string) =>
+    Promise.resolve({ url: `https://s3/bucket/${key}`, key, contentType }),
+  )
 })
 
 describe('POST /upload/url', () => {
@@ -99,12 +103,41 @@ describe('POST /upload/url', () => {
     const res = await POST(postBody({ fileName: 'photo.png', fileSize: 1000 }))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.original.url).toBe('https://s3')
     expect(body.expiresAt).toBe('2026-01-01T00:00:00.000Z')
     // The S3 key is namespaced under the session userId (IDOR-safe).
-    const keyArg = mockPresigned.mock.calls[0][0] as string
+    const [keyArg, , sizeArg] = mockPresigned.mock.calls[0] as [string, string, number]
     expect(keyArg.startsWith('user-1/')).toBe(true)
+    // The server-authoritative key is returned verbatim — the client uses it directly rather
+    // than parsing it out of the URL (which would drop the userId prefix on virtual-host S3).
+    expect(body.original.key).toBe(keyArg)
+    // The original's exact byte size is signed into the URL so S3/GCS enforce it.
+    expect(sizeArg).toBe(1000)
     expect(mockWritePending).toHaveBeenCalled()
+  })
+
+  it('signs a thumb credential with its exact size only when thumbSize is supplied', async () => {
+    const res = await POST(postBody({ fileName: 'photo.png', fileSize: 1000, thumbSize: 4096 }))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.thumb).not.toBeNull()
+    // Two presigns: original (fileSize) + thumb (image/webp, thumbSize).
+    expect(mockPresigned).toHaveBeenCalledTimes(2)
+    const [, thumbType, thumbSizeArg] = mockPresigned.mock.calls[1] as [string, string, number]
+    expect(thumbType).toBe('image/webp')
+    expect(thumbSizeArg).toBe(4096)
+  })
+
+  it('does not issue a thumb credential when thumbSize is omitted', async () => {
+    const res = await POST(postBody({ fileName: 'photo.png', fileSize: 1000 }))
+    expect(res.status).toBe(200)
+    expect((await res.json()).thumb).toBeNull()
+    expect(mockPresigned).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns 400 when the declared thumbSize exceeds the thumbnail cap', async () => {
+    const res = await POST(postBody({ fileName: 'photo.png', fileSize: 1000, thumbSize: 200 * 1024 }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toMatch(/thumbnail/i)
   })
 
   it('returns 500 when writing the pending upload fails', async () => {

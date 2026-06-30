@@ -6,25 +6,20 @@ import {
   deleteFromS3,
   getSignedDownloadUrl,
   getSignedUrlExpiresAt,
-  getPresignedPostCredential,
+  getPresignedPutCredential,
   getTextFromS3,
 } from './s3'
 import { SPLIT_FILE_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 
 // Mock the AWS SDK
 const mockSend = vi.fn()
-const { mockGetSignedUrl, mockCreatePresignedPost, mockLogError } = vi.hoisted(() => ({
+const { mockGetSignedUrl, mockLogError } = vi.hoisted(() => ({
   mockGetSignedUrl: vi.fn(),
-  mockCreatePresignedPost: vi.fn(),
   mockLogError: vi.fn(),
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: mockLogError }) },
-}))
-
-vi.mock('@aws-sdk/s3-presigned-post', () => ({
-  createPresignedPost: mockCreatePresignedPost,
 }))
 
 vi.mock('@aws-sdk/client-s3', () => {
@@ -134,27 +129,31 @@ describe('s3 utility', () => {
     })
   })
 
-  describe('getPresignedPostCredential', () => {
-    it('returns url and fields with content-length-range condition baked in', async () => {
-      mockCreatePresignedPost.mockResolvedValueOnce({
-        url: 'https://s3.example/bucket',
-        fields: { 'Content-Type': 'image/png', Policy: 'abc', 'X-Amz-Signature': 'sig' },
+  describe('getPresignedPutCredential', () => {
+    it('signs a PutObjectCommand carrying the exact ContentType and ContentLength', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce('https://s3.example/bucket/test/key.png?sig')
+
+      const result = await getPresignedPutCredential('test/key.png', 'image/png', 5_000_000)
+
+      expect(PutObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Key: 'test/key.png',
+        ContentType: 'image/png',
+        ContentLength: 5_000_000,
       })
+      expect(result).toEqual({ url: 'https://s3.example/bucket/test/key.png?sig', key: 'test/key.png', contentType: 'image/png' })
+    })
 
-      const result = await getPresignedPostCredential('test/key.png', 'image/png', 5_000_000)
+    it('forces content-type and content-length into the signature so S3/GCS enforce them', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce('https://s3.example/signed')
 
-      expect(mockCreatePresignedPost).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          Bucket: 'test-bucket',
-          Key: 'test/key.png',
-          Conditions: expect.arrayContaining([
-            ['content-length-range', 1, 5_000_000],
-          ]),
-        }),
+      await getPresignedPutCredential('test/key.png', 'image/png', 1234)
+
+      const [, , options] = mockGetSignedUrl.mock.calls[0]
+      expect(options.expiresIn).toBe(900)
+      expect([...options.signableHeaders]).toEqual(
+        expect.arrayContaining(['content-type', 'content-length']),
       )
-      expect(result.url).toBe('https://s3.example/bucket')
-      expect(result.fields['Content-Type']).toBe('image/png')
     })
   })
 

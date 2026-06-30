@@ -2,7 +2,7 @@ import 'dotenv/config'
 import { PrismaClient } from '../src/generated/prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
 
-const DEMO_EMAIL = 'demo@devstash.io'
+const DEMO_EMAIL = 'demo@devstash.one'
 const KEEP_PER_TYPE = 10
 const DELETE_BATCH = 1000
 

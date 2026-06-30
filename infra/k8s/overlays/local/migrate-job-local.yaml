@@ -1,0 +1,87 @@
+# Local mirror of overlays/gcp/migrate-job.yaml.
+#
+# Runs Prisma migrations + seeds the 7 system item_types BEFORE the web rollout —
+# the same gated migrate-then-deploy pattern as GCP. The app cannot create items
+# until the system item_types exist, and the standalone runtime image has no Prisma
+# CLI, so this uses the dedicated `migrator` image (Dockerfile --target migrator).
+#
+# Differences from the GCP version:
+#   - No Workload Identity. The GCP job also needs no metadata init container:
+#     migrations consume the materialized Secret and connect by private IP.
+#   - Image tag is `devstash-migrate:local` (built + kind-loaded by run.sh).
+#   - Credentials come from secret.local.yaml (applied via `kubectl apply -k overlays/local`), not ESO.
+#
+# Deliberately NOT in kustomization.yaml `resources` — a Job's pod template is
+# immutable, so re-running `kubectl apply -k` on an existing Job fails. run.sh
+# applies this file directly (delete-then-apply) with `kubectl apply -f` and
+# waits for completion before rolling out the web Deployment, exactly mirroring
+# the CI pipeline in .github/workflows/deploy-gke.yml.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: devstash-migrate
+  namespace: devstash
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 1          # one retry on a transient DB race
+  activeDeadlineSeconds: 300  # 5 min wall-clock ceiling (GCP uses 600s; local DB is faster)
+  ttlSecondsAfterFinished: 600  # auto-clean after 10 min
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: devstash
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      # No serviceAccountName — local Postgres is reached directly over TCP.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          # Built and kind-loaded by run.sh (`docker build --target migrator`).
+          image: devstash-migrate:local
+          imagePullPolicy: Never  # always use the kind-loaded image, never pull
+          env:
+            # DB_LOCAL=1 → node-postgres adapter (same as GCP with Cloud SQL).
+            - name: DB_LOCAL
+              value: "1"
+          envFrom:
+            # devstash-secrets is materialized from overlays/local/secret.local.yaml
+            # (applied by run.sh as part of kubectl apply -k overlays/local before this job).
+            - secretRef:
+                name: devstash-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+              ephemeral-storage: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            # seccompProfile at container level for PSA restricted — mirrors the GCP
+            # migrate-job.yaml and the web Deployment. Pod-level seccompProfile above
+            # is the default; explicit container-level declaration avoids admission
+            # rejections from strict PSA validators that check per-container.
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

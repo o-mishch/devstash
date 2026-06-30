@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+  # The ingressClassName + provider-specific annotations are set per overlay:
+  #   - gcp overlay   → GCE ingress (provisions a Google Cloud HTTP(S) LB)
+  #   - local overlay → nginx ingress (runs inside kind)
+spec:
+  rules:
+    # Placeholder replaced per-overlay via kustomize replacement:
+    #   GCP overlay — data.domain from settings.yaml → "gke.devstash.one"
+    #   local overlay — left as-is; nginx routes by path, host header is ignored
+    # DO NOT change this to "gke.devstash.one" directly — the replacement in
+    # overlays/gcp/kustomization.yaml is the authoritative source. Editing the
+    # base host would break the local overlay and is overwritten by CI anyway.
+    - host: gke.devstash.one
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: devstash-web
+                port:
+                  number: 80

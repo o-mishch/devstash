@@ -1,0 +1,51 @@
+# Single source of truth for the per-environment values that used to be literal
+# placeholders scattered across the overlay. Kustomize `replacements` (see
+# kustomization.yaml) fan these out — each whole value is dropped into its target
+# field verbatim (no delimiter splitting), so nothing can be truncated.
+#
+# `config.kubernetes.io/local-config: "true"` keeps this ConfigMap OUT of the
+# applied manifests — it only feeds replacements; it is never created in-cluster.
+#
+# CI overrides these at deploy time WITHOUT hand-editing other files, e.g.:
+#   yq -i '
+#     .data.saEmail    = "devstash-app@"+strenv(PROJECT_ID)+".iam.gserviceaccount.com" |
+#     .data.domain     = strenv(APP_DOMAIN)
+#   ' settings.yaml
+# The committed values stay as safe placeholders.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devstash-settings
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  # Bare GCP project ID — used by the ESO SecretStore (gcpsm.projectID).
+  # REAL value (not a placeholder): project-39965ce5-4c4b-495e-8d4.
+  # CI overwrites this via `yq -i '.data.projectId = strenv(PROJECT_ID)'` at deploy time,
+  # but the committed value IS the real project ID — safe to commit (not a secret).
+  # Only change if the GCP project is recreated with a different ID (Terraform must also change).
+  projectId: project-39965ce5-4c4b-495e-8d4
+  # Full Workload-Identity Google SA email. Must equal the app SA from Terraform
+  # (modules/iam: devstash-app@<project>.iam.gserviceaccount.com).
+  # REAL value (not a placeholder): derived from projectId above. Safe to commit.
+  # Update only if the project ID or the SA account_id ("devstash-app") changes in Terraform.
+  saEmail: devstash-app@project-39965ce5-4c4b-495e-8d4.iam.gserviceaccount.com
+  # Public hostname. DNS A-record points at the Ingress static IP (Terraform:
+  # network module output ingress_ip_address).
+  # IMPORTANT: a SUBDOMAIN (gke.*), NOT the apex devstash.one — the apex + www
+  # serve production on Vercel. A-records resolve to one place; pointing the apex
+  # here would take Vercel prod down. The GKE deploy lives on its own hostname.
+  domain: gke.devstash.one
+  # Sender email address — non-secret constant fanned out by Kustomize replacements.
+  # Overwritten in CI by strenuous EMAIL_FROM variable.
+  emailFrom: DevStash <admin@devstash.one>
+  # Full NEXTAUTH_URL — keep in sync with `domain`.
+  nextAuthUrl: https://gke.devstash.one
+  # Name of the global static IP reserved in Terraform (network module). Must
+  # match `${name_prefix}-ip` = devstash-dev-ip. CI injects the real value via
+  # yq (.data.ingressIpName) so it stays in sync with the Terraform resource name.
+  ingressIpName: devstash-dev-ip
+  # Cloud Armor security policy name (network module: google_compute_security_policy).
+  # Attached to the BackendConfig so the LB enforces WAF + rate limiting at the edge.
+  # Must match `${name_prefix}-armor` = devstash-dev-armor.
+  armorPolicyName: devstash-dev-armor

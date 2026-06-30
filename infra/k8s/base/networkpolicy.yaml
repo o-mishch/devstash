@@ -1,0 +1,99 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: devstash-web
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: devstash
+      app.kubernetes.io/component: web
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Accept traffic from the GKE external load balancer (container-native NEG).
+    # Health checks come from two fixed Google ranges (130.211.0.0/22 and
+    # 35.191.0.0/16); user traffic arrives from the LB frontend. Both are plain
+    # IP sources — no pod-selector can match them. The GCP overlay adds an
+    # ipBlock rule scoped to those ranges; the base keeps it open so local and
+    # any non-GCE overlay also work without patching.
+    #
+    # DATAPLANE V2: this cluster uses ADVANCED_DATAPATH (eBPF). NetworkPolicy is
+    # enforced natively without the networkPolicyConfig addon (which is disabled —
+    # correct, not a bug). Do NOT re-enable that addon; it conflicts with Dataplane V2.
+    # NetworkPolicy enforcement is always-on for Autopilot + ADVANCED_DATAPATH and
+    # cannot be turned off. Best practice: select pods by label, not by IP (ipBlock
+    # for pod ranges is fragile — pod IPs are ephemeral). ipBlock IS correct for the
+    # GCP health-check ranges because those are Google-owned infrastructure IPs, not pod IPs.
+    - ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    # DNS — required for all external hostname resolution (Cloud SQL, Redis, Stripe…).
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Cloud SQL (private IP in-VPC) and Memorystore Redis (native ioredis, no proxy).
+    # Redis port split:
+    #   6379 = plain-text — used by local-run (infra/k8s/local-run) where the Redis
+    #          container exposes the default port without TLS.
+    #   6378 = TLS-encrypted — Memorystore for Redis uses this fixed secure port
+    #          when SERVER_AUTHENTICATION is enabled. Do not substitute the more
+    #          common self-hosted Redis TLS port 6380: GCP does not listen there.
+    # Both ports are open in the base so the same policy covers local and GCP overlays
+    # without an extra patch. The GCP overlay could restrict to 6378-only but the
+    # marginal win is not worth the added indirection.
+    - ports:
+        - protocol: TCP
+          port: 5432 # PostgreSQL (Cloud SQL private IP in GCP; local Postgres in dev)
+        - protocol: TCP
+          port: 6379 # Redis plain-text (local-run only)
+        - protocol: TCP
+          port: 6378 # Redis TLS (Memorystore for Redis, rediss://)
+    # HTTPS — outbound calls to Stripe, Resend, OAuth providers, Next.js image
+    # optimisation origin, and any other external API.
+    - ports:
+        - protocol: TCP
+          port: 443
+---
+# NetworkPolicy for the migrate Job (app.kubernetes.io/component: migrate).
+#
+# WHY a separate policy: the base NetworkPolicy above selects component=web only.
+# Without this policy the migrate pod — which holds DATABASE_URL, DIRECT_URL, and
+# ALL app secrets — has unrestricted egress in Kubernetes' default-allow model.
+# If a namespace-level default-deny is ever added (standard GKE hardening), the
+# migrate pod would silently lose Cloud SQL egress and fail with a TCP timeout.
+#
+# Egress rules mirror the web policy but are intentionally narrower:
+#   • No port 443 (HTTPS) — the migrate container only needs Cloud SQL + DNS.
+#     Stripe, Resend, OAuth, etc. are web-only. Add 443 here only if the seed
+#     step starts calling an external HTTPS endpoint.
+#
+# No ingress rule: the Job pod accepts no inbound connections.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: devstash-migrate
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: devstash
+      app.kubernetes.io/component: migrate
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []   # no inbound traffic to the migrate job
+  egress:
+    # DNS — required for Cloud SQL hostname resolution.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Cloud SQL (private IP in-VPC). Only 5432 — the migrate container does not
+    # connect to Redis (no cache warming, no rate-limit checks in migrate/seed).
+    - ports:
+        - protocol: TCP
+          port: 5432

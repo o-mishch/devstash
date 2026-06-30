@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The base: environment-agnostic manifests. Overlays (overlays/local, overlays/gcp)
+# reference this base and patch the environment-specific bits (image, hostname,
+# ingress class). Run `kubectl kustomize infra/k8s/overlays/<env>` to render.
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - configmap.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
+  # secret.example.yaml is intentionally NOT listed — it's a template. Each
+  # overlay supplies the real Secret out-of-band (sealed/CSI/External Secrets).
+
+# `commonLabels` is deprecated in Kustomize v5. `labels` with includeSelectors:true
+# reproduces it exactly — stamps the label on every resource AND folds it into the
+# Deployment/Service/HPA/PDB selectors (identical rendered output, no warning).
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: devstash
+    includeSelectors: true

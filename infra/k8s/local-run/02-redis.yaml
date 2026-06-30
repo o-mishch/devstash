@@ -1,0 +1,57 @@
+# Redis for the local run. The app talks NATIVE ioredis straight to this Redis over
+# TCP (REDIS_URL=redis://redis:6379, see src/lib/infra/redis-tcp.ts) — the SAME
+# client path as GCP (ioredis → Memorystore). No SRH proxy: this aligns local with
+# the managed-GCP architecture.
+#   app  ──TCP(REDIS_URL)──►  redis:6379
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: devstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          # redis-stack bundles RedisInsight (web UI) on :8001 in the same container —
+          # no extra pod. Redis itself serves on :6379.
+          #
+          # GCP alignment: GCP Memorystore uses Redis 7.2 with AUTH + in-transit TLS
+          # (see modules/memorystore/main.tf: redis_version = "REDIS_7_2"). Locally,
+          # TLS and AUTH are DISABLED — plain redis:// URL, no REDIS_CA_CERT, no password.
+          # The app's src/lib/infra/redis-tcp.ts handles this: TLS is enabled only when
+          # REDIS_URL starts with "rediss://" and REDIS_CA_CERT is set, so the same code
+          # path works in both environments without source changes.
+          #
+          # :latest is intentional for local-only use (always gets newest UI + bugfixes).
+          # redis-stack major.minor tracks Memorystore: currently both at 7.2.
+          # If Memorystore is upgraded to 7.4+, verify redis-stack:latest matches or pin
+          # to a specific tag (e.g. redis/redis-stack:7.4.x-vN).
+          image: redis/redis-stack:latest
+          ports:
+            - { containerPort: 6379 } # Redis
+            - { containerPort: 8001 } # RedisInsight web UI
+          readinessProbe:
+            exec: { command: ['redis-cli', 'ping'] }
+            initialDelaySeconds: 5
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: devstash
+spec:
+  # NodePort so the bundled RedisInsight web UI is reachable from the host at
+  # localhost:8001 (kind maps 30801 → 8001). Redis itself (:6379) stays
+  # cluster-internal — the app reaches it via the DNS name redis.
+  type: NodePort
+  selector: { app: redis }
+  ports:
+    - { name: redis, port: 6379, targetPort: 6379 }
+    - { name: insight, port: 8001, targetPort: 8001, nodePort: 30801 }

@@ -1,0 +1,113 @@
+# One-shot pre-deploy Job: apply Prisma migrations + seed the 7 system item_types
+# BEFORE the web rollout. The app cannot create items until the system item_types
+# exist, and the standalone runtime image has no Prisma CLI, so this runs the
+# dedicated `migrator` image (Dockerfile `--target migrator`).
+#
+# Deliberately NOT in kustomization.yaml `resources`: a Job's pod template is
+# immutable, so re-running `kubectl apply -k` on an existing Job would fail. CI
+# applies this file directly (delete-then-apply) with the immutable digest-pinned
+# migrate image and polls both Complete and Failed as a deploy gate — see
+# .github/workflows/deploy-gke.yml ("Run DB migrations + seed item types").
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: devstash-migrate
+  namespace: devstash
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 1 # one retry on a transient DB / secret-sync race
+  # Hard wall-clock ceiling shared across ALL attempts. backoffLimit=1 means up to 2
+  # pod runs; both together must finish within 600s. If the first attempt fails fast
+  # the second gets the remaining time; if the first runs long the second may be cut
+  # short. 600s matches the CI polling deadline.
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 600 # auto-clean the finished Job after 10 minutes
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: devstash
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      # The job reads a Kubernetes Secret and reaches Cloud SQL by private IP; it
+      # calls neither the Kubernetes API nor a Google API. Avoid mounting an unused
+      # bearer token. Workload Identity is needed by ESO, not by this migration pod.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          # CI rewrites this to the digest-pinned migrate image before apply.
+          image: devstash-migrate:local
+          # DATABASE_URL / DIRECT_URL come from the ESO-synced Secret.
+          # The image's default CMD runs two steps:
+          #   1. `prisma migrate deploy` — uses the Prisma CLI's own Rust engine with
+          #      DIRECT_URL (sslmode=require, encryption only, no CA pinning). The CLI
+          #      ignores DB_LOCAL and the Node.js adapter entirely; DB_LOCAL has no
+          #      effect on this step.
+          #   2. `npx tsx prisma/seed.ts` (SEED_ITEM_TYPES_ONLY=1) — runs via Node.js
+          #      and calls createLocalDbAdapter() from db-local.ts, which reads DB_LOCAL.
+          #      DB_LOCAL=1 here selects the node-postgres adapter for the seed so it
+          #      connects over plain TCP (Cloud SQL private IP), not the Neon WebSocket
+          #      driver which requires an HTTP endpoint.
+          env:
+            # DB_LOCAL=1 applies ONLY to the seed (step 2 above).
+            # prisma migrate deploy (step 1) is unaffected — it uses its own engine.
+            # Explicit here so that if the CMD is ever overridden in CI, the seed still
+            # routes to node-postgres rather than the incompatible Neon driver.
+            - name: DB_LOCAL
+              value: "1"
+            # WHY TMPDIR=/tmp: readOnlyRootFilesystem: true makes /app (the working
+            # directory) and all paths under it read-only; only the /tmp emptyDir
+            # volume is writable. tsx (esbuild-based transpiler) and npm/npx may write
+            # transpilation or package-download caches to node_modules/.cache or the
+            # project root by default. Setting TMPDIR forces these tools to use /tmp
+            # for any temporary / cache writes, preventing EROFS errors that would
+            # cause `npx tsx prisma/seed.ts` to crash with a non-obvious I/O error
+            # (the migrations would succeed but the seed would silently fail to insert
+            # the 7 required item_type rows). NODE_OPTIONS cache-dir ensures npm also
+            # respects the writable-only path.
+            - name: TMPDIR
+              value: /tmp
+            - name: npm_config_cache
+              value: /tmp/.npm
+          envFrom:
+            - secretRef:
+                name: devstash-secrets
+          # Explicit requests/limits — Autopilot bills per requested pod resources and
+          # injects defaults when unset; declaring them keeps the one-shot migrate pod
+          # predictable. Mirrors the web Deployment's footprint (migrations are light).
+          # Use the non-bursting Autopilot memory minimum explicitly so the admitted
+          # request and billed capacity do not vary with cluster bursting support.
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+              ephemeral-storage: 512Mi
+          # readOnlyRootFilesystem is defense-in-depth beyond PSA restricted. Prisma
+          # CLI needs the explicitly mounted /tmp for temporary files during migration.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

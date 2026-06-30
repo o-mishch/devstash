@@ -1,0 +1,439 @@
+# CI/CD: build → push → deploy DevStash to GKE.
+# See infra/docs/04-cicd.md for the full walkthrough.
+#
+# Auth uses Workload Identity Federation (keyless) — GitHub's OIDC token is
+# exchanged for short-lived GCP credentials. No long-lived service-account JSON
+# key is ever stored in GitHub secrets.
+name: deploy-gke
+
+on:
+  push:
+    branches: [main]
+  # Manual runs are allowed, but Workload Identity Federation pins the OIDC token to
+  # refs/heads/main (iam module attribute_condition) — so a manual dispatch only
+  # authenticates to GCP when run from the `main` branch. Dispatching another branch
+  # fails at the auth step by design.
+  workflow_dispatch: {}
+
+# Serialize deployments but never cancel one already mutating external state. GitHub
+# cancellation does not stop an in-cluster migration Job; a newer run could then delete
+# that still-running Job and interrupt a schema change. `false` lets the active deploy
+# finish while GitHub keeps only the newest pending run for this group.
+concurrency:
+  group: deploy-gke-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # us-central1 is one of the three GCS Always Free regions (with us-west1/us-east1).
+  # Other US regions and the "US" multi-region do not qualify. Must match `region`
+  # in infra/terraform/envs/dev/terraform.tfvars.
+  REGION: us-central1
+  # CLUSTER = "${name_prefix}-gke" = "devstash-${var.environment}-gke" = "devstash-dev-gke"
+  # (Terraform: locals.tf name_prefix + modules/gke/main.tf resource name suffix).
+  # Must stay in sync with the Terraform GKE module — if environment or the module
+  # name template ever changes, update this value.
+  CLUSTER: devstash-dev-gke
+  REPO: devstash # Artifact Registry repository id (modules/artifact-registry/main.tf)
+  IMAGE: web # runtime image (default last Dockerfile stage)
+  IMAGE_MIGRATE: migrate # migrator image (Dockerfile --target migrator)
+
+# Default: read-only for all jobs. id-token + attestations are scoped to
+# build-deploy only — granting them workflow-wide would expose the GCP OIDC
+# token to the `verify` job where untrusted test code runs.
+permissions:
+  contents: read
+
+jobs:
+  # ---- Gate: lint + tests must pass before we build/deploy anything ----------
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      # Static analysis of every pending migration SQL file before anything is built
+      # or deployed. Catches dangerous statements (DROP COLUMN, lock-heavy ALTER,
+      # non-CONCURRENT index, column/table renames) that would cause downtime or data
+      # loss during a rolling update. `.pgfence.json` sets max-risk=low, so medium
+      # and high findings fail while low-risk additive changes remain deployable.
+      # If this step fails, fix the migration (expand-contract pattern) before merging.
+      #
+      # WHY shopt -s globstar: GitHub Actions runners use bash but globstar (**) is
+      # disabled by default. Without it, ** matches only one directory level deep,
+      # silently skipping prisma/migrations/<timestamp>_name/migration.sql (two levels).
+      # `shopt -s globstar` must precede the glob expansion in the same shell invocation.
+      - name: Check migration safety
+        run: |
+          shopt -s globstar
+          # pgfence is a lockfile-pinned devDependency installed by `npm ci`.
+          # --no-install forbids npx from downloading a different package at deploy time.
+          # Risk/Postgres/lock-timeout policy lives in the committed .pgfence.json;
+          # do not duplicate those values here or local and CI analysis can drift.
+          npx --no-install pgfence analyze --ci prisma/migrations/**/migration.sql
+      - run: npm run lint
+      - run: npm run test:run
+
+  # ---- Build the image, push to Artifact Registry, deploy to GKE -------------
+  build-deploy:
+    needs: verify # only runs if `verify` succeeded
+    # Guard: GCP Workload Identity Federation pins the OIDC token to refs/heads/main
+    # (iam module attribute_condition: assertion.ref == "refs/heads/main"). A
+    # workflow_dispatch on any other branch would reach google-github-actions/auth and
+    # fail with a cryptic "unauthorized_client" GCP STS error. This condition surfaces
+    # the real reason immediately instead of burning runner time on the prior steps.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Hard cap beyond per-step timeouts. Worst-case declared budgets are image build
+    # 10m + two Helm upgrades 10m + migration 10m + rollout 5m, before API/setup
+    # overhead. 30m did not cover its own stated path and could cancel a live migration
+    # Job. 45m provides a real buffer while avoiding the runner's six-hour default.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write     # Workload Identity Federation: request OIDC token
+      attestations: write # SLSA provenance attestation push
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Validate deployment inputs
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          DEPLOYER_SA: ${{ secrets.DEPLOYER_SA }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+        run: |
+          # Fail before image builds or GCP auth. Empty GitHub secrets/variables expand
+          # to empty strings; without this guard failures surface much later as malformed
+          # image names, STS errors, or an invalid ManagedCertificate.
+          for name in GCP_PROJECT_ID WORKLOAD_IDENTITY_PROVIDER DEPLOYER_SA APP_DOMAIN; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Required GitHub deployment input is missing: ${name}"
+              exit 1
+            fi
+          done
+          if [[ ! "$APP_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ || "$APP_DOMAIN" != *.* ]]; then
+            echo "::error::APP_DOMAIN must be a lowercase hostname without scheme, port, or path"
+            exit 1
+          fi
+
+      # Keyless auth to GCP. WORKLOAD_IDENTITY_PROVIDER + DEPLOYER_SA are repo
+      # variables/secrets; the provider is created in Terraform (iam module +
+      # a WIF pool). No JSON key.
+      - id: auth
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build & push images
+        id: build-push
+        run: |
+          BASE="${REGION}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${REPO}"
+          IMAGE_URI="${BASE}/${IMAGE}"
+          MIGRATE_URI="${BASE}/${IMAGE_MIGRATE}"
+          # Runtime image (default last stage) + migrator image (--target migrator).
+          # Both builds share the same registry remote cache (mode=max includes all
+          # intermediate layers). The deps + builder stages are reused across builds
+          # when the lockfile and schema are unchanged — typical saves are 2-4 min.
+          # --metadata-file captures the image digest from the registry response so we
+          # can pass it to SLSA attestation without re-pulling the image.
+          docker buildx build \
+            --cache-from "type=registry,ref=${IMAGE_URI}:buildcache" \
+            --cache-to   "type=registry,ref=${IMAGE_URI}:buildcache,mode=max" \
+            --push \
+            --metadata-file /tmp/meta-web.json \
+            -t "${IMAGE_URI}:${GITHUB_SHA}" -t "${IMAGE_URI}:latest" .
+          # WHY two --cache-from: deps+builder layers are shared with the web build
+          # (IMAGE_URI:buildcache, written above). The migrator adds its own unique
+          # layers (apk add libc6-compat, prisma generate inside the migrator stage,
+          # seed files). Those unique layers are written to MIGRATE_URI:buildcache so
+          # subsequent deploys restore them from cache instead of rebuilding cold
+          # (~60-120s per run saved). The web build's cache is read-only here (no
+          # --cache-to for IMAGE_URI) — each image owns its own buildcache tag.
+          docker buildx build --target migrator \
+            --cache-from "type=registry,ref=${IMAGE_URI}:buildcache" \
+            --cache-from "type=registry,ref=${MIGRATE_URI}:buildcache" \
+            --cache-to   "type=registry,ref=${MIGRATE_URI}:buildcache,mode=max" \
+            --push \
+            --metadata-file /tmp/meta-migrate.json \
+            -t "${MIGRATE_URI}:${GITHUB_SHA}" -t "${MIGRATE_URI}:latest" .
+          # Extract the registry digest from the buildx metadata file (the canonical
+          # sha256 the registry assigned — stable across tags on the same manifest).
+          WEB_DIGEST=$(jq -er '."containerimage.digest"' /tmp/meta-web.json)
+          MIGRATE_DIGEST=$(jq -er '."containerimage.digest"' /tmp/meta-migrate.json)
+          if [[ ! "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || ! "$MIGRATE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::BuildKit did not return valid registry image digests"
+            exit 1
+          fi
+          # Deploy by registry digest. A commit-SHA tag can still be overwritten by a
+          # workflow re-run; a content digest cannot.
+          {
+            echo "IMAGE_URI=${IMAGE_URI}"
+            echo "WEB_DIGEST=${WEB_DIGEST}"
+            echo "MIGRATE_IMAGE=${MIGRATE_URI}@${MIGRATE_DIGEST}"
+          } >> "$GITHUB_ENV"
+          {
+            echo "web_image_name=${IMAGE_URI}"
+            echo "web_digest=${WEB_DIGEST}"
+            echo "migrate_image_name=${MIGRATE_URI}"
+            echo "migrate_digest=${MIGRATE_DIGEST}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Optional GitHub/Sigstore provenance. Private repositories require GitHub
+      # Enterprise Cloud for artifact attestations; leave the repository variable
+      # ENABLE_GITHUB_ATTESTATIONS unset/false otherwise so a plan limitation cannot
+      # block deployment. These are verified with `gh attestation verify`; they do
+      # NOT satisfy GKE Binary Authorization REQUIRE_ATTESTATION.
+      - name: Attest web image
+        if: vars.ENABLE_GITHUB_ATTESTATIONS == 'true'
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ${{ steps.build-push.outputs.web_image_name }}
+          subject-digest: ${{ steps.build-push.outputs.web_digest }}
+          push-to-registry: true
+
+      - name: Attest migrate image
+        if: vars.ENABLE_GITHUB_ATTESTATIONS == 'true'
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ${{ steps.build-push.outputs.migrate_image_name }}
+          subject-digest: ${{ steps.build-push.outputs.migrate_digest }}
+          push-to-registry: true
+
+      # The control plane has no public IP endpoint (enable_private_endpoint = true);
+      # access is via the IAM-gated DNS-based endpoint, so request DNS-based creds.
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@64bc7249bbcf78056bb92f14d3cedc2da193946c # v2
+        with:
+          cluster_name: ${{ env.CLUSTER }}
+          location: ${{ env.REGION }}
+          use_dns_based_endpoint: true
+
+      # Inject the real per-environment values into the overlay's single
+      # source of truth (settings.yaml). Kustomize `replacements` fan these
+      # out into the Workload-Identity SA annotation, ManagedCertificate domain,
+      # NEXTAUTH_URL, and Ingress static-IP name. The image is separate because its
+      # digest is build output, not environment config: CI pins `images` directly to
+      # THIS build's repo + immutable registry digest (not :latest),
+      # so the rendered Deployment is reproducible and the migrate→rollout gate
+      # below is real. `yq` is preinstalled on ubuntu-latest runners.
+      - name: Inject environment values
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+        run: |
+          cd infra/k8s/overlays/gcp
+          # ingressIpName and armorPolicyName are derived from the Terraform
+          # name_prefix "devstash-dev" (locals.tf: "devstash-${var.environment}",
+          # environment default = "dev"). The resource names are:
+          #   google_compute_global_address: "${name_prefix}-ip"  → "devstash-dev-ip"
+          #   google_compute_security_policy: "${name_prefix}-armor" → "devstash-dev-armor"
+          #
+          # WHY NOT `tofu output`: reading these from Terraform output at deploy time
+          # would require the OpenTofu state to be accessible in CI (remote state bucket
+          # auth, extra tofu init step). The values are stable — they only change when
+          # the `var.environment` tfvar or the Terraform name_prefix template changes,
+          # both of which require an intentional infra change. Hardcoding them here is
+          # an accepted tradeoff. WHEN TO UPDATE: if you rename `var.environment` in
+          # terraform.tfvars (e.g. "dev" → "prod"), update BOTH literals below AND the
+          # CLUSTER env var at the top of this file to match. Mismatch = Ingress loses
+          # its static IP + BackendConfig gets no WAF policy — silent kubectl apply success.
+          yq -i '
+            .data.projectId       = strenv(PROJECT_ID) |
+            .data.saEmail         = "devstash-app@" + strenv(PROJECT_ID) + ".iam.gserviceaccount.com" |
+            .data.domain          = strenv(APP_DOMAIN) |
+            .data.emailFrom       = strenv(EMAIL_FROM) |
+            .data.nextAuthUrl     = "https://" + strenv(APP_DOMAIN) |
+            .data.ingressIpName   = "devstash-dev-ip" |
+            .data.armorPolicyName = "devstash-dev-armor"
+          ' settings.yaml
+          # Pin the web image to the immutable registry digest returned by BuildKit.
+          # WHY select(.name == "devstash") not .images[0]: positional index is fragile
+          # — if a sidecar or init-container image entry is ever prepended to the images
+          # list, index 0 would silently patch the wrong entry and leave the web
+          # container at :latest. Selecting by name is index-position-independent.
+          IMAGE_URI="${IMAGE_URI}" WEB_DIGEST="${WEB_DIGEST}" yq -i '
+            (.images[] | select(.name == "devstash")) |= (
+              .newName = strenv(IMAGE_URI) |
+              .digest = strenv(WEB_DIGEST) |
+              del(.newTag)
+            )
+          ' kustomization.yaml
+          echo "--- settings.yaml after injection ---"
+          cat settings.yaml
+
+      # The overlay ships an ESO SecretStore + ExternalSecret (Secret Manager →
+      # devstash-secrets). Their CRDs must exist before `apply -k`. Install/upgrade
+      # ESO idempotently — a no-op on clusters that already have it.
+      # --version is read from infra/versions.env (single source of truth shared with run.sh).
+      # Update the version there to bump both CI and the bootstrap script together.
+      - name: Ensure External Secrets Operator
+        run: |
+          source infra/versions.env
+          helm repo add external-secrets https://charts.external-secrets.io
+          helm repo update external-secrets
+          # Resource requests set to GKE Autopilot's 50m CPU minimum per container.
+          # ESO chart defaults to 10m, which Autopilot silently mutates — explicit
+          # values here eliminate the mutation warning and make billing predictable.
+          helm upgrade --install external-secrets external-secrets/external-secrets \
+            -n external-secrets --create-namespace --wait --timeout 5m --rollback-on-failure \
+            --version "$ESO_VERSION" \
+            --set resources.requests.cpu=50m \
+            --set resources.requests.memory=128Mi \
+            --set certController.resources.requests.cpu=50m \
+            --set certController.resources.requests.memory=128Mi \
+            --set webhook.resources.requests.cpu=50m \
+            --set webhook.resources.requests.memory=128Mi
+
+      # Stakater Reloader: watches Secrets/ConfigMaps and rolls Deployments when
+      # their data changes. Required for secret.reloader.stakater.com/reload
+      # annotations (set on the web Deployment) to take effect — without Reloader
+      # the annotation is inert and ESO-refreshed secrets only propagate on the
+      # next manual deploy. --version is read from infra/versions.env.
+      - name: Ensure Stakater Reloader
+        run: |
+          source infra/versions.env
+          helm repo add stakater https://stakater.github.io/stakater-charts
+          helm repo update stakater
+          # Resource requests set to Autopilot's 50m CPU floor (same rationale as ESO above).
+          helm upgrade --install reloader stakater/reloader \
+            -n reloader --create-namespace --wait --timeout 5m --rollback-on-failure \
+            --version "$RELOADER_VERSION" \
+            --set reloader.deployment.resources.requests.cpu=50m \
+            --set reloader.deployment.resources.requests.memory=128Mi
+
+      - name: Render manifests
+        run: |
+          cd infra/k8s/overlays/gcp
+          # Render once, then split the apply so migrations run BEFORE the web
+          # Deployment rolls to the new image (a real migrate→rollout gate, not the
+          # old :latest race). Database (Cloud SQL) + Redis (Memorystore) are
+          # Terraform-managed and not in this overlay; the migrate Job is applied
+          # separately (gated) below.
+          kubectl kustomize . > /tmp/rendered.yaml
+
+      - name: Apply infra (everything except the web Deployment)
+        run: |
+          # Namespace, SA, ConfigMap, SecretStore/ExternalSecret, Service, Ingress,
+          # BackendConfig, ManagedCertificate, HPA, PDB. Any existing web pods keep
+          # serving the PREVIOUS image until the post-migration rollout below — so new
+          # code never reaches users ahead of its schema migration.
+          yq 'select(.kind != "Deployment")' /tmp/rendered.yaml \
+            | kubectl apply --server-side -f -
+
+      - name: Wait for secrets to sync (ESO)
+        run: |
+          # devstash-secrets is materialized by External Secrets Operator from
+          # Secret Manager. Both the migrate Job and the web pods need it, so block
+          # until the ExternalSecret reports Ready before running anything against
+          # the database.
+          kubectl -n devstash wait --for=condition=Ready \
+            externalsecret/devstash-secrets --timeout=180s
+
+      - name: Run DB migrations + seed item types (gated)
+        run: |
+          cd infra/k8s/overlays/gcp
+          # A Job's pod template is immutable — delete any prior run before
+          # re-applying with this build's migrate image.
+          # Write patched manifest to a temp file to avoid mutating the tracked source.
+          # NOTE: migrate-job.yaml is applied directly (not via `kustomize`), but the
+          # file has `namespace: devstash` hard-coded so the namespace is always correct.
+          # It is intentionally NOT in kustomization.yaml `resources` because kustomize
+          # would fail on the immutable Job on re-apply. The yq image injection here
+          # mirrors what kustomize's `images` transformer does for the web Deployment.
+          #
+          # Capture logs from any prior failed job BEFORE deleting it. If this step
+          # failed in a previous run and the engineer re-runs the job, the delete below
+          # destroys the pod and its logs. Capture first so post-mortem diagnostics
+          # survive the re-run. `|| true` is intentional — no prior job is normal.
+          kubectl -n devstash logs job/devstash-migrate --tail=100 \
+            > /tmp/migrate-prev-logs.txt 2>/dev/null || true
+          if [ -s /tmp/migrate-prev-logs.txt ]; then
+            echo "--- Logs from previous migrate job (captured before delete) ---"
+            cat /tmp/migrate-prev-logs.txt
+          fi
+          kubectl -n devstash delete job devstash-migrate --ignore-not-found
+          MIGRATE_IMAGE="${MIGRATE_IMAGE}" yq '.spec.template.spec.containers[0].image = strenv(MIGRATE_IMAGE)' \
+            migrate-job.yaml > /tmp/migrate-job-patched.yaml
+          kubectl apply -f /tmp/migrate-job-patched.yaml
+          # `kubectl wait` accepts one scalar --for value; repeating the flag does not
+          # race Complete and Failed (the last value wins). Poll both conditions so a
+          # failed Job aborts immediately rather than consuming the full deadline.
+          deadline=$((SECONDS + 600))
+          while (( SECONDS < deadline )); do
+            complete="$(kubectl -n devstash get job devstash-migrate \
+              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')"
+            failed="$(kubectl -n devstash get job devstash-migrate \
+              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')"
+            if [[ "$complete" == "True" ]]; then
+              break
+            fi
+            if [[ "$failed" == "True" ]]; then
+              echo "::error::migration job reached Failed condition"
+              kubectl -n devstash logs job/devstash-migrate --tail=200 || true
+              kubectl -n devstash describe job/devstash-migrate || true
+              exit 1
+            fi
+            sleep 5
+          done
+          if [[ "${complete:-}" != "True" ]]; then
+            echo "::error::migration job did not complete within 600s"
+            kubectl -n devstash logs job/devstash-migrate --tail=200 || true
+            kubectl -n devstash describe job/devstash-migrate || true
+            exit 1
+          fi
+          kubectl -n devstash logs job/devstash-migrate --tail=50 || true
+
+      - name: Roll out the web Deployment (post-migration)
+        run: |
+          # Migrations have landed — now apply the digest-pinned web Deployment from the
+          # same render. Same server-side field manager as the infra apply (no
+          # imperative `kubectl set image`, so no field-ownership conflict on the image
+          # field). This is what triggers the rolling update to the new code.
+          yq 'select(.kind == "Deployment")' /tmp/rendered.yaml \
+            | kubectl apply --server-side -f -
+
+      - name: Wait for rollout
+        run: |
+          # Gate: new pods must become healthy within 300s.
+          #
+          # DO NOT auto-rollback here. By this point the migration job has already
+          # run successfully (it is the gate above this step), so the DB schema is
+          # advanced past what the previous image understood. Rolling the Deployment
+          # back to the old image would put old code against a newer schema — likely
+          # causing crashes or data corruption.
+          #
+          # If the rollout fails: fix forward with a new commit that fixes the pod
+          # startup issue. The old pods are still running (maxUnavailable: 0), so
+          # traffic is uninterrupted while you fix and re-deploy.
+          if ! kubectl -n devstash rollout status deployment/devstash-web --timeout=300s; then
+            echo "::error::Rollout failed — new pods did not become healthy"
+            echo "::error::DO NOT roll back the Deployment — migrations have already run against the new schema."
+            echo "::error::Fix forward: push a commit that resolves the pod startup failure."
+            echo "--- Recent pod events ---"
+            kubectl -n devstash describe deployment/devstash-web | tail -20 || true
+            echo "--- Logs from failing pods ---"
+            # WHY loop: `kubectl logs --previous` requires a specific pod name and
+            # is rejected when combined with a label selector (-l). Collecting pod
+            # names first and looping is the only correct way to capture previous
+            # container logs for multiple pods via a selector.
+            kubectl -n devstash get pods -l app.kubernetes.io/name=devstash \
+              -o name 2>/dev/null \
+              | xargs -I{} kubectl -n devstash logs {} --previous --tail=100 2>/dev/null \
+              || true
+            exit 1
+          fi

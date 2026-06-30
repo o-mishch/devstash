@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devstash
+  labels:
+    # Pod Security Admission — enforce "restricted" policy so any pod that would
+    # run as root, gain capabilities, or skip seccomp is rejected at admission
+    # (not just warned). The warn/audit labels catch issues in dry-run / CI.
+    # Our pods already comply (non-root UID 1001, seccompProfile: RuntimeDefault,
+    # capabilities: drop ALL) — this makes the policy machine-enforced, not just
+    # documented.
+    #
+    # v1.31 is a POLICY-SEMANTICS pin, not a claim about the live cluster version.
+    # GKE Autopilot auto-upgrades independently. Do not mechanically match this to
+    # the control plane: review restricted-profile changes, validate every workload
+    # with server-side dry-run, then bump all three labels together. "latest" would
+    # let a control-plane upgrade tighten admission without a manifest review.
+    #
+    # PSA "restricted" is enforced at the API-server admission level, NOT at runtime.
+    # Our cluster uses GKE Dataplane V2 (ADVANCED_DATAPATH / eBPF) — network policy
+    # enforcement is built-in and does NOT require the networkPolicyConfig addon
+    # (which is correctly disabled). The two mechanisms are independent; PSA validates
+    # pod specs, Dataplane V2 enforces NetworkPolicy traffic rules.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.31
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.31
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.31

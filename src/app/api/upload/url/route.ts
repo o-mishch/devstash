@@ -4,7 +4,7 @@ import { authedRoute, rateLimited } from '@/lib/api/route'
 import { json, problem, parseOr422 } from '@/lib/api/http'
 import { getUploadUrlInput } from '@/lib/api/schemas/upload'
 import { checkRateLimit } from '@/lib/infra/rate-limit'
-import { getPresignedPostCredential, getSignedUrlExpiresAt } from '@/lib/storage/s3'
+import { getPresignedPutCredential, getSignedUrlExpiresAt } from '@/lib/storage/s3'
 import { getImageThumbnailKey, canGenerateImageThumbnail } from '@/lib/storage/image-thumbnails'
 import { writePendingUpload, sweepExpiredUploads } from '@/lib/storage/upload-tokens'
 import {
@@ -29,7 +29,7 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
   const { success, retryAfter } = await checkRateLimit('uploadUrl', userId)
   if (!success) return rateLimited(retryAfter)
 
-  const { fileName, fileSize } = parsed.data
+  const { fileName, fileSize, thumbSize } = parsed.data
   const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
 
   const isImage = ALLOWED_IMAGE_EXTS.has(ext)
@@ -45,11 +45,16 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
 
   const contentType = mimeType(fileName) || 'application/octet-stream'
   const originalKey = `${userId}/${crypto.randomUUID()}.${ext}`
-  const original = await getPresignedPostCredential(originalKey, contentType, maxBytes)
+  const original = await getPresignedPutCredential(originalKey, contentType, fileSize)
 
+  // A thumb credential is issued only when the client declares a thumbSize — its exact
+  // byte length must be signed into the URL, so we cannot presign a thumb we can't size.
   let thumb = null
-  if (isImage && canGenerateImageThumbnail(originalKey)) {
-    thumb = await getPresignedPostCredential(getImageThumbnailKey(originalKey), 'image/webp', THUMB_MAX_BYTES)
+  if (isImage && thumbSize && canGenerateImageThumbnail(originalKey)) {
+    if (thumbSize > THUMB_MAX_BYTES) {
+      return problem(400, `Thumbnail exceeds the ${THUMB_MAX_BYTES / 1024}KB limit.`)
+    }
+    thumb = await getPresignedPutCredential(getImageThumbnailKey(originalKey), 'image/webp', thumbSize)
   }
 
   const expiresAt = getSignedUrlExpiresAt().toISOString()

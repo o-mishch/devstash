@@ -4,7 +4,26 @@ import { Redis } from '@upstash/redis'
 
 let _client: Redis | null = null
 
+/**
+ * True on long-running deployments (GKE/Memorystore, local kind) where the app
+ * talks native TCP via ioredis. False on Vercel, where the connectionless
+ * @upstash/redis REST client is used. Gated solely by REDIS_URL — never set on
+ * Vercel — so the serverless path is byte-for-byte unchanged.
+ */
+export function isTcpRedis(): boolean {
+  return Boolean(process.env.REDIS_URL)
+}
+
 export function getRedis(): Redis | null {
+  if (isTcpRedis()) {
+    // Gated, synchronous require so ioredis (the native TCP backend in redis-tcp.ts)
+    // is never resolved on the Vercel/Upstash path — only loaded when REDIS_URL is set.
+    // Mirrors the @prisma/adapter-pg gate in db-local.ts. A sync require (not `await
+    // import`) is required because getRedis() has synchronous callers.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getTcpRedis } = require('./redis-tcp') as typeof import('@/lib/infra/redis-tcp')
+    return getTcpRedis()
+  }
   if (_client) return _client
   try {
     // 5s timeout per call — generous enough for serverless cold-start DNS+TLS overhead

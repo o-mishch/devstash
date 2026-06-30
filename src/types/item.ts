@@ -90,14 +90,19 @@ export interface SignedDownloadUrlResponse {
   expiresAt: string
 }
 
-export interface PresignedPostCredential {
+// Presigned PUT (not POST) — GCS S3-interop rejects x-amz-* POST policy forms.
+// `key` is the server-authoritative S3 object key the URL is signed for — the client uses
+// it verbatim (for item creation + cleanup) instead of parsing it out of `url`, whose path
+// layout differs between virtual-host (AWS/Vercel) and path-style (GCS/MinIO) endpoints.
+export interface PresignedPutCredential {
   url: string
-  fields: Record<string, string>
+  key: string
+  contentType: string
 }
 
 export interface UploadUrlResult {
-  original: PresignedPostCredential
-  thumb: PresignedPostCredential | null
+  original: PresignedPutCredential
+  thumb: PresignedPutCredential | null
   expiresAt: string
 }
 

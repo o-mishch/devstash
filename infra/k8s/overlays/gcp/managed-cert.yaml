@@ -1,0 +1,12 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: devstash-cert
+spec:
+  # Google-managed TLS cert — provisioned and auto-renewed by GCP once the
+  # Ingress is up and DNS for this domain points at the static IP. No cert-manager
+  # needed on GKE. Referenced by the Ingress annotation in kustomization.yaml.
+  # Overwritten from settings.yaml (data.domain) by a Kustomize replacement.
+  # Subdomain only (gke.devstash.one) — the apex devstash.one stays on Vercel.
+  domains:
+    - gke.devstash.one

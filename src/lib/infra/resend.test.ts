@@ -41,6 +41,10 @@ describe('resend helpers', () => {
 describe('sendEmail', () => {
   beforeEach(() => {
     vi.unstubAllEnvs()
+    // The Resend client is constructed lazily on first send and requires a key,
+    // so an actual send path needs one present (the DISABLE_EMAIL_VERIFICATION
+    // skip test overrides env itself and never reaches construction).
+    vi.stubEnv('RESEND_API_KEY', 're_test_key')
     vi.resetModules()
     mockSend.mockReset()
     mockSend.mockResolvedValue({ error: null })

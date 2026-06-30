@@ -1,0 +1,35 @@
+# Local NetworkPolicy egress. Kustomize strategic-merge REPLACES the egress list
+# (NetworkPolicy lists have no merge key), so this patch carries ALL required
+# egress rules — the base list is not preserved.
+#
+# Mirrors base/networkpolicy.yaml egress rules plus local backing-service ports
+# (MinIO, Mailpit) that are absent from the GCP overlay.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: devstash-web
+spec:
+  egress:
+    # DNS — required for in-cluster service resolution (postgres, redis, minio…).
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # In-cluster backing services.
+    # Redis on 6379 only (plain TCP locally — no GCP TLS port 6378).
+    - ports:
+        - protocol: TCP
+          port: 5432 # Postgres
+        - protocol: TCP
+          port: 6379 # Redis (plain TCP locally; GCP uses 6378 TLS)
+        - protocol: TCP
+          port: 9000 # MinIO S3 API (absent on GCP — uses GCS)
+        - protocol: TCP
+          port: 1025 # Mailpit SMTP (absent on GCP — uses Resend)
+        - protocol: TCP
+          port: 8025 # Mailpit HTTP readyz (absent on GCP)
+    # Outbound HTTPS — OAuth providers, Stripe webhooks, etc.
+    - ports:
+        - protocol: TCP
+          port: 443

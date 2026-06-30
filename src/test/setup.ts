@@ -19,6 +19,10 @@ vi.mock('@/lib/billing/access/pro-access-resolution', async (importOriginal) => 
 vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
   notFound: vi.fn(),
+  // Framework implementation selectively throws only Next.js control-flow errors.
+  // The default test double models the ordinary-error path by returning normally;
+  // tests that exercise control flow can override it to throw their sentinel.
+  unstable_rethrow: vi.fn(),
 }))
 
 vi.mock('next/headers', () => ({

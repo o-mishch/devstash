@@ -1,0 +1,107 @@
+# RedisInsight — on-demand web UI for the managed Memorystore instance.
+#
+# Memorystore has NO public IP and requires AUTH + TLS, so you cannot point a
+# laptop GUI straight at it. RedisInsight runs HERE, inside the cluster, where it
+# reaches Memorystore over the VPC private range — then you tunnel the UI to your
+# laptop with port-forward.
+#
+# Deliberately NOT in kustomization.yaml `resources` — it's a debugging tool you
+# apply only when needed, not part of the steady-state deploy.
+#
+# USAGE:
+#   kubectl apply -f infra/k8s/overlays/gcp/redisinsight.yaml
+#   kubectl -n devstash rollout status deploy/redisinsight
+#   kubectl -n devstash port-forward svc/redisinsight 5540:5540
+#   open http://localhost:5540
+#
+# Then "Add Redis database" with:
+#   Host     = tofu -chdir=infra/terraform/envs/dev output -raw redis_host
+#   Port     = 6378  (Memorystore for Redis TLS port — NOT 6379 or 6380)
+#   Password = the AUTH from the synced Secret:
+#       kubectl -n devstash get secret devstash-secrets \
+#         -o jsonpath='{.data.REDIS_URL}' | base64 -d   # → rediss://default:<AUTH>@host:6378
+#   Use TLS  = ON, then upload the CA (server-authentication):
+#       kubectl -n devstash get secret devstash-secrets \
+#         -o jsonpath='{.data.REDIS_CA_CERT}' | base64 -d > /tmp/memorystore-ca.pem
+#
+# Tear down when done:  kubectl -n devstash delete -f infra/k8s/overlays/gcp/redisinsight.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redisinsight
+  namespace: devstash
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: redisinsight
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redisinsight }
+  template:
+    metadata:
+      labels: { app: redisinsight }
+    spec:
+      # Pod-level security context — PSA "restricted" (namespace label) requires
+      # runAsNonRoot, seccompProfile, and no privilege escalation. RedisInsight 2.x
+      # ships as non-root (UID 1000) so these constraints are satisfied.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redisinsight
+          # Pin to a specific version — :latest is not reproducible and may introduce
+          # breaking UI changes. Check https://hub.docker.com/r/redis/redisinsight/tags
+          # and update when a new stable release is available.
+          image: redis/redisinsight:2.62
+          ports:
+            - { name: http, containerPort: 5540 }
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            # cpu limit required by GKE Autopilot (pods without cpu limits are
+            # billed at a higher burstable rate and may be evicted under pressure).
+            limits: { cpu: 500m, memory: 512Mi }
+          # Container-level security — PSA "restricted" requires all three of these
+          # at the container level in addition to the pod-level securityContext above.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # RedisInsight writes its database under /data; mount an emptyDir there
+            # so the root filesystem can be read-only (PSA restricted requirement).
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          # Ephemeral — RedisInsight's connection config persists only for the
+          # lifetime of this pod. Re-add the Memorystore connection after a restart.
+          # To persist connections, switch to a PVC (standard-rwo StorageClass on GKE).
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redisinsight
+  namespace: devstash
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: redisinsight
+spec:
+  type: ClusterIP
+  selector: { app: redisinsight }
+  ports:
+    - { port: 5540, targetPort: http }

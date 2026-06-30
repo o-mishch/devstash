@@ -1,0 +1,8 @@
+{
+  "format": "auto",
+  "output": "cli",
+  "min-pg-version": 16,
+  "max-risk": "low",
+  "require-lock-timeout": true,
+  "max-lock-timeout": 5000
+}

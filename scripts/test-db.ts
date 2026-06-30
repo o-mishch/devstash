@@ -34,12 +34,12 @@ async function main() {
   // Demo user
   console.log('\nDemo user:')
   const demoUser = await prisma.user.findUnique({
-    where: { email: 'demo@devstash.io' },
+    where: { email: 'demo@devstash.one' },
     select: { id: true, email: true, name: true, isPro: true, emailVerified: true },
   })
 
   if (!demoUser) {
-    console.log('  ✗ demo@devstash.io not found — run npm run db:seed')
+    console.log('  ✗ demo@devstash.one not found — run npm run db:seed')
   } else {
     console.log(`  ✓ ${demoUser.email} (${demoUser.name})`)
     console.log(`    isPro: ${demoUser.isPro}  emailVerified: ${demoUser.emailVerified?.toISOString() ?? 'null'}`)

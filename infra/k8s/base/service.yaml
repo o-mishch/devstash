@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+spec:
+  # ClusterIP: a stable in-cluster virtual IP + DNS name (devstash-web) that
+  # load-balances across the pods matching the selector. External traffic
+  # arrives via the Ingress, which routes to this Service. Overlays may switch
+  # this type (e.g. NodePort for local kind).
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 80          # the port the Service is reached on
+      targetPort: http  # forwards to the container's named "http" port (3000)

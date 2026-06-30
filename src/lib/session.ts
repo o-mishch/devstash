@@ -1,10 +1,9 @@
 import 'server-only'
 
 import { cache } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, unstable_rethrow } from 'next/navigation'
 import { auth } from '@/auth'
 import { logger } from '@/lib/infra/pino'
-import { isPrerenderInterrupt } from '@/lib/utils/url'
 
 const log = logger.child({ tag: 'session' })
 
@@ -12,9 +11,9 @@ export async function getSession() {
   try {
     return await auth()
   } catch (error) {
-    // Rethrow the prerender-abort signal so React/Next.js can handle it instead
-    // of swallowing and miscategorizing it as an auth failure.
-    if (isPrerenderInterrupt(error)) throw error
+    // Preserve all current and future Next.js control-flow errors before treating an
+    // auth exception as recoverable. Do not replace this with a digest allowlist.
+    unstable_rethrow(error)
     log.warn({ err: error }, 'Failed to read auth session')
     return null
   }

@@ -41,7 +41,7 @@ Use [Stripe test card numbers](https://docs.stripe.com/testing#cards) (e.g. `424
 
 ## Database maintenance
 
-Trim excess items from the demo account (`demo@devstash.io`). Keeps up to 10 items per type (pinned and favorites first); deletes the rest in batches. Requires `DATABASE_URL` in `.env` and an existing demo user (`npm run db:seed`).
+Trim excess items from the demo account (`demo@devstash.one`). Keeps up to 10 items per type (pinned and favorites first); deletes the rest in batches. Requires `DATABASE_URL` in `.env` and an existing demo user (`npm run db:seed`).
 
 ```bash
 npm run db:purge-demo-items
@@ -50,7 +50,7 @@ npm run db:purge-demo-items
 Related scripts:
 
 ```bash
-npm run db:purge-users   # delete all users except demo@devstash.io
+npm run db:purge-users   # delete all users except demo@devstash.one
 npm run db:test          # smoke-test DB connectivity and seed data
 ```
 

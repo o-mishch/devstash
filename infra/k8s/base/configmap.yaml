@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devstash-config
+  labels:
+    app.kubernetes.io/name: devstash
+data:
+  # NON-SECRET runtime config only. Anything sensitive (connection strings, API
+  # keys, AUTH_SECRET) lives in the Secret, never here — ConfigMaps are stored in
+  # plaintext and readable by anyone with namespace get access.
+  NODE_ENV: "production"
+  # PORT + HOSTNAME duplicate the Dockerfile ENV defaults (3000 / 0.0.0.0).
+  # Explicit here so a kubectl edit of the Deployment or a base override can't
+  # accidentally drop to loopback-only. These values must match containerPort
+  # in deployment.yaml and the BackendConfig healthCheck.port in the GCP overlay.
+  PORT: "3000"
+  HOSTNAME: "0.0.0.0"
+  LOG_LEVEL: "info"
+  # NEXTAUTH_URL placeholder — the GCP overlay's kustomize replacement
+  # (kustomization.yaml → replacements → data.nextAuthUrl from settings.yaml)
+  # overwrites this with "https://gke.devstash.one" at render time.
+  # This base value is never applied to the GCP cluster as-is; it only serves
+  # as a syntactically valid fallback so the base renders without errors in
+  # local/non-GCE overlays. The replacement is the authoritative source of truth.
+  # DO NOT change this independently — update settings.yaml instead.
+  NEXTAUTH_URL: "https://gke.devstash.one"

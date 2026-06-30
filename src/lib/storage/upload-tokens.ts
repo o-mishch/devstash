@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getRedis } from '@/lib/infra/redis'
 import { deleteFromS3, SIGNED_URL_TTL_SECONDS } from '@/lib/storage/s3'
 import { logger } from '@/lib/infra/pino'
+import { uploadUrlResultSchema } from '@/lib/api/schemas/upload'
 import type { UploadUrlResult } from '@/types/item'
 
 const log = logger.child({ tag: 'upload-tokens' })
@@ -12,14 +13,10 @@ const KEY_PREFIX = 'pending_upload:'
 const SWEEP_GRACE_SECONDS = 3600
 const REDIS_TTL_SECONDS = SIGNED_URL_TTL_SECONDS + SWEEP_GRACE_SECONDS
 
-const presignedPostSchema = z.object({ url: z.string(), fields: z.record(z.string(), z.string()) })
-
+// Reuse the same credential schema the route returns (PresignedPutCredential, incl. `key`) so
+// the stored token shape can never silently drift from what /upload/url writes.
 const storedUploadSchema = z.object({
-  result: z.object({
-    original: presignedPostSchema,
-    thumb: presignedPostSchema.nullable(),
-    expiresAt: z.string(),
-  }),
+  result: uploadUrlResultSchema,
   userId: z.string(),
   fileName: z.string(),
   fileSize: z.number(),
@@ -92,7 +89,7 @@ export async function consumePendingUpload(fileKey: string, userId: string): Pro
       data: {
         fileName: entry.fileName,
         fileSize: entry.fileSize,
-        thumbKey: entry.result.thumb?.fields['key'] ?? null,
+        thumbKey: entry.result.thumb?.key ?? null,
       },
     }
   } catch (err) {
@@ -142,7 +139,7 @@ export async function sweepExpiredUploads(): Promise<void> {
 
           // Presign window closed — delete S3 objects then the Redis key
           await deleteFromS3(key.slice(KEY_PREFIX.length))
-          const thumbKey = entry.result.thumb?.fields['key']
+          const thumbKey = entry.result.thumb?.key
           if (thumbKey) await deleteFromS3(thumbKey)
           await redis.del(key)
           swept++

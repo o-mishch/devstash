@@ -1,0 +1,46 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: devstash-web
+  minReplicas: 2
+  maxReplicas: 10
+  # This HPA is the only owner of desired replica count. Keep `spec.replicas`
+  # absent from deployment.yaml so declarative re-applies cannot reset a scale-out.
+  metrics:
+    # CPU-only scaling. A Node.js heap can stay high after a traffic spike and does
+    # not necessarily fall with request load, so memory utilization is a poor sole
+    # signal and can retain unnecessary Autopilot capacity. CPU is the initial proxy;
+    # add request-rate/custom metrics only after production telemetry justifies them.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      # Filter CPU spikes shorter than 30s. This is intentionally slower than the
+      # Kubernetes default (0s). With no custom policies, the controller can add the
+      # larger of 100% or 4 pods per 15s; "4 pods" is not a cap (2 can scale to 6).
+      stabilizationWindowSeconds: 30
+    scaleDown:
+      # Scale down slowly to avoid thrashing when load is bursty.
+      stabilizationWindowSeconds: 300
+      # Constrain step size to the smaller of 25% or 2 pods per 2-minute window.
+      # Both policies are required for selectPolicy: Min to have meaning.
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 120
+        - type: Pods
+          value: 2
+          periodSeconds: 120
+      selectPolicy: Min

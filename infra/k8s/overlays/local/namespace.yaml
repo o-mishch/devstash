@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devstash
+  labels:
+    # Mirror of overlays/gcp/namespace.yaml — same PSA profile so local catches
+    # security-context regressions before they reach the cluster. Pods already
+    # comply (non-root UID 1001, seccompProfile: RuntimeDefault, drop ALL caps).
+    #
+    # v1.31 pins Pod Security policy semantics; it does not need to match the kind
+    # node version. Review restricted-profile changes and bump all labels intentionally.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.31
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.31
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.31

@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/ui'
 import { api } from '@/lib/api/client'
-import { uploadToPresignedPost } from '@/lib/storage-client/s3-upload-client'
+import { uploadToPresignedPut, type PresignedPutResult } from '@/lib/storage-client/s3-upload-client'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { FILE_UPLOAD_CONFIG, IMAGE_THUMBNAIL_MAX_WIDTH, IMAGE_THUMBNAIL_QUALITY } from '@/lib/utils/constants'
@@ -83,8 +83,10 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       thumb = await buildImageThumb(file)
     }
 
+    // thumbSize is the exact byte size of the WebP thumb built above — the server signs it
+    // into the thumb's presigned PUT so S3/GCS enforce the size (see getPresignedPutCredential).
     const { data: urlData, error: urlError } = await api.POST('/upload/url', {
-      body: { fileName: file.name, fileSize: file.size },
+      body: { fileName: file.name, fileSize: file.size, thumbSize: thumb?.blob.size },
     })
 
     if (urlError) {
@@ -94,32 +96,23 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     }
 
     const { original, thumb: thumbCredential } = urlData
-    const originalKey = original.fields['key']
+    // Use the server-signed key verbatim — never parse it from the URL, whose path layout
+    // differs between virtual-host (AWS/Vercel) and path-style (GCS/MinIO) endpoints.
+    const originalKey = original.key
 
-    // POST multipart to S3 using the presigned policy credential.
-    // Per S3 POST spec, policy fields must come before the file.
-    // Content-Type is carried as a form field inside original.fields — do NOT set it as an HTTP header
-    // (the browser auto-sets multipart/form-data + boundary for FormData bodies).
-    const formData = new FormData()
-    Object.entries(original.fields).forEach(([k, v]) => formData.append(k, v))
-    formData.append('file', file)
-
-    // Thumb uses a presigned POST policy — same pattern as the original upload.
-    // S3 enforces both Content-Type and content-length-range via the signed policy.
-    const uploads: Promise<boolean>[] = [
-      uploadToPresignedPost(original.url, formData, { onProgress: setProgress }),
+    const uploads: Promise<PresignedPutResult>[] = [
+      uploadToPresignedPut(original.url, file, original.contentType, { onProgress: setProgress }),
     ]
     if (thumb && thumbCredential) {
-      const thumbForm = new FormData()
-      Object.entries(thumbCredential.fields).forEach(([k, v]) => thumbForm.append(k, v))
-      thumbForm.append('file', thumb.blob)
-      uploads.push(uploadToPresignedPost(thumbCredential.url, thumbForm))
+      uploads.push(uploadToPresignedPut(thumbCredential.url, thumb.blob, thumbCredential.contentType))
     }
 
     const results = await Promise.all(uploads)
-    if (results.some((ok) => !ok)) {
+    const failed = results.find((r) => !r.ok)
+    if (failed) {
       setProgress(null)
-      setError('Upload failed. Please try again.')
+      // Include the S3 status (0 = network failure) so a signature/size rejection is diagnosable.
+      setError(failed.status ? `Upload failed (HTTP ${failed.status}). Please try again.` : 'Upload failed. Please try again.')
       // Cleanup goes through our server (DELETE /api/upload → server calls S3), not direct S3.
       void api.DELETE('/upload', { params: { query: { key: originalKey } } })
       return

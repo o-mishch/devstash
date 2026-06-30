@@ -28,9 +28,10 @@ function reapplyRatelimitImpl(): void {
 vi.mock('@/lib/infra/redis', () => ({
   RATE_LIMIT_NS: 'devstash:test',
   getRedis: vi.fn(),
+  isTcpRedis: vi.fn(() => false),
 }))
 
-import { getRedis } from '@/lib/infra/redis'
+import { getRedis, isTcpRedis } from '@/lib/infra/redis'
 import {
   rateLimitAction,
   withRateLimit,
@@ -43,6 +44,7 @@ import {
 import { AI_FEATURE_HOURLY_LIMIT } from '@/lib/utils/constants'
 
 const mockGetRedis = getRedis as ReturnType<typeof vi.fn>
+const mockIsTcpRedis = isTcpRedis as ReturnType<typeof vi.fn>
 
 describe('rateLimitAction', () => {
   beforeEach(() => {
@@ -216,6 +218,51 @@ describe('resetRateLimit', () => {
   it('calls resetUsedTokens on the keyed limiter', async () => {
     await resetRateLimit('aiBrainDump', 'user-1')
     expect(mockResetUsedTokens).toHaveBeenCalledWith('user-1')
+  })
+})
+
+// Native TCP backend (ioredis → Memorystore / local Redis). isTcpRedis() flips the
+// limiter to the Lua sliding-window path; @upstash/ratelimit is never constructed.
+describe('rate-limit TCP (ioredis) backend', () => {
+  const mockEval = vi.fn()
+  const mockDel = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.unstubAllEnvs()
+    resetRateLimitersForTests()
+    mockIsTcpRedis.mockReturnValue(true)
+    mockGetRedis.mockReturnValue({ eval: mockEval, del: mockDel })
+  })
+
+  it('allows when the Lua script returns success', async () => {
+    mockEval.mockResolvedValue([1, 4, Date.now() + 60_000])
+    const result = await rateLimitAction('login', 'user-1')
+    expect(result).toBeNull()
+    expect(mockEval).toHaveBeenCalledOnce()
+    // bucket key uses the shared rl namespace + action + identifier
+    expect(mockEval.mock.calls[0][1]).toEqual(['devstash:test:login:user-1'])
+  })
+
+  it('denies when the Lua script returns failure', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    mockEval.mockResolvedValue([0, 0, Date.now() + 120_000])
+    const result = await rateLimitAction('login', 'user-1')
+    expect(result?.success).toBe(false)
+    expect(result?.message).toMatch(/Too many attempts/)
+  })
+
+  it('fails open in development when eval throws', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    mockEval.mockRejectedValue(new Error('redis down'))
+    const result = await rateLimitAction('login', 'user-1')
+    expect(result).toBeNull()
+  })
+
+  it('resetRateLimit deletes the bucket key', async () => {
+    mockDel.mockResolvedValue(1)
+    await resetRateLimit('aiBrainDump', 'user-1')
+    expect(mockDel).toHaveBeenCalledWith('devstash:test:aiBrainDump:user-1')
   })
 })
 

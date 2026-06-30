@@ -3419,6 +3419,11 @@
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
+                  },
+                  "thumbSize": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": [
@@ -8454,12 +8459,12 @@
         "type": "object",
         "properties": {
           "original": {
-            "$ref": "#/components/schemas/PresignedPostCredential"
+            "$ref": "#/components/schemas/PresignedPutCredential"
           },
           "thumb": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/PresignedPostCredential"
+                "$ref": "#/components/schemas/PresignedPutCredential"
               },
               {
                 "type": "null"
@@ -8477,25 +8482,23 @@
         ],
         "additionalProperties": false
       },
-      "PresignedPostCredential": {
+      "PresignedPutCredential": {
         "type": "object",
         "properties": {
           "url": {
             "type": "string"
           },
-          "fields": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "string"
-            }
+          "key": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
           }
         },
         "required": [
           "url",
-          "fields"
+          "key",
+          "contentType"
         ],
         "additionalProperties": false
       },

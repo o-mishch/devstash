@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "mcp__neon__run_sql_transaction"
+      "Skill(deep-research)",
+      "Skill(deep-research:*)"
     ],
     "deny": [
       "Bash(npx prisma db push*)",

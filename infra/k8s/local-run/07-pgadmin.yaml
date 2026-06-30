@@ -1,0 +1,114 @@
+# pgAdmin 4 — the web UI for the in-cluster Postgres, with the DevStash connection
+# pre-configured so the server tree appears and connects with ZERO clicks. Exposed on
+# NodePort 30978 → mapped to localhost:8978 by the kind config.
+#
+# Why pgAdmin (not CloudBeaver): CloudBeaver CE cannot ship a saved password in a
+# plain config file — it encrypts credentials into credentials-config.json, which
+# can't be hand-authored (confirmed by CloudBeaver docs + upstream issue #3731).
+# pgAdmin preconfigures the connection from a plain servers.json.
+#
+# Zero-click connect needs TWO things working together:
+#  1. The in-cluster Postgres uses trust auth (POSTGRES_HOST_AUTH_METHOD in
+#     01-postgres.yaml) — no password is actually required to connect.
+#  2. A pgpass referenced by the server's `PassFile` — without ANY stored password
+#     pgAdmin pops a "enter password" dialog before connecting; with a pgpass present
+#     it skips that prompt and connects straight through (trust accepts whatever it
+#     sends). The pgpass host is "*" because pgAdmin hands libpq the resolved Service
+#     ClusterIP, not the literal "postgres".
+#
+# LOCAL ONLY: throwaway login; the target DB is passwordless (trust) for the local
+# kind cluster only.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-config
+  namespace: devstash
+data:
+  servers.json: |
+    {
+      "Servers": {
+        "1": {
+          "Name": "DevStash Postgres (local)",
+          "Group": "DevStash",
+          "Host": "postgres",
+          "Port": 5432,
+          "MaintenanceDB": "devstash",
+          "Username": "devstash",
+          "SSLMode": "prefer",
+          "PassFile": "/pgpass-dir/pgpass"
+        }
+      }
+    }
+  # hostname:port:database:username:password — host "*" so it matches the resolved IP.
+  pgpass: |
+    *:5432:*:devstash:devstash
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgadmin
+  namespace: devstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: pgadmin }
+  template:
+    metadata:
+      labels: { app: pgadmin }
+    spec:
+      # libpq requires the pgpass to be 0600 and owned by the runtime uid (5050), and
+      # the configMap mount is read-only — so copy it into a writable emptyDir first.
+      initContainers:
+        - name: seed-pgpass
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - |
+              cp /seed/pgpass /pgpass-dir/pgpass
+              chown 5050:5050 /pgpass-dir/pgpass
+              chmod 600 /pgpass-dir/pgpass
+          volumeMounts:
+            - { name: config, mountPath: /seed }
+            - { name: pgpass, mountPath: /pgpass-dir }
+      containers:
+        - name: pgadmin
+          image: dpage/pgadmin4:latest
+          env:
+            # Throwaway login for the pgAdmin UI itself (local only). pgAdmin validates
+            # this as a real email; .local is rejected, so use a normal domain (the
+            # address is throwaway-local and never sends mail).
+            - { name: PGADMIN_DEFAULT_EMAIL, value: admin@devstash.dev }
+            - { name: PGADMIN_DEFAULT_PASSWORD, value: 'admin12345' }
+            # Import the pre-defined server on first boot.
+            - { name: PGADMIN_SERVER_JSON_FILE, value: /pgadmin4/servers.json }
+            # Skip the master-password prompt (local throwaway instance only).
+            - { name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED, value: 'False' }
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            # servers.json is read-only — pgAdmin only reads it at boot.
+            - { name: config, mountPath: /pgadmin4/servers.json, subPath: servers.json }
+            - { name: pgpass, mountPath: /pgpass-dir }
+          readinessProbe:
+            httpGet: { path: /misc/ping, port: 80 }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap: { name: pgadmin-config }
+        - name: pgpass
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgadmin
+  namespace: devstash
+spec:
+  # NodePort so the web UI is reachable from the host at localhost:8978
+  # (kind maps 30978 → 8978) — no port-forward.
+  type: NodePort
+  selector: { app: pgadmin }
+  ports:
+    - { port: 80, targetPort: 80, nodePort: 30978 }

@@ -31,7 +31,6 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
     "@aws-sdk/client-s3": "^3.1075.0",
-    "@aws-sdk/s3-presigned-post": "^3.1075.0",
     "@aws-sdk/s3-request-presigner": "^3.1075.0",
     "@base-ui/react": "^1.6.0",
     "@dnd-kit/helpers": "^0.5.0",
@@ -77,6 +76,13 @@
     "zod-openapi": "^6.0.0",
     "zustand": "^5.0.14"
   },
+  "_comment_optionalDependencies": "Self-hosted (GKE/local kind) path ONLY — loaded via runtime-gated require() in db-local.ts / redis-tcp.ts / email-local.ts, externalized in next.config.ts, never reached on Vercel/Neon. Optional so a Vercel `npm ci --omit=optional` can skip them; the container/local build does a full install and gets them.",
+  "optionalDependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "ioredis": "^5.11.1",
+    "nodemailer": "^7.0.13",
+    "pg": "^8.22.0"
+  },
   "overrides": {
     "@auth/prisma-adapter": {
       "@prisma/client": "$@prisma/client"
@@ -91,10 +97,13 @@
     "postcss": "^8.5.10"
   },
   "devDependencies": {
+    "@flvmnt/pgfence": "^0.6.1",
     "@tailwindcss/postcss": "^4",
     "@tanstack/react-query-devtools": "^5.101.1",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^26",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.9",

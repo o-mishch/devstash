@@ -68,3 +68,15 @@ tmp
 !.env.example
 *.mov
 *.jpeg
+
+# Terraform — never commit real values or state (may contain plaintext secrets)
+*.tfvars
+!*.tfvars.example
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform/
+# .terraform.lock.hcl is intentionally tracked — it pins provider versions so
+# `tofu init` on any machine or CI run produces the same providers. Only the
+# .terraform/ working directory (downloaded plugins) is excluded.
+**.obsidian

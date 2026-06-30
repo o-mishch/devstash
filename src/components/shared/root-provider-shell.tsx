@@ -41,7 +41,7 @@ export function RootProviderShell({ children, theme, colorMode, themeScript }: R
           {children}
           <Toaster />
         </AppQueryClientProvider>
-        <Analytics />
+        {process.env.VERCEL === "1" && <Analytics />}
         <ServiceWorkerRegistration />
       </body>
     </html>

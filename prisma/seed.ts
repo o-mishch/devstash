@@ -2,10 +2,29 @@ import 'dotenv/config'
 import bcrypt from 'bcryptjs'
 import { PrismaClient } from '../src/generated/prisma/client'
 import { ContentType } from '../src/generated/prisma'
-import { PrismaNeon } from '@prisma/adapter-neon'
+import type { SqlDriverAdapterFactory } from '@prisma/client/runtime/client'
 
-const adapter = new PrismaNeon({ connectionString: process.env.DIRECT_URL })
-const prisma = new PrismaClient({ adapter })
+// Branch-isolated DB adapter: production/Neon seeding uses @prisma/adapter-neon;
+// local-run (kind, DB_LOCAL=1) seeds a plain Postgres over TCP via @prisma/adapter-pg
+// (the Neon serverless driver can't handshake a plain connection). Each adapter is
+// loaded with a DYNAMIC import on its own branch so the OTHER branch's package is
+// never parsed/loaded — keeping the Vercel/Neon path free of the local-only pg deps
+// (mirrors the dynamic-import pattern in src/lib/infra/email-local.ts).
+async function createAdapter(): Promise<SqlDriverAdapterFactory> {
+  const connectionString = process.env.DIRECT_URL
+  if (process.env.DB_LOCAL === '1') {
+    const { PrismaPg } = await import('@prisma/adapter-pg')
+    return new PrismaPg({ connectionString })
+  }
+  const { PrismaNeon } = await import('@prisma/adapter-neon')
+  return new PrismaNeon({ connectionString })
+}
+
+const prisma = new PrismaClient({ adapter: await createAdapter() })
+
+// run.sh only needs the system item types (so the app can create items) — not the
+// demo user or the 70k bulk load-test rows. SEED_ITEM_TYPES_ONLY=1 stops after them.
+const itemTypesOnly = process.env.SEED_ITEM_TYPES_ONLY === '1'
 
 const BULK_COUNT = 10_000
 const BATCH_SIZE = 1_000
@@ -771,13 +790,18 @@ async function main() {
     if (!existing) await prisma.itemType.create({ data: type })
   }
 
+  if (itemTypesOnly) {
+    console.log('SEED_ITEM_TYPES_ONLY=1 — done (skipping demo user and bulk data).')
+    return
+  }
+
   console.log('Seeding demo user...')
   const passwordHash = await bcrypt.hash('12345678', 12)
   const user = await prisma.user.upsert({
-    where: { email: 'demo@devstash.io' },
+    where: { email: 'demo@devstash.one' },
     update: { password: passwordHash },
     create: {
-      email: 'demo@devstash.io',
+      email: 'demo@devstash.one',
       name: 'Demo User',
       password: passwordHash,
       isPro: false,

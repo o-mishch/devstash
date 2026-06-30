@@ -1,3 +1,4 @@
+import { connection } from 'next/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
@@ -17,6 +18,12 @@ interface SettingsPageProps {
 }
 
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
+  // This page reads live billing state from Stripe (which needs STRIPE_SECRET_KEY).
+  // `connection()` marks the render as request-time so Next never evaluates it during
+  // `next build` — required for container builds that have no secrets, and the
+  // cacheComponents-compatible replacement for `export const dynamic = 'force-dynamic'`.
+  await connection()
+
   const session = await getCachedSession()
   if (!session?.user?.id) redirect('/sign-in')
 

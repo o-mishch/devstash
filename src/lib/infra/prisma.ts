@@ -2,12 +2,16 @@ import 'server-only'
 
 import { PrismaClient } from '@/generated/prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
+import { createLocalDbAdapter } from '@/lib/infra/db-local'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'prisma' })
 
 function createPrismaClient() {
-  const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL })
+  // In local dev (DB_LOCAL=1) use the standard node-postgres adapter so interactive
+  // transactions work against in-cluster Postgres; otherwise the production Neon
+  // serverless adapter, unchanged.
+  const adapter = createLocalDbAdapter() ?? new PrismaNeon({ connectionString: process.env.DATABASE_URL })
   return new PrismaClient({ adapter }).$extends({
     query: {
       // `verification_tokens` is DEPRECATED — all auth tokens now live in Redis (see

@@ -1,0 +1,22 @@
+version: 2
+updates:
+  # Action references are pinned to full commit SHAs for supply-chain integrity.
+  # Dependabot, not ad-hoc AI edits, is the reviewable path for advancing those SHAs
+  # and their trailing major-version comments.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Keeps the exact Node/Alpine base in Dockerfile current with security releases.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Opens reviewed provider updates within the constraints in versions.tf and updates
+  # the committed lock file. Major upgrades remain blocked by the `~>` constraint.
+  - package-ecosystem: terraform
+    directory: /infra/terraform/envs/dev
+    schedule:
+      interval: weekly

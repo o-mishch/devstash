@@ -1,0 +1,119 @@
+# Local replacements for the last two SaaS dependencies:
+#   MinIO   — S3-compatible object storage (replaces AWS S3)
+#   Mailpit — SMTP server + web UI (captures email instead of Resend)
+# Both are dev-only; the app reaches them via connection config — setting
+# AWS_ENDPOINT_URL_S3 (MinIO) and SMTP_HOST (Mailpit) is what activates each path.
+
+# ───────────────────────── MinIO ─────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: devstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: minio }
+  template:
+    metadata:
+      labels: { app: minio }
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ['server', '/data', '--console-address', ':9001']
+          env:
+            - { name: MINIO_ROOT_USER, value: minioadmin }
+            - { name: MINIO_ROOT_PASSWORD, value: minioadmin }
+          ports:
+            - { containerPort: 9000 } # S3 API
+            - { containerPort: 9001 } # web console
+          readinessProbe:
+            httpGet: { path: /minio/health/ready, port: 9000 }
+            initialDelaySeconds: 4
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: devstash
+spec:
+  # NodePort so BOTH the MinIO console AND the S3 API are reachable from the host:
+  #   localhost:9001 (kind maps 30901 → 9001) — web console
+  #   localhost:9000 (kind maps 30900 → 9000) — S3 API
+  # The S3 API MUST be host-reachable because the browser uploads/downloads files
+  # directly to it via presigned URLs. The app signs those URLs against
+  # http://localhost:9000 (AWS_ENDPOINT_URL_S3 in the Secret); a socat sidecar on
+  # the app pod makes that same hostname resolve to MinIO from inside the cluster,
+  # so one identical endpoint is signed pod-side and browser-side — SigV4 GET
+  # signatures (which sign the Host header) stay valid on both. See infra/docs/07-local-run.md.
+  type: NodePort
+  selector: { app: minio }
+  ports:
+    - { name: s3, port: 9000, targetPort: 9000, nodePort: 30900 }
+    - { name: console, port: 9001, targetPort: 9001, nodePort: 30901 }
+---
+# One-shot Job: create the uploads bucket and make it publicly readable (so signed
+# GET URLs and direct reads work the same as a typical S3 dev bucket).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket-init
+  namespace: devstash
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          command: ['/bin/sh', '-c']
+          args:
+            - |
+              until mc alias set local http://minio:9000 minioadmin minioadmin; do
+                echo "waiting for minio..."; sleep 2;
+              done
+              mc mb --ignore-existing local/devstash-uploads
+              mc anonymous set download local/devstash-uploads
+              echo "bucket ready"
+---
+# ───────────────────────── Mailpit ─────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  namespace: devstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mailpit }
+  template:
+    metadata:
+      labels: { app: mailpit }
+    spec:
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:latest
+          ports:
+            - { containerPort: 1025 } # SMTP
+            - { containerPort: 8025 } # web UI
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8025 }
+            initialDelaySeconds: 3
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  namespace: devstash
+spec:
+  # NodePort so the Mailpit web UI is reachable from the host at localhost:8025
+  # (kind maps 30825 → 8025) — no port-forward. SMTP stays cluster-internal.
+  type: NodePort
+  selector: { app: mailpit }
+  ports:
+    - { name: smtp, port: 1025, targetPort: 1025 }
+    - { name: ui, port: 8025, targetPort: 8025, nodePort: 30825 }

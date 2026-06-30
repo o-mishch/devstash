@@ -1,0 +1,16 @@
+# Local-only delta on the base web Service: switch ClusterIP → NodePort so kind's
+# port mapping (containerPort 30080 → host 8080, see local-run/kind-config.yaml)
+# reaches the app without a port-forward. The GCP overlay keeps the base ClusterIP
+# (traffic arrives via the GCE Ingress / NEG).
+# Ports merge by `port`, so 80 is matched and nodePort is added; targetPort `http`
+# is inherited from the base.
+apiVersion: v1
+kind: Service
+metadata:
+  name: devstash-web
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      nodePort: 30080

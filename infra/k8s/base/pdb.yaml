@@ -1,0 +1,23 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+spec:
+  # During voluntary disruptions keep at least half of the desired replicas serving.
+  # Kubernetes rounds percentage minAvailable values UP: 2 replicas -> 1 available,
+  # 3 -> 2, 4 -> 2. The percentage scales with the HPA; an absolute 1 would preserve
+  # only one pod even when the workload had scaled much higher.
+  #
+  # unhealthyPodEvictionPolicy: AlwaysAllow (GA in k8s 1.27, GKE Autopilot ≥ 1.27):
+  # Without this, a crashlooping pod counts toward the PDB budget and can BLOCK
+  # node drain indefinitely — the node needs to evict the pod to free itself, but
+  # the PDB says "don't evict yet." AlwaysAllow lets the eviction proceed even
+  # for unhealthy pods so a bad pod never wedges cluster upgrades/scale-down.
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  minAvailable: "50%"
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: devstash
+      app.kubernetes.io/component: web

@@ -1,0 +1,40 @@
+# Keep the build context small + avoid leaking local secrets into the image.
+# See infra/docs/01-docker.md.
+
+# Dependencies & build output (re-created inside the image)
+node_modules
+.next
+out
+build
+coverage
+
+# Local env / secrets — never copy these into an image
+.env
+.env.*
+!.env.example
+
+# VCS & tooling
+.git
+.github
+.gitignore
+.husky
+*.log
+
+# Editor / OS cruft
+.vscode
+.idea
+.DS_Store
+
+# Tests & local-only artifacts
+.playwright-mcp
+playwright-report
+test-results
+*.test.ts
+*.spec.ts
+
+# This learning track + infra (not needed at runtime)
+docs
+infra
+.agents
+.claude
+context

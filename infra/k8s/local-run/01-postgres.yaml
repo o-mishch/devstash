@@ -1,0 +1,104 @@
+# Postgres for the local run. The app connects directly over TCP via Prisma's
+# standard node-postgres adapter (DB_LOCAL=1, see src/lib/infra/db-local.ts) — no
+# proxy needed, and interactive transactions work.
+#
+# PostgreSQL 16 self-hosted in-cluster: the local analog of GKE's managed Cloud SQL
+# (modules/cloudsql, database_version = "POSTGRES_16"). Both are plain PostgreSQL
+# reached over TCP by the same node-postgres adapter (DB_LOCAL=1) running the same
+# migrations — so the local run stays "fully local, no cloud, no cost" while matching
+# GCP exactly on PostgreSQL major version, sslmode handling, and the pg_trgm extension
+# that prisma/schema.prisma requires.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: devstash
+data:
+  # pg_trgm is required by prisma/schema.prisma (datasource extensions).
+  init.sql: |
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+---
+# Static PVC owned by the single replica — persists data across pod restarts.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: devstash
+spec:
+  accessModes: [ReadWriteOnce]
+  # kind's default StorageClass (local-path-provisioner); GCP uses standard-rwo.
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+---
+# StatefulSet (not Deployment) for stable identity + a stably-owned data PVC.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: devstash
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          # Pinned to postgres:16-alpine to EXACTLY match Cloud SQL POSTGRES_16
+          # (modules/cloudsql/main.tf: database_version = "POSTGRES_16").
+          # Major version MUST stay in sync — query planner, pg_trgm function
+          # signatures, and migration behavior can differ across major versions.
+          # When Cloud SQL is upgraded to POSTGRES_17, change BOTH:
+          #   1. modules/cloudsql/main.tf  database_version = "POSTGRES_17"
+          #   2. This image tag → postgres:17-alpine
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER, value: devstash }
+            - { name: POSTGRES_PASSWORD, value: devstash }
+            - { name: POSTGRES_DB, value: devstash }
+            # trust auth: any connection is accepted without a password (the password
+            # above still exists, it's just not required). LOCAL throwaway DB only.
+            # This is what lets the pgAdmin web UI connect to the preconfigured server
+            # with zero clicks — pgAdmin (like CloudBeaver) cannot reliably auto-apply
+            # a saved password from a plain config file, so we drop the password
+            # requirement instead. The app's secret still sends a password; trust
+            # simply ignores it. Never use trust outside a local throwaway cluster.
+            - { name: POSTGRES_HOST_AUTH_METHOD, value: trust }
+            # PGDATA points at a subdirectory of the mounted volume so initdb does
+            # not trip over the volume root (lost+found etc.). Data now persists in
+            # the PVC across pod restarts (was ephemeral when this was a Deployment).
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: initdb, mountPath: /docker-entrypoint-initdb.d }
+          readinessProbe:
+            exec: { command: ['pg_isready', '-U', 'devstash'] }
+            initialDelaySeconds: 3
+            periodSeconds: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: postgres-data }
+        - name: initdb
+          configMap: { name: postgres-init }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: devstash
+spec:
+  # NodePort so the DB is reachable from the host at localhost:55432 (kind maps
+  # 30432 → 55432) for direct psql / GUI access. In-cluster pods still use the
+  # stable DNS name postgres:5432. Also the StatefulSet's governing service
+  # (serviceName: postgres).
+  type: NodePort
+  selector: { app: postgres }
+  ports:
+    - { port: 5432, targetPort: 5432, nodePort: 30432 }

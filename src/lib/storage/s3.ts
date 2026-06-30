@@ -1,9 +1,9 @@
 import 'server-only'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post'
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { logger } from '@/lib/infra/pino'
-import type { PresignedPostCredential } from '@/types/item'
+import { localS3Overrides } from '@/lib/storage/s3-local'
+import type { PresignedPutCredential } from '@/types/item'
 
 const log = logger.child({ tag: 's3' })
 
@@ -19,6 +19,9 @@ function getClient(): S3Client {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
       },
+      // Endpoint comes from AWS_ENDPOINT_URL_S3 (read natively by the SDK).
+      // localS3Overrides() adds only forcePathStyle for MinIO; {} in production.
+      ...localS3Overrides(),
     })
   }
   return _client
@@ -113,23 +116,38 @@ export async function getSignedDownloadUrl(
   return getSignedUrl(getClient(), command, { expiresIn })
 }
 
-export async function getPresignedPostCredential(
+// Presigned PUT URL for direct browser-to-S3 uploads. GCS S3-interop supports
+// query-string-signed PUT (AWS4-HMAC-SHA256) but NOT presigned POST policies
+// (which use x-amz-* form fields that GCS rejects). The browser PUTs the raw
+// file body directly.
+//
+// `signableHeaders` is REQUIRED for the size/type guarantees to hold: the presigner
+// adds `content-type` to its default unsignableHeaders, and `content-length` is not
+// signed unless requested — so without this Set neither would land in
+// X-Amz-SignedHeaders and S3/GCS would accept ANY size or type. Listing both forces
+// them into the signature, so S3/GCS reject a PUT whose Content-Type or byte length
+// differs from what we signed. ContentLength enforces an EXACT match (presigned PUT
+// has no content-length-range); callers pass the exact size they will upload. Browsers
+// set Content-Length from the blob (a forbidden header JS cannot override), so a client
+// cannot understate the size to obtain a credential and then send more. Verified against
+// the AWS SDK v3 presigner source + GCS V4 signing (storage.googleapis.com enforces it).
+export async function getPresignedPutCredential(
   key: string,
   contentType: string,
-  maxBytes: number,
+  contentLength: number,
   expiresIn = SIGNED_URL_TTL_SECONDS
-): Promise<PresignedPostCredential> {
-  const { url, fields } = await createPresignedPost(getClient(), {
-    Bucket: getBucket(),
-    Key: key,
-    Conditions: [
-      ['content-length-range', 1, maxBytes],
-      ['eq', '$Content-Type', contentType],
-    ],
-    Fields: { 'Content-Type': contentType },
-    Expires: expiresIn,
-  })
-  return { url, fields }
+): Promise<PresignedPutCredential> {
+  const url = await getSignedUrl(
+    getClient(),
+    new PutObjectCommand({
+      Bucket: getBucket(),
+      Key: key,
+      ContentType: contentType,
+      ContentLength: contentLength,
+    }),
+    { expiresIn, signableHeaders: new Set(['content-type', 'content-length']) },
+  )
+  return { url, key, contentType }
 }
 
 export function getSignedUrlExpiresAt(expiresIn = SIGNED_URL_TTL_SECONDS): Date {

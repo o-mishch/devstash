@@ -1,5 +1,5 @@
 import { api } from '@/lib/api/client'
-import { uploadToPresignedPost } from './s3-upload-client'
+import { uploadToPresignedPut } from './s3-upload-client'
 
 export interface UploadFileItemInput {
   file: File
@@ -22,15 +22,13 @@ export async function uploadFileItem(input: UploadFileItemInput): Promise<Upload
     return { ok: false, message: presignError?.message ?? 'Could not start the upload' }
   }
 
-  const key = presign.original.fields['key']
-  const formData = new FormData()
-  Object.entries(presign.original.fields).forEach(([k, v]) => formData.append(k, v))
-  formData.append('file', file)
-
-  const uploaded = await uploadToPresignedPost(presign.original.url, formData, { onProgress })
-  if (!uploaded) {
+  // Use the server-signed key verbatim — never parse it from the URL (path layout varies by endpoint).
+  const key = presign.original.key
+  const uploaded = await uploadToPresignedPut(presign.original.url, file, presign.original.contentType, { onProgress })
+  if (!uploaded.ok) {
     void api.DELETE('/upload', { params: { query: { key } } })
-    return { ok: false, message: 'Upload failed. Please try again.' }
+    const suffix = uploaded.status ? ` (HTTP ${uploaded.status})` : ''
+    return { ok: false, message: `Upload failed${suffix}. Please try again.` }
   }
 
   const { data: item, error: itemError } = await api.POST('/items', {

@@ -1,10 +1,10 @@
 import 'server-only'
 import { type NextRequest, NextResponse } from 'next/server'
+import { unstable_rethrow } from 'next/navigation'
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit, deniedMessage, type RateLimitKey } from '@/lib/infra/rate-limit'
 import { logger } from '@/lib/infra/pino'
-import { isPrerenderInterrupt } from '@/lib/utils/url'
 import { ErrorMessage } from './error-messages'
 import { problem } from './http'
 
@@ -60,8 +60,10 @@ async function authGate(opts: AuthedRouteOptions): Promise<AuthGate> {
 }
 
 function fail500(err: unknown, userId?: string): NextResponse {
-  // Let Next.js's prerender-abort signal propagate — it's not a 500.
-  if (isPrerenderInterrupt(err)) throw err
+  // Must be first: Next.js owns redirect/notFound/dynamic-prerender control-flow
+  // errors and extends that set across releases. The framework helper rethrows only
+  // its internal signals; maintaining digest strings here already drifted in 16.2.
+  unstable_rethrow(err)
   log.error({ userId, err }, 'unhandled route error')
   return problem(500, 'Something went wrong. Please try again.')
 }
@@ -122,4 +124,3 @@ export function authedRouteWithParams<P>(
 export function apiRedirect(url: string | URL, status?: number): NextResponse {
   return NextResponse.redirect(url, status)
 }
-

@@ -23,12 +23,14 @@ const FUTURE = new Date(Date.now() + 900_000).toISOString()
 const PAST = new Date(Date.now() - 1_000).toISOString()
 
 const mockOriginal = {
-  url: 'https://r2.example/upload',
-  fields: { key: FILE_KEY, 'Content-Type': 'image/png' },
+  url: 'https://s3.example/upload',
+  key: FILE_KEY,
+  contentType: 'image/png',
 }
 const mockThumb = {
-  url: 'https://r2.example/upload',
-  fields: { key: 'user-1/uuid-thumb.webp', 'Content-Type': 'image/webp' },
+  url: 'https://s3.example/upload',
+  key: 'user-1/uuid-thumb.webp',
+  contentType: 'image/webp',
 }
 
 interface MakeEntryOptions {
