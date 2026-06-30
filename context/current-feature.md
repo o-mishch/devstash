@@ -1,7 +1,7 @@
 # Current Feature
 
 ## Status
-In Progress
+Completed
 
 ## Goals
 - Fix the linter warning "Context access might be invalid" on `${{ vars.ENABLE_GITHUB_ATTESTATIONS }}` (and other variables) in GKE workflows by correcting the config key in `.github/actionlint.yaml` from `variables` to `config-variables`.
