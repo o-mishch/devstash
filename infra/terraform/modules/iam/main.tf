@@ -123,6 +123,33 @@ resource "google_project_iam_member" "compute_default_sa_node" {
   member  = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }
 
+# Node image-pull access to Artifact Registry.
+#
+# DO NOT remove this binding. Autopilot nodes run as the Compute Engine default SA
+# (above) and the kubelet uses THAT SA to fetch a pull token from Artifact Registry.
+# roles/container.defaultNodeServiceAccount grants node registration + logging/monitoring
+# but ZERO Artifact Registry permissions, and this project enforces the
+# iam.automaticIamGrantsForDefaultServiceAccounts org-policy constraint (so the default SA
+# starts with no roles at all — the same reason the node-role grant above is explicit).
+# Without artifactregistry.reader the kubelet's token request returns 403 and every
+# AR-hosted image (migrate, web) lands in ImagePullBackOff. System charts pulled from
+# Docker Hub/quay are unaffected — they need no GCP auth — so the tell is "only the
+# in-project AR images fail to pull" (e.g. the migrate Job hangs ImagePullBackOff while
+# external-secrets/reloader start fine).
+#
+# Scoped to THIS repository (least privilege), mirroring the deployer's writer grant
+# below — not a project-wide roles/artifactregistry.reader. Both the node SA (read) and
+# the deployer SA (write) are bound on the same repository resource.
+# Ref: Google "Troubleshoot image pulls" — grant the node SA roles/artifactregistry.reader
+# so GKE can pull images from Artifact Registry repositories in the same project.
+resource "google_artifact_registry_repository_iam_member" "node_artifact_registry_reader" {
+  project    = var.project_id
+  location   = var.region
+  repository = var.artifact_registry_repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
 # --- CI/CD deployer service account ---------------------------------------
 # The GitHub Actions / Cloud Build identity: push images + deploy to GKE.
 # In CI we authenticate this via Workload Identity Federation (no key) — see

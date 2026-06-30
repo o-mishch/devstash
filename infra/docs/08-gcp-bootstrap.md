@@ -1214,6 +1214,34 @@ requires one of ["container.clusterRoles.update"] permission(s) in Cloud IAM …
 мовчки знову зламає цей крок. SA призначений лише для деплоїв одного репо (WIF лише з
 `refs/heads/main`), тож проєктна `container.admin` — прийнятний обсяг.
 
+### `ImagePullBackOff` на migrate/web Job — нода не може тягнути образ з Artifact Registry (403)
+
+> **Статус:** вирішено. Нодовому SA (Compute Engine default SA) потрібна роль
+> **`roles/artifactregistry.reader`** на репозиторії — без неї kubelet отримує 403 при
+> запиті pull-токена.
+
+Після усунення RBAC (вище) CI доходить до кроку `Run DB migrations`, створює Job, але под
+зависає у `ImagePullBackOff`. Це **не** повільна міграція — образ просто не тягнеться:
+
+```
+Failed to pull image "us-central1-docker.pkg.dev/<project>/devstash/migrate@sha256:…":
+failed to authorize: failed to fetch oauth token: … 403 Forbidden
+```
+
+**Першопричина:** Autopilot-ноди працюють як **Compute Engine default SA**
+(`{project_number}-compute@developer.gserviceaccount.com`), і саме цим SA kubelet тягне
+образи. `roles/container.defaultNodeServiceAccount` дає реєстрацію ноди + logging/monitoring,
+але **жодних** дозволів Artifact Registry. А цей проєкт примусово вмикає org-policy
+`iam.automaticIamGrantsForDefaultServiceAccounts`, тож default SA стартує взагалі без ролей
+(та сама причина, чому біндинг `defaultNodeServiceAccount` доводиться давати явно). Системні
+чарти (external-secrets, reloader) тягнуться з Docker Hub/quay — без GCP-авторизації — тому
+падають **лише** in-project AR-образи (migrate, web).
+
+**Рішення:** додано `google_artifact_registry_repository_iam_member.node_artifact_registry_reader`
+у `modules/iam/main.tf` — **`roles/artifactregistry.reader`**, обмежений цим репозиторієм
+(least-privilege, дзеркало writer-біндингу deployer-а), для default Compute SA. Джерело:
+Google «Troubleshoot image pulls».
+
 ### `orgpolicy.googleapis.com` — `403 SERVICE_DISABLED` / quota project not set
 
 > **Статус:** ця помилка більше не виникає в поточній конфігурації. Terraform-ресурс
