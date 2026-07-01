@@ -6,6 +6,30 @@ variable "highly_available" {
   type    = bool
   default = false
 }
+variable "point_in_time_recovery" {
+  type        = bool
+  default     = true
+  description = "Enable continuous WAL archiving for point-in-time recovery. Adds log-storage cost on top of daily backups; turn off for dev, keep on for prod."
+}
+variable "activation_policy" {
+  type        = string
+  default     = "ALWAYS"
+  description = "ALWAYS = instance running. NEVER = stopped (no vCPU/RAM charge, disk + data retained). The event-driven auto-suspend flips this to stop the DB without destroying it (instance_active stays true)."
+  validation {
+    condition     = contains(["ALWAYS", "NEVER"], var.activation_policy)
+    error_message = "activation_policy must be ALWAYS or NEVER."
+  }
+}
+variable "instance_active" {
+  type        = bool
+  default     = true
+  description = "true = the Cloud SQL instance exists. false = it is DESTROYED (count-gated) for true ~$0 idle. The deep suspend (run.sh suspend) sets this false ONLY after dumping the DB to GCS; run.sh resume recreates the instance and restores the dump. Stopping (activation_policy=NEVER) keeps the disk (~$1.70/mo); destroying keeps nothing (data lives in the GCS dump instead)."
+}
+variable "backups_enabled" {
+  type        = bool
+  default     = true
+  description = "Cloud SQL automated daily backups. Off for the dev showcase (data durability comes from the suspend-time GCS dump, not backups); keep on for prod. PITR requires this to be true."
+}
 variable "deletion_protection" {
   type        = bool
   default     = true

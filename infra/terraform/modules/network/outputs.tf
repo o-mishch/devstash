@@ -15,13 +15,14 @@ output "subnet_self_link" {
 }
 
 # Ingress static IP — DNS A-record target; name is referenced by the GCE Ingress
-# annotation (global-static-ip-name) in overlays/gcp.
+# annotation (global-static-ip-name) in overlays/gcp. Null when suspended
+# (compute_active = false): the address is released to avoid the idle reservation charge.
 output "ingress_ip_name" {
-  value = google_compute_global_address.ingress_ip.name
+  value = one(google_compute_global_address.ingress_ip[*].name)
 }
 
 output "ingress_ip_address" {
-  value = google_compute_global_address.ingress_ip.address
+  value = one(google_compute_global_address.ingress_ip[*].address)
 }
 
 output "pods_range_name" {
@@ -39,7 +40,7 @@ output "private_vpc_connection" {
 }
 
 # Cloud Armor security policy name — passed to the GKE overlay's BackendConfig
-# annotation so the LB applies WAF + rate limiting.
+# annotation so the LB applies WAF + rate limiting. Null when suspended.
 output "armor_policy_name" {
-  value = google_compute_security_policy.default.name
+  value = one(google_compute_security_policy.default[*].name)
 }

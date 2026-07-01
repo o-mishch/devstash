@@ -63,9 +63,11 @@ spec:
       labels: { app: redisinsight-public }
     spec:
       # Pod-level security context — PSA "restricted" (devstash namespace label)
-      # requires runAsNonRoot and seccompProfile. RedisInsight 2.x runs as UID 1000.
+      # requires runAsNonRoot and seccompProfile. RedisInsight 2.x runs as UID 1000;
+      # pin it explicitly (kept in sync with redisinsight.yaml, the port-forward variant).
       securityContext:
         runAsNonRoot: true
+        runAsUser: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -117,12 +119,12 @@ spec:
   iap:
     enabled: true
   # Cloud Armor WAF + rate-limiting — same policy as the main app BackendConfig.
-  # IAP blocks unauthenticated users, but Cloud Armor guards at the LB edge BEFORE
-  # IAP evaluation, providing DDoS/rate-limit protection even on the auth layer.
-  # The policy name matches the one Terraform creates in modules/network/main.tf.
-  # Update this if the Terraform name_prefix or the armor policy name changes.
+  # EMPTY by default: dev runs with armor_enabled=false ($0 posture), so the policy does
+  # not exist. This is a hand-applied debug tool (RedisInsight), so it is NOT templated by
+  # kustomize — if you enable Armor (armor_enabled=true / prod), set this back to
+  # "devstash-dev-armor" (the name Terraform creates in modules/network/main.tf).
   securityPolicy:
-    name: devstash-dev-armor
+    name: ""
   healthCheck:
     type: HTTP
     requestPath: /api/health

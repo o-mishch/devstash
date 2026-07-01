@@ -25,7 +25,26 @@
 #   bash infra/gcp-run/run.sh smoke          wait for latest CI run + health-check the app
 #   bash infra/gcp-run/run.sh status         show cluster / ingress IP / cert / pod health
 #   bash infra/gcp-run/run.sh logs           tail app pod logs (last 100 lines, all pods)
-#   bash infra/gcp-run/run.sh down           tofu destroy (tear everything down)
+#   bash infra/gcp-run/run.sh suspend        cost→~$0: dump Cloud SQL to GCS, then destroy compute + DB
+#   bash infra/gcp-run/run.sh resume         recreate compute + Cloud SQL, restore dump, redeploy, fix DNS
+#   bash infra/gcp-run/run.sh dump-db        ad-hoc: export Cloud SQL to the GCS db-dumps bucket (no suspend)
+#   bash infra/gcp-run/run.sh restore-db     import the latest GCS dump into the current Cloud SQL instance
+#   bash infra/gcp-run/run.sh set-dns-creds  store Spaceship DNS API key/secret in Secret Manager
+#   bash infra/gcp-run/run.sh down           tofu destroy (tear everything down, incl. Cloud SQL)
+#
+# SUSPEND/RESUME (on-demand showcase, true ~$0 while idle):
+#   `suspend` first DUMPS Cloud SQL to the GCS db-dumps bucket (`gcloud sql export`) and
+#   verifies the dump, THEN flips environment_active=false + db_active=false (persisted in
+#   active.auto.tfvars) and applies: the GKE cluster, Memorystore, Cloud NAT, Cloud Armor,
+#   the ingress IP AND the Cloud SQL instance are all destroyed. Idle cost ≈ $0 (the small
+#   GCS dump sits in the Always-Free tier). `resume` recreates everything, RESTORES the DB
+#   from the dump (`gcloud sql import`), and re-points the gke.* DNS A-record at the
+#   freshly-allocated ingress IP via the Spaceship API. There is NO wake-on-request —
+#   resume is an explicit ~minutes operation.
+#
+#   Data safety: the dump is taken and verified BEFORE any destroy, so a failed dump aborts
+#   the suspend with the instance intact. The event-driven auto-suspend (auto-suspend.tf)
+#   flips ONLY environment_active, so it never destroys the DB — it just stops the instance.
 #
 # Env overrides (otherwise read from terraform.tfvars / auto-detected):
 #   BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX   billing account to link (else first open one)
@@ -36,13 +55,22 @@ cd "$(dirname "$0")/../.."   # repo root
 TF_DIR=infra/terraform/envs/dev
 TFVARS="$TF_DIR/terraform.tfvars"
 STATE_BUCKET="${STATE_BUCKET:-}"
+# GCS lifecycle config for the out-of-band state bucket. Kept as a standalone JSON file
+# (not an inline heredoc) so it is diffable, jq-validatable, and reviewable as JSON.
+STATE_LIFECYCLE=infra/gcp-run/tfstate-lifecycle.json
 PLAN_FILE=devstash.tfplan
 NS=devstash
+DB_NAME=devstash   # logical DB inside the Cloud SQL instance (dump/restore --database target)
 CMD="${1:-up}"
 
 # Pinned Helm chart versions — single source of truth shared with deploy-gke.yml.
+# shellcheck source-path=SCRIPTDIR
 # shellcheck source=../versions.env
 source "$(dirname "$0")/../versions.env"
+# Shared image coordinates (DEVSTASH_IMAGES, ds_image_base) — the same helpers the CI
+# scripts source, so run.sh and infra/ci/*.sh never drift on the registry path.
+# shellcheck source=../lib/common.sh
+source "$(dirname "$0")/../lib/common.sh"
 
 # ── helpers ────────────────────────────────────────────────────────────────
 log()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
@@ -66,6 +94,75 @@ tfvar() {
 }
 
 tofu_() { tofu -chdir="$TF_DIR" "$@"; }
+
+# tf_out <output-name> [fallback]: soft-read a raw tofu output, swallowing the error and
+# returning [fallback] (default empty) when the output is absent — the normal case for a
+# suspended or not-yet-applied env. Centralises the `2>/dev/null || <default>` so call sites
+# read as intent, not incantation. Use plain `tofu_ output -raw` (NOT this) where a missing
+# output must fail loudly (e.g. pushing required GitHub secrets).
+tf_out() { tofu_ output -raw "$1" 2>/dev/null || printf '%s' "${2:-}"; }
+
+# use_cluster / use_cluster_soft: point kubeconfig at the GKE cluster via the tofu-emitted
+# get_credentials_command. `use_cluster` aborts if no cluster exists; the _soft variant only
+# warns and continues (for read-only status/log commands that still work partially offline).
+# Optional $1 overrides the default message. NOTE: apply() intentionally does NOT use these —
+# it inspects the suspended-sentinel output before eval-ing, which these helpers do not.
+use_cluster()      { eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null || die "${1:-no cluster yet — run 'apply' first}"; }
+use_cluster_soft() { eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null || warn "${1:-no cluster yet}"; }
+
+# helm_repo <name> <url>: register (idempotent — ignore "already exists") + refresh a single
+# Helm chart repo. Used by upgrade_helm to freshen both repos before querying latest versions
+# (eso/reloader delegate their repo add+update to infra/ci/ensure-*.sh).
+helm_repo() {
+  helm repo add "$1" "$2" >/dev/null 2>&1 || true
+  helm repo update "$1" >/dev/null
+}
+
+# count_missing "<newline-list>" item…: for each item, ok if present in the list (exact-line
+# match) else warn "MISSING". Returns the count of missing items so callers can gate on it —
+# capture with `count_missing … || missing=$?` (the non-zero return would otherwise trip set -e).
+count_missing() {
+  local have="$1"; shift
+  local n=0 item
+  for item in "$@"; do
+    if echo "$have" | grep -qx "$item"; then
+      ok "$item"
+    else
+      warn "MISSING: $item"
+      n=$((n + 1))
+    fi
+  done
+  return "$n"
+}
+
+# poll_until <max_attempts> <sleep_secs> -- <cmd…>: run <cmd> repeatedly until it exits 0 or
+# <max_attempts> is reached, printing a dot per attempt. Returns 0 on success, 1 on timeout.
+# The caller prints its own trailing newline + success/failure message so the wording stays
+# specific to what was being waited on. Pass a quiet predicate (e.g. a small helper that
+# redirects its own noisy command) so only the progress dots reach the terminal.
+poll_until() {
+  local attempts="$1" gap="$2"; shift 2
+  [[ "${1:-}" == "--" ]] && shift
+  local i=0
+  until "$@"; do
+    i=$((i + 1))
+    [[ $i -lt $attempts ]] || return 1
+    printf '.'
+    sleep "$gap"
+  done
+}
+
+# wait_for_cluster: poll `kubectl cluster-info` until the GKE Autopilot control plane responds
+# (typically 5-7 min after `tofu apply` completes). Times out after 10 minutes with an
+# actionable error pointing to the GCP console. Called by the up / apply / resume flows.
+_cluster_reachable() { kubectl cluster-info >/dev/null 2>&1; }
+wait_for_cluster() {
+  log "Waiting for GKE cluster control plane to become reachable (Autopilot takes 5-7 min)"
+  poll_until 60 10 -- _cluster_reachable \
+    || die "Cluster not reachable after 10 minutes — check GCP console"
+  echo
+  ok "cluster reachable"
+}
 
 # preflight: assert every required CLI is on PATH. Fail fast with an install hint so
 # the user fixes the environment before any GCP or Terraform call is attempted.
@@ -161,8 +258,11 @@ bootstrap() {
   if gcloud storage buckets describe "gs://$STATE_BUCKET" >/dev/null 2>&1; then
     ok "state bucket gs://$STATE_BUCKET exists"
   else
-    log "Creating state bucket gs://$STATE_BUCKET"
-    gcloud storage buckets create "gs://$STATE_BUCKET" --location=US
+    log "Creating state bucket gs://$STATE_BUCKET (single-region $REGION)"
+    # Single-region (us-central1), not the US multi-region: lower cost, co-located
+    # with the rest of the stack. Location is IMMUTABLE — an existing bucket in a
+    # different location must be recreated + state migrated, not updated in place.
+    gcloud storage buckets create "gs://$STATE_BUCKET" --location="$REGION"
   fi
   # Reconcile security properties even for a pre-existing bucket. Existence alone
   # does not prove that state has object version recovery or that ACL/public access
@@ -170,6 +270,14 @@ bootstrap() {
   gcloud storage buckets update "gs://$STATE_BUCKET" \
     --uniform-bucket-level-access --public-access-prevention --versioning
   ok "state bucket has uniform access, public-access prevention, and versioning"
+
+  # Lifecycle: versioning above keeps every superseded state generation forever. State
+  # objects are tiny, but over the env's life the noncurrent versions accumulate unbounded.
+  # The rules (in $STATE_LIFECYCLE) keep the 5 most recent generations for rollback and drop
+  # anything older than 30 days — both ARCHIVED-only (isLive=false), so the LIVE state object
+  # is never touched — keeping the bucket a $0 residual.
+  gcloud storage buckets update "gs://$STATE_BUCKET" --lifecycle-file="$STATE_LIFECYCLE"
+  ok "state bucket lifecycle: noncurrent state versions expire (keep 5, max 30 days)"
 
   # Enable APIs up front (Terraform also does this via google_project_service, but
   # pre-enabling here speeds up the first `tofu apply` by avoiding Terraform's
@@ -209,7 +317,7 @@ apply() {
   # second plan after confirmation, allowing infrastructure drift between review and
   # mutation. The plan file is local, short-lived, and gitignored.
   tofu_ plan -out="$PLAN_FILE"
-  if confirm "Apply this plan? (creates billable GKE Autopilot + Memorystore)"; then
+  if confirm "Apply this plan? (review the resource changes above)"; then
     if tofu_ apply "$PLAN_FILE"; then
       rm -f "$TF_DIR/$PLAN_FILE"
     else
@@ -221,9 +329,18 @@ apply() {
     rm -f "$TF_DIR/$PLAN_FILE"
     die "aborted before apply"
   fi
-  log "Fetching kubectl credentials"
-  eval "$(tofu_ output -raw get_credentials_command)"
-  ok "kubeconfig points at the new cluster"
+  # Only fetch kubectl creds when a cluster exists. When suspended, the
+  # get_credentials_command output is a human-readable sentinel (not a gcloud command),
+  # so guard against eval-ing it.
+  local getcreds
+  getcreds="$(tofu_ output -raw get_credentials_command)"
+  if [[ "$getcreds" == gcloud* ]]; then
+    log "Fetching kubectl credentials"
+    eval "$getcreds"
+    ok "kubeconfig points at the new cluster"
+  else
+    warn "no cluster (environment suspended) — skipping kubectl credential fetch"
+  fi
 }
 
 # External Secrets Operator — required ONCE per cluster before any `kubectl apply -k`,
@@ -235,31 +352,12 @@ apply() {
 # Use `run.sh reloader` to reinstall Reloader alone without touching ESO.
 eso() {
   log "Installing External Secrets Operator (idempotent)"
-  eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null \
-    || die "no cluster yet — run 'apply' first"
-  # ESO_VERSION is sourced from infra/versions.env (same value CI uses).
-  # Changing the version must be done in that file — both run.sh and CI read it.
-  helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
-  helm repo update external-secrets >/dev/null
-  # --rollback-on-failure: roll back the helm release if the --wait timeout
-  # expires, so a failed ESO upgrade never leaves the cluster in a half-upgraded
-  # state. Replaces the deprecated --atomic flag (removed in Helm 4).
-  # Consistent with the Reloader install below and CI (deploy-gke.yml).
-  #
-  # Resource requests are set explicitly to meet GKE Autopilot's per-container
-  # minimum of 50m CPU (bursting nodes). The ESO chart defaults to 10m, which
-  # Autopilot silently mutates upward — causing a noisy deprecation warning on
-  # every install. Setting 50m here matches the Autopilot floor exactly and keeps
-  # the rendered pod spec identical to what Autopilot would produce anyway.
-  helm upgrade --install external-secrets external-secrets/external-secrets \
-    --version "$ESO_VERSION" \
-    -n external-secrets --create-namespace --wait --timeout 5m --rollback-on-failure \
-    --set resources.requests.cpu=50m \
-    --set resources.requests.memory=128Mi \
-    --set certController.resources.requests.cpu=50m \
-    --set certController.resources.requests.memory=128Mi \
-    --set webhook.resources.requests.cpu=50m \
-    --set webhook.resources.requests.memory=128Mi
+  use_cluster
+  # Delegate the actual helm install to the SAME script CI runs (infra/ci/ensure-eso.sh) —
+  # one source of truth for the chart, --version (from versions.env), the Autopilot 50m
+  # --set block, and the --atomic failure policy. run.sh only adds the cluster-cred fetch
+  # above and the webhook wait below; the install itself never diverges from CI again.
+  infra/ci/ensure-eso.sh
   # Belt-and-suspenders: the chart's --wait covers the Deployments, but CR-admission
   # also needs the validating webhook live before the overlay's SecretStore is accepted.
   kubectl -n external-secrets rollout status deploy/external-secrets-webhook --timeout=3m
@@ -277,17 +375,10 @@ eso() {
 # Pin the same version used in deploy-gke.yml to keep bootstrap and CI in sync.
 reloader() {
   log "Installing Stakater Reloader (idempotent)"
-  eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null \
-    || die "no cluster yet — run 'apply' first"
-  # RELOADER_VERSION is sourced from infra/versions.env (same value CI uses).
-  helm repo add stakater https://stakater.github.io/stakater-charts >/dev/null 2>&1 || true
-  helm repo update stakater >/dev/null
-  # Resource requests set to Autopilot's 50m CPU floor (same rationale as ESO above).
-  helm upgrade --install reloader stakater/reloader \
-    --version "$RELOADER_VERSION" \
-    -n reloader --create-namespace --wait --timeout 5m --rollback-on-failure \
-    --set reloader.deployment.resources.requests.cpu=50m \
-    --set reloader.deployment.resources.requests.memory=128Mi
+  use_cluster
+  # Same single-source-of-truth delegation as eso(): infra/ci/ensure-reloader.sh owns the
+  # chart, --version, --set, and --atomic policy shared with CI.
+  infra/ci/ensure-reloader.sh
   ok "Stakater Reloader installed; Deployment auto-restarts on secret rotation"
 }
 
@@ -307,57 +398,57 @@ secrets() {
   gh variable set APP_DOMAIN              --body "$(tofu_ output -raw app_domain)"
   gh variable set EMAIL_FROM              --body "$(tofu_ output -raw email_from)"
   gh variable set ENABLE_GITHUB_ATTESTATIONS --body "false"
+  # Cloud Armor toggle — inject-settings.sh keys the BackendConfig securityPolicy on this.
+  # true → CI attaches devstash-dev-armor; cleared (dev $0 default) → empty policy (no WAF).
+  if [ "$(tf_out armor_enabled false)" = "true" ]; then
+    gh variable set ARMOR_ENABLED --body "true"
+  else
+    gh variable delete ARMOR_ENABLED >/dev/null 2>&1 || true
+  fi
   # Binary Authorization attestor/KMS resource names (non-secret) — read by the
   # "Sign images for Binary Authorization" CI step. See modules/gke/main.tf.
-  gh variable set BINAUTHZ_ATTESTOR       --body "$(tofu_ output -raw binauthz_attestor_name)"
-  gh variable set BINAUTHZ_KMS_KEYRING    --body "$(tofu_ output -raw binauthz_kms_keyring)"
-  gh variable set BINAUTHZ_KMS_KEY        --body "$(tofu_ output -raw binauthz_kms_key)"
-  ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS / BINAUTHZ_* set as variables"
+  # When binauthz_enabled=false these outputs are null (the pipeline is not provisioned);
+  # `tofu output -raw` errors on null, so guard on a non-empty value. If disabled, DELETE
+  # any stale vars so the CI step self-skips instead of signing against a gone attestor.
+  local attestor
+  attestor="$(tf_out binauthz_attestor_name)"
+  if [ -n "$attestor" ]; then
+    gh variable set BINAUTHZ_ATTESTOR       --body "$attestor"
+    gh variable set BINAUTHZ_KMS_KEYRING    --body "$(tofu_ output -raw binauthz_kms_keyring)"
+    gh variable set BINAUTHZ_KMS_KEY        --body "$(tofu_ output -raw binauthz_kms_key)"
+    ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS / BINAUTHZ_* set as variables"
+  else
+    gh variable delete BINAUTHZ_ATTESTOR    >/dev/null 2>&1 || true
+    gh variable delete BINAUTHZ_KMS_KEYRING >/dev/null 2>&1 || true
+    gh variable delete BINAUTHZ_KMS_KEY     >/dev/null 2>&1 || true
+    ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS set as variables (Binary Authorization disabled — BINAUTHZ_* cleared)"
+  fi
 
   log "Verifying GitHub Actions secrets are present"
   # Use JSON output so column-aligned table text never causes a false miss.
   # NOTE: APP_DOMAIN is a variable (not a secret) — it is NOT verified here because
   # `gh secret list` only lists secrets. Verify it with: gh variable list
-  local names
+  local names missing=0
   names="$(gh secret list --json name -q '.[].name')"
-  local missing=0
-  for secret in GCP_PROJECT_ID DEPLOYER_SA WORKLOAD_IDENTITY_PROVIDER; do
-    if echo "$names" | grep -qx "$secret"; then
-      ok "$secret"
+  count_missing "$names" GCP_PROJECT_ID DEPLOYER_SA WORKLOAD_IDENTITY_PROVIDER || missing=$?
+  [[ $missing -eq 0 ]] || die "$missing secret(s) not confirmed in GitHub — re-run 'secrets'"
+  # Separately verify the variables — gh variable list exits 0 even if empty, so a
+  # per-variable value fetch is the only reliable presence check.
+  local gh_var gh_val
+  # Always-present variables — a missing one is a real setup failure.
+  for gh_var in APP_DOMAIN EMAIL_FROM ENABLE_GITHUB_ATTESTATIONS; do
+    gh_val="$(gh variable list --json name,value -q ".[] | select(.name==\"$gh_var\") | .value" 2>/dev/null || true)"
+    if [[ -z "$gh_val" ]]; then
+      warn "$gh_var variable not found in GitHub — gh variable set may have failed; re-run 'secrets'"
     else
-      warn "MISSING: $secret — gh secret set may have failed"
-      missing=$((missing + 1))
+      ok "$gh_var variable = $gh_val"
     fi
   done
-  [[ $missing -eq 0 ]] || die "$missing secret(s) not confirmed in GitHub — re-run 'secrets'"
-  # Separately verify the variables — gh variable list exits 0 even if empty.
-  local app_dom_val email_from_val attest_val
-  app_dom_val="$(gh variable list --json name,value -q '.[] | select(.name=="APP_DOMAIN") | .value' 2>/dev/null || true)"
-  email_from_val="$(gh variable list --json name,value -q '.[] | select(.name=="EMAIL_FROM") | .value' 2>/dev/null || true)"
-  attest_val="$(gh variable list --json name,value -q '.[] | select(.name=="ENABLE_GITHUB_ATTESTATIONS") | .value' 2>/dev/null || true)"
-  if [[ -z "$app_dom_val" ]]; then
-    warn "APP_DOMAIN variable not found in GitHub — gh variable set may have failed; re-run 'secrets'"
-  else
-    ok "APP_DOMAIN variable = $app_dom_val"
-  fi
-  if [[ -z "$email_from_val" ]]; then
-    warn "EMAIL_FROM variable not found in GitHub — gh variable set may have failed; re-run 'secrets'"
-  else
-    ok "EMAIL_FROM variable = $email_from_val"
-  fi
-  if [[ -z "$attest_val" ]]; then
-    warn "ENABLE_GITHUB_ATTESTATIONS variable not found in GitHub — gh variable set may have failed; re-run 'secrets'"
-  else
-    ok "ENABLE_GITHUB_ATTESTATIONS variable = $attest_val"
-  fi
-  local binauthz_var binauthz_val
-  for binauthz_var in BINAUTHZ_ATTESTOR BINAUTHZ_KMS_KEYRING BINAUTHZ_KMS_KEY; do
-    binauthz_val="$(gh variable list --json name,value -q ".[] | select(.name==\"$binauthz_var\") | .value" 2>/dev/null || true)"
-    if [[ -z "$binauthz_val" ]]; then
-      warn "$binauthz_var variable not found in GitHub — gh variable set may have failed; re-run 'secrets'"
-    else
-      ok "$binauthz_var variable = $binauthz_val"
-    fi
+  # Optional feature toggles — absent by design in the dev $0 posture (Binary Authorization
+  # off, Cloud Armor off), so report only when present rather than warning on absence.
+  for gh_var in ARMOR_ENABLED BINAUTHZ_ATTESTOR BINAUTHZ_KMS_KEYRING BINAUTHZ_KMS_KEY; do
+    gh_val="$(gh variable list --json name,value -q ".[] | select(.name==\"$gh_var\") | .value" 2>/dev/null || true)"
+    [[ -n "$gh_val" ]] && ok "$gh_var variable = $gh_val"
   done
 }
 
@@ -367,8 +458,8 @@ secrets() {
 # (up to 60 min after DNS propagates). Also reminds about Stripe webhook + OAuth URIs.
 dns_hint() {
   local ip dom
-  ip="$(tofu_ output -raw ingress_ip_address 2>/dev/null || true)"
-  dom="$(tofu_ output -raw app_domain 2>/dev/null || true)"
+  ip="$(tf_out ingress_ip_address)"
+  dom="$(tf_out app_domain)"
   log "DNS — point your subdomain at the Ingress static IP, then the managed cert provisions"
   echo "  Add an A-record:  ${dom:-<app_domain>}  →  ${ip:-<run: tofu output ingress_ip_address>}"
   echo "  Verify:           dig +short ${dom:-<app_domain>}"
@@ -395,46 +486,51 @@ deploy() {
 verify_secrets() {
   ensure_tfvars
   log "Verifying Secret Manager secrets for project $PROJECT_ID"
-  eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null || warn "cluster not reachable — secrets check runs against Secret Manager only"
+  use_cluster_soft "cluster not reachable — secrets check runs against Secret Manager only"
 
+  # All app credentials live as JSON properties of ONE consolidated secret,
+  # devstash-app-config (see modules/iam + external-secrets.yaml). These keys must always
+  # be present regardless of suspend state; the conditional infra keys (database-*/redis-*)
+  # exist only while the env is active and are reported informationally below.
+  # Intentionally absent everywhere — non-secret config in the devstash-config ConfigMap
+  # (settings.yaml), NOT Secret Manager: email-from (EMAIL_FROM), auth-github-id /
+  # auth-google-id (OAuth client IDs), stripe-publishable-key, stripe-price-id-*,
+  # uploads-bucket, s3-endpoint, s3-region.
   local expected=(
-    "devstash-auth-secret"
-    "devstash-auth-github-id" "devstash-auth-github-secret"
-    "devstash-auth-google-id" "devstash-auth-google-secret"
-    "devstash-resend-api-key"
-    # devstash-email-from intentionally absent: EMAIL_FROM is a non-secret constant
-    # stored in the devstash-config ConfigMap (kustomization.yaml), not Secret Manager.
-    "devstash-stripe-secret-key" "devstash-stripe-publishable-key"
-    "devstash-stripe-webhook-secret"
-    "devstash-stripe-price-id-monthly" "devstash-stripe-price-id-yearly"
-    "devstash-openai-api-key"
-    "devstash-database-url" "devstash-direct-url" "devstash-database-ca-cert"
-    "devstash-redis-url" "devstash-redis-ca-cert"
-    "devstash-uploads-bucket"
-    "devstash-s3-endpoint" "devstash-s3-region"
-    "devstash-s3-access-id" "devstash-s3-secret"
+    "auth-secret" "auth-github-secret" "auth-google-secret"
+    "resend-api-key" "stripe-secret-key" "stripe-webhook-secret" "openai-api-key"
+    "s3-access-id" "s3-secret"
   )
 
-  local existing
-  # name.basename() returns the short secret name regardless of whether gcloud
-  # outputs a full resource path or just the name — no regex fragility.
-  existing="$(gcloud secrets list --project="$PROJECT_ID" --format='value(name.basename())' 2>/dev/null || true)"
+  local blob keys
+  blob="$(gcloud secrets versions access latest --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true)"
+  if [[ -z "$blob" ]]; then
+    warn "consolidated secret devstash-app-config is missing or unreadable — pods cannot start"
+    warn "Apply Terraform (run.sh apply) to create it, or see §7b of infra/docs/08-gcp-bootstrap.md"
+    keys=""
+  else
+    # Keys only — values are never printed. Invalid JSON yields an empty key list → all missing.
+    keys="$(printf '%s' "$blob" | jq -r 'keys[]' 2>/dev/null || true)"
+  fi
 
   local missing=0
-  for secret in "${expected[@]}"; do
-    if echo "$existing" | grep -qx "$secret"; then
-      ok "$secret"
-    else
-      warn "MISSING: $secret"
-      missing=$((missing + 1))
-    fi
-  done
+  count_missing "$keys" "${expected[@]}" || missing=$?
 
   if [[ $missing -gt 0 ]]; then
-    warn "$missing secret(s) missing — pods will fail to start until all are present"
+    warn "$missing required key(s) absent from devstash-app-config — pods will fail to start until all are present"
     warn "See §7b of infra/docs/08-gcp-bootstrap.md for how to add them"
   else
-    ok "all $((${#expected[@]})) expected secrets are present"
+    ok "all $((${#expected[@]})) required keys present in devstash-app-config"
+    # Report the active-only infra keys so an operator can tell active from suspended state.
+    local infra_key present_infra=()
+    for infra_key in database-url direct-url database-ca-cert redis-url redis-ca-cert; do
+      printf '%s\n' "$keys" | grep -qxF "$infra_key" && present_infra+=("$infra_key")
+    done
+    if [[ ${#present_infra[@]} -gt 0 ]]; then
+      log "active-only infra keys present: ${present_infra[*]}"
+    else
+      log "no infra keys (database-*/redis-*) present — consistent with a suspended environment"
+    fi
   fi
 
   # Secret Manager presence ≠ K8s Secret existence. ESO must also sync them into the
@@ -470,10 +566,12 @@ rotate_secret() {
   # Generated database/Redis/GCS values are Terraform-owned and must rotate through
   # their source resources. This command is only for operator-supplied credentials.
   case "$secret_name" in
-    auth-secret|auth-github-id|auth-github-secret|auth-google-id|auth-google-secret|\
-    resend-api-key|stripe-secret-key|stripe-publishable-key|\
-    stripe-webhook-secret|stripe-price-id-monthly|stripe-price-id-yearly|openai-api-key) ;;
-    *) die "unsupported secret '$secret_name' — generated database/Redis/GCS secrets must rotate through OpenTofu" ;;
+    auth-secret|auth-github-secret|auth-google-secret|\
+    resend-api-key|stripe-secret-key|stripe-webhook-secret|openai-api-key) ;;
+    # NOTE: auth-github-id / auth-google-id / stripe-publishable-key / stripe-price-id-*
+    # are NOT rotatable secrets — they are non-secret config in the devstash-config
+    # ConfigMap (settings.yaml). Change them there (or the deploy-gke.yml override var).
+    *) die "unsupported secret '$secret_name' — non-secret config lives in settings.yaml; generated database/Redis/GCS secrets rotate through OpenTofu" ;;
   esac
   if [[ -t 0 ]]; then
     read -r -s -p "New value for devstash-${secret_name}: " new_value
@@ -483,12 +581,18 @@ rotate_secret() {
   fi
   [[ -n "$new_value" ]] || die "secret value must not be empty"
   ensure_tfvars
-  eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null \
-    || die "cluster not reachable — run 'apply' first"
-  log "Rotating secret devstash-${secret_name}"
-  printf '%s' "$new_value" | gcloud secrets versions add "devstash-${secret_name}" \
-    --data-file=- --project="$PROJECT_ID"
-  ok "Secret devstash-${secret_name} updated in Secret Manager"
+  use_cluster "cluster not reachable — run 'apply' first"
+  log "Rotating property ${secret_name} inside devstash-app-config"
+  # Consolidated secret: read the JSON blob, replace ONE property, add a new version.
+  # --arg keeps both the key name and the value out of the jq program text (no injection,
+  # no shell-history/process-list exposure). The whole blob is piped, never echoed.
+  local blob
+  blob="$(gcloud secrets versions access latest --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true)"
+  [[ -n "$blob" ]] || die "devstash-app-config not found — run 'apply' first to create it"
+  printf '%s' "$blob" \
+    | jq --arg k "$secret_name" --arg v "$new_value" '.[$k] = $v' \
+    | gcloud secrets versions add "devstash-app-config" --data-file=- --project="$PROJECT_ID"
+  ok "Property ${secret_name} updated in devstash-app-config (new version)"
   log "Force ESO sync (skips the 1h refresh interval)"
   # Annotating the ExternalSecret with a fresh timestamp tells ESO to re-sync NOW.
   # Reloader watches the resulting K8s Secret and rolls the Deployment automatically.
@@ -501,8 +605,9 @@ rotate_secret() {
 
 # upgrade-helm: bump ESO and Reloader to their latest published Helm chart versions.
 # Checks `helm search repo` for each chart, updates infra/versions.env in-place, and
-# re-installs both charts on the live cluster. Safe to run at any time — `helm upgrade
-# --install` is idempotent and --rollback-on-failure rolls back on failure.
+# re-installs both charts on the live cluster (via eso → infra/ci/ensure-*.sh). Safe to run
+# at any time — `helm upgrade --install` is idempotent and the shared --atomic flag rolls
+# the release back on failure.
 #
 # HOW IT WORKS:
 #   1. Ensures both repos are registered and fresh (repo update).
@@ -512,13 +617,11 @@ rotate_secret() {
 #   5. Calls eso (reinstalls ESO + Reloader) so the live cluster matches.
 upgrade_helm() {
   ensure_tfvars
-  eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null \
-    || die "no cluster yet — run 'apply' first"
+  use_cluster
 
   log "Checking for Helm chart updates"
-  helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
-  helm repo add stakater https://stakater.github.io/stakater-charts >/dev/null 2>&1 || true
-  helm repo update external-secrets stakater >/dev/null
+  helm_repo external-secrets https://charts.external-secrets.io
+  helm_repo stakater https://stakater.github.io/stakater-charts
 
   local latest_eso latest_reloader
   latest_eso="$(helm search repo external-secrets/external-secrets --output json | jq -r '.[0].version')"
@@ -556,6 +659,15 @@ upgrade_helm() {
   eso
 }
 
+# _app_healthy <domain>: deep health check that passes ONLY when the JSON body reports
+# status "ok". WHY jq -e (not plain curl -sf): `curl -sf` only checks the HTTP status (2xx),
+# but the endpoint can return HTTP 200 with {"status":"error","db":"..."} when Cloud SQL
+# isn't reachable yet (e.g. right after first deploy, before IAM propagation). `jq .` exits 0
+# on any valid JSON, which would declare the app healthy while every DB op is broken. `jq -e`
+# exits non-zero on a false/null result, so the poll keeps retrying until the body is ok.
+_app_healthy() {
+  curl -sf --max-time 10 "https://${1}/api/health?deep=1" | jq -e '.status == "ok"' >/dev/null
+}
 # smoke: wait for the latest CI workflow run to finish, then hit the health endpoint.
 # Useful after 'deploy' to confirm the rollout completed successfully end-to-end.
 smoke() {
@@ -570,26 +682,18 @@ smoke() {
   ok "CI run $run_id completed successfully"
 
   local domain
-  domain="$(tofu_ output -raw app_domain 2>/dev/null || true)"
+  domain="$(tf_out app_domain)"
   [[ -n "$domain" ]] || { warn "app_domain not set — run 'apply' first"; return 1; }
 
   log "Health check: https://${domain}/api/health?deep=1"
-  local i=0
-  # WHY jq -e '.status == "ok"': `curl -sf` only checks the HTTP status code (2xx).
-  # The health endpoint can return HTTP 200 with {"status":"error","db":"..."} when
-  # Cloud SQL isn't reachable yet (e.g. immediately after first deploy before IAM
-  # propagation completes). `jq .` always exits 0 on valid JSON, so that would
-  # declare the app healthy while every DB operation is broken.
-  # `-e` makes jq exit non-zero when the filter result is false/null — which correctly
-  # keeps the retry loop running until the body reports {"status":"ok",...}.
-  until curl -sf --max-time 10 "https://${domain}/api/health?deep=1" \
-      | jq -e '.status == "ok"' > /dev/null; do
-    i=$((i + 1))
-    [[ $i -lt 12 ]] || { warn "health check timed out after 2 min — cert may still be provisioning"; return 1; }
-    printf '.'
-    sleep 10
-  done
-  ok "app is healthy"
+  if poll_until 12 10 -- _app_healthy "$domain"; then
+    echo
+    ok "app is healthy"
+  else
+    echo
+    warn "health check timed out after 2 min — cert may still be provisioning"
+    return 1
+  fi
 }
 
 # status: print a quick health snapshot of the running environment.
@@ -598,7 +702,7 @@ smoke() {
 # for the cert to become Active.
 status() {
   log "Cluster status"
-  eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null || warn "no cluster yet"
+  use_cluster_soft
 
   echo
   log "Workloads"
@@ -622,13 +726,13 @@ status() {
 
   echo
   log "Infra"
-  echo "  Ingress IP: $(tofu_ output -raw ingress_ip_address 2>/dev/null || echo '—')"
-  echo "  App domain: $(tofu_ output -raw app_domain 2>/dev/null || echo '—')"
+  echo "  Ingress IP: $(tf_out ingress_ip_address '—')"
+  echo "  App domain: $(tf_out app_domain '—')"
 
   echo
   log "App health (deep — requires pod to be running)"
   local domain
-  domain="$(tofu_ output -raw app_domain 2>/dev/null || true)"
+  domain="$(tf_out app_domain)"
   if [[ -n "$domain" ]]; then
     curl -sf --max-time 5 "https://${domain}/api/health?deep=1" | jq . 2>/dev/null \
       || warn "health endpoint unreachable (cert provisioning or app not up yet)"
@@ -640,14 +744,14 @@ status() {
 # logs: tail the last 100 log lines from all devstash-web pods simultaneously.
 # Prefixes each line with the pod name so interleaved output is attributable.
 logs() {
-  eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null || warn "no cluster yet"
+  use_cluster_soft
   kubectl -n "$NS" logs -l app.kubernetes.io/name=devstash --tail=100 --prefix --ignore-errors 2>/dev/null || true
 }
 
 # down: destroy the entire dev environment with `tofu destroy`.
-# GKE and Cloud SQL have deletion_protection=true by default — destroy will fail
-# until that flag is set to false and applied first (instructions printed by the
-# function). The state bucket and GCP project are left intact after destroy.
+# GKE and Cloud SQL are already unprotected in this env (they are torn down on every
+# suspend cycle), so no deletion_protection dance is needed — destroy runs directly.
+# The state bucket and GCP project are left intact after destroy.
 down() {
   ensure_tfvars
   # A fresh checkout has no initialized backend even when the state bucket exists.
@@ -656,15 +760,11 @@ down() {
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
   log "Tear down — tofu destroy ($TF_DIR)"
   warn "This deletes the GKE cluster, Cloud SQL, and Memorystore."
-  warn "The GCS bucket will NOT be deleted if it contains objects (force_destroy is not set)."
-  warn "To destroy the bucket, empty it first: gcloud storage rm -r gs://<bucket>/*"
-  warn ""
-  warn "IMPORTANT: deletion_protection defaults true for both GKE and Cloud SQL."
-  warn "Destroy will fail until false has been applied into state:"
-  warn "  1. Set deletion_protection = false in the gitignored terraform.tfvars"
-  warn "  2. Run: bash infra/gcp-run/run.sh apply  (review the saved plan)"
-  warn "  3. Re-run: bash infra/gcp-run/run.sh down"
-  if confirm "Destroy the entire dev environment? (deletion_protection must be false first)"; then
+  warn "The uploads + db-dumps GCS buckets will NOT be deleted if they contain objects"
+  warn "(force_destroy is not set). This means the last Cloud SQL dump SURVIVES a 'down' —"
+  warn "empty the bucket manually if you truly want everything gone:"
+  warn "  gcloud storage rm -r gs://<bucket>/*"
+  if confirm "Destroy the entire dev environment?"; then
     # The script already obtained explicit confirmation; avoid a second prompt that
     # makes AUTO_APPROVE=1 ineffective in automation.
     tofu_ destroy -auto-approve
@@ -674,23 +774,221 @@ down() {
   fi
 }
 
-# ── dispatch ───────────────────────────────────────────────────────────────
+# ── suspend / resume (on-demand showcase) ───────────────────────────────────
 
-# wait_for_cluster: poll `kubectl cluster-info` until the GKE Autopilot control
-# plane responds (typically 5-7 min after `tofu apply` completes). Times out after
-# 10 minutes with an actionable error pointing to the GCP console.
-wait_for_cluster() {
-  log "Waiting for GKE cluster control plane to become reachable (Autopilot takes 5-7 min)"
-  local i=0
-  until kubectl cluster-info >/dev/null 2>&1; do
-    i=$((i + 1))
-    [[ $i -lt 60 ]] || die "Cluster not reachable after 10 minutes — check GCP console"
-    printf '.'
-    sleep 10
-  done
-  echo
-  ok "cluster reachable"
+# active.auto.tfvars is auto-loaded by OpenTofu (*.auto.tfvars) and is gitignored.
+# Persisting the toggles here makes the suspended/active state STICKY: a plain
+# `tofu apply` or `run.sh apply` keeps whatever state suspend/resume last set, instead
+# of silently reverting to the defaults (active). suspend/resume write this file.
+# $1 = environment_active (compute), $2 = db_active (Cloud SQL instance). Both lines are
+# written together so they never drift out of sync.
+set_active_state() {
+  {
+    printf 'environment_active = %s\n' "$1"
+    printf 'db_active          = %s\n' "$2"
+  } > "$TF_DIR/active.auto.tfvars"
 }
+
+# dump_db: server-side export of the live Cloud SQL DB to the GCS dump bucket, run BEFORE
+# a deep suspend destroys the instance. `gcloud sql export` makes Cloud SQL's own service
+# agent run pg_dump straight to GCS, so it works over the instance's private-only network
+# (no public IP / laptop connectivity needed). Verifies the object is non-empty and ABORTS
+# on any failure — suspend() must not destroy the instance unless this returns 0.
+_sql_runnable() {
+  [[ "$(gcloud sql instances describe "$1" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null)" == "RUNNABLE" ]]
+}
+dump_db() {
+  local instance bucket object uri state size
+  ensure_tfvars
+  instance="$(tf_out db_instance_name)"
+  bucket="$(tf_out db_dumps_bucket)"
+  # db_dump_object is the single source of truth (locals.tf) shared with the auto-suspend
+  # path, so suspend writes and resume reads the exact same GCS object.
+  object="$(tf_out db_dump_object)"
+  [[ -n "$instance" && -n "$bucket" && -n "$object" ]] || die "cannot resolve Cloud SQL instance / dump bucket / object from tofu output — run 'apply' first"
+  uri="gs://${bucket}/${object}"
+
+  # Must be RUNNABLE to export. If a prior compute-only suspend left it STOPPED
+  # (activation_policy=NEVER), start it just long enough to dump; the apply that follows
+  # destroys it anyway, so this transient start is harmless.
+  state="$(gcloud sql instances describe "$instance" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null || true)"
+  [[ -n "$state" ]] || die "Cloud SQL instance '$instance' not found — nothing to dump (already deep-suspended?)"
+  if [[ "$state" != "RUNNABLE" ]]; then
+    warn "instance is '$state' — starting it to take a consistent dump"
+    gcloud sql instances patch "$instance" --project="$PROJECT_ID" --activation-policy=ALWAYS --quiet
+    poll_until 30 10 -- _sql_runnable "$instance" \
+      || die "instance did not reach RUNNABLE in time — aborting suspend"
+    echo
+  fi
+
+  log "Exporting Cloud SQL '$instance' → $uri (server-side pg_dump)"
+  gcloud sql export sql "$instance" "$uri" --database="$DB_NAME" --project="$PROJECT_ID" \
+    || die "gcloud sql export failed — NOT suspending (instance left intact)"
+
+  # Verify the dump exists and is non-empty BEFORE the caller is allowed to destroy the
+  # instance. This is the safety gate that replaces Cloud SQL deletion_protection.
+  # SIBLING: the event-driven path duplicates this exact export+non-empty-size gate in
+  # scripts/auto-suspend-dump.sh (different execution model — Cloud Build container — so it
+  # can't be shared code). If you change the verification rule here, change it there too.
+  size="$(gcloud storage objects describe "$uri" --format='value(size)' 2>/dev/null || true)"
+  [[ "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]] || die "dump $uri missing or empty (size='${size:-none}') — NOT suspending"
+  ok "DB exported and verified ($((size / 1024)) KiB) — safe to destroy the instance"
+}
+
+# restore_db: import the latest GCS dump into the freshly-recreated Cloud SQL instance on
+# resume. Best-effort: on a first-ever bring-up there is no dump, so it skips and lets the
+# CI Prisma migrations create the schema. The dump includes the _prisma_migrations table,
+# so when a dump IS restored the CI migrate step is a no-op.
+restore_db() {
+  local instance bucket object uri
+  ensure_tfvars
+  instance="$(tf_out db_instance_name)"
+  bucket="$(tf_out db_dumps_bucket)"
+  # Same single-sourced dump object as dump_db (locals.tf db_dump_object).
+  object="$(tf_out db_dump_object)"
+  [[ -n "$instance" && -n "$bucket" && -n "$object" ]] || { warn "no instance / dump bucket / object resolved — skipping restore"; return 0; }
+  uri="gs://${bucket}/${object}"
+  if ! gcloud storage objects describe "$uri" >/dev/null 2>&1; then
+    warn "no dump at $uri — fresh database; CI migrations will create the schema"
+    return 0
+  fi
+  log "Importing $uri → Cloud SQL '$instance' (database $DB_NAME)"
+  gcloud sql import sql "$instance" "$uri" --database="$DB_NAME" --project="$PROJECT_ID" --quiet \
+    || die "gcloud sql import failed — the instance is up but empty; investigate before the app deploys"
+  ok "DB restored from $uri"
+}
+
+# update_dns: re-point the app's A-record at the current ingress IP via the Spaceship
+# DNS API. Needed on resume because the ingress IP is released on suspend and a fresh
+# one is allocated each resume. Best-effort: prints a manual hint if creds are missing.
+# Credentials come from env (SPACESHIP_API_KEY / SPACESHIP_API_SECRET) or, failing that,
+# Secret Manager (devstash-spaceship-api-key / -secret — see `set-dns-creds`).
+update_dns() {
+  local ip domain root sub key secret code
+  ip="$(tf_out ingress_ip_address)"
+  if [[ -z "$ip" || "$ip" == "null" ]]; then
+    warn "no ingress IP available (environment suspended?) — skipping DNS update"
+    return 0
+  fi
+  domain="$(tf_out app_domain)"
+  [[ -n "$domain" ]] || { warn "app_domain not set — skipping DNS update"; return 0; }
+  # gke.devstash.one → registered domain "devstash.one" (API path) + host label "gke".
+  # Assumes a single subdomain label; adjust if app_domain ever gains more.
+  root="${domain#*.}"
+  sub="${domain%%.*}"
+
+  key="${SPACESHIP_API_KEY:-$(gcloud secrets versions access latest --secret=devstash-spaceship-api-key --project="$PROJECT_ID" 2>/dev/null || true)}"
+  secret="${SPACESHIP_API_SECRET:-$(gcloud secrets versions access latest --secret=devstash-spaceship-api-secret --project="$PROJECT_ID" 2>/dev/null || true)}"
+  if [[ -z "$key" || -z "$secret" ]]; then
+    warn "Spaceship API creds not found (env SPACESHIP_API_KEY/SPACESHIP_API_SECRET or"
+    warn "Secret Manager devstash-spaceship-api-key/-secret via 'run.sh set-dns-creds')."
+    warn "Update the A-record manually:  $domain  →  $ip"
+    return 0
+  fi
+
+  log "Updating Spaceship DNS A-record: $domain → $ip"
+  # force:true overwrites any existing A-record for this host. Short TTL (300s) so the
+  # change is picked up quickly after each resume.
+  code="$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+    "https://spaceship.dev/api/v1/dns/records/${root}" \
+    -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json' \
+    -d "{\"force\":true,\"items\":[{\"type\":\"A\",\"name\":\"${sub}\",\"address\":\"${ip}\",\"ttl\":300}]}" || true)"
+  if [[ "$code" =~ ^2 ]]; then
+    ok "DNS A-record updated ($domain → $ip). Allow a few minutes for propagation + cert."
+  else
+    warn "Spaceship API returned HTTP ${code:-000} — set the A-record manually: $domain → $ip"
+  fi
+}
+
+# set-dns-creds: store the Spaceship DNS API key + secret in Secret Manager so resume
+# can fetch them without keeping them in shell history. Values are read from hidden
+# prompts (or stdin) and never echoed. Re-run to rotate.
+set_dns_creds() {
+  ensure_tfvars
+  local key secret
+  if [[ -t 0 ]]; then
+    read -r -s -p "Spaceship API key: " key; printf '\n'
+    read -r -s -p "Spaceship API secret: " secret; printf '\n'
+  else
+    read -r key; read -r secret
+  fi
+  [[ -n "$key" && -n "$secret" ]] || die "both key and secret are required"
+  log "Storing Spaceship DNS API creds in Secret Manager (project $PROJECT_ID)"
+  # Create the secret if absent, then add a new version. --replication-policy matches
+  # the auto replication used elsewhere in this project.
+  for pair in "devstash-spaceship-api-key:$key" "devstash-spaceship-api-secret:$secret"; do
+    local name="${pair%%:*}" val="${pair#*:}"
+    gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1 \
+      || gcloud secrets create "$name" --replication-policy=automatic --project="$PROJECT_ID"
+    printf '%s' "$val" | gcloud secrets versions add "$name" --data-file=- --project="$PROJECT_ID"
+  done
+  ok "Spaceship DNS creds stored. Rotate them in the Spaceship dashboard if they were ever shared in plaintext."
+}
+
+# suspend: drive the environment to true ~$0. DUMPS Cloud SQL to GCS and verifies the
+# dump FIRST, then sets environment_active=false + db_active=false and applies — this
+# destroys the GKE cluster, Memorystore, Cloud NAT, Cloud Armor, the ingress IP AND the
+# Cloud SQL instance (no kept disk). The data lives only in the verified GCS dump; resume
+# restores it. The dump-and-verify happens before any destroy, so a failed dump aborts the
+# suspend with the instance fully intact.
+# Delete the web+migrate images (all versions + tags, incl. :buildcache) from Artifact
+# Registry so a deep-suspended env holds ZERO image storage — the last standing cost above
+# the always-free tier. Safe: 'resume' rebuilds + repushes from source via CI before the
+# app is applied, and the Deployment pins images by the digest CI just produced. Best-effort
+# — a purge miss (repo already empty) must not abort the suspend. Mirrors the unattended
+# auto-suspend purge step (scripts/auto-suspend-purge-images.sh); keep the two in sync.
+purge_images() {
+  local base img
+  # Prefer Terraform's own artifact_registry_url output (single source of truth for the repo
+  # name — modules/artifact-registry) so this never drifts from a repository_id rename. Fall
+  # back to reconstructing it locally (ds_image_base) if the output isn't readable, e.g. state
+  # unavailable. The "devstash" literal lives in exactly one place now: the fallback.
+  base="$(tf_out artifact_registry_url)"
+  [[ -n "$base" ]] || base="$(ds_image_base "$REGION" "$PROJECT_ID" devstash)"
+  for img in "${DEVSTASH_IMAGES[@]}"; do
+    log "Purging ${base}/${img} (all versions + tags) from Artifact Registry"
+    gcloud artifacts docker images delete "${base}/${img}" \
+      --delete-tags --quiet --project="$PROJECT_ID" \
+      || warn "purge of ${img} returned non-zero (likely already empty) — continuing"
+  done
+}
+
+suspend() {
+  ensure_tfvars
+  log "Deep-suspending environment → ~\$0 (compute + Cloud SQL DESTROYED; data kept in GCS dump)"
+  warn "Cloud SQL is DUMPED to GCS and verified, then DESTROYED. 'resume' recreates + restores it."
+  warn "DNS for $APP_DOMAIN will go stale until 'resume' (the ingress IP is released)."
+  dump_db                       # export + verify BEFORE anything is destroyed — aborts on failure
+  set_active_state false false  # compute off + Cloud SQL instance destroyed
+  apply                         # plan → review → apply; the plan shows the destroys
+  purge_images                  # reclaim AR image storage (CI rebuilds on resume) — after apply, off the destroy path
+  ok "Suspended to ~\$0 (data safe in the GCS dump). Run 'resume' to bring it back."
+}
+
+# resume: bring the environment back from a deep-suspended state. Recreates compute AND
+# the Cloud SQL instance, RESTORES the DB from the latest GCS dump, reinstalls the
+# in-cluster operators (ESO + Reloader, gone with the old cluster), redeploys the app, and
+# re-points DNS at the new ingress IP. Skips bootstrap (project/billing/state/APIs persist
+# across a suspend). The restore runs after apply (instance is RUNNABLE) and before deploy,
+# so the app + migrate Job see the restored schema + data.
+resume() {
+  ensure_tfvars
+  log "Resuming environment (recreate compute + Cloud SQL, restore the dump). Takes several minutes."
+  set_active_state true true
+  apply
+  restore_db   # import the GCS dump into the fresh instance BEFORE the app deploys
+  wait_for_cluster
+  eso
+  log "Redeploying the app (build → migrate → rollout) via CI"
+  deploy
+  update_dns
+  log "Resume kicked off. Next:"
+  echo "  1. Watch the deploy:  gh run watch"
+  echo "  2. bash infra/gcp-run/run.sh smoke   # wait for CI + health check"
+  warn "The managed cert re-provisions after DNS resolves to the new IP (up to ~60 min)."
+}
+
+# ── dispatch ───────────────────────────────────────────────────────────────
 
 case "$CMD" in
   up)
@@ -715,6 +1013,11 @@ case "$CMD" in
   smoke)           smoke ;;
   status)          status ;;
   logs)            logs ;;
+  suspend)         preflight; suspend ;;
+  resume)          preflight; resume ;;
+  dump-db)         dump_db ;;
+  restore-db)      restore_db ;;
+  set-dns-creds)   set_dns_creds ;;
   down)            down ;;
-  *) die "unknown command '$CMD' — one of: up | bootstrap | apply | eso | reloader | secrets | verify-secrets | rotate-secret | upgrade-helm | deploy | smoke | status | logs | down" ;;
+  *) die "unknown command '$CMD' — one of: up | bootstrap | apply | eso | reloader | secrets | verify-secrets | rotate-secret | upgrade-helm | deploy | smoke | status | logs | suspend | resume | dump-db | restore-db | set-dns-creds | down" ;;
 esac

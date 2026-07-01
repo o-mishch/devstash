@@ -13,9 +13,9 @@ output "wif_provider" {
   value = google_iam_workload_identity_pool_provider.github.name
 }
 
-# GCS S3-interop access id (non-sensitive). The matching secret lives in Secret
-# Manager as `devstash-s3-secret`; both are surfaced to the app by External
-# Secrets. Handy for debugging which HMAC key the bucket sees.
+# GCS S3-interop access id (non-sensitive). The matching secret lives in the
+# consolidated devstash-app-config secret under the `s3-secret` property; both are
+# surfaced to the app by External Secrets. Handy for debugging which HMAC key the bucket sees.
 output "s3_interop_access_id" {
   value = google_storage_hmac_key.uploads.access_id
 }

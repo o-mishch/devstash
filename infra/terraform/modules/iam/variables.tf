@@ -18,9 +18,21 @@ variable "artifact_registry_repository_id" { type = string }
 
 # Binary Authorization attestor wiring (modules/gke outputs) — grants the deployer SA
 # permission to sign attestations during CI, without granting it broader KMS/Container
-# Analysis access than this one key/note.
-variable "binauthz_note_id" { type = string }
-variable "binauthz_kms_crypto_key_id" { type = string }
+# Analysis access than this one key/note. Both are null when the pipeline is disabled
+# (var.binauthz_enabled = false); the grants that consume them are gated by the same flag.
+variable "binauthz_enabled" {
+  type        = bool
+  default     = false
+  description = "Grant the deployer SA the KMS-signer + note-attacher roles for the attestor. Must match modules/gke binauthz_enabled."
+}
+variable "binauthz_note_id" {
+  type    = string
+  default = null
+}
+variable "binauthz_kms_crypto_key_id" {
+  type    = string
+  default = null
+}
 
 # GitHub repo allowed to federate as the deployer SA, "owner/repo" form.
 variable "github_repository" {

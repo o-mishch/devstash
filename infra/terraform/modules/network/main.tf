@@ -59,20 +59,28 @@ resource "google_service_networking_connection" "psa" {
 # range above. DNS A-record for the app domain points here; the Google-managed
 # cert only provisions once that DNS resolves to this IP.
 resource "google_compute_global_address" "ingress_ip" {
-  name = "${var.name_prefix}-ip" # -> "devstash-dev-ip" (matches the overlay annotation)
+  # Gated: an in-use global IP is free, but a RESERVED-but-idle one bills ~$7/mo — the
+  # single largest line item of a suspended environment. So it is released on suspend
+  # and re-allocated on resume; the resume script re-points the app's DNS A-record at
+  # the fresh address (see run.sh resume → Spaceship DNS update).
+  count = var.compute_active ? 1 : 0
+  name  = "${var.name_prefix}-ip" # -> "devstash-dev-ip" (matches the overlay annotation)
 }
 
 # --- Cloud NAT: private nodes have no external IP, so outbound internet (pulling
 # from Resend/Stripe/OAuth, npm, etc.) goes through a NAT gateway. ----------
 resource "google_compute_router" "router" {
+  # Gated with the NAT below: egress NAT is only needed while GKE pods are running.
+  count   = var.compute_active ? 1 : 0
   name    = "${var.name_prefix}-router"
   region  = var.region
   network = google_compute_network.vpc.id
 }
 
 resource "google_compute_router_nat" "nat" {
+  count  = var.compute_active ? 1 : 0
   name   = "${var.name_prefix}-nat"
-  router = google_compute_router.router.name
+  router = google_compute_router.router[0].name
   region = var.region
   # AUTO_ONLY: GCP picks and rotates the external IPs used for egress NAT.
   # Fine for a dev environment. For production, switch to MANUAL_ONLY with
@@ -103,6 +111,11 @@ resource "google_compute_router_nat" "nat" {
 # traffic reaches pods. Complements the NetworkPolicy which only operates
 # inside the cluster.
 resource "google_compute_security_policy" "default" {
+  # Gated twice: destroyed when suspended (compute_active, attached to the gone LB) AND
+  # never created when the WAF is disabled for cost (armor_enabled, default false in dev).
+  # Both must be true for the policy to exist. The armor_policy_name output is null
+  # otherwise, and CI injects an empty securityPolicy name so the ingress attaches no policy.
+  count       = var.compute_active && var.armor_enabled ? 1 : 0
   name        = "${var.name_prefix}-armor"
   description = "Cloud Armor WAF + rate limiting for the DevStash GKE ingress"
 

@@ -41,18 +41,18 @@ locals {
     s3-secret    = google_storage_hmac_key.uploads.secret
   }
   merged_secrets = merge(var.app_secrets, local.s3_interop_secrets)
-  # Stable, non-sensitive key list for for_each (values stay out of addresses).
-  # keys() inherits sensitive taint from var.app_secrets in Terraform 1.x, so we
-  # explicitly strip it — the key *names* (e.g. "database-url") are not secret.
-  secret_keys = toset(concat(nonsensitive(keys(var.app_secrets)), keys(local.s3_interop_secrets)))
 }
 
-# Iterate over the (non-sensitive) KEY NAMES, not the map itself — the secret
-# values are sensitive and can't be used as for_each keys (they'd leak into
-# resource addresses). Look the value up by key inside the body instead.
-resource "google_secret_manager_secret" "secrets" {
-  for_each  = local.secret_keys
-  secret_id = "devstash-${each.key}"
+# ONE consolidated secret holding a JSON object of every app credential, keyed by the
+# same short names the old per-secret suffixes used (auth-secret, database-url, s3-secret,
+# …). Consolidated from ~14 individual Secret Manager secrets into a single secret so a
+# deep-suspended env stays inside Secret Manager's 6-active-version always-free tier: one
+# active version, not 9+. External Secrets Operator splits it back into individual k8s
+# Secret keys via remoteRef.property (see infra/k8s/overlays/gcp/external-secrets.yaml).
+# The conditional infra keys (database-*/redis-*) are simply absent from the JSON while the
+# environment is suspended — the blob is still a single version either way.
+resource "google_secret_manager_secret" "app_config" {
+  secret_id = "devstash-app-config"
 
   replication {
     auto {}
@@ -61,16 +61,17 @@ resource "google_secret_manager_secret" "secrets" {
   labels = var.labels
 }
 
-resource "google_secret_manager_secret_version" "versions" {
-  for_each    = local.secret_keys
-  secret      = google_secret_manager_secret.secrets[each.key].id
-  secret_data = local.merged_secrets[each.key]
+# secret_data is jsonencode() of the merged (sensitive) map, so the whole blob is sensitive
+# and never appears in plan output. Rewritten in place on every apply — one version, whether
+# the env is active (all keys) or suspended (infra keys omitted).
+resource "google_secret_manager_secret_version" "app_config" {
+  secret      = google_secret_manager_secret.app_config.id
+  secret_data = jsonencode(local.merged_secrets)
 }
 
-# Grant the app SA read access to its secrets.
+# Grant the app SA read access to the one consolidated secret.
 resource "google_secret_manager_secret_iam_member" "app_access" {
-  for_each  = google_secret_manager_secret.secrets
-  secret_id = each.value.id
+  secret_id = google_secret_manager_secret.app_config.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.app.email}"
 }
@@ -116,10 +117,17 @@ data "google_project" "current" {
   project_id = var.project_id
 }
 
+locals {
+  # Compute Engine default SA — the identity Autopilot nodes run as. Both the node-role
+  # binding and the Artifact Registry reader binding below target it, so single-source the
+  # member string here (it embeds the project number, resolvable only via the data source).
+  compute_default_sa_member = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
 resource "google_project_iam_member" "compute_default_sa_node" {
   project = var.project_id
   role    = "roles/container.defaultNodeServiceAccount"
-  member  = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+  member  = local.compute_default_sa_member
 }
 
 # Node image-pull access to Artifact Registry.
@@ -146,7 +154,7 @@ resource "google_artifact_registry_repository_iam_member" "node_artifact_registr
   location   = var.region
   repository = var.artifact_registry_repository_id
   role       = "roles/artifactregistry.reader"
-  member     = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+  member     = local.compute_default_sa_member
 }
 
 # --- CI/CD deployer service account ---------------------------------------
@@ -175,13 +183,19 @@ resource "google_artifact_registry_repository_iam_member" "deployer_artifact_reg
 # read Artifact Analysis vulnerability findings for the CI vulnerability gate. Both
 # are scoped to the single key/note this module is handed — not project-wide KMS or
 # Container Analysis access — mirroring the repo-scoped Artifact Registry grant above.
+# Gated with the pipeline: crypto_key_id / note are null when binauthz is disabled, so
+# these two grants must not be created then. The project-level viewer roles below stay
+# ungated — they are free, depend on no gated resource, and keep the CI vulnerability
+# gate working independently of the signing pipeline.
 resource "google_kms_crypto_key_iam_member" "deployer_binauthz_signer" {
+  count         = var.binauthz_enabled ? 1 : 0
   crypto_key_id = var.binauthz_kms_crypto_key_id
   role          = "roles/cloudkms.signerVerifier"
   member        = "serviceAccount:${google_service_account.deployer.email}"
 }
 
 resource "google_container_analysis_note_iam_member" "deployer_binauthz_attacher" {
+  count   = var.binauthz_enabled ? 1 : 0
   project = var.project_id
   note    = var.binauthz_note_id
   role    = "roles/containeranalysis.notes.attacher"

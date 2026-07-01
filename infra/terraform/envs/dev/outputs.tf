@@ -22,11 +22,30 @@ output "db_public_database_url" {
 # for redis-cli / RedisInsight (run them in-cluster or via a bastion). AUTH + CA are
 # in the synced Secret; see "Підключення до Memorystore" in 08-gcp-bootstrap.md.
 output "redis_host" {
-  value = module.memorystore.host
+  # Null when suspended (Memorystore destroyed). module.memorystore is count-indexed.
+  value = one(module.memorystore[*].host)
 }
 
 output "uploads_bucket" {
   value = module.gcs.bucket_name
+}
+
+# Cloud SQL instance name + dump bucket — consumed by run.sh suspend/resume for the
+# `gcloud sql export|import` round trip. The name is computed (not read from the resource)
+# so it is available even while deep-suspended (the instance is gone); run.sh needs it to
+# name the export target and the import destination.
+output "db_instance_name" {
+  value = local.db_instance_name
+}
+
+output "db_dumps_bucket" {
+  value = google_storage_bucket.db_dumps.name
+}
+
+# Well-known object name of the Cloud SQL logical dump. run.sh reads this so its
+# suspend/resume round trip uses the exact object the auto-suspend path writes.
+output "db_dump_object" {
+  value = local.db_dump_object
 }
 
 output "app_service_account_email" {
@@ -44,7 +63,10 @@ output "deployer_service_account_email" {
 #   gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 #
 # And these repo VARIABLES (non-secret — attestor/KMS resource names, not credentials)
-# consumed by the "Sign images for Binary Authorization" step:
+# consumed by the "Sign images for Binary Authorization" step. Present ONLY when
+# binauthz_enabled = true; when false these outputs are null (`tofu output -raw` errors on
+# null) and the CI signing step self-skips. `run.sh set-repo-secrets` handles both cases —
+# prefer it over setting these by hand:
 #   gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
 #   gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
 #   gh variable set BINAUTHZ_KMS_KEY --body "$(tofu output -raw binauthz_kms_key)"
@@ -89,10 +111,19 @@ output "armor_policy_name" {
   value = module.network.armor_policy_name
 }
 
+# Whether Cloud Armor is provisioned — read by run.sh set-repo-secrets to set/clear the
+# ARMOR_ENABLED CI variable that inject-settings.sh keys the BackendConfig policy on.
+# Sourced from the var (not armor_policy_name, which is also null while suspended) so it is
+# correct regardless of environment_active.
+output "armor_enabled" {
+  value = var.armor_enabled
+}
+
 # Handy for `kubectl` config after apply. --dns-endpoint is required: the cluster
 # has enable_private_endpoint = true (no public IP), so the classic API-server
 # endpoint is disabled. The DNS-based endpoint authenticates via IAM (the same SA
 # used by CI) and is the only way to reach the control plane from outside the VPC.
 output "get_credentials_command" {
-  value = "gcloud container clusters get-credentials ${module.gke.cluster_name} --region ${var.region} --project ${var.project_id} --dns-endpoint"
+  # Null cluster_name when suspended — interpolating it would error, so guard it.
+  value = module.gke.cluster_name == null ? "environment suspended — run `run.sh resume` first" : "gcloud container clusters get-credentials ${module.gke.cluster_name} --region ${var.region} --project ${var.project_id} --dns-endpoint"
 }

@@ -15,6 +15,8 @@
 | 07 | [Локальний запуск](07-local-run.md) | Повний робочий застосунок на kind: in-cluster Postgres, міграції, deep health | (практика) |
 | 08 | [Bootstrap GCP](08-gcp-bootstrap.md) | Що руками підготувати на cloud.google.com/free **перед** `tofu init`: проєкт, білінг, ADC, state-бакет, tfvars | (передумови deploy) |
 | 09 | [GCP hardening roadmap](09-gcp-audit.md) | Forward-looking кроки до продакшну: alerts, Binary Auth, restore-drill, prod/dev split, HA-сайзинг | (roadmap) |
+| 10 | [Suspend / Resume](10-suspend-resume.md) | On-demand showcase за ~$0: `environment_active` toggle, `run.sh suspend`/`resume`, Spaceship DNS, idle auto-suspend (Monitoring→Pub/Sub→Build) | (cost) |
+| 11 | [Логи застосунку](11-logs.md) | Перегляд і пошук логів подів: `kubectl logs`, Logs Explorer, пошук за підрядком (`SEARCH`, `=~`, `jsonPayload.*`) | (observability) |
 
 ## Як цим користуватися
 

@@ -8,6 +8,12 @@
 #              No google_container_node_pool resource needed or allowed.
 
 resource "google_container_cluster" "primary" {
+  # Cost toggle. The cluster is the largest line item; it holds no persistent state
+  # (the app's data lives in Cloud SQL, which is kept), so it is fully destroyed when
+  # the environment is suspended and re-created on resume. Only the CLUSTER is gated —
+  # the Binary Authorization KMS key / attestor / policy below are NOT (the KMS key has
+  # prevent_destroy and must survive a suspend, so they stay always-on and ungated).
+  count            = var.cluster_active ? 1 : 0
   name             = "${var.name_prefix}-gke"
   location         = var.region # regional = control plane replicated across zones (HA)
   enable_autopilot = true
@@ -131,8 +137,14 @@ resource "google_container_cluster" "primary" {
   # does not yet enforce provenance. GitHub/Sigstore OCI attestations are not native
   # Binary Authorization attestations; enforcement requires a Container Analysis
   # attestor plus a CI step that signs the image digest for that attestor.
-  binary_authorization {
-    evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
+  # Gated by var.binauthz_enabled: when the signing pipeline below is omitted (dev $0
+  # posture), the cluster carries no binary_authorization block at all (GKE default =
+  # DISABLED) so there is no dangling reference to a non-existent policy/attestor.
+  dynamic "binary_authorization" {
+    for_each = var.binauthz_enabled ? [1] : []
+    content {
+      evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
+    }
   }
 
   # Environment policy, passed from root rather than edited in module source.
@@ -154,37 +166,43 @@ resource "google_container_cluster" "primary" {
 # (Workload Identity for pods, WIF for CI — no exported credentials anywhere). CI signs
 # by invoking KMS (roles/cloudkms.signerVerifier, granted to the deployer SA in
 # modules/iam/main.tf), never by handling a private key file.
+# The whole signing pipeline (keyring → key → note → attestor → policy) is gated by
+# var.binauthz_enabled. Default false (dev) removes the KMS key — the only idle resource
+# with no free tier — for a literal $0 suspended footprint. The key deliberately carries
+# NO prevent_destroy: that lifecycle flag must be a static literal (it cannot be
+# var.binauthz_enabled), so keeping it would permanently block dev from flipping the flag
+# off once the key exists in state. Destroying the crypto key only tears down its billed
+# key VERSION (GCP forbids deleting the keyring/key shells outright), so a flag flip is
+# reversible; prod safety comes from binauthz_enabled being permanently true there
+# (count stays 1 — the key is only ever destroyed by a deliberate flag flip), not from a
+# lifecycle guard that would break the dev/prod count gate.
 resource "google_kms_key_ring" "binauthz" {
+  count    = var.binauthz_enabled ? 1 : 0
   name     = "${var.name_prefix}-binauthz-keyring"
   location = "global" # Binary Authorization attestors are global resources.
 }
 
 resource "google_kms_crypto_key" "binauthz_signer" {
+  count    = var.binauthz_enabled ? 1 : 0
   name     = "${var.name_prefix}-binauthz-signer"
-  key_ring = google_kms_key_ring.binauthz.id
+  key_ring = google_kms_key_ring.binauthz[0].id
   purpose  = "ASYMMETRIC_SIGN"
 
   version_template {
     algorithm = "EC_SIGN_P256_SHA256"
-  }
-
-  # Asymmetric signing keys back live attestations; destroying this key invalidates
-  # every attestation CI has created and would (once enforcement is ever turned on)
-  # block every image pull until re-signed. Mirrors deletion_protection elsewhere in
-  # this module.
-  lifecycle {
-    prevent_destroy = true
   }
 }
 
 # KMS auto-creates version "1" for a new asymmetric key; read its public key (PEM) to
 # register with the attestor below. No private key material is ever read here.
 data "google_kms_crypto_key_version" "binauthz_signer_version" {
-  crypto_key = google_kms_crypto_key.binauthz_signer.id
+  count      = var.binauthz_enabled ? 1 : 0
+  crypto_key = google_kms_crypto_key.binauthz_signer[0].id
 }
 
 resource "google_container_analysis_note" "devstash_slsa" {
-  name = "${var.name_prefix}-slsa"
+  count = var.binauthz_enabled ? 1 : 0
+  name  = "${var.name_prefix}-slsa"
 
   attestation_authority {
     hint {
@@ -194,16 +212,17 @@ resource "google_container_analysis_note" "devstash_slsa" {
 }
 
 resource "google_binary_authorization_attestor" "devstash_slsa" {
-  name = "${var.name_prefix}-slsa"
+  count = var.binauthz_enabled ? 1 : 0
+  name  = "${var.name_prefix}-slsa"
 
   attestation_authority_note {
-    note_reference = google_container_analysis_note.devstash_slsa.name
+    note_reference = google_container_analysis_note.devstash_slsa[0].name
 
     public_keys {
-      id = data.google_kms_crypto_key_version.binauthz_signer_version.name
+      id = data.google_kms_crypto_key_version.binauthz_signer_version[0].name
 
       pkix_public_key {
-        public_key_pem      = data.google_kms_crypto_key_version.binauthz_signer_version.public_key[0].pem
+        public_key_pem      = data.google_kms_crypto_key_version.binauthz_signer_version[0].public_key[0].pem
         signature_algorithm = "ECDSA_P256_SHA256"
       }
     }
@@ -234,6 +253,7 @@ resource "google_binary_authorization_attestor" "devstash_slsa" {
 #      Do not switch step 3 first or before step 2 is verified: it blocks the web,
 #      migrator, and third-party init images immediately on the next pod schedule.
 resource "google_binary_authorization_policy" "default" {
+  count = var.binauthz_enabled ? 1 : 0
   # Inherit Google's curated allow-list for GKE system images so the control plane
   # components are never blocked by the default deny rule.
   global_policy_evaluation_mode = "ENABLE"

@@ -11,7 +11,12 @@ resource "google_artifact_registry_repository" "docker" {
   # DELETE removes everything else. A KEEP-only policy never deletes anything.
   #
   # Two KEEP guards prevent running pods from losing their image during a deploy storm:
-  #   1. keep-recent: always retain the 10 newest pushes (covers any rollback window)
+  #   1. keep-recent: always retain the 3 newest pushes (rollback window). Lowered from
+  #      10 → 3 for the $0-idle dev showcase: image storage is the single largest cost
+  #      that SURVIVES a deep suspend (~$0.3–0.5/mo for 10 versions of web+migrate), so a
+  #      shallower rollback depth is the biggest real idle saving. keep-young below still
+  #      retains anything a running pod could be pulling, so this only trims STALE rollback
+  #      targets (older than 7 days) — never an in-use image. Raise for prod.
   #   2. keep-young:  always retain images pushed within the last 7 days regardless of
   #      count — a rapid-push burst can't evict an image a pod is currently pulling.
   #
@@ -38,7 +43,7 @@ resource "google_artifact_registry_repository" "docker" {
     id     = "keep-recent"
     action = "KEEP"
     most_recent_versions {
-      keep_count = 10
+      keep_count = 3
     }
   }
   cleanup_policies {

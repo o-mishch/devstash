@@ -51,43 +51,77 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      # Lint the extracted deploy scripts (infra/ci/*.sh) + the shared bash library
+      # (infra/lib/*.sh) as real shell — the whole point of pulling them out of this YAML.
+      # shellcheck is preinstalled on ubuntu-latest. -x follows `source infra/versions.env`
+      # and `source infra/lib/common.sh`; -e SC1091 belt-and-braces in case the runner image
+      # ever drops a sourced file from the checkout. Scope excludes
+      # infra/terraform/envs/dev/scripts/*.sh — those are Cloud Build substitution templates
+      # ($$/$_VAR syntax), NOT plain bash, and must not be linted here.
+      - name: Lint deploy scripts (shellcheck)
+        run: shellcheck -x -e SC1091 infra/ci/*.sh infra/lib/*.sh
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.x
           cache: npm
       - run: npm ci
-      # Static analysis of every pending migration SQL file before anything is built
-      # or deployed. Catches dangerous statements (DROP COLUMN, lock-heavy ALTER,
-      # non-CONCURRENT index, column/table renames) that would cause downtime or data
-      # loss during a rolling update. `.pgfence.json` sets max-risk=low, so medium
-      # and high findings fail while low-risk additive changes remain deployable.
-      # If this step fails, fix the migration (expand-contract pattern) before merging.
-      #
-      # WHY shopt -s globstar: GitHub Actions runners use bash but globstar (**) is
-      # disabled by default. Without it, ** matches only one directory level deep,
-      # silently skipping prisma/migrations/<timestamp>_name/migration.sql (two levels).
-      # `shopt -s globstar` must precede the glob expansion in the same shell invocation.
+      # Static safety analysis of every pending migration SQL file before anything is
+      # built or deployed — blocks dangerous statements (DROP COLUMN, lock-heavy ALTER,
+      # non-CONCURRENT index, renames). Full rationale + the globstar note live in the
+      # script; policy is the committed .pgfence.json.
       - name: Check migration safety
-        run: |
-          shopt -s globstar
-          # pgfence is a lockfile-pinned devDependency installed by `npm ci`.
-          # --no-install forbids npx from downloading a different package at deploy time.
-          # Risk/Postgres/lock-timeout policy lives in the committed .pgfence.json;
-          # do not duplicate those values here or local and CI analysis can drift.
-          npx --no-install pgfence analyze --ci prisma/migrations/**/migration.sql
+        run: infra/ci/check-migrations.sh
       - run: npm run lint
       - run: npm run test:run
 
-  # ---- Build the image, push to Artifact Registry, deploy to GKE -------------
-  build-deploy:
-    needs: verify # only runs if `verify` succeeded
-    # Guard: GCP Workload Identity Federation pins the OIDC token to refs/heads/main
-    # (iam module attribute_condition: assertion.ref == "refs/heads/main"). A
-    # workflow_dispatch on any other branch would reach google-github-actions/auth and
-    # fail with a cryptic "unauthorized_client" GCP STS error. This condition surfaces
-    # the real reason immediately instead of burning runner time on the prior steps.
+  # ---- Preflight: skip cleanly if the environment is suspended ---------------
+  # A merge to main while the showcase is parked at ~$0 (deep-suspended: no GKE cluster,
+  # Artifact Registry images purged) must NOT rebuild/repush images and must NOT fail — it
+  # should skip with a warning. This job checks whether the cluster exists and publishes
+  # `suspended`; build-deploy self-skips when it is true, so build-push never runs (the
+  # purged images stay purged) and no step errors against a missing cluster. Resume is
+  # unaffected: run.sh resume recreates the cluster BEFORE dispatching this workflow, so by
+  # the time preflight runs the environment is active again.
+  preflight:
+    needs: verify
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: OIDC token for the cluster existence check
+    outputs:
+      suspended: ${{ steps.env-state.outputs.suspended }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: auth
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+      - name: Detect suspended environment
+        id: env-state
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: infra/ci/check-env-active.sh
+
+  # ---- Build the image, push to Artifact Registry, deploy to GKE -------------
+  build-deploy:
+    needs: preflight # runs after verify (transitively) + the suspended check
+    # Two guards. (1) GCP Workload Identity Federation pins the OIDC token to refs/heads/main
+    # (iam module attribute_condition: assertion.ref == "refs/heads/main"); a workflow_dispatch
+    # on any other branch would reach google-github-actions/auth and fail with a cryptic
+    # "unauthorized_client" GCP STS error, so gate on main here to surface the real reason.
+    # (2) Skip entirely when preflight found the environment suspended — no rebuild/repush, no
+    # failure against a missing cluster (the job shows as skipped, with preflight's warning).
+    if: github.ref == 'refs/heads/main' && needs.preflight.outputs.suspended != 'true'
+    runs-on: ubuntu-latest
+    # GCP_PROJECT_ID is consumed by four steps (validate, build-push, sign-images,
+    # inject-settings) — declare it once at job scope instead of in each step's env. Scoped
+    # to this job (not workflow-level) so it is never exposed to the `verify` job, which runs
+    # untrusted test code — the same trust boundary that keeps id-token off `verify`.
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
     # Hard cap beyond per-step timeouts. Worst-case declared budgets are image build
     # 10m + two Helm upgrades 10m + migration 10m + rollout 5m, before API/setup
     # overhead. 30m did not cover its own stated path and could cancel a live migration
@@ -102,28 +136,13 @@ jobs:
 
       - name: Validate deployment inputs
         env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           DEPLOYER_SA: ${{ secrets.DEPLOYER_SA }}
           APP_DOMAIN: ${{ vars.APP_DOMAIN }}
           BINAUTHZ_ATTESTOR: ${{ vars.BINAUTHZ_ATTESTOR }}
           BINAUTHZ_KMS_KEYRING: ${{ vars.BINAUTHZ_KMS_KEYRING }}
           BINAUTHZ_KMS_KEY: ${{ vars.BINAUTHZ_KMS_KEY }}
-        run: |
-          # Fail before image builds or GCP auth. Empty GitHub secrets/variables expand
-          # to empty strings; without this guard failures surface much later as malformed
-          # image names, STS errors, or an invalid ManagedCertificate.
-          for name in GCP_PROJECT_ID WORKLOAD_IDENTITY_PROVIDER DEPLOYER_SA APP_DOMAIN \
-            BINAUTHZ_ATTESTOR BINAUTHZ_KMS_KEYRING BINAUTHZ_KMS_KEY; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Required GitHub deployment input is missing: ${name}"
-              exit 1
-            fi
-          done
-          if [[ ! "$APP_DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ || "$APP_DOMAIN" != *.* ]]; then
-            echo "::error::APP_DOMAIN must be a lowercase hostname without scheme, port, or path"
-            exit 1
-          fi
+        run: infra/ci/validate-inputs.sh
 
       # Keyless auth to GCP. WORKLOAD_IDENTITY_PROVIDER + DEPLOYER_SA are repo
       # variables/secrets; the provider is created in Terraform (iam module +
@@ -144,57 +163,7 @@ jobs:
 
       - name: Build & push images
         id: build-push
-        run: |
-          BASE="${REGION}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${REPO}"
-          IMAGE_URI="${BASE}/${IMAGE}"
-          MIGRATE_URI="${BASE}/${IMAGE_MIGRATE}"
-          # Runtime image (default last stage) + migrator image (--target migrator).
-          # Both builds share the same registry remote cache (mode=max includes all
-          # intermediate layers). The deps + builder stages are reused across builds
-          # when the lockfile and schema are unchanged — typical saves are 2-4 min.
-          # --metadata-file captures the image digest from the registry response so we
-          # can pass it to SLSA attestation without re-pulling the image.
-          docker buildx build \
-            --cache-from "type=registry,ref=${IMAGE_URI}:buildcache" \
-            --cache-to   "type=registry,ref=${IMAGE_URI}:buildcache,mode=max" \
-            --push \
-            --metadata-file /tmp/meta-web.json \
-            -t "${IMAGE_URI}:${GITHUB_SHA}" -t "${IMAGE_URI}:latest" .
-          # WHY two --cache-from: deps+builder layers are shared with the web build
-          # (IMAGE_URI:buildcache, written above). The migrator adds its own unique
-          # layers (apk add libc6-compat, prisma generate inside the migrator stage,
-          # seed files). Those unique layers are written to MIGRATE_URI:buildcache so
-          # subsequent deploys restore them from cache instead of rebuilding cold
-          # (~60-120s per run saved). The web build's cache is read-only here (no
-          # --cache-to for IMAGE_URI) — each image owns its own buildcache tag.
-          docker buildx build --target migrator \
-            --cache-from "type=registry,ref=${IMAGE_URI}:buildcache" \
-            --cache-from "type=registry,ref=${MIGRATE_URI}:buildcache" \
-            --cache-to   "type=registry,ref=${MIGRATE_URI}:buildcache,mode=max" \
-            --push \
-            --metadata-file /tmp/meta-migrate.json \
-            -t "${MIGRATE_URI}:${GITHUB_SHA}" -t "${MIGRATE_URI}:latest" .
-          # Extract the registry digest from the buildx metadata file (the canonical
-          # sha256 the registry assigned — stable across tags on the same manifest).
-          WEB_DIGEST=$(jq -er '."containerimage.digest"' /tmp/meta-web.json)
-          MIGRATE_DIGEST=$(jq -er '."containerimage.digest"' /tmp/meta-migrate.json)
-          if [[ ! "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || ! "$MIGRATE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::BuildKit did not return valid registry image digests"
-            exit 1
-          fi
-          # Deploy by registry digest. A commit-SHA tag can still be overwritten by a
-          # workflow re-run; a content digest cannot.
-          {
-            echo "IMAGE_URI=${IMAGE_URI}"
-            echo "WEB_DIGEST=${WEB_DIGEST}"
-            echo "MIGRATE_IMAGE=${MIGRATE_URI}@${MIGRATE_DIGEST}"
-          } >> "$GITHUB_ENV"
-          {
-            echo "web_image_name=${IMAGE_URI}"
-            echo "web_digest=${WEB_DIGEST}"
-            echo "migrate_image_name=${MIGRATE_URI}"
-            echo "migrate_digest=${MIGRATE_DIGEST}"
-          } >> "$GITHUB_OUTPUT"
+        run: infra/ci/build-push.sh
 
       # Binary Authorization attestations (KMS-backed attestor, see modules/gke/main.tf).
       # This is the CI half of "step 2" in that module's enforcement-path comment: sign
@@ -203,21 +172,17 @@ jobs:
       # error — enforcement is off, so a signing failure cannot brick a live deploy, but a
       # silent failure here would hide a broken pipeline from whoever eventually flips
       # enforcement on. KMS does the signing; no private key ever touches the runner.
+      # Skipped when Binary Authorization is disabled (binauthz_enabled=false → the
+      # attestor/KMS resources are not provisioned and BINAUTHZ_ATTESTOR is unset). The
+      # validate step above guarantees the three vars are all-set-or-all-unset, so gating
+      # on the attestor alone is sufficient.
       - name: Sign images for Binary Authorization
+        if: vars.BINAUTHZ_ATTESTOR != ''
         env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-        run: |
-          for ARTIFACT in "${IMAGE_URI}@${WEB_DIGEST}" "${MIGRATE_IMAGE}"; do
-            gcloud container binauthz attestations sign-and-create \
-              --artifact-url="${ARTIFACT}" \
-              --attestor="${{ vars.BINAUTHZ_ATTESTOR }}" \
-              --attestor-project="${PROJECT_ID}" \
-              --keyversion-project="${PROJECT_ID}" \
-              --keyversion-location=global \
-              --keyversion-keyring="${{ vars.BINAUTHZ_KMS_KEYRING }}" \
-              --keyversion-key="${{ vars.BINAUTHZ_KMS_KEY }}" \
-              --keyversion=1
-          done
+          BINAUTHZ_ATTESTOR: ${{ vars.BINAUTHZ_ATTESTOR }}
+          BINAUTHZ_KMS_KEYRING: ${{ vars.BINAUTHZ_KMS_KEYRING }}
+          BINAUTHZ_KMS_KEY: ${{ vars.BINAUTHZ_KMS_KEY }}
+        run: infra/ci/sign-images.sh
 
       # Optional GitHub/Sigstore provenance. Private repositories require GitHub
       # Enterprise Cloud for artifact attestations; leave the repository variable
@@ -252,64 +217,7 @@ jobs:
       # been exercised against a live scan result from this project. Verify on the first
       # real deploy and adjust the jq paths if the actual output differs.
       - name: Check image vulnerabilities
-        run: |
-          # Artifact Analysis scanning is async — results may not exist immediately after
-          # push. Poll the documented readiness flag for up to 5 min per image. If still
-          # not ready by then, WARN and continue rather than block: this is a deliberate
-          # fail-open on SCANNER LATENCY, not on found vulnerabilities. Tighten to
-          # fail-closed once real-world scan latency for this project is observed.
-          #
-          # Severity threshold: CRITICAL + HIGH only (MEDIUM/LOW are too noisy to gate
-          # CI on). Exceptions: infra/security/vulnerability-exceptions.yaml — unexpired
-          # entries matching this image's CVE are excluded from the gate.
-          check_image() {
-            local artifact="$1" image_key="$2"
-            local attempt=0 finished="false" result=""
-            while (( attempt < 20 )); do
-              result="$(gcloud artifacts docker images describe "$artifact" \
-                --show-package-vulnerability --format=json 2>/dev/null || true)"
-              finished="$(jq -r '.image_summary.vulnerability_initial_analysis_finished // false' \
-                <<<"$result" 2>/dev/null || echo false)"
-              if [[ "$finished" == "true" ]]; then
-                break
-              fi
-              attempt=$((attempt + 1))
-              sleep 15
-            done
-            if [[ "$finished" != "true" ]]; then
-              echo "::warning::Vulnerability scan for ${artifact} not ready after 5 min — proceeding without blocking. Re-check manually: gcloud artifacts docker images describe ${artifact} --show-package-vulnerability"
-              return 0
-            fi
-            local findings
-            findings="$(jq -r '
-              [(.package_vulnerability_summary.vulnerabilities.CRITICAL // []),
-               (.package_vulnerability_summary.vulnerabilities.HIGH // [])]
-              | flatten
-              | .[]
-              | (.vulnerability.shortDescription // .noteName // .vulnerability // "unknown") as $raw
-              | ($raw | split("/") | last)
-            ' <<<"$result" 2>/dev/null | sort -u || true)"
-            local blocking=()
-            while IFS= read -r cve; do
-              if [[ -z "$cve" ]]; then
-                continue
-              fi
-              if yq -e ".exceptions[] | select(.image == \"${image_key}\" and .cve == \"${cve}\" and .expires > \"$(date -u +%Y-%m-%d)\")" \
-                infra/security/vulnerability-exceptions.yaml >/dev/null 2>&1; then
-                echo "Exception on file for ${cve} (${image_key}) — skipping"
-                continue
-              fi
-              blocking+=("$cve")
-            done <<<"$findings"
-            if (( ${#blocking[@]} > 0 )); then
-              echo "::error::Unlisted CRITICAL/HIGH vulnerabilities in ${image_key} (${artifact}): ${blocking[*]}"
-              echo "::error::Add a time-bound exception to infra/security/vulnerability-exceptions.yaml if this is accepted risk, or fix the underlying package."
-              return 1
-            fi
-            echo "No unlisted CRITICAL/HIGH vulnerabilities in ${image_key}."
-          }
-          check_image "${IMAGE_URI}@${WEB_DIGEST}" web
-          check_image "${MIGRATE_IMAGE}" migrate
+        run: infra/ci/check-image-vulns.sh
 
       # The control plane has no public IP endpoint (enable_private_endpoint = true);
       # access is via the IAM-gated DNS-based endpoint, so request DNS-based creds.
@@ -339,23 +247,7 @@ jobs:
       # a generic 403 HTML page means a Google-Front-End rejection, which we detect and
       # translate into the two gates to check instead of a misleading downstream error.
       - name: Verify control plane reachable (DNS endpoint)
-        run: |
-          if out="$(kubectl get --raw='/readyz' 2>&1)"; then
-            echo "Control plane reachable via DNS endpoint: ${out}"
-            exit 0
-          fi
-          # A generic Google HTML 403 here is a Google-Front-End rejection at the DNS endpoint
-          # (not a named-permission IAM denial). Two independent gates can cause it — check both.
-          if printf '%s' "$out" | grep -qiE '403 \(Forbidden\)|That.{0,3}s an error'; then
-            echo "::error::GKE DNS endpoint returned a generic HTTP 403 at the Google Front End — the control plane refused this runner."
-            echo "::error::Gate 1 (IAM): a resource-name IAM Condition on the deployer role (modules/iam/main.tf deployer_gke) never matches over the DNS endpoint, which evaluates container.clusters.connect on the endpoint resource — this was the confirmed cause, fixed in a051ad7. Do NOT re-add such a condition."
-            echo "::error::Gate 2 (network): allow_external_traffic drifted off. Confirm: gcloud container clusters describe ${CLUSTER} --region ${REGION} --format='value(controlPlaneEndpointsConfig.dnsEndpointConfig.allowExternalTraffic)'  # expect True"
-            echo "::error::Reconcile drift with: tofu apply  (from infra/terraform/envs/dev)."
-          else
-            echo "::error::Control plane not reachable over the DNS endpoint (not the generic-403 signature):"
-            printf '%s\n' "$out"
-          fi
-          exit 1
+        run: infra/ci/verify-control-plane.sh
 
       # Inject the real per-environment values into the overlay's single
       # source of truth (settings.yaml). Kustomize `replacements` fan these
@@ -367,55 +259,21 @@ jobs:
       # below is real. `yq` is preinstalled on ubuntu-latest runners.
       - name: Inject environment values
         env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           APP_DOMAIN: ${{ vars.APP_DOMAIN }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
-        run: |
-          cd infra/k8s/overlays/gcp
-          # ingressIpName and armorPolicyName are derived from the Terraform
-          # name_prefix "devstash-dev" (locals.tf: "devstash-${var.environment}",
-          # environment default = "dev"). The resource names are:
-          #   google_compute_global_address: "${name_prefix}-ip"  → "devstash-dev-ip"
-          #   google_compute_security_policy: "${name_prefix}-armor" → "devstash-dev-armor"
-          #
-          # WHY NOT `tofu output`: reading these from Terraform output at deploy time
-          # would require the OpenTofu state to be accessible in CI (remote state bucket
-          # auth, extra tofu init step). The values are stable — they only change when
-          # the `var.environment` tfvar or the Terraform name_prefix template changes,
-          # both of which require an intentional infra change. Hardcoding them here is
-          # an accepted tradeoff. WHEN TO UPDATE: if you rename `var.environment` in
-          # terraform.tfvars (e.g. "dev" → "prod"), update BOTH literals below AND the
-          # CLUSTER env var at the top of this file to match. Mismatch = Ingress loses
-          # its static IP + BackendConfig gets no WAF policy — silent kubectl apply success.
-          # s3Bucket follows the same "derive, don't read Terraform state" approach as
-          # ingressIpName/armorPolicyName above: module.gcs.bucket_name's naming formula
-          # is "${project_id}-${name_prefix}-uploads" (modules/gcs/main.tf) — deterministic
-          # from PROJECT_ID, so no Secret Manager round-trip is needed for this non-secret
-          # bucket name. WHEN TO UPDATE: same trigger as ingressIpName/armorPolicyName.
-          yq -i '
-            .data.projectId       = strenv(PROJECT_ID) |
-            .data.saEmail         = "devstash-app@" + strenv(PROJECT_ID) + ".iam.gserviceaccount.com" |
-            .data.domain          = strenv(APP_DOMAIN) |
-            .data.emailFrom       = strenv(EMAIL_FROM) |
-            .data.nextAuthUrl     = "https://" + strenv(APP_DOMAIN) |
-            .data.ingressIpName   = "devstash-dev-ip" |
-            .data.armorPolicyName = "devstash-dev-armor" |
-            .data.s3Bucket        = strenv(PROJECT_ID) + "-devstash-dev-uploads"
-          ' settings.yaml
-          # Pin the web image to the immutable registry digest returned by BuildKit.
-          # WHY select(.name == "devstash") not .images[0]: positional index is fragile
-          # — if a sidecar or init-container image entry is ever prepended to the images
-          # list, index 0 would silently patch the wrong entry and leave the web
-          # container at :latest. Selecting by name is index-position-independent.
-          IMAGE_URI="${IMAGE_URI}" WEB_DIGEST="${WEB_DIGEST}" yq -i '
-            (.images[] | select(.name == "devstash")) |= (
-              .newName = strenv(IMAGE_URI) |
-              .digest = strenv(WEB_DIGEST) |
-              del(.newTag)
-            )
-          ' kustomization.yaml
-          echo "--- settings.yaml after injection ---"
-          cat settings.yaml
+          # Non-secret app config promoted out of Secret Manager. OPTIONAL GitHub Actions
+          # repo vars: if unset they fall back to the committed settings.yaml value (see the
+          # `env(X) // .data.field` yq below), so a fresh checkout deploys correctly without
+          # them. Set them only to override the committed default per-environment.
+          AUTH_GITHUB_ID: ${{ vars.AUTH_GITHUB_ID }}
+          AUTH_GOOGLE_ID: ${{ vars.AUTH_GOOGLE_ID }}
+          STRIPE_PUBLISHABLE_KEY: ${{ vars.STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_PRICE_ID_MONTHLY: ${{ vars.STRIPE_PRICE_ID_MONTHLY }}
+          STRIPE_PRICE_ID_YEARLY: ${{ vars.STRIPE_PRICE_ID_YEARLY }}
+          # "true" attaches the Cloud Armor policy; unset (dev $0 default) → no edge WAF.
+          # run.sh set-repo-secrets sets/clears this from the Terraform armor_enabled state.
+          ARMOR_ENABLED: ${{ vars.ARMOR_ENABLED }}
+        run: infra/ci/inject-settings.sh
 
       # The overlay ships an ESO SecretStore + ExternalSecret (Secret Manager →
       # devstash-secrets). Their CRDs must exist before `apply -k`. Install/upgrade
@@ -423,26 +281,7 @@ jobs:
       # --version is read from infra/versions.env (single source of truth shared with run.sh).
       # Update the version there to bump both CI and the bootstrap script together.
       - name: Ensure External Secrets Operator
-        run: |
-          source infra/versions.env
-          helm repo add external-secrets https://charts.external-secrets.io
-          helm repo update external-secrets
-          # Resource requests set to GKE Autopilot's 50m CPU minimum per container.
-          # ESO chart defaults to 10m, which Autopilot silently mutates — explicit
-          # values here eliminate the mutation warning and make billing predictable.
-          #
-          # CRITICAL: Do NOT use "--rollback-on-failure". GitHub Actions runner (ubuntu-latest)
-          # runs Helm 3 which does not support it and fails the build. Use "--atomic" which
-          # is supported in both Helm 3 and Helm 4 (deprecated but functional).
-          helm upgrade --install external-secrets external-secrets/external-secrets \
-            -n external-secrets --create-namespace --wait --timeout 5m --atomic \
-            --version "$ESO_VERSION" \
-            --set resources.requests.cpu=50m \
-            --set resources.requests.memory=128Mi \
-            --set certController.resources.requests.cpu=50m \
-            --set certController.resources.requests.memory=128Mi \
-            --set webhook.resources.requests.cpu=50m \
-            --set webhook.resources.requests.memory=128Mi
+        run: infra/ci/ensure-eso.sh
 
       # Stakater Reloader: watches Secrets/ConfigMaps and rolls Deployments when
       # their data changes. Required for secret.reloader.stakater.com/reload
@@ -450,162 +289,36 @@ jobs:
       # the annotation is inert and ESO-refreshed secrets only propagate on the
       # next manual deploy. --version is read from infra/versions.env.
       - name: Ensure Stakater Reloader
-        run: |
-          source infra/versions.env
-          helm repo add stakater https://stakater.github.io/stakater-charts
-          helm repo update stakater
-          # Resource requests set to Autopilot's 50m CPU floor (same rationale as ESO above).
-          #
-          # CRITICAL: Do NOT use "--rollback-on-failure". GitHub Actions runner (ubuntu-latest)
-          # runs Helm 3 which does not support it and fails the build. Use "--atomic" which
-          # is supported in both Helm 3 and Helm 4 (deprecated but functional).
-          helm upgrade --install reloader stakater/reloader \
-            -n reloader --create-namespace --wait --timeout 5m --atomic \
-            --version "$RELOADER_VERSION" \
-            --set reloader.deployment.resources.requests.cpu=50m \
-            --set reloader.deployment.resources.requests.memory=128Mi
+        run: infra/ci/ensure-reloader.sh
 
+      # Render the overlay ONCE to /tmp/rendered.yaml; the infra apply and the
+      # post-migration rollout below both consume that same render (real migrate→rollout
+      # gate, not the old :latest race). See infra/ci/render-manifests.sh.
       - name: Render manifests
-        run: |
-          cd infra/k8s/overlays/gcp
-          # Render once, then split the apply so migrations run BEFORE the web
-          # Deployment rolls to the new image (a real migrate→rollout gate, not the
-          # old :latest race). Database (Cloud SQL) + Redis (Memorystore) are
-          # Terraform-managed and not in this overlay; the migrate Job is applied
-          # separately (gated) below.
-          kubectl kustomize . > /tmp/rendered.yaml
+        run: infra/ci/render-manifests.sh
 
+      # Apply everything EXCEPT the web Deployment (server-side, --force-conflicts) so
+      # existing pods keep the previous image until the post-migration rollout. The full
+      # rationale — why --force-conflicts is required and safe (the one-time CSA→SSA
+      # ownership transfer) — lives in infra/ci/apply-infra.sh.
       - name: Apply infra (everything except the web Deployment)
-        run: |
-          # Namespace, SA, ConfigMap, SecretStore/ExternalSecret, Service, Ingress,
-          # BackendConfig, ManagedCertificate, HPA, PDB. Any existing web pods keep
-          # serving the PREVIOUS image until the post-migration rollout below — so new
-          # code never reaches users ahead of its schema migration.
-          #
-          # --force-conflicts is REQUIRED and CORRECT — DO NOT remove it.
-          # This pipeline is the single declarative owner of these objects' spec fields.
-          # An object first created by a client-side `kubectl apply` (an earlier deploy,
-          # or a manual `kubectl apply -f`) owns its fields under the legacy field manager
-          # `kubectl-client-side-apply`. Server-side apply then refuses to overwrite those
-          # fields and fails the build with, e.g.:
-          #     error: Apply failed with 1 conflict: conflict with
-          #     "kubectl-client-side-apply" using external-secrets.io/v1: .spec.data
-          # --force-conflicts performs the one-time CSA→SSA ownership transfer the
-          # Kubernetes docs prescribe (it moves the field to this SSA manager, then is a
-          # no-op on every subsequent run). This is the same posture ArgoCD and Flux use
-          # by default for SSA syncs. It is SAFE here because we only ever conflict on
-          # fields THIS manifest declares; controller-owned fields we don't declare
-          # (status, defaulted nodePorts, GKE-added Ingress annotations) are never in the
-          # stream, so they are never forced. The web Deployment is applied separately
-          # below and base/deployment.yaml deliberately omits `replicas`, so forcing never
-          # fights the HPA. Do NOT "fix" a recurring conflict by reverting to client-side
-          # apply — that just re-creates the legacy manager and the conflict returns.
-          yq 'select(.kind != "Deployment")' /tmp/rendered.yaml \
-            | kubectl apply --server-side --force-conflicts -f -
+        run: infra/ci/apply-infra.sh
 
       - name: Wait for secrets to sync (ESO)
-        run: |
-          # devstash-secrets is materialized by External Secrets Operator from
-          # Secret Manager. Both the migrate Job and the web pods need it, so block
-          # until the ExternalSecret reports Ready before running anything against
-          # the database.
-          kubectl -n devstash wait --for=condition=Ready \
-            externalsecret/devstash-secrets --timeout=180s
+        # devstash-secrets is materialized by External Secrets Operator from
+        # Secret Manager. Both the migrate Job and the web pods need it, so block
+        # until the ExternalSecret reports Ready before running anything against
+        # the database.
+        run: kubectl -n devstash wait --for=condition=Ready externalsecret/devstash-secrets --timeout=180s
 
       - name: Run DB migrations + seed item types (gated)
-        run: |
-          cd infra/k8s/overlays/gcp
-          # A Job's pod template is immutable — delete any prior run before
-          # re-applying with this build's migrate image.
-          # Write patched manifest to a temp file to avoid mutating the tracked source.
-          # NOTE: migrate-job.yaml is applied directly (not via `kustomize`), but the
-          # file has `namespace: devstash` hard-coded so the namespace is always correct.
-          # It is intentionally NOT in kustomization.yaml `resources` because kustomize
-          # would fail on the immutable Job on re-apply. The yq image injection here
-          # mirrors what kustomize's `images` transformer does for the web Deployment.
-          #
-          # Capture logs from any prior failed job BEFORE deleting it. If this step
-          # failed in a previous run and the engineer re-runs the job, the delete below
-          # destroys the pod and its logs. Capture first so post-mortem diagnostics
-          # survive the re-run. `|| true` is intentional — no prior job is normal.
-          kubectl -n devstash logs job/devstash-migrate --tail=100 \
-            > /tmp/migrate-prev-logs.txt 2>/dev/null || true
-          if [ -s /tmp/migrate-prev-logs.txt ]; then
-            echo "--- Logs from previous migrate job (captured before delete) ---"
-            cat /tmp/migrate-prev-logs.txt
-          fi
-          kubectl -n devstash delete job devstash-migrate --ignore-not-found
-          MIGRATE_IMAGE="${MIGRATE_IMAGE}" yq '.spec.template.spec.containers[0].image = strenv(MIGRATE_IMAGE)' \
-            migrate-job.yaml > /tmp/migrate-job-patched.yaml
-          kubectl apply -f /tmp/migrate-job-patched.yaml
-          # `kubectl wait` accepts one scalar --for value; repeating the flag does not
-          # race Complete and Failed (the last value wins). Poll both conditions so a
-          # failed Job aborts immediately rather than consuming the full deadline.
-          deadline=$((SECONDS + 600))
-          while (( SECONDS < deadline )); do
-            complete="$(kubectl -n devstash get job devstash-migrate \
-              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')"
-            failed="$(kubectl -n devstash get job devstash-migrate \
-              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')"
-            if [[ "$complete" == "True" ]]; then
-              break
-            fi
-            if [[ "$failed" == "True" ]]; then
-              echo "::error::migration job reached Failed condition"
-              kubectl -n devstash logs job/devstash-migrate --tail=200 || true
-              kubectl -n devstash describe job/devstash-migrate || true
-              exit 1
-            fi
-            sleep 5
-          done
-          if [[ "${complete:-}" != "True" ]]; then
-            echo "::error::migration job did not complete within 600s"
-            kubectl -n devstash logs job/devstash-migrate --tail=200 || true
-            kubectl -n devstash describe job/devstash-migrate || true
-            exit 1
-          fi
-          kubectl -n devstash logs job/devstash-migrate --tail=50 || true
+        run: infra/ci/run-migrations.sh
 
+      # Migrations have landed — apply the digest-pinned web Deployment from the same
+      # render to trigger the rolling update. Same SSA/--force-conflicts posture as the
+      # infra apply; see infra/ci/rollout-web.sh.
       - name: Roll out the web Deployment (post-migration)
-        run: |
-          # Migrations have landed — now apply the digest-pinned web Deployment from the
-          # same render. Same server-side field manager and same --force-conflicts posture
-          # as the infra apply above (see that step for the full rationale): no imperative
-          # `kubectl set image`, and a Deployment first created by a client-side apply would
-          # otherwise conflict on the legacy `kubectl-client-side-apply` manager exactly as
-          # the ExternalSecret did. Forcing is safe — base/deployment.yaml deliberately omits
-          # `replicas` (the HPA is its sole owner), so this never stomps the HPA's scaling.
-          # This is what triggers the rolling update to the new code.
-          yq 'select(.kind == "Deployment")' /tmp/rendered.yaml \
-            | kubectl apply --server-side --force-conflicts -f -
+        run: infra/ci/rollout-web.sh
 
       - name: Wait for rollout
-        run: |
-          # Gate: new pods must become healthy within 300s.
-          #
-          # DO NOT auto-rollback here. By this point the migration job has already
-          # run successfully (it is the gate above this step), so the DB schema is
-          # advanced past what the previous image understood. Rolling the Deployment
-          # back to the old image would put old code against a newer schema — likely
-          # causing crashes or data corruption.
-          #
-          # If the rollout fails: fix forward with a new commit that fixes the pod
-          # startup issue. The old pods are still running (maxUnavailable: 0), so
-          # traffic is uninterrupted while you fix and re-deploy.
-          if ! kubectl -n devstash rollout status deployment/devstash-web --timeout=300s; then
-            echo "::error::Rollout failed — new pods did not become healthy"
-            echo "::error::DO NOT roll back the Deployment — migrations have already run against the new schema."
-            echo "::error::Fix forward: push a commit that resolves the pod startup failure."
-            echo "--- Recent pod events ---"
-            kubectl -n devstash describe deployment/devstash-web | tail -20 || true
-            echo "--- Logs from failing pods ---"
-            # WHY loop: `kubectl logs --previous` requires a specific pod name and
-            # is rejected when combined with a label selector (-l). Collecting pod
-            # names first and looping is the only correct way to capture previous
-            # container logs for multiple pods via a selector.
-            kubectl -n devstash get pods -l app.kubernetes.io/name=devstash \
-              -o name 2>/dev/null \
-              | xargs -I{} kubectl -n devstash logs {} --previous --tail=100 2>/dev/null \
-              || true
-            exit 1
-          fi
+        run: infra/ci/wait-rollout.sh

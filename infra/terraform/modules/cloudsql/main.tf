@@ -8,25 +8,27 @@
 #     var.authorized_networks (an IP allowlist); TLS required by ssl_mode = ENCRYPTED_ONLY.
 
 resource "google_sql_database_instance" "postgres" {
+  # Cost toggle. Unlike the old stop-only model (activation_policy=NEVER kept the disk
+  # for ~$1.70/mo), the deep suspend DESTROYS the instance for true ~$0 idle. The data
+  # is preserved out-of-band: run.sh suspend runs `gcloud sql export` to the GCS dump
+  # bucket and verifies it BEFORE flipping instance_active=false; run.sh resume recreates
+  # this instance and `gcloud sql import`s the dump. A count→0 destroy reads
+  # deletion_protection from PRIOR state, so the instance must be unprotected to be
+  # destroyable in a single apply (see deletion_protection below).
+  count            = var.instance_active ? 1 : 0
   name             = "${var.name_prefix}-pg"
   database_version = "POSTGRES_16"
   region           = var.region
 
-  # Two independent deletion guards — each operates at a different layer.
-  # Both must be disabled (apply) before a destroy can succeed.
-  #
-  # deletion_protection (Terraform provider-level, bool):
-  #   Terraform refuses to issue a GCP delete call. Set false + apply first.
-  #
-  # settings.deletion_protection_enabled (GCP API-level, bool):
-  #   Maps to REST API field settings.deletionProtectionEnabled. Blocks deletion
-  #   across ALL surfaces: Console, gcloud CLI, REST API, and Terraform. This is
-  #   the toggle shown in the Cloud Console as "Instance deletion prevention".
-  #   Set false + apply — if still true, GCP rejects the delete regardless of the
-  #   Terraform-level guard above.
-  #
-  # Teardown order: set both to false + apply, then destroy.
-  deletion_protection = var.deletion_protection
+  # deletion_protection is DELIBERATELY false here (both the Terraform-level and the
+  # GCP API-level guard, settings.deletion_protection_enabled below), mirroring the GKE
+  # cluster: this instance is torn down and recreated on every deep suspend/resume cycle,
+  # and a count→0 destroy reads deletion_protection from prior state — a protected
+  # instance could not be suspended in a single apply. Data safety is NOT provided by
+  # this flag anymore; it is provided by the verified GCS dump that run.sh suspend takes
+  # before it ever sets instance_active=false. Do NOT re-enable protection expecting the
+  # old stop-not-destroy safety — that model is gone.
+  deletion_protection = false
 
   lifecycle {
     # Guard against accidentally exposing the database to the whole internet.
@@ -40,9 +42,15 @@ resource "google_sql_database_instance" "postgres" {
 
   settings {
     tier = var.tier
-    # GCP API-level deletion guard (see deletion_protection / deletion_policy comments
-    # above). Must be set false + applied before a destroy can succeed at the GCP layer.
-    deletion_protection_enabled = var.deletion_protection
+    # ALWAYS = running; NEVER = stopped (no vCPU/RAM charge, disk kept). Only matters while
+    # the instance EXISTS (instance_active=true): the event-driven auto-suspend flips it to
+    # NEVER to stop the DB without destroying it (~$1.70/mo disk). The deep suspend destroys
+    # the instance via count instead (see the count comment above), so this value is
+    # irrelevant on that path.
+    activation_policy = var.activation_policy
+    # GCP API-level deletion guard — false for the same reason as the Terraform-level
+    # deletion_protection above (the instance is destroyed every deep-suspend cycle).
+    deletion_protection_enabled = false
     # Explicitly set ENTERPRISE so the GCP API doesn't default to ENTERPRISE_PLUS.
     # ENTERPRISE_PLUS only accepts db-perf-optimized-N-* tiers; shared-core db-f1-micro
     # is rejected with "Invalid Tier for ENTERPRISE_PLUS Edition" if omitted and an
@@ -93,7 +101,7 @@ resource "google_sql_database_instance" "postgres" {
       #      ENCRYPTED_ONLY + app-layer CA pin = encryption + server identity check.
       #
       #   3. NO CLIENT CERT MATERIAL EXISTS: Secret Manager holds only the server CA
-      #      (devstash-database-ca-cert). No client cert, key, or client-CA secret
+      #      (the database-ca-cert property of devstash-app-config). No client cert, key, or client-CA secret
       #      exists. Switching to TRUSTED_CLIENT_CERTIFICATE_REQUIRED without first
       #      completing ALL of the following steps will break every Cloud SQL connection:
       #        a. gcloud sql ssl client-certs create devstash-app client.crt \
@@ -120,8 +128,13 @@ resource "google_sql_database_instance" "postgres" {
     }
 
     backup_configuration {
-      enabled                        = true
-      point_in_time_recovery_enabled = true
+      # Backups are gated by var.backups_enabled. Off for the dev showcase: durability
+      # comes from the suspend-time GCS dump (run.sh suspend → `gcloud sql export`), not
+      # from Cloud SQL's own backups, so paying for daily backup storage is redundant
+      # here. Keep them ON for prod (set backups_enabled = true). PITR (continuous WAL
+      # archiving) can only be on when backups are on — it is forced off otherwise.
+      enabled                        = var.backups_enabled
+      point_in_time_recovery_enabled = var.backups_enabled ? var.point_in_time_recovery : false
       start_time                     = "03:00"
     }
 
@@ -144,15 +157,40 @@ resource "google_sql_database_instance" "postgres" {
   }
 }
 
+# Count-gated with the instance: both vanish on deep suspend and are recreated (empty)
+# on resume, at which point run.sh imports the GCS dump back into this database.
 resource "google_sql_database" "devstash" {
+  count    = var.instance_active ? 1 : 0
   name     = "devstash"
-  instance = google_sql_database_instance.postgres.name
+  instance = google_sql_database_instance.postgres[0].name
 }
 
 # App DB user. The password is generated and stored in Secret Manager (iam module
-# wires the app's access); never hardcode it.
+# wires the app's access); never hardcode it. The generating random_password resource
+# lives in the root module and has no keepers, so the password is STABLE across a
+# suspend/resume cycle — the recreated user matches the dump's object ownership and the
+# database-url secret stays valid.
 resource "google_sql_user" "app" {
+  count    = var.instance_active ? 1 : 0
   name     = "devstash_app"
-  instance = google_sql_database_instance.postgres.name
+  instance = google_sql_database_instance.postgres[0].name
   password = var.app_user_password
+}
+
+# State migration: these resources gained `count` in the deep-suspend change, moving their
+# addresses from `.<name>` to `.<name>[0]`. Without these blocks, an existing live instance
+# would be planned as destroy-and-recreate (DATA LOSS) on the first apply after the upgrade.
+# The blocks are no-ops when the old address isn't in state (fresh installs), so they are
+# safe to keep permanently.
+moved {
+  from = google_sql_database_instance.postgres
+  to   = google_sql_database_instance.postgres[0]
+}
+moved {
+  from = google_sql_database.devstash
+  to   = google_sql_database.devstash[0]
+}
+moved {
+  from = google_sql_user.app
+  to   = google_sql_user.app[0]
 }

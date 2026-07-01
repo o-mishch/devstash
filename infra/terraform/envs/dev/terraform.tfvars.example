@@ -32,22 +32,81 @@ app_domain = "gke.devstash.one"
 # (infra/k8s/overlays/gcp/kustomization.yaml). Must be a verified sender domain in Resend.
 email_from = "DevStash <noreply@devstash.one>"
 
+# ONLY REAL SECRETS belong here. Non-secret config was deliberately promoted OUT of
+# Secret Manager to the devstash-config ConfigMap (infra/k8s/overlays/gcp/settings.yaml,
+# fanned in by kustomize replacements) — it holds only true secrets so idle Secret
+# Manager cost stays minimal. NOT here (they are NOT secrets):
+#   • email-from                          → var.email_from (above) → EMAIL_FROM
+#   • auth-github-id / auth-google-id      → OAuth CLIENT IDs (public, sent in redirects)
+#   • stripe-publishable-key               → public by Stripe's design (pk_...)
+#   • stripe-price-id-monthly / -yearly    → non-sensitive identifiers (price_...)
+# Set those in settings.yaml (committed) or override per-deploy via GitHub Actions repo
+# vars AUTH_GITHUB_ID / AUTH_GOOGLE_ID / STRIPE_PUBLISHABLE_KEY / STRIPE_PRICE_ID_MONTHLY
+# / STRIPE_PRICE_ID_YEARLY (see .github/workflows/deploy-gke.yml → "Inject environment values").
 third_party_secrets = {
-  "auth-secret"              = "openssl rand -base64 32"
-  "auth-github-id"           = "Ov..."
-  "auth-github-secret"       = "..."
-  "auth-google-id"           = "....apps.googleusercontent.com"
-  "auth-google-secret"       = "GOCSPX-..."
-  "resend-api-key"           = "re_..."
-  # "email-from" is NOT here — it is a non-secret constant set in the ConfigMap
-  # (infra/k8s/overlays/gcp/kustomization.yaml → EMAIL_FROM), not Secret Manager.
-  "stripe-secret-key"        = "sk_..."
-  "stripe-publishable-key"   = "pk_..."
-  "stripe-webhook-secret"    = "whsec_..."
-  "stripe-price-id-monthly"  = "price_..."
-  "stripe-price-id-yearly"   = "price_..."
-  "openai-api-key"           = "sk-..."
+  "auth-secret"           = "openssl rand -base64 32"
+  "auth-github-secret"    = "..."
+  "auth-google-secret"    = "GOCSPX-..."
+  "resend-api-key"        = "re_..."
+  "stripe-secret-key"     = "sk_..."
+  "stripe-webhook-secret" = "whsec_..."
+  "openai-api-key"        = "sk-..."
 }
+
+# Spaceship DNS API credentials (gke.* A-record auto-update on `run.sh resume`).
+# Get them in the Spaceship dashboard → API Manager. Pushed to Secret Manager by dns.tf
+# (kept separate from third_party_secrets — the app never sees them). Leave unset to
+# disable DNS automation (set the A-record via env vars or by hand instead).
+# spaceship_api_key    = "..."
+# spaceship_api_secret = "..."
+
+# Idle auto-suspend (infra/terraform/envs/dev/auto-suspend.tf). Event-driven, no scheduler:
+# a Cloud Monitoring alert on "zero ingress-LB traffic for the idle window" triggers, via
+# Pub/Sub, a Cloud Build that DUMPS Cloud SQL to GCS + verifies, then runs
+# `tofu apply -var environment_active=false -var db_active=false` — drives the env to true
+# ~$0 even with your laptop off, as a dedicated least-priv lifecycle SA. The build re-checks
+# idleness first (a busy env is never suspended) and a failed dump aborts before any destroy.
+# NEVER auto-resumes (use run.sh resume, which restores the dump). ~$0 (free alerting +
+# Pub/Sub; build runs only on an actual suspend). See infra/docs/10-suspend-resume.md.
+# ON BY DEFAULT — uncomment and set false to OPT OUT of automated suspension.
+# auto_suspend_enabled             = false
+# auto_suspend_idle_window_seconds = 300     # suspend after this much zero-traffic (default 5m, min 300)
+# auto_suspend_repo_branch         = "main"  # branch the suspend build applies from
+#
+# HARD UPTIME CAP (scanner-proof backstop). The idle window above only catches TRUE zero
+# traffic; public-IP scanners keep the LB metric non-absent and can prevent that path from
+# ever firing. A Cloud Scheduler cron (free tier) fires the guard on a fixed cadence and the
+# env is torn down unconditionally once the cluster is older than max_uptime — regardless of
+# traffic. Since resume is manual, this just caps how long a demo env stays up.
+# auto_suspend_max_uptime_seconds  = 5400          # unconditional teardown after this (default 90m)
+# auto_suspend_schedule_cron       = "*/15 * * * *" # how often the cap is checked (America/Chicago; default 15m)
+
+# Cloud Logging cost guard — exclude GKE system-namespace container logs from ingestion to
+# stay inside the 50 GiB/mo always-free tier. App/web logs (infra/docs/11-logs.md) are kept.
+# ON BY DEFAULT — set false to ingest system logs too (e.g. debugging a cluster-system issue).
+# log_system_exclusion_enabled = false
+
+# Cloud SQL dump retention (GCS db-dumps bucket). The CURRENT dump is always kept — these
+# only bound the superseded (rollback) history. A dump is small and GCS us-central1 gives
+# 5 GB-month free (shared with the uploads bucket), so raising these is ~$0. A version is
+# pruned when EITHER cap is hit.
+# db_dump_keep_versions = 5     # superseded dumps to retain for rollback (default 5)
+# db_dump_keep_days     = 90    # also expire superseded dumps older than this (default 90)
+
+# Cloud Billing budget (cost visibility). Account-scoped — find it with
+#   gcloud billing accounts list
+# Leave unset to skip the budget entirely. When set, emails billing-account admins
+# at 50/90/100% of monthly_budget_amount (CURRENT_SPEND).
+# billing_account       = "XXXXXX-XXXXXX-XXXXXX"
+# monthly_budget_amount = 5       # LOW on purpose: a correctly-suspending showcase is ~$0/mo,
+                                  # so this is a tripwire (50% = $2.50) that catches a stuck env
+                                  # fast, not a spend target. Raise for a real steady-spend env.
+
+# Cloud SQL point-in-time recovery (continuous WAL archiving). Off by default for dev.
+# NOTE: in dev, automated backups are disabled entirely (backups_enabled=false in the
+# cloudsql module) — durability comes from the suspend-time GCS dump — so PITR has no
+# backups to build on here. Set true (and re-enable backups) only for a prod environment.
+# db_point_in_time_recovery = true
 
 # Cloud SQL machine tier (default db-f1-micro — cheapest shared-core for dev).
 # db_tier = "db-f1-micro"
@@ -68,9 +127,10 @@ third_party_secrets = {
 # observation period; doing so changes the same rules from log-only to enforced 403s.
 # armor_waf_preview = false
 
-# Destructive two-phase guard. Keep true normally. For intentional teardown, set
-# false in the gitignored terraform.tfvars, run `run.sh apply` and review that only
-# protection changes, then run `run.sh down`. Never edit reusable module source.
+# INERT in this dev env: both GKE and Cloud SQL are torn down every suspend cycle, so
+# both hardcode deletion_protection=false and data safety is the GCS dump (not this flag).
+# Setting it here protects nothing; retained only for prod parity. `run.sh down` runs the
+# destroy directly with no protection-disable dance needed.
 # deletion_protection = false
 
 # IP allowlist for DIRECT developer access to the Cloud SQL PUBLIC IP (psql/GUI).

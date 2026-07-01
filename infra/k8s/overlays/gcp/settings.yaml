@@ -47,11 +47,27 @@ data:
   ingressIpName: devstash-dev-ip
   # Cloud Armor security policy name (network module: google_compute_security_policy).
   # Attached to the BackendConfig so the LB enforces WAF + rate limiting at the edge.
-  # Must match `${name_prefix}-armor` = devstash-dev-armor.
-  armorPolicyName: devstash-dev-armor
+  # EMPTY by default = no policy attached — dev runs with armor_enabled=false ($0 posture).
+  # CI (inject-settings.sh) sets this to "devstash-dev-armor" only when the ARMOR_ENABLED
+  # repo variable is "true" (prod). Empty securityPolicy.name detaches the policy on the LB.
+  armorPolicyName: ""
   # GCS uploads bucket name (modules/gcs: "${project_id}-${name_prefix}-uploads").
   # Non-secret, deterministic from projectId above — fed into AWS_S3_BUCKET via
   # the ConfigMap replacement instead of round-tripping through Secret Manager.
   # REAL value (not a placeholder), derived the same way saEmail is.
   # CI overwrites via `yq -i '.data.s3Bucket = strenv(PROJECT_ID)+"-devstash-dev-uploads"'`.
   s3Bucket: project-39965ce5-4c4b-495e-8d4-devstash-dev-uploads
+  # --- Non-secret app config, moved OUT of Secret Manager -----------------------
+  # These are NOT secrets and were removed from third_party_secrets/Secret Manager to
+  # keep Secret Manager holding only real secrets (and to shave its idle cost). Each is
+  # fanned into the devstash-config ConfigMap by a kustomize replacement below; CI may
+  # override from a GitHub Actions var (deploy-gke.yml) but these committed values are the
+  # working default. All are safe to commit — they are public identifiers by design.
+  #   • OAuth CLIENT IDs are sent in every auth redirect (visible client-side).
+  #   • Stripe publishable keys (pk_...) are explicitly public in Stripe's model.
+  #   • Stripe price IDs (price_...) are non-sensitive identifiers.
+  authGithubId: Iv23lio8hm0onA1p9D0q
+  authGoogleId: 468669254255-pk2l9hugc9vp1mgpjd1roo1mmea3f464.apps.googleusercontent.com
+  stripePublishableKey: pk_test_51Tegcx6xK4IZAULHUsQLvPoXmjjeXmFGvPlfxFSnX7cH01PP8WysG1Dak3EbtLAzLaXsqGta8ZanZVMKiyxL5BAi00Cl2FfIDX
+  stripePriceIdMonthly: price_1Teghf6xK4IZAULHzyqEVmnE
+  stripePriceIdYearly: price_1Tegjd6xK4IZAULH0JgrdCFs

@@ -264,20 +264,22 @@ app_domain        = "gke.devstash.one"
 email_from        = "DevStash <noreply@devstash.one>"
 
 third_party_secrets = {
-  "auth-secret"             = "..."   # openssl rand -base64 32
-  "auth-github-id"          = "Ov..."
-  "auth-github-secret"      = "..."
-  "auth-google-id"          = "....apps.googleusercontent.com"
-  "auth-google-secret"      = "GOCSPX-..."
-  "resend-api-key"          = "re_..."
-  # "email-from" — НЕ тут. Це несекретна константа; живе в ConfigMap
-  # (infra/k8s/overlays/gcp/kustomization.yaml → EMAIL_FROM), не в Secret Manager.
-  "stripe-secret-key"       = "sk_test_..."
-  "stripe-publishable-key"  = "pk_test_..."
-  "stripe-webhook-secret"   = "whsec_..."
-  "stripe-price-id-monthly" = "price_..."
-  "stripe-price-id-yearly"  = "price_..."
-  "openai-api-key"          = "sk-svcacct-..."
+  "auth-secret"           = "..."   # openssl rand -base64 32
+  "auth-github-secret"    = "..."
+  "auth-google-secret"    = "GOCSPX-..."
+  "resend-api-key"        = "re_..."
+  "stripe-secret-key"     = "sk_test_..."
+  "stripe-webhook-secret" = "whsec_..."
+  "openai-api-key"        = "sk-svcacct-..."
+  # НЕ секрети — тому НЕ тут. Живуть у ConfigMap devstash-config (settings.yaml →
+  # kustomize replacement), щоб у Secret Manager лишалися лише справжні секрети:
+  #   "email-from"                          → var.email_from → EMAIL_FROM
+  #   "auth-github-id" / "auth-google-id"   → OAuth CLIENT ID (публічні, у redirect)
+  #   "stripe-publishable-key"              → публічний за задумом Stripe (pk_...)
+  #   "stripe-price-id-monthly" / "-yearly" → несекретні ідентифікатори (price_...)
+  # Задай їх у settings.yaml (закомічено) або перекрий через GitHub Actions repo vars
+  # AUTH_GITHUB_ID / AUTH_GOOGLE_ID / STRIPE_PUBLISHABLE_KEY / STRIPE_PRICE_ID_MONTHLY /
+  # STRIPE_PRICE_ID_YEARLY (.github/workflows/deploy-gke.yml → "Inject environment values").
   # НЕ додавай: database-url / direct-url — їх генерує Terraform (Cloud SQL)
   # НЕ додавай: redis-url / redis-ca-cert — їх генерує Terraform (Memorystore)
 }
@@ -486,7 +488,7 @@ helm repo update
 
 # ESO: ставить CRD SecretStore/ExternalSecret
 helm upgrade --install external-secrets external-secrets/external-secrets \
-  -n external-secrets --create-namespace --wait --timeout 5m --rollback-on-failure \
+  -n external-secrets --create-namespace --wait --timeout 5m --atomic \
   --set resources.requests.cpu=50m --set resources.requests.memory=128Mi \
   --set certController.resources.requests.cpu=50m --set certController.resources.requests.memory=128Mi \
   --set webhook.resources.requests.cpu=50m --set webhook.resources.requests.memory=128Mi
@@ -495,7 +497,7 @@ kubectl -n external-secrets rollout status deploy/external-secrets-webhook --tim
 
 # Stakater Reloader: автоматичний rolling restart при оновленні devstash-secrets
 helm upgrade --install reloader stakater/reloader \
-  -n reloader --create-namespace --wait --timeout 5m --rollback-on-failure \
+  -n reloader --create-namespace --wait --timeout 5m --atomic \
   --set reloader.deployment.resources.requests.cpu=50m \
   --set reloader.deployment.resources.requests.memory=128Mi
 
@@ -505,10 +507,14 @@ gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_em
 gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 gh variable set APP_DOMAIN --body "$(tofu output -raw app_domain)"
 # Binary Authorization attestor/KMS — non-secret resource names read by the
-# "Sign images for Binary Authorization" CI step (deploy-gke.yml).
-gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
-gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
-gh variable set BINAUTHZ_KMS_KEY --body "$(tofu output -raw binauthz_kms_key)"
+# "Sign images for Binary Authorization" CI step (deploy-gke.yml). ТІЛЬКИ якщо
+# binauthz_enabled=true (у dev за замовчуванням FALSE → ці outputs null і `-raw` впаде;
+# CI-крок сам себе пропускає). Простіше: `run.sh set-repo-secrets` робить це умовно.
+if [ -n "$(tofu output -raw binauthz_attestor_name 2>/dev/null)" ]; then
+  gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
+  gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
+  gh variable set BINAUTHZ_KMS_KEY --body "$(tofu output -raw binauthz_kms_key)"
+fi
 
 # 7.2 DNS: A-запис для app_domain → IP Ingress (managed cert провіжиниться лише після резолву)
 tofu output -raw ingress_ip_address
@@ -537,7 +543,7 @@ gh variable get BINAUTHZ_ATTESTOR
 > [external-secrets.io](https://external-secrets.io/latest/).
 
 > ⚙️ **Автоматизація:** усі кроки 7.0–7.1 покриває скрипт. `eso` ставить ESO
-> (`helm … --wait --rollback-on-failure`) **і** Stakater Reloader; `secrets` заливає 3 GitHub-секрети
+> (`helm … --wait --atomic`) **і** Stakater Reloader; `secrets` заливає 3 GitHub-секрети
 > + `APP_DOMAIN`; `dns_hint` друкує готовий рядок A-запису.
 > ```bash
 > bash infra/gcp-run/run.sh eso       # ESO + Reloader (раз на кластер, розділ 7.0)
@@ -634,18 +640,31 @@ TLS) і `devstash-redis-ca-cert` (server CA для перевірки серти
 [`main.tf`](../terraform/envs/dev/main.tf) — у tfvars їх **немає**. `DB_DRIVER=pg`
 (вибір node-postgres адаптера) — не секрет, у ConfigMap.
 
-ESO очікує саме такі імена секретів (`remoteRef.key`) — **це лише сторонні креди,
-які Terraform не може вивести**:
+> **Один консолідований секрет.** Усі креди застосунку тепер лежать як **властивості
+> (properties) ОДНОГО секрета `devstash-app-config`** — JSON-обʼєкт, який будує Terraform
+> (`modules/iam`, `jsonencode`). ESO розбирає його назад на окремі ключі через
+> `remoteRef.property` (див. `external-secrets.yaml`). Навіщо: у deep-suspend лишається **1
+> активна версія секрета** замість ~9 — усередині безкоштовного ліміту Secret Manager (6
+> версій), тобто **$0** у простої. Стовпець нижче — це **імена властивостей** усередині
+> `devstash-app-config` (без префікса `devstash-`).
 
-| Secret Manager key                                                    | Env-змінна в app    | Звідки взяти              |
-| --------------------------------------------------------------------- | ------------------- | ------------------------- |
-| `devstash-auth-secret`                                                | `AUTH_SECRET`       | `openssl rand -base64 32` |
-| `devstash-auth-github-id` / `-secret`                                 | `AUTH_GITHUB_*`     | GitHub OAuth App          |
-| `devstash-auth-google-id` / `-secret`                                 | `AUTH_GOOGLE_*`     | Google OAuth Client       |
-| `devstash-resend-api-key`                                             | `RESEND_API_KEY`    | Resend                    |
-| `devstash-stripe-secret-key` / `-publishable-key` / `-webhook-secret` | `STRIPE_*`          | Stripe                    |
-| `devstash-stripe-price-id-monthly` / `-yearly`                        | `STRIPE_PRICE_ID_*` | Stripe Prices             |
-| `devstash-openai-api-key`                                             | `OPENAI_API_KEY`    | OpenAI                    |
+ESO очікує саме такі імена властивостей (`remoteRef.property` в `devstash-app-config`) —
+**це лише сторонні креди, які Terraform не може вивести**:
+
+| Властивість у `devstash-app-config`  | Env-змінна в app         | Звідки взяти              |
+| ------------------------------------ | ------------------------ | ------------------------- |
+| `auth-secret`                        | `AUTH_SECRET`            | `openssl rand -base64 32` |
+| `auth-github-secret`                 | `AUTH_GITHUB_SECRET`     | GitHub OAuth App          |
+| `auth-google-secret`                 | `AUTH_GOOGLE_SECRET`     | Google OAuth Client       |
+| `resend-api-key`                     | `RESEND_API_KEY`         | Resend                    |
+| `stripe-secret-key` / `-webhook-secret` | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe |
+| `openai-api-key`                     | `OPENAI_API_KEY`         | OpenAI                    |
+
+> **Несекретна конфігурація — НЕ в Secret Manager.** `AUTH_GITHUB_ID`, `AUTH_GOOGLE_ID`
+> (OAuth client ID — публічні), `STRIPE_PUBLISHABLE_KEY` (публічний `pk_...`) та
+> `STRIPE_PRICE_ID_MONTHLY` / `_YEARLY` (несекретні `price_...`) живуть у ConfigMap
+> `devstash-config` (`settings.yaml` → kustomize replacement), а не тут — щоб Secret
+> Manager тримав лише справжні секрети (менший idle-кошт + вужчий RBAC blast radius).
 
 **Два способи їх додати:**
 
@@ -664,22 +683,24 @@ third_party_secrets = {
 }
 ```
 
-Ключ `auth-secret` → секрет `devstash-auth-secret` → ESO `remoteRef.key:
-devstash-auth-secret`. Префікс `devstash-` додає Terraform.
+Ключ `auth-secret` у `third_party_secrets` → властивість `auth-secret` у секреті
+`devstash-app-config` → ESO `remoteRef: { key: devstash-app-config, property: auth-secret }`.
+Terraform складає всі ключі в один JSON-blob.
 
-**Спосіб Б — руками через `gcloud`** (якщо не хочеш тримати креди у tfvars):
+**Спосіб Б — руками через `gcloud`** (якщо не хочеш тримати креди у tfvars). Оскільки все
+консолідовано в один секрет, тут потрібно **правити властивість усередині
+`devstash-app-config`** (read-modify-write), а не створювати окремий `devstash-<key>` —
+окремий секрет ESO більше не читає. Найпростіше — командою `run.sh`:
 
 ```bash
-printf %s "re_..." | gcloud secrets create devstash-resend-api-key \
-  --data-file=- --replication-policy=automatic
-# ... повтори для кожного СТОРОННЬОГО ключа з таблиці вище
-# (database-url / direct-url / redis-url НЕ створюй — їх генерує Terraform).
+# Оновлює одну властивість у devstash-app-config і форсить ESO-синк:
+bash infra/gcp-run/run.sh rotate-secret resend-api-key   # значення — з прихованого prompt
 
-# Дай app-SA доступ на читання (Terraform робить це автоматично лише для
-# секретів, які створив сам — для hand-created додай binding явно):
-gcloud secrets add-iam-policy-binding devstash-resend-api-key \
-  --member="serviceAccount:$(tofu output -raw app_service_account_email)" \
-  --role="roles/secretmanager.secretAccessor"
+# Або вручну через jq (read-modify-write однієї властивості):
+blob="$(gcloud secrets versions access latest --secret=devstash-app-config)"
+printf '%s' "$blob" | jq --arg k resend-api-key --arg v "re_..." '.[$k]=$v' \
+  | gcloud secrets versions add devstash-app-config --data-file=-
+# app-SA вже має secretAccessor на devstash-app-config (Terraform) — окремий binding не потрібен.
 ```
 
 > Перевірити, що ESO підтягнув усе: `kubectl -n devstash get externalsecret
@@ -747,8 +768,8 @@ printf %s "whsec_…" | gcloud secrets versions add devstash-stripe-webhook-secr
 
 > Google дозволяє кілька redirect URI на один client — просто додай GKE-URL поряд з
 > Vercel. GitHub OAuth App має лише **один** callback; якщо прод на Vercel вже його
-> зайняв, заведи окремий OAuth App для GKE і поклади його `client_id`/`secret` у
-> `devstash-auth-github-id` / `-secret` (крок 7b). Перевір: відкрий
+> зайняв, заведи окремий OAuth App для GKE: `client_secret` → `devstash-auth-github-secret`
+> (крок 7b), а `client_id` (несекретний) → `settings.yaml` `authGithubId`. Перевір: відкрий
 > `https://gke.devstash.one/sign-in` → увійди через GitHub/Google → має повернути в апку,
 > а не показати `redirect_uri_mismatch`.
 
@@ -782,21 +803,22 @@ kubectl get nodes
 gcloud container clusters describe devstash-dev-gke --region=us-central1 --project=project-39965ce5-4c4b-495e-8d4 --format="yaml(autoscaling)"
 
 # ── 3rd-party креди в Secret Manager (крок 7b) — БЕЗ них pod не підніметься ──
+#   Усі креди — властивості ОДНОГО секрета devstash-app-config (консолідовано для $0 idle).
 #   Спосіб А: поклади їх у third_party_secrets у terraform.tfvars ще ДО apply (вище).
-#   Спосіб Б: gcloud secrets create devstash-<key> ... (див. розділ 7b).
+#   Спосіб Б: run.sh rotate-secret <key> (править властивість у devstash-app-config; розділ 7b).
 
 # ── ESO + Reloader (крок 7.0) ────────────────────────────────────────────
 helm repo add external-secrets https://charts.external-secrets.io
 helm repo add stakater https://stakater.github.io/stakater-charts
 helm repo update
 helm upgrade --install external-secrets external-secrets/external-secrets \
-  -n external-secrets --create-namespace --wait --timeout 5m --rollback-on-failure \
+  -n external-secrets --create-namespace --wait --timeout 5m --atomic \
   --set resources.requests.cpu=50m --set resources.requests.memory=128Mi \
   --set certController.resources.requests.cpu=50m --set certController.resources.requests.memory=128Mi \
   --set webhook.resources.requests.cpu=50m --set webhook.resources.requests.memory=128Mi
 kubectl -n external-secrets rollout status deploy/external-secrets-webhook --timeout=3m
 helm upgrade --install reloader stakater/reloader \
-  -n reloader --create-namespace --wait --timeout 5m --rollback-on-failure \
+  -n reloader --create-namespace --wait --timeout 5m --atomic \
   --set reloader.deployment.resources.requests.cpu=50m \
   --set reloader.deployment.resources.requests.memory=128Mi
 
@@ -805,9 +827,12 @@ gh secret set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
 gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_email)"
 gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 gh variable set APP_DOMAIN --body "$(tofu output -raw app_domain)"
-gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
-gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
-gh variable set BINAUTHZ_KMS_KEY --body "$(tofu output -raw binauthz_kms_key)"
+# BINAUTHZ_* — лише якщо binauthz_enabled=true (у dev FALSE за замовч.). run.sh робить умовно:
+if [ -n "$(tofu output -raw binauthz_attestor_name 2>/dev/null)" ]; then
+  gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
+  gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
+  gh variable set BINAUTHZ_KMS_KEY --body "$(tofu output -raw binauthz_kms_key)"
+fi
 # DNS на Spaceship: A-запис host=gke → $(tofu output -raw ingress_ip_address)
 #   (apex devstash.one + www лишаються на Vercel — див. розділ 7a)
 
@@ -1060,11 +1085,14 @@ CLI цього репо. Роби їх у такому порядку:
    Це окрема змінна, не секрет: зберігається в ConfigMap, не в Secret Manager.
 6. `third_party_secrets` — реальні креди (детальна таблиця ключів у **7b**):
    - `auth-secret` = `openssl rand -base64 32`
-   - `auth-github-id`/`-secret`, `auth-google-id`/`-secret` — OAuth-застосунки (див. крок D)
+   - `auth-github-secret`, `auth-google-secret` — OAuth client SECRETS (див. крок D)
    - `resend-api-key`
-   - `stripe-secret-key`/`-publishable-key`/`-webhook-secret`/`-price-id-monthly`/`-yearly`
+   - `stripe-secret-key`/`-webhook-secret`
    - `openai-api-key`
    - ⚠️ `email-from` НЕ вписуй у `third_party_secrets` — це `email_from` (крок 5 вище).
+   - ⚠️ `auth-github-id`/`auth-google-id` (OAuth client ID), `stripe-publishable-key`,
+     `stripe-price-id-monthly`/`-yearly` НЕ вписуй — це несекретна конфігурація у
+     ConfigMap `devstash-config` (`settings.yaml`), не в Secret Manager (див. **7b**).
    - ⚠️ `database-url`/`direct-url` НЕ вписуй — їх генерує Terraform (Cloud SQL).
 
 **Крок B — DNS A-запис (після `apply`, деталі в 7a).**
@@ -1338,13 +1366,13 @@ ESO ще не встановлено або CRD не піднялися:
 
 ```bash
 helm upgrade --install external-secrets external-secrets/external-secrets \
-  -n external-secrets --create-namespace --wait --timeout 5m --rollback-on-failure \
+  -n external-secrets --create-namespace --wait --timeout 5m --atomic \
   --set resources.requests.cpu=50m --set resources.requests.memory=128Mi \
   --set certController.resources.requests.cpu=50m --set certController.resources.requests.memory=128Mi \
   --set webhook.resources.requests.cpu=50m --set webhook.resources.requests.memory=128Mi
 kubectl -n external-secrets rollout status deploy/external-secrets-webhook --timeout=3m
 helm upgrade --install reloader stakater/reloader \
-  -n reloader --create-namespace --wait --timeout 5m --rollback-on-failure \
+  -n reloader --create-namespace --wait --timeout 5m --atomic \
   --set reloader.deployment.resources.requests.cpu=50m \
   --set reloader.deployment.resources.requests.memory=128Mi
 kubectl -n external-secrets get pods   # мають бути Running
@@ -1477,7 +1505,7 @@ kubectl -n devstash rollout status deploy/devstash-web
 
 ```bash
 helm upgrade --install reloader stakater/reloader \
-  -n reloader --create-namespace --wait --timeout 5m --rollback-on-failure \
+  -n reloader --create-namespace --wait --timeout 5m --atomic \
   --set reloader.deployment.resources.requests.cpu=50m \
   --set reloader.deployment.resources.requests.memory=128Mi
 # Перевірити: helm list -n reloader

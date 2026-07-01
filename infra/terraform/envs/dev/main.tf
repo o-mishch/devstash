@@ -18,6 +18,7 @@ resource "google_project_service" "apis" {
     "sts.googleapis.com",                 # OIDC -> short-lived GCP token exchange
     "binaryauthorization.googleapis.com", # Binary Authorization cluster enforcement
     "cloudkms.googleapis.com",            # KMS signing key for the Binary Authorization attestor
+    "billingbudgets.googleapis.com",      # Cloud Billing budget + threshold alerts (budget.tf)
     # The v1 resource (google_project_organization_policy) uses
     # cloudresourcemanager.googleapis.com, NOT orgpolicy.googleapis.com.
     # cloudresourcemanager.googleapis.com is enabled by default in most projects;
@@ -75,7 +76,13 @@ module "network" {
   name_prefix = local.name_prefix
   region      = var.region
   waf_preview = var.armor_waf_preview
-  depends_on  = [google_project_service.apis]
+  # Cost toggle: skip Cloud Armor entirely in dev (default false). ~$5/mo policy +
+  # per-rule + per-request — a gke.* showcase needs no edge WAF. Prod sets it true.
+  armor_enabled = var.armor_enabled
+  # Cost toggle: release the ingress IP + tear down NAT/router/Cloud Armor when
+  # suspended. The VPC/subnet/PSA peering stay (free; the stopped Cloud SQL needs them).
+  compute_active = var.environment_active
+  depends_on     = [google_project_service.apis]
 }
 
 module "artifact_registry" {
@@ -113,7 +120,20 @@ module "gke" {
   pods_range_name     = module.network.pods_range_name
   services_range_name = module.network.services_range_name
   labels              = local.common_labels
-  deletion_protection = var.deletion_protection
+  # Cost toggle: destroy the cluster when the environment is suspended.
+  cluster_active = var.environment_active
+  # Supply-chain toggle: provision the Binary Authorization signing pipeline (KMS key,
+  # attestor, note, policy, cluster enforcement). Default false in dev — KMS has no free
+  # tier, so the always-on signing key is the only standing resource that can never round
+  # to $0. Set binauthz_enabled = true in prod for enforcement parity.
+  binauthz_enabled = var.binauthz_enabled
+  # The cluster is DELIBERATELY unprotected. It holds no persistent state and is
+  # destroyed/recreated on every suspend/resume; a count→0 destroy reads
+  # deletion_protection from prior state, so a protected cluster could not be suspended in
+  # a single apply. Data safety is provided by the verified GCS dump taken before every
+  # deep suspend (Cloud SQL is now torn down too — see the cloudsql module + db-dumps.tf),
+  # not by the cluster.
+  deletion_protection = false
   # Autopilot: no node_machine_type / min_nodes / max_nodes — Google manages nodes.
   # Pod resources are controlled via K8s resource requests in the Deployment.
   #
@@ -127,16 +147,30 @@ module "gke" {
 # Database: managed Cloud SQL for PostgreSQL. Private IP for the app (in-VPC),
 # public IP + allowlist for direct developer access.
 module "cloudsql" {
-  source              = "../../modules/cloudsql"
-  name_prefix         = local.name_prefix
-  region              = var.region
-  network_id          = module.network.network_id
-  tier                = var.db_tier
-  highly_available    = var.db_highly_available
+  source                 = "../../modules/cloudsql"
+  name_prefix            = local.name_prefix
+  region                 = var.region
+  network_id             = module.network.network_id
+  tier                   = var.db_tier
+  highly_available       = var.db_highly_available
+  point_in_time_recovery = var.db_point_in_time_recovery
+  # Backups off for the dev showcase — durability comes from the suspend-time GCS dump
+  # (run.sh suspend → `gcloud sql export`), not Cloud SQL's own daily backups. Set true
+  # for a prod environment.
+  backups_enabled = false
+  # Deep-suspend cost toggle: DESTROY the instance when db_active is false (true ~$0 idle;
+  # the data lives in the verified GCS dump, not on a kept disk). While the instance
+  # EXISTS but compute is suspended, activation_policy STOPS it (no vCPU/RAM charge) — that
+  # is the event-driven auto-suspend path, which flips environment_active but not db_active.
+  instance_active     = var.db_active
+  activation_policy   = var.environment_active ? "ALWAYS" : "NEVER"
   app_user_password   = random_password.db.result
   authorized_networks = var.db_authorized_networks
   labels              = local.common_labels
-  deletion_protection = var.deletion_protection
+  # DELIBERATELY false — the instance is torn down every deep-suspend cycle, so it cannot
+  # be protected (a count→0 destroy reads this from prior state). Data safety is the GCS
+  # dump, not this flag. See the module's deletion_protection comment.
+  deletion_protection = false
   # private_vpc_connection ensures the VPC peering (PSA) is fully established
   # before Cloud SQL tries to allocate a private IP on the peered range.
   # depends_on = [module.network] alone does not guarantee this ordering because
@@ -145,6 +179,10 @@ module "cloudsql" {
 }
 
 module "memorystore" {
+  # Cost toggle: Redis holds only disposable rate-limit/cache state, so it is fully
+  # destroyed when suspended and re-created on resume. The redis-url/redis-ca-cert
+  # secrets are conditionally omitted from app_secrets below while suspended.
+  count            = var.environment_active ? 1 : 0
   source           = "../../modules/memorystore"
   name_prefix      = local.name_prefix
   region           = var.region
@@ -162,10 +200,12 @@ resource "random_password" "db" {
 }
 
 module "iam" {
-  source                          = "../../modules/iam"
-  project_id                      = var.project_id
-  region                          = var.region
-  gke_cluster_name                = module.gke.cluster_name
+  source     = "../../modules/iam"
+  project_id = var.project_id
+  region     = var.region
+  # Null when suspended (cluster destroyed); the iam module does not actually consume
+  # this value, so an empty string is a safe placeholder that keeps the type (string).
+  gke_cluster_name                = module.gke.cluster_name != null ? module.gke.cluster_name : ""
   uploads_bucket_name             = module.gcs.bucket_name
   artifact_registry_repository_id = module.artifact_registry.repository_id
   github_repository               = var.github_repository
@@ -173,7 +213,10 @@ module "iam" {
   labels                          = local.common_labels
 
   # Binary Authorization attestor (modules/gke) — grants the deployer SA permission
-  # to sign attestations + read vulnerability findings for the CI gate.
+  # to sign attestations + read vulnerability findings for the CI gate. The signer +
+  # note-attacher grants are gated by binauthz_enabled (null wiring when disabled); the
+  # project-level vulnerability-viewer grant stays on regardless.
+  binauthz_enabled           = var.binauthz_enabled
   binauthz_note_id           = module.gke.binauthz_note_id
   binauthz_kms_crypto_key_id = module.gke.binauthz_kms_crypto_key_id
 
@@ -183,30 +226,33 @@ module "iam" {
   # so they are never committed. Both land as `devstash-<key>` and feed the ESO
   # ExternalSecret. DATABASE_URL/DIRECT_URL are NOT in tfvars — they point at the
   # managed Cloud SQL private IP and are derived from the generated password here.
-  app_secrets = merge(var.third_party_secrets, {
+  app_secrets = merge(var.third_party_secrets,
     # uploads-bucket is NOT here: module.gcs.bucket_name is deterministic
     # ("${project_id}-${name_prefix}-uploads", see modules/gcs/main.tf) and non-secret,
     # so AWS_S3_BUCKET is computed by the same CI yq formula as saEmail instead of
     # round-tripping through Secret Manager. See deploy-gke.yml + settings.yaml.
 
-    # Managed Cloud SQL (modules/cloudsql). The app + migrate Job read these; the
-    # URL targets the PRIVATE IP (in-VPC, no allowlist). Prisma uses the same URL
-    # for DATABASE_URL and DIRECT_URL (no separate pooler).
-    database-url = module.cloudsql.database_url
-    direct-url   = module.cloudsql.database_url
-
-    # Server CA for the app's node-postgres adapter to verify the TLS chain (verify-CA).
-    # The migrate Job's Prisma CLI relies on the URL's sslmode=require (encrypt only);
-    # the app additionally pins the CA. See src/lib/infra/db-local.ts.
-    database-ca-cert = module.cloudsql.server_ca_cert
-
-    # Native Redis: the app talks straight to Memorystore via ioredis (no SRH
-    # proxy). AUTH on + in-transit TLS → rediss://; REDIS_CA_CERT verifies the
-    # Google-managed server cert. REDIS_URL takes precedence over the Upstash vars
-    # in the app (see src/lib/infra/redis.ts).
-    redis-url     = "rediss://default:${module.memorystore.auth_string}@${module.memorystore.host}:${module.memorystore.port}"
-    redis-ca-cert = module.memorystore.server_ca_cert
-  })
+    # Managed Cloud SQL (modules/cloudsql). The app + migrate Job read these; the URL
+    # targets the PRIVATE IP (in-VPC, no allowlist). Prisma uses the same URL for
+    # DATABASE_URL and DIRECT_URL (no separate pooler). database-ca-cert lets the app's
+    # node-postgres adapter verify the TLS chain (verify-CA); see src/lib/infra/db-local.ts.
+    # Conditional: the instance is destroyed on a deep suspend, so these are omitted then
+    # (the cluster is gone too, so ESO isn't consuming them) and re-created on resume.
+    # module.cloudsql outputs are null when db_active is false.
+    var.db_active ? {
+      database-url     = module.cloudsql.database_url
+      direct-url       = module.cloudsql.database_url
+      database-ca-cert = module.cloudsql.server_ca_cert
+    } : {},
+    # Native Redis: the app talks straight to Memorystore via ioredis (no SRH proxy).
+    # AUTH on + in-transit TLS → rediss://; REDIS_CA_CERT verifies the Google-managed
+    # server cert. REDIS_URL takes precedence over the Upstash vars (src/lib/infra/redis.ts).
+    # Conditional: Memorystore is destroyed when suspended, so these two secrets are
+    # omitted then (and re-created on resume). module.memorystore is count-indexed.
+    var.environment_active ? {
+      redis-url     = "rediss://default:${module.memorystore[0].auth_string}@${module.memorystore[0].host}:${module.memorystore[0].port}"
+      redis-ca-cert = module.memorystore[0].server_ca_cert
+  } : {})
 
   # GCS-via-S3-interop credentials are minted INSIDE the iam module (HMAC key on
   # the app SA) and added to Secret Manager there — they can't be passed in via
