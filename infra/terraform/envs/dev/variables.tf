@@ -372,6 +372,12 @@ variable "log_system_exclusion_enabled" {
   description = "Exclude GKE system-namespace container logs (kube-system, gke-managed-*, gmp-system) from Cloud Logging ingestion to stay inside the 50 GiB/mo always-free tier. App/web logs (infra/docs/11-logs.md) are untouched. Set false to ingest everything (e.g. when debugging a cluster-system issue). See logging.tf."
 }
 
+variable "full_observability" {
+  type        = bool
+  default     = false
+  description = "Full GKE Cloud Ops telemetry (all monitoring components, Managed Prometheus, Advanced Datapath metrics, WORKLOADS logs). Default false = cost-optimized system-only telemetry: GKE system metrics/logs are non-chargeable, so this drops the billable kube-state/cadvisor/kubelet + Prometheus sample streams. Does NOT affect idle auto-suspend (that keys on a Cloud LB metric). Set true in prod for full observability. See modules/gke/main.tf."
+}
+
 variable "auto_suspend_repo_branch" {
   type        = string
   default     = "main"

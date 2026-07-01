@@ -63,6 +63,12 @@ NS=devstash
 DB_NAME=devstash   # logical DB inside the Cloud SQL instance (dump/restore --database target)
 CMD="${1:-up}"
 
+# Helm failure policy passed to the shared infra/ci/ensure-*.sh installers. Locally we run
+# a modern Helm where "--atomic" is deprecated in favour of "--rollback-on-failure", so use
+# the non-deprecated flag here. CI keeps the scripts' default ("--atomic") because the
+# ubuntu-latest runner still ships Helm 3, which lacks "--rollback-on-failure".
+export HELM_FAILURE_POLICY="--rollback-on-failure"
+
 # Pinned Helm chart versions — single source of truth shared with deploy-gke.yml.
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=../versions.env
@@ -355,8 +361,9 @@ eso() {
   use_cluster
   # Delegate the actual helm install to the SAME script CI runs (infra/ci/ensure-eso.sh) —
   # one source of truth for the chart, --version (from versions.env), the Autopilot 50m
-  # --set block, and the --atomic failure policy. run.sh only adds the cluster-cred fetch
-  # above and the webhook wait below; the install itself never diverges from CI again.
+  # --set block, and the failure policy (HELM_FAILURE_POLICY, overridden above for local
+  # Helm). run.sh only adds the cluster-cred fetch above and the webhook wait below; the
+  # install itself never diverges from CI again.
   infra/ci/ensure-eso.sh
   # Belt-and-suspenders: the chart's --wait covers the Deployments, but CR-admission
   # also needs the validating webhook live before the overlay's SecretStore is accepted.
@@ -377,7 +384,7 @@ reloader() {
   log "Installing Stakater Reloader (idempotent)"
   use_cluster
   # Same single-source-of-truth delegation as eso(): infra/ci/ensure-reloader.sh owns the
-  # chart, --version, --set, and --atomic policy shared with CI.
+  # chart, --version, --set, and the failure policy (HELM_FAILURE_POLICY) shared with CI.
   infra/ci/ensure-reloader.sh
   ok "Stakater Reloader installed; Deployment auto-restarts on secret rotation"
 }
@@ -606,8 +613,8 @@ rotate_secret() {
 # upgrade-helm: bump ESO and Reloader to their latest published Helm chart versions.
 # Checks `helm search repo` for each chart, updates infra/versions.env in-place, and
 # re-installs both charts on the live cluster (via eso → infra/ci/ensure-*.sh). Safe to run
-# at any time — `helm upgrade --install` is idempotent and the shared --atomic flag rolls
-# the release back on failure.
+# at any time — `helm upgrade --install` is idempotent and the failure policy
+# (HELM_FAILURE_POLICY) rolls the release back on failure.
 #
 # HOW IT WORKS:
 #   1. Ensures both repos are registered and fresh (repo update).

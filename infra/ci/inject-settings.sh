@@ -52,7 +52,7 @@ yq -i '
   .data.emailFrom            = strenv(EMAIL_FROM) |
   .data.nextAuthUrl          = "https://" + strenv(APP_DOMAIN) |
   .data.ingressIpName        = "devstash-dev-ip" |
-  .data.armorPolicyName      = (strenv(ARMOR_ENABLED) == "true" ? "devstash-dev-armor" : "") |
+  .data.armorPolicyName      = ({"true": "devstash-dev-armor"} | .[strenv(ARMOR_ENABLED)] // "") |
   .data.s3Bucket             = strenv(GCP_PROJECT_ID) + "-devstash-dev-uploads" |
   .data.authGithubId         = ((strenv(AUTH_GITHUB_ID) | select(. != "")) // .data.authGithubId) |
   .data.authGoogleId         = ((strenv(AUTH_GOOGLE_ID) | select(. != "")) // .data.authGoogleId) |

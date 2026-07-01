@@ -33,6 +33,22 @@ variable "binauthz_enabled" {
   default     = false
   description = "Provision the Binary Authorization signing pipeline (KMS key, attestor, note, policy, cluster enforcement). False = omit it entirely (no KMS cost)."
 }
+# Observability cost toggle. Cloud Ops ingestion is the only recurring while-up cost the
+# cluster's own settings control; on Autopilot you pay per pod request, not per node/CIDR,
+# so trimming telemetry is the sole cost-positive cluster knob. False (dev) = system-only
+# monitoring + logging, Advanced Datapath metrics off — GKE SYSTEM metrics are non-chargeable,
+# so this drops the billable kube-state/cadvisor/kubelet/DCGM sample streams while keeping the
+# control plane observable. Managed Prometheus stays enabled because Autopilot forbids disabling
+# it (API 400), but with the metric components trimmed and no PodMonitoring CRs it ingests
+# nothing chargeable — cost is gated by enable_components, not the GMP toggle. The idle auto-suspend
+# alert keys on a Cloud Load Balancing metric (loadbalancing.googleapis.com/https/request_count),
+# NOT a GKE monitoring component, so trimming here never affects idle detection. True = omit
+# both blocks so Autopilot applies its full-observability defaults (prod parity).
+variable "full_observability" {
+  type        = bool
+  default     = false
+  description = "Full Cloud Ops telemetry (all monitoring components, Advanced Datapath metrics, WORKLOADS logs). False = cost-optimized system-only telemetry (Managed Prometheus stays enabled — Autopilot forbids disabling it — but ingests nothing without PodMonitoring CRs)."
+}
 variable "labels" {
   type    = map(string)
   default = {}

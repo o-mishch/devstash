@@ -18,11 +18,15 @@ helm repo update external-secrets
 # defaults to 10m, which Autopilot silently mutates — explicit values here eliminate the
 # mutation warning and make billing predictable.
 #
-# CRITICAL: Do NOT use "--rollback-on-failure". GitHub Actions runner (ubuntu-latest) runs
-# Helm 3 which does not support it and fails the build. Use "--atomic" which is supported
-# in both Helm 3 and Helm 4 (deprecated but functional).
+# Failure policy is HELM_FAILURE_POLICY, defaulting to "--atomic". CRITICAL: the default
+# must stay "--atomic" — the GitHub Actions runner (ubuntu-latest) runs Helm 3, which does
+# NOT support "--rollback-on-failure" and fails the build; "--atomic" works on both Helm 3
+# and Helm 4 (deprecated but functional). Local run.sh runs modern Helm and overrides this
+# to "--rollback-on-failure" (the non-deprecated flag). Never hardcode the flag here.
+HELM_FAILURE_POLICY="${HELM_FAILURE_POLICY:---atomic}"
+
 helm upgrade --install external-secrets external-secrets/external-secrets \
-  -n external-secrets --create-namespace --wait --timeout 5m --atomic \
+  -n external-secrets --create-namespace --wait --timeout 5m "$HELM_FAILURE_POLICY" \
   --version "$ESO_VERSION" \
   --set resources.requests.cpu=50m \
   --set resources.requests.memory=128Mi \

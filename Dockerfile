@@ -9,19 +9,19 @@
 #   runner  — minimal runtime: copies only the standalone server + static assets
 # ---------------------------------------------------------------------------
 
-# Pinned to an exact supported Node 22 patch and Alpine release. Node 22 remains in
-# Maintenance LTS through April 2027; keep this current with Node security releases.
-# For hardened production images, also pin the digest so a re-tag of the same
-# version can't silently change the base:
-#   node:22.23.1-alpine3.23@sha256:<digest>
+# Pinned to an exact supported Node 24 patch and Alpine release. Node 24 is the current
+# Active LTS (Krypton) — keep this in sync with .nvmrc (the repo-wide Node version) and
+# bump with Node security releases. For hardened production images, also pin the digest so
+# a re-tag of the same version can't silently change the base:
+#   node:24.18.0-alpine3.23@sha256:<digest>
 # Fetch the digest for the current pinned version with:
-#   docker pull node:22.23.1-alpine3.23 \
-#     && docker inspect --format='{{index .RepoDigests 0}}' node:22.23.1-alpine3.23
+#   docker pull node:24.18.0-alpine3.23 \
+#     && docker inspect --format='{{index .RepoDigests 0}}' node:24.18.0-alpine3.23
 # Or without pulling:
-#   docker buildx imagetools inspect node:22.23.1-alpine3.23 \
+#   docker buildx imagetools inspect node:24.18.0-alpine3.23 \
 #     --format '{{json .Manifest}}' | jq -r '.digest'
-# When bumping NODE_VERSION: update the digest too so CI stays reproducible.
-ARG NODE_VERSION=22.23.1-alpine3.23@sha256:8516dce0483394d5708d4b2ee6cacb79fb1d617ea4e2787c2120bcca92ce372e
+# When bumping NODE_VERSION: update .nvmrc and the digest too so CI stays reproducible.
+ARG NODE_VERSION=24.18.0-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436
 
 # ---- deps: install dependencies only (best layer-cache hit rate) ----------
 FROM node:${NODE_VERSION} AS deps

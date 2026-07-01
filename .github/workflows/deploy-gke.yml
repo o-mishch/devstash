@@ -50,7 +50,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       # Lint the extracted deploy scripts (infra/ci/*.sh) + the shared bash library
       # (infra/lib/*.sh) as real shell — the whole point of pulling them out of this YAML.
       # shellcheck is preinstalled on ubuntu-latest. -x follows `source infra/versions.env`
@@ -60,9 +60,11 @@ jobs:
       # ($$/$_VAR syntax), NOT plain bash, and must not be linted here.
       - name: Lint deploy scripts (shellcheck)
         run: shellcheck -x -e SC1091 infra/ci/*.sh infra/lib/*.sh
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 22.x
+          # Single source of truth: read the pinned Node version from .nvmrc (currently
+          # Node 24 Active LTS) so CI, local dev (nvm), and the Docker base never drift.
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       # Static safety analysis of every pending migration SQL file before anything is
@@ -92,13 +94,13 @@ jobs:
     outputs:
       suspended: ${{ steps.env-state.outputs.suspended }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - id: auth
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.DEPLOYER_SA }}
-      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - name: Detect suspended environment
         id: env-state
         env:
@@ -132,7 +134,7 @@ jobs:
       id-token: write     # Workload Identity Federation: request OIDC token
       attestations: write # SLSA provenance attestation push
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Validate deployment inputs
         env:
@@ -148,18 +150,18 @@ jobs:
       # variables/secrets; the provider is created in Terraform (iam module +
       # a WIF pool). No JSON key.
       - id: auth
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.DEPLOYER_SA }}
 
-      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       - name: Build & push images
         id: build-push
@@ -191,7 +193,7 @@ jobs:
       # NOT satisfy GKE Binary Authorization REQUIRE_ATTESTATION.
       - name: Attest web image
         if: vars.ENABLE_GITHUB_ATTESTATIONS == 'true'
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-name: ${{ steps.build-push.outputs.web_image_name }}
           subject-digest: ${{ steps.build-push.outputs.web_digest }}
@@ -199,7 +201,7 @@ jobs:
 
       - name: Attest migrate image
         if: vars.ENABLE_GITHUB_ATTESTATIONS == 'true'
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-name: ${{ steps.build-push.outputs.migrate_image_name }}
           subject-digest: ${{ steps.build-push.outputs.migrate_digest }}
@@ -232,7 +234,7 @@ jobs:
       # container.clusters.connect. Also confirm allow_external_traffic is applied on the live
       # cluster (a separate prerequisite) — see infra/terraform/modules/{iam,gke}/main.tf.
       - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@64bc7249bbcf78056bb92f14d3cedc2da193946c # v2
+        uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395 # v3.0.0
         with:
           cluster_name: ${{ env.CLUSTER }}
           location: ${{ env.REGION }}

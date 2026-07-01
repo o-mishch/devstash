@@ -101,11 +101,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
-          cache: npm          # кешує node_modules між runs
+          node-version-file: .nvmrc   # Node 24 Active LTS — single source of truth
+          cache: npm                  # кешує node_modules між runs
       - run: npm ci
       - run: npm run lint
       - run: npm run test:run
@@ -163,7 +163,7 @@ jobs:
 ```yaml
 # Ескіз: послідовні кроки в GCP (НЕ повний еквівалент deploy-gke.yml)
 steps:
-  - name: node:22-alpine
+  - name: node:24-alpine
     entrypoint: sh
     args: ['-c', 'npm ci && npm run lint && npm run test:run']
 

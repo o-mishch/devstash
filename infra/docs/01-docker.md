@@ -31,13 +31,13 @@
 
 ```dockerfile
 # Стадія 1 — збірка (AS <name> дозволяє посилатися на неї далі)
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN npm ci && npm run build
 
 # Стадія 2 — runtime (лише артефакти зі стадії builder)
-FROM node:22-alpine AS runner
+FROM node:24-alpine AS runner
 COPY --from=builder /app/.next/standalone ./
 CMD ["node", "server.js"]
 ```

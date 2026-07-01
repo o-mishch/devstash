@@ -127,6 +127,11 @@ module "gke" {
   # tier, so the always-on signing key is the only standing resource that can never round
   # to $0. Set binauthz_enabled = true in prod for enforcement parity.
   binauthz_enabled = var.binauthz_enabled
+  # Observability cost toggle: false (dev default) trims Cloud Ops telemetry to non-chargeable
+  # SYSTEM_COMPONENTS only (Managed Prometheus + Advanced Datapath metrics + WORKLOADS logs
+  # off). GKE system metrics are free, so this is the one cost-positive cluster knob while up;
+  # it never touches the idle auto-suspend alert (a Cloud LB metric). Set true in prod for parity.
+  full_observability = var.full_observability
   # The cluster is DELIBERATELY unprotected. It holds no persistent state and is
   # destroyed/recreated on every suspend/resume; a count→0 destroy reads
   # deletion_protection from prior state, so a protected cluster could not be suspended in

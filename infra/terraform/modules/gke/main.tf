@@ -132,6 +132,48 @@ resource "google_container_cluster" "primary" {
     }
   }
 
+  # Cost-optimized telemetry (var.full_observability = false, the dev default). Present ONLY
+  # when trimming: on full_observability = true both blocks are omitted so Autopilot applies
+  # its full-observability defaults (all monitoring components + Advanced Datapath metrics +
+  # WORKLOADS logs) for prod parity. When present, telemetry is cut to SYSTEM_COMPONENTS only —
+  # GKE system metrics/logs are non-chargeable, so this drops the billable
+  # kube-state/cadvisor/kubelet/DCGM sample streams and workload log ingestion. SYSTEM_COMPONENTS
+  # is the required minimum on Autopilot (it cannot be fully disabled). The idle auto-suspend
+  # alert reads a Cloud Load Balancing metric, not a GKE monitoring component, so this trim never
+  # affects idle detection (see envs/dev/auto-suspend.tf).
+  #
+  # managed_prometheus MUST stay enabled: GKE Autopilot (1.25+) forbids disabling Managed Service
+  # for Prometheus and the API rejects `enabled = false` with a 400
+  # ("Managed Service for Prometheus cannot be disabled in Autopilot clusters"). It costs nothing
+  # on its own — Cloud Monitoring bills per ingested sample, and with the metric components above
+  # trimmed and no PodMonitoring/ClusterPodMonitoring CRs deployed, GMP scrapes nothing. The cost
+  # is gated by enable_components, not by this toggle. Do NOT set it to false: it fails the apply
+  # after logging already updated, leaving a half-applied changeset.
+  dynamic "monitoring_config" {
+    for_each = var.full_observability ? [] : [1]
+    content {
+      enable_components = ["SYSTEM_COMPONENTS"]
+      managed_prometheus {
+        enabled = true
+      }
+      advanced_datapath_observability_config {
+        enable_metrics = false
+        enable_relay   = false
+      }
+    }
+  }
+
+  dynamic "logging_config" {
+    for_each = var.full_observability ? [] : [1]
+    content {
+      # WORKLOADS dropped — the app's Cloud SQL/Redis errors surface in the workload logs the
+      # envs/dev logging.tf exclusion deliberately preserves; system-namespace noise is already
+      # excluded there. SYSTEM_COMPONENTS retained (required, non-chargeable) for control-plane
+      # visibility during the cluster's active window.
+      enable_components = ["SYSTEM_COMPONENTS"]
+    }
+  }
+
   # Enable evaluation of the project Binary Authorization policy. The current
   # cluster-specific rule below is deliberately transitional ALWAYS_ALLOW, so this
   # does not yet enforce provenance. GitHub/Sigstore OCI attestations are not native
