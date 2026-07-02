@@ -11,14 +11,20 @@ resource "google_artifact_registry_repository" "docker" {
   # DELETE removes everything else. A KEEP-only policy never deletes anything.
   #
   # Two KEEP guards prevent running pods from losing their image during a deploy storm:
-  #   1. keep-recent: always retain the 3 newest pushes (rollback window). Lowered from
-  #      10 → 3 for the $0-idle dev showcase: image storage is the single largest cost
-  #      that SURVIVES a deep suspend (~$0.3–0.5/mo for 10 versions of web+migrate), so a
-  #      shallower rollback depth is the biggest real idle saving. keep-young below still
-  #      retains anything a running pod could be pulling, so this only trims STALE rollback
-  #      targets (older than 7 days) — never an in-use image. Raise for prod.
-  #   2. keep-young:  always retain images pushed within the last 7 days regardless of
-  #      count — a rapid-push burst can't evict an image a pod is currently pulling.
+  #   1. keep-recent: retain only the 1 newest push per package. Image storage is the
+  #      single cost that SURVIVES a deep suspend and was the last non-$0 idle line item
+  #      (measured 4.3 GB / ~$0.38/mo during a deploy-churn burst). Lowered 10 → 3 → 1 to
+  #      pull the deduped idle floor (1×web + 1×migrate) UNDER the 0.5 GB Artifact Registry
+  #      free tier → true $0 idle. Rollback depth is intentionally traded away: this env is
+  #      ephemeral (suspend/resume rebuilds from CI), so "roll back" == re-run the pipeline,
+  #      not pull a stale digest. keep-young below still protects any image a pod could be
+  #      mid-pull. Raise for prod, where rollback-to-previous-digest matters.
+  #   2. keep-young:  always retain images pushed within the last 2 days regardless of
+  #      count — a rapid-push burst can't evict an image a pod is currently pulling. Shortened
+  #      7 d → 2 d so a churn burst (like the 30+ versions measured above) ages out of the
+  #      retention window within ~2 days and the next cleanup run prunes it to keep-recent,
+  #      instead of squatting 4+ GB for a full week. 2 d comfortably covers an active
+  #      demo/deploy cycle (the hard uptime cap is 90 min).
   #
   # ── condition is MANDATORY on a DELETE policy — DO NOT remove ─────────────────
   # The Artifact Registry API rejects any DELETE policy that has neither a
@@ -43,14 +49,14 @@ resource "google_artifact_registry_repository" "docker" {
     id     = "keep-recent"
     action = "KEEP"
     most_recent_versions {
-      keep_count = 3
+      keep_count = 1
     }
   }
   cleanup_policies {
     id     = "keep-young"
     action = "KEEP"
     condition {
-      newer_than = "604800s" # 7 days
+      newer_than = "172800s" # 2 days
     }
   }
 

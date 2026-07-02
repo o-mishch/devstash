@@ -34,6 +34,14 @@ resource "google_container_cluster" "primary" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
 
+  # Secret Manager add-on (secret_manager_config) is DELIBERATELY omitted. It is a GKE
+  # golden-path default, but this stack already reaches Secret Manager through External
+  # Secrets Operator (see k8s/overlays/gcp/external-secrets.yaml) materializing a K8s
+  # Secret, so the managed CSI add-on would add a standing controller for no benefit —
+  # counter to the $0-idle / minimal-running-cost posture. Do NOT add it to "close a
+  # golden-path gap"; the omission is intentional. Revisit only if a workload needs the
+  # Secret Manager CSI driver's live-mount/rotation semantics that ESO does not provide.
+
   # Private nodes — no public IPs on pods/nodes. The control plane's *public IP*
   # endpoint is disabled too (enable_private_endpoint = true): external access goes
   # exclusively through the DNS-based endpoint below, which is gated by IAM rather
@@ -156,8 +164,17 @@ resource "google_container_cluster" "primary" {
       managed_prometheus {
         enabled = true
       }
+      # enable_metrics MUST be true: with datapathProvider = ADVANCED_DATAPATH, GKE keeps
+      # advanced-datapath flow metrics enabled and silently re-asserts true — setting false
+      # here does NOT stick (the UpdateCluster succeeds but the value stays true), so it only
+      # produced a permanent `tofu plan` diff (true -> false on every plan). It is cost-neutral:
+      # enable_metrics only EXPOSES the flow metrics on a node port; Cloud Monitoring bills per
+      # INGESTED sample, and with enable_components trimmed to SYSTEM_COMPONENTS and no
+      # PodMonitoring/ClusterPodMonitoring CRs nothing scrapes them — same "gated by
+      # enable_components, not the toggle" logic as managed_prometheus above. enable_relay stays
+      # false (the billable GKE-hosted flow-log relay; that one IS honored and off).
       advanced_datapath_observability_config {
-        enable_metrics = false
+        enable_metrics = true
         enable_relay   = false
       }
     }
