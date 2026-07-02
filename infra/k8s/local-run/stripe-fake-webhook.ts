@@ -44,7 +44,7 @@ const appUrl = process.env.APP_URL ?? 'http://localhost:8080'
 
 // No API key is ever used — we only call the offline signing helper. The dummy key
 // satisfies the constructor; no network request is made by generateTestHeaderString.
-const stripe = new Stripe('sk_test_offline_unused', { apiVersion: '2026-05-27.dahlia' })
+const stripe = new Stripe('sk_test_offline_unused', { apiVersion: '2026-06-24.dahlia' })
 
 const nowSec = Math.floor(Date.now() / 1000)
 const periodEndSec = nowSec + 30 * 24 * 60 * 60 // +30 days
@@ -86,7 +86,7 @@ const event = {
   id: `evt_offline_${nowSec}`,
   object: 'event',
   type: 'customer.subscription.updated',
-  api_version: '2026-05-27.dahlia',
+  api_version: '2026-06-24.dahlia',
   created: nowSec,
   data: { object: subscription },
 }

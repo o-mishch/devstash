@@ -17,7 +17,7 @@ function getStripeClient(): Stripe {
       throw new Error('STRIPE_SECRET_KEY is missing. Please set it in your .env file.')
     }
     stripeClient = new Stripe(secretKey, {
-      apiVersion: '2026-05-27.dahlia',
+      apiVersion: '2026-06-24.dahlia',
       appInfo: {
         name: 'DevStash Pro',
         version: '0.1.0',
