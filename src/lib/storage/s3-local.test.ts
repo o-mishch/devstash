@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { RequestChecksumCalculation, ResponseChecksumValidation } from '@aws-sdk/middleware-flexible-checksums'
 import { localS3Overrides } from './s3-local'
 
 // Every S3-compatible endpoint (MinIO, GCS interop) also needs the SDK's default CRC checksums
@@ -7,8 +6,8 @@ import { localS3Overrides } from './s3-local'
 // path-style so both travel together whenever AWS_ENDPOINT_URL_S3 is set.
 const s3CompatOverrides = {
   forcePathStyle: true,
-  requestChecksumCalculation: RequestChecksumCalculation.WHEN_REQUIRED,
-  responseChecksumValidation: ResponseChecksumValidation.WHEN_REQUIRED,
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
 }
 
 // localS3Overrides() decides whether the AWS SDK uses PATH-STYLE addressing.
