@@ -1,0 +1,18 @@
+# Trivy vulnerability-scan exceptions — read by the Trivy "Scan ... image for vulnerabilities"
+# steps in .github/workflows/deploy-gke.yml (trivyignores input).
+#
+# Each entry suppresses ONE CVE across the scanned images until `expired_at` passes. After
+# that date Trivy reports the finding again — renew deliberately, don't let entries go stale.
+# `statement` documents WHY the risk is accepted. Trivy already drops unfixed findings
+# (ignore-unfixed: true) and only surfaces CRITICAL/HIGH, so list here only accepted,
+# fixable CRITICAL/HIGH CVEs.
+#
+# Format: https://trivy.dev/latest/docs/configuration/filtering/#by-finding-ids
+#
+# Example:
+# vulnerabilities:
+#   - id: CVE-2024-12345
+#     statement: "Fixed upstream in package 3.2, not yet released; tracked in lockfile PR #123"
+#     expired_at: 2026-08-01
+
+vulnerabilities: []
