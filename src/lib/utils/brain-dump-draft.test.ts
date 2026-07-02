@@ -12,6 +12,7 @@ const baseDraft: BrainDumpDraftItem = {
   url: null,
   description: 'A test snippet',
   tags: ['js', 'test'],
+  trashed: false,
   duplicateOf: null,
 }
 

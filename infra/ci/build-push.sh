@@ -4,6 +4,13 @@
 # steps deploy by digest (a commit-SHA tag can be overwritten by a re-run; a content
 # digest cannot).
 #
+# Both images build in ONE `docker buildx bake` session (infra/ci/docker-bake.hcl):
+# the shared deps/builder stages are computed once and the two targets build
+# concurrently, instead of two sequential builds that each re-import the shared
+# graph. Layer cache uses the GitHub Actions cache backend (type=gha) — Docker's
+# recommended backend on GitHub-hosted runners; it avoids the Artifact Registry
+# round-trip the old type=registry cache paid on every import and export.
+#
 # Required env:
 #   REGION, GCP_PROJECT_ID, REPO, IMAGE, IMAGE_MIGRATE  — image coordinates
 #   GITHUB_SHA                                          — provided by Actions
@@ -14,39 +21,21 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 BASE="$(ds_image_base "$REGION" "$GCP_PROJECT_ID" "$REPO")"
-IMAGE_URI="${BASE}/${IMAGE}"
-MIGRATE_URI="${BASE}/${IMAGE_MIGRATE}"
+# Exported so the bake file's `variable` blocks pick them up from the environment.
+export IMAGE_URI="${BASE}/${IMAGE}"
+export MIGRATE_URI="${BASE}/${IMAGE_MIGRATE}"
+export GITHUB_SHA
 
-# Runtime image (default last stage) + migrator image (--target migrator). Both builds
-# share the same registry remote cache (mode=max includes all intermediate layers). The
-# deps + builder stages are reused across builds when the lockfile and schema are
-# unchanged — typical saves are 2-4 min. --metadata-file captures the image digest from
-# the registry response so we can pass it to SLSA attestation without re-pulling.
-docker buildx build \
-  --cache-from "type=registry,ref=${IMAGE_URI}:buildcache" \
-  --cache-to   "type=registry,ref=${IMAGE_URI}:buildcache,mode=max" \
-  --push \
-  --metadata-file /tmp/meta-web.json \
-  -t "${IMAGE_URI}:${GITHUB_SHA}" -t "${IMAGE_URI}:latest" .
+BAKE_FILE="$(dirname "${BASH_SOURCE[0]}")/docker-bake.hcl"
 
-# WHY two --cache-from: deps+builder layers are shared with the web build
-# (IMAGE_URI:buildcache, written above). The migrator adds its own unique layers (apk add
-# libc6-compat, prisma generate inside the migrator stage, seed files). Those unique
-# layers are written to MIGRATE_URI:buildcache so subsequent deploys restore them from
-# cache instead of rebuilding cold (~60-120s per run saved). The web build's cache is
-# read-only here (no --cache-to for IMAGE_URI) — each image owns its own buildcache tag.
-docker buildx build --target migrator \
-  --cache-from "type=registry,ref=${IMAGE_URI}:buildcache" \
-  --cache-from "type=registry,ref=${MIGRATE_URI}:buildcache" \
-  --cache-to   "type=registry,ref=${MIGRATE_URI}:buildcache,mode=max" \
-  --push \
-  --metadata-file /tmp/meta-migrate.json \
-  -t "${MIGRATE_URI}:${GITHUB_SHA}" -t "${MIGRATE_URI}:latest" .
+# --metadata-file captures each target's registry digest so we can pass it to SLSA
+# attestation without re-pulling. Output is keyed by target name.
+docker buildx bake --file "$BAKE_FILE" --metadata-file /tmp/meta-bake.json
 
-# Extract the registry digest from the buildx metadata file (the canonical sha256 the
-# registry assigned — stable across tags on the same manifest).
-WEB_DIGEST=$(jq -er '."containerimage.digest"' /tmp/meta-web.json)
-MIGRATE_DIGEST=$(jq -er '."containerimage.digest"' /tmp/meta-migrate.json)
+# Extract the registry digest per target from the buildx metadata (the canonical
+# sha256 the registry assigned — stable across tags on the same manifest).
+WEB_DIGEST=$(jq -er '.web."containerimage.digest"' /tmp/meta-bake.json)
+MIGRATE_DIGEST=$(jq -er '.migrate."containerimage.digest"' /tmp/meta-bake.json)
 if [[ ! "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ || ! "$MIGRATE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo "::error::BuildKit did not return valid registry image digests"
   exit 1
