@@ -6,6 +6,13 @@
 set -eu
 [ -f /workspace/SUSPEND ] || { echo "not idle — skipping prepare"; exit 0; }
 cd /workspace
+# cloud-sdk:stable is built --no-install-recommends and no longer ships git on PATH, so a bare
+# `git clone` exits 127 and aborts the whole suspend. Google's guidance is to extend the image
+# (custom Dockerfile) or install what you need at runtime; a one-off apt-get here is far cheaper
+# than owning a bespoke image for a single binary in a step that only runs when actually
+# suspending. set -eu aborts if the install fails.
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends git
 git clone --depth 1 --branch "$_REPO_BRANCH" "https://github.com/$_REPO_SLUG.git" repo
 echo "$_NONSECRET_B64" | base64 -d > repo/infra/terraform/envs/dev/zz-nonsecret.auto.tfvars.json
 mkdir -p /workspace/sec
