@@ -7,13 +7,23 @@
 # extraction is unchanged — bake writes a per-target `containerimage.digest` to
 # the --metadata-file, keyed by target name (see build-push.sh).
 #
-# Cache stays on the Artifact Registry backend (type=registry) the project already
-# uses — each image owns its own :buildcache tag, so no new CI dependency is added
-# and the cache remains shareable with non-GitHub builders (e.g. run.sh). To move
-# to the GitHub Actions cache (type=gha) later, the raw `run:` step must first
-# expose ACTIONS_RUNTIME_TOKEN / ACTIONS_CACHE_URL (docker/build-push-action does
-# this automatically; a plain script needs an action such as
-# crazy-max/ghaction-github-runtime).
+# Cache lives in the GitHub Actions cache backend (type=gha), NOT Artifact Registry.
+# WHY: type=registry,mode=max pushed a ~900 MB :buildcache blob PER image into GAR.
+# That blob is tagged (so no untagged cleanup policy touches it) and rewritten every
+# build (so it never ages out of a keep-young window) — ~1.8 GB of cache no cleanup
+# policy can ever evict, which was the entire Artifact Registry bill. type=gha stores
+# the same mode=max cache in GitHub's own cache (10 GB/repo, free, LRU-evicted),
+# leaving GAR holding only the runtime images → deduped storage fits the 0.5 GB free
+# tier → $0. This bake file is invoked ONLY by CI (build-push.sh); nothing else shares
+# the cache, so there is no non-GitHub builder to keep on a registry cache.
+#
+# type=gha needs ACTIONS_RUNTIME_TOKEN / ACTIONS_CACHE_URL / ACTIONS_RESULTS_URL in
+# the environment. docker/build-push-action injects these automatically; our plain
+# `run:` script does not, so the workflow runs crazy-max/ghaction-github-runtime just
+# before build-push.sh to export them (see .github/workflows/deploy-gke.yml).
+#
+# Scopes keep the two targets' caches separate but cross-readable: migrate reads web's
+# scope so the shared `deps` stage warms it, and writes its unique layers to its own.
 #
 # Invoked from repo root by infra/ci/build-push.sh, which exports the variables
 # below. Validate a change without building:
@@ -40,9 +50,9 @@ target "web" {
     "${IMAGE_URI}:${GITHUB_SHA}",
     "${IMAGE_URI}:latest",
   ]
-  cache-from = ["type=registry,ref=${IMAGE_URI}:buildcache"]
+  cache-from = ["type=gha,scope=web"]
   # mode=max caches all intermediate stages (deps + builder), not just the final layers.
-  cache-to = ["type=registry,ref=${IMAGE_URI}:buildcache,mode=max"]
+  cache-to = ["type=gha,scope=web,mode=max"]
   output   = ["type=registry"]
 }
 
@@ -57,12 +67,12 @@ target "migrate" {
   ]
   # Import the web cache too: the migrator shares the `deps` stage with web, so the
   # web build's cache warms migrate's deps. The migrator's own unique layers (prisma
-  # generate in the migrator stage, seed files) are written to its own :buildcache
-  # tag — the web cache is read-only here (no cache-to for IMAGE_URI).
+  # generate in the migrator stage, seed files) are written to its own scope — the web
+  # scope is read-only here (no cache-to for scope=web).
   cache-from = [
-    "type=registry,ref=${IMAGE_URI}:buildcache",
-    "type=registry,ref=${MIGRATE_URI}:buildcache",
+    "type=gha,scope=web",
+    "type=gha,scope=migrate",
   ]
-  cache-to = ["type=registry,ref=${MIGRATE_URI}:buildcache,mode=max"]
+  cache-to = ["type=gha,scope=migrate,mode=max"]
   output   = ["type=registry"]
 }

@@ -10,21 +10,26 @@ resource "google_artifact_registry_repository" "docker" {
   # GCP requires a DELETE policy AND a KEEP policy: KEEP marks what to preserve,
   # DELETE removes everything else. A KEEP-only policy never deletes anything.
   #
+  # $0-IDLE GOAL. The dominant Artifact Registry cost was NEVER the images — it was the
+  # buildx mode=max cache. type=registry,mode=max pushed a ~900 MB :buildcache blob per
+  # image; being tagged it dodged every untagged policy, and being rewritten each build it
+  # never aged out. ~1.8 GB no cleanup policy could evict. That cache now lives in the
+  # GitHub Actions cache (type=gha, see infra/ci/docker-bake.hcl), off GAR entirely, so the
+  # policies below only govern the runtime images, whose deduped compressed storage fits
+  # the 0.5 GB free tier → $0.
+  #
   # Two KEEP guards prevent running pods from losing their image during a deploy storm:
-  #   1. keep-recent: retain only the 1 newest push per package. Image storage is the
-  #      single cost that SURVIVES a deep suspend and was the last non-$0 idle line item
-  #      (measured 4.3 GB / ~$0.38/mo during a deploy-churn burst). Lowered 10 → 3 → 1 to
-  #      pull the deduped idle floor (1×web + 1×migrate) UNDER the 0.5 GB Artifact Registry
-  #      free tier → true $0 idle. Rollback depth is intentionally traded away: this env is
-  #      ephemeral (suspend/resume rebuilds from CI), so "roll back" == re-run the pipeline,
-  #      not pull a stale digest. keep-young below still protects any image a pod could be
-  #      mid-pull. Raise for prod, where rollback-to-previous-digest matters.
-  #   2. keep-young:  always retain images pushed within the last 2 days regardless of
-  #      count — a rapid-push burst can't evict an image a pod is currently pulling. Shortened
-  #      7 d → 2 d so a churn burst (like the 30+ versions measured above) ages out of the
-  #      retention window within ~2 days and the next cleanup run prunes it to keep-recent,
-  #      instead of squatting 4+ GB for a full week. 2 d comfortably covers an active
-  #      demo/deploy cycle (the hard uptime cap is 90 min).
+  #   1. keep-recent: retain only the 1 newest push per package (1×web + 1×migrate). Rollback
+  #      depth is intentionally traded away: this env is ephemeral (suspend/resume rebuilds
+  #      from CI), so "roll back" == re-run the pipeline, not pull a stale digest. keep-young
+  #      below still protects any image a pod could be mid-pull. Raise for prod, where
+  #      rollback-to-previous-digest matters.
+  #   2. keep-young:  always retain TAGGED images pushed within the last 1 day regardless of
+  #      count — a rapid-push burst can't evict an image a pod is currently pulling. Scoped to
+  #      tag_state = "TAGGED" so it does NOT shield untagged garbage (superseded :latest
+  #      targets, orphaned manifests): those fall straight to delete-old on the next daily
+  #      cleanup run. Shortened 2 d → 1 d so a churn burst ages out within ~a day. 1 d
+  #      comfortably covers an active demo/deploy cycle (the hard uptime cap is 90 min).
   #
   # ── condition is MANDATORY on a DELETE policy — DO NOT remove ─────────────────
   # The Artifact Registry API rejects any DELETE policy that has neither a
@@ -56,7 +61,8 @@ resource "google_artifact_registry_repository" "docker" {
     id     = "keep-young"
     action = "KEEP"
     condition {
-      newer_than = "172800s" # 2 days
+      tag_state  = "TAGGED"
+      newer_than = "86400s" # 1 day
     }
   }
 

@@ -163,6 +163,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
+      # Export ACTIONS_CACHE_URL / ACTIONS_RUNTIME_TOKEN / ACTIONS_RESULTS_URL into the
+      # environment so the plain `run:` build below can use buildx `type=gha` cache
+      # (docker/build-push-action injects these automatically; a raw script cannot).
+      # This keeps the ~900 MB/image mode=max build cache in GitHub's cache instead of
+      # Artifact Registry, so GAR storage stays inside the 0.5 GB free tier.
+      - name: Expose GitHub Actions runtime for buildx gha cache
+        uses: crazy-max/ghaction-github-runtime@3cb05d89e1f492524af3d41a1c98c83bc3025124 # v3.0.0
+
       - name: Build & push images
         id: build-push
         run: infra/ci/build-push.sh
