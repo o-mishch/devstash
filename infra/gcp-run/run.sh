@@ -279,11 +279,11 @@ bootstrap() {
 
   # Lifecycle: versioning above keeps every superseded state generation forever. State
   # objects are tiny, but over the env's life the noncurrent versions accumulate unbounded.
-  # The rules (in $STATE_LIFECYCLE) keep the 5 most recent generations for rollback and drop
-  # anything older than 30 days — both ARCHIVED-only (isLive=false), so the LIVE state object
-  # is never touched — keeping the bucket a $0 residual.
+  # The rule (in $STATE_LIFECYCLE) keeps the 5 most recent generations for rollback and drops
+  # older ones regardless of age — ARCHIVED-only (isLive=false), so the LIVE state object is
+  # never touched — keeping the bucket a $0 residual.
   gcloud storage buckets update "gs://$STATE_BUCKET" --lifecycle-file="$STATE_LIFECYCLE"
-  ok "state bucket lifecycle: noncurrent state versions expire (keep 5, max 30 days)"
+  ok "state bucket lifecycle: keep 5 noncurrent state versions, drop older regardless of age"
 
   # Enable APIs up front (Terraform also does this via google_project_service, but
   # pre-enabling here speeds up the first `tofu apply` by avoiding Terraform's

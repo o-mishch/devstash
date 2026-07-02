@@ -163,6 +163,14 @@ resource "google_sql_database" "devstash" {
   count    = var.instance_active ? 1 : 0
   name     = "devstash"
   instance = google_sql_database_instance.postgres[0].name
+
+  # ABANDON on destroy — state-only removal, NO Cloud SQL Admin API drop. On deep suspend
+  # all three resources go count→0; Terraform destroys leaves (this database + the app user)
+  # BEFORE the instance. An individual database drop fails with "database is being accessed
+  # by other users" whenever any connection lingers, which blocks the whole suspend and
+  # leaves the instance billing. There is no reason to drop it individually: the instance
+  # destroy below physically removes it. So abandon here and let the instance take it.
+  deletion_policy = "ABANDON"
 }
 
 # App DB user. The password is generated and stored in Secret Manager (iam module
@@ -175,6 +183,14 @@ resource "google_sql_user" "app" {
   name     = "devstash_app"
   instance = google_sql_database_instance.postgres[0].name
   password = var.app_user_password
+
+  # ABANDON on destroy — same reasoning as the database above, but here the individual drop
+  # fails STRUCTURALLY every time, not just on a stray connection: devstash_app OWNS the
+  # app's objects (`role "devstash_app" cannot be dropped because some objects depend on
+  # it`), and Postgres refuses DROP ROLE while it owns objects. The provider documents
+  # exactly this Postgres case as the reason ABANDON exists. The instance destroy removes
+  # the role with the instance, so never issue the doomed API drop.
+  deletion_policy = "ABANDON"
 }
 
 # State migration: these resources gained `count` in the deep-suspend change, moving their

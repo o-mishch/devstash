@@ -81,6 +81,23 @@ so future AI/human reviewers don't retry the same wrong fixes.
    GCP flow does not configure NextAuth's email provider, but the dependency remains in
    the production tree.
 
+## Checking storage usage
+
+Summarize the size of every GCS bucket in the project (`-s` per-bucket summary,
+`-r` human-readable, `-c` grand total):
+
+```bash
+gcloud storage du -s -r -c \
+  gs://project-39965ce5-4c4b-495e-8d4-devstash-dev-db-dumps \
+  gs://project-39965ce5-4c4b-495e-8d4-devstash-dev-uploads \
+  gs://project-39965ce5-4c4b-495e-8d4-tfstate-dev \
+  --project=project-39965ce5-4c4b-495e-8d4 2>&1
+```
+
+Drop `-s` to list per-object sizes within a bucket. `du` walks every object via
+listing requests, so it is slow on large buckets — use Cloud Monitoring for
+ongoing size tracking instead.
+
 ## References
 
 - [GKE Ingress configuration](https://cloud.google.com/kubernetes-engine/docs/how-to/ingress-configuration)
