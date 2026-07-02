@@ -351,3 +351,15 @@ jobs:
 
       - name: Wait for rollout
         run: infra/ci/wait-rollout.sh
+
+      # Delete superseded image versions the instant the rollout is healthy, keeping only the
+      # just-deployed digest per image — an immediate equivalent of the repository's
+      # keep_count=1 cleanup policy (which otherwise runs only on Artifact Registry's ~daily
+      # async sweep). Runs LAST so no pruned version is still being served. Best-effort:
+      # continue-on-error so a registry hiccup can never fail an already-successful deploy.
+      - name: Prune superseded registry versions
+        continue-on-error: true
+        env:
+          WEB_DIGEST: ${{ steps.build-push.outputs.web_digest }}
+          MIGRATE_DIGEST: ${{ steps.build-push.outputs.migrate_digest }}
+        run: infra/ci/prune-registry.sh
