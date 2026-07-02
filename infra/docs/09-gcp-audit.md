@@ -58,15 +58,14 @@ so future AI/human reviewers don't retry the same wrong fixes.
    `REQUIRE_ATTESTATION` once attestations are confirmed landing across several real
    deploys (see K3 above). Intentionally not flipped yet — flipping before verifying
    blocks the web, migrator, and third-party init images immediately.
-4. **Vulnerability gate** — DONE: `deploy-gke.yml` "Check image vulnerabilities" gates
-   on unlisted CRITICAL/HIGH Artifact Analysis findings, with exceptions tracked in
-   `infra/security/vulnerability-exceptions.yaml`. CAVEAT: the step fails OPEN (warns,
-   doesn't block) if scan results aren't ready within 5 minutes of push — a deliberate
-   tradeoff on scanner latency, not on findings. Tighten to fail-closed once real-world
-   scan latency for this project is observed. The JSON field paths used to parse
-   `gcloud artifacts docker images describe --show-package-vulnerability` output are
-   best-effort from Google's documented schema and unverified against a live scan —
-   confirm on the first real deploy.
+4. **Vulnerability scan** — DONE: `deploy-gke.yml` runs Trivy (`aquasecurity/trivy-action`,
+   pinned by SHA) against the freshly built web + migrate images inside the runner, on
+   CRITICAL/HIGH with `ignore-unfixed`, exceptions in `infra/security/.trivyignore.yaml`.
+   This replaced the earlier gcloud/Artifact Analysis poll, which depended on the billable
+   `containerscanning.googleapis.com` (left DISABLED for $0 idle cost), never actually
+   scanned an image, and wasted ~10 min per deploy polling a field that was never emitted.
+   CAVEAT: currently warn-only (`exit-code: '0'`) — findings print to the job log but do
+   not block. Flip `exit-code` to `'1'` on both steps to make it a hard gate.
 5. **Get operator secrets out of Terraform state** — move operator-supplied secret
    versions out of state. Existing state is sensitive and must stay access-restricted
    until that migration lands.
