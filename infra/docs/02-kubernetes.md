@@ -293,6 +293,17 @@ GKE (який провіжить справжній Google Cloud Load Balancer).
   **External Secrets Operator** (синхронізація з Google Secret Manager) або
   **Secrets Store CSI driver** (монтування через Workload Identity). Шар Terraform
   провіжить Secret Manager + Workload Identity саме для цього.
+- **Stakater Reloader** (анотація `secret.reloader.stakater.com/reload: "devstash-secrets"`
+  у `deployment.yaml`) стежить **лише за Secret** `devstash-secrets` — коли ESO оновлює
+  значення з Secret Manager, Reloader сам робить rolling restart подів. За ConfigMap
+  `devstash-config` Reloader **не** стежить. Оскільки `devstash-config` генерується через
+  `configMapGenerator` (`behavior: merge`), а значення з `settings.yaml` потрапляють у неї
+  через `replacements` **після** генерації хешу, хеш-суфікс імені ConfigMap не змінюється —
+  тож зміна значення в `settings.yaml` (напр. `authGoogleId`) теж не тригерить рестарт.
+  Після такої зміни потрібен ручний рестарт:
+  ```bash
+  kubectl rollout restart deploy/devstash-web -n devstash
+  ```
 
 ### PodDisruptionBudget (`pdb.yaml`)
 

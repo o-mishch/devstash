@@ -30,7 +30,7 @@ app_domain = "gke.devstash.one"
 # (rediss:// + server CA — Memorystore in-transit TLS).
 # Non-secret sender identity — drives EMAIL_FROM in the devstash-config ConfigMap
 # (infra/k8s/overlays/gcp/kustomization.yaml). Must be a verified sender domain in Resend.
-email_from = "DevStash <noreply@devstash.one>"
+email_from = "DevStash <noreply@gke.devstash.one>"
 
 # ONLY REAL SECRETS belong here. Non-secret config was deliberately promoted OUT of
 # Secret Manager to the devstash-config ConfigMap (infra/k8s/overlays/gcp/settings.yaml,

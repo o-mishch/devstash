@@ -30,12 +30,14 @@ data:
   # overlay instead sets a real literal via configMapGenerator. Never applied as-is.
   AWS_S3_BUCKET: "REPLACE_via_gcp_overlay_replacement"
   # Non-secret app config — placeholders overwritten by the GCP overlay's kustomize
-  # replacements (settings.yaml → data.authGithubId/authGoogleId/stripe*). These are NOT
-  # secrets: OAuth CLIENT IDs are sent in every auth redirect; Stripe publishable keys
+  # replacements (settings.yaml → data.emailFrom/authGithubId/authGoogleId/stripe*). These
+  # are NOT secrets: EMAIL_FROM is a sender address; OAuth CLIENT IDs are sent in every auth
+  # redirect; Stripe publishable keys
   # (pk_...) are public by design; Stripe price IDs (price_...) are non-sensitive
   # identifiers. Kept out of Secret Manager so it holds only true secrets. Locally the
   # throwaway Secret overrides these (Secret wins on duplicate envFrom keys), same as
   # NEXTAUTH_URL. DO NOT change independently — update settings.yaml instead.
+  EMAIL_FROM: "REPLACE_via_gcp_overlay_replacement"
   AUTH_GITHUB_ID: "REPLACE_via_gcp_overlay_replacement"
   AUTH_GOOGLE_ID: "REPLACE_via_gcp_overlay_replacement"
   STRIPE_PUBLISHABLE_KEY: "REPLACE_via_gcp_overlay_replacement"

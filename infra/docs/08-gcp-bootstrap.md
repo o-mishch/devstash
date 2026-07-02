@@ -261,7 +261,7 @@ environment       = "dev"
 github_repository = "o-mishch/devstash"
 github_owner_id   = "5354532"
 app_domain        = "gke.devstash.one"
-email_from        = "DevStash <noreply@devstash.one>"
+email_from        = "DevStash <noreply@gke.devstash.one>"
 
 third_party_secrets = {
   "auth-secret"           = "..."   # openssl rand -base64 32
@@ -1081,7 +1081,7 @@ CLI цього репо. Роби їх у такому порядку:
 2. `github_repository` — `owner/repo` твого форку (приклад: `o-mishch/devstash`).
 3. `github_owner_id` — числовий ID: `curl -s https://api.github.com/users/o-mishch | jq .id` → `5354532`.
 4. `app_domain` — піддомен, яким володієш (приклад: `gke.devstash.one`).
-5. `email_from` — несекретна адреса відправника (напр. `DevStash <noreply@devstash.one>`).
+5. `email_from` — несекретна адреса відправника (напр. `DevStash <noreply@gke.devstash.one>`).
    Це окрема змінна, не секрет: зберігається в ConfigMap, не в Secret Manager.
 6. `third_party_secrets` — реальні креди (детальна таблиця ключів у **7b**):
    - `auth-secret` = `openssl rand -base64 32`

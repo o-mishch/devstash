@@ -37,7 +37,7 @@ variable "app_domain" {
 # devstash-config ConfigMap (infra/k8s/overlays/gcp/kustomization.yaml).
 variable "email_from" {
   type        = string
-  description = "\"From\" address for transactional email, e.g. \"DevStash <noreply@devstash.one>\"."
+  description = "\"From\" address for transactional email, e.g. \"DevStash <noreply@gke.devstash.one>\"."
 }
 
 # Third-party credentials (Stripe, Resend, OAuth, OpenAI, auth-secret) that Terraform

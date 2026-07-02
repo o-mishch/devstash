@@ -139,10 +139,23 @@ async function handleOAuthConflict(user: User | AdapterUser, account: Account): 
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { 
-    strategy: 'jwt', 
-    maxAge: SESSION_MAX_AGE, 
-    updateAge: SESSION_UPDATE_AGE 
+  session: {
+    strategy: 'jwt',
+    maxAge: SESSION_MAX_AGE,
+    updateAge: SESSION_UPDATE_AGE
+  },
+  // Auth.js masks every non-client-safe failure (thrown adapter/callback errors, DB outages,
+  // MissingSecret, InvalidProvider) as a redirect to `?error=Configuration`, so the real cause
+  // is invisible on the client. This routes Auth.js's internal errors/warnings through Pino
+  // (tag: 'auth') so an incident is diagnosable from pod logs (`kubectl logs … | grep auth`).
+  // `debug` is intentionally omitted — it is noisy and can leak sensitive data in production.
+  logger: {
+    error(error) {
+      log.error({ err: error }, `auth: ${error.name}`)
+    },
+    warn(code) {
+      log.warn({ code }, 'auth: warning')
+    },
   },
   ...authConfig,
   callbacks: {

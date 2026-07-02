@@ -58,6 +58,17 @@ patches:
           kubernetes.io/ingress.class: "gce"
           kubernetes.io/ingress.global-static-ip-name: "devstash-dev-ip"
           networking.gke.io/managed-certificates: "devstash-cert"
+          # Stop-gap for the suspend/resume cycle: every full resume creates a brand-new
+          # ManagedCertificate GCE resource that needs 15-60min to (re)provision, leaving
+          # the domain unreachable over HTTPS in the meantime. pre-shared-cert ADDS this
+          # already-ACTIVE cert (still valid for gke.devstash.one, unaffected by domain
+          # changes) to the proxy alongside the provisioning one, so HTTPS keeps working
+          # immediately after a resume. GKE's ingress controller supports this annotation
+          # natively (unlike direct target-https-proxy edits, it won't get reverted on
+          # reconcile). Remove once this repo has a cert strategy that survives teardown,
+          # or if this specific cert (mcrt-ac492906-606f-426b-868f-49903a04261b) is ever
+          # deleted/expires.
+          ingress.gcp.kubernetes.io/pre-shared-cert: "mcrt-ac492906-606f-426b-868f-49903a04261b"
   # Associate the Service with the BackendConfig (health check + timeouts) and
   # make it a NEG-backed Service (container-native load balancing on GKE).
   - target:
@@ -156,9 +167,6 @@ configMapGenerator:
       # maxReplicas(10) * DB_POOL_MAX(2) = 20 connections, leaving headroom for the
       # migrate Job + Cloud SQL internal connections.
       - DB_POOL_MAX=2
-      # Non-secret constants that would otherwise live in Secret Manager. Visible
-      # in `kubectl describe configmap devstash-config` — never put sensitive values here.
-      - EMAIL_FROM=DevStash <noreply@devstash.one>
       # GCS S3-interop endpoint + region sentinel (modules/iam: HMAC creds only stay in
       # Secret Manager; these two are fixed, environment-independent constants, not
       # secrets). See the s3_interop_secrets comment in modules/iam/main.tf.
@@ -169,9 +177,10 @@ configMapGenerator:
       # always wins and a literal here is dead code that misleads readers.
       # AWS_S3_BUCKET is injected entirely by the replacement below (data.s3Bucket) —
       # same reasoning as NEXTAUTH_URL above.
-      # AUTH_GITHUB_ID, AUTH_GOOGLE_ID, STRIPE_PUBLISHABLE_KEY, STRIPE_PRICE_ID_MONTHLY,
-      # STRIPE_PRICE_ID_YEARLY are likewise injected by replacements below — non-secret
-      # config promoted out of Secret Manager (settings.yaml holds the values).
+      # EMAIL_FROM, AUTH_GITHUB_ID, AUTH_GOOGLE_ID, STRIPE_PUBLISHABLE_KEY,
+      # STRIPE_PRICE_ID_MONTHLY, STRIPE_PRICE_ID_YEARLY are likewise injected by
+      # replacements below — non-secret config promoted out of Secret Manager
+      # (settings.yaml holds the values).
 
 # --- Single-source-of-truth fan-out ---------------------------------------
 # Every per-environment value lives once in settings.yaml; these replacements

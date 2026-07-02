@@ -870,8 +870,18 @@ restore_db() {
 # one is allocated each resume. Best-effort: prints a manual hint if creds are missing.
 # Credentials come from env (SPACESHIP_API_KEY / SPACESHIP_API_SECRET) or, failing that,
 # Secret Manager (devstash-spaceship-api-key / -secret — see `set-dns-creds`).
+#
+# REPLACE, never append. Spaceship's PUT /dns/records upserts by (type,name) but ONLY
+# within the API's own "External API Custom Group", and force:true silences the conflict
+# checker rather than reconciling the zone — so any OTHER A-record for this host survives:
+# a stale IP from a prior resume, or a duplicate created by hand in the "Default Record
+# Group". Two live A-records for one host make resolvers round-robin onto the dead ingress
+# IP (intermittent 502s) AND stall managed-cert provisioning, which needs the name to
+# resolve consistently to the current ingress. So we mirror the Spaceship Terraform
+# provider's contract — upsert the desired record, then DELETE every other A-record for the
+# host — instead of blindly adding one.
 update_dns() {
-  local ip domain root sub key secret code
+  local ip domain root sub key secret code existing prune del_code
   ip="$(tf_out ingress_ip_address)"
   if [[ -z "$ip" || "$ip" == "null" ]]; then
     warn "no ingress IP available (environment suspended?) — skipping DNS update"
@@ -894,17 +904,41 @@ update_dns() {
   fi
 
   log "Updating Spaceship DNS A-record: $domain → $ip"
-  # force:true overwrites any existing A-record for this host. Short TTL (300s) so the
-  # change is picked up quickly after each resume.
+  # 1) Upsert the desired record FIRST so the host is never left without an A-record even
+  #    if the prune below fails. force:true is still required — the stale record still
+  #    exists at this point, so without it the conflict checker would reject the PUT. Short
+  #    TTL (300s) so the change is picked up quickly after each resume.
   code="$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
     "https://spaceship.dev/api/v1/dns/records/${root}" \
     -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json' \
     -d "{\"force\":true,\"items\":[{\"type\":\"A\",\"name\":\"${sub}\",\"address\":\"${ip}\",\"ttl\":300}]}" || true)"
-  if [[ "$code" =~ ^2 ]]; then
-    ok "DNS A-record updated ($domain → $ip). Allow a few minutes for propagation + cert."
-  else
+  if [[ ! "$code" =~ ^2 ]]; then
     warn "Spaceship API returned HTTP ${code:-000} — set the A-record manually: $domain → $ip"
+    return 0
   fi
+
+  # 2) Prune every OTHER A-record for this host (any address != the new ingress IP). GET
+  #    the zone, keep only host A-records whose address differs, and DELETE them so exactly
+  #    one A-record for $sub remains. Best-effort: a prune miss must not fail the resume,
+  #    but it is warned so the leftover can be removed by hand.
+  existing="$(curl -s -X GET \
+    "https://spaceship.dev/api/v1/dns/records/${root}?take=500&skip=0" \
+    -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" || true)"
+  prune="$(printf '%s' "$existing" \
+    | jq -c --arg n "$sub" --arg ip "$ip" \
+        '[.items[]? | select(.type == "A" and .name == $n and .address != $ip) | {type, name, address}]' \
+    2>/dev/null || printf '[]')"
+  if [[ -n "$prune" && "$prune" != "[]" ]]; then
+    log "Pruning stale $sub A-record(s): $(printf '%s' "$prune" | jq -r 'map(.address) | join(", ")')"
+    del_code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+      "https://spaceship.dev/api/v1/dns/records/${root}" \
+      -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json' \
+      -d "$prune" || true)"
+    [[ "$del_code" =~ ^2 ]] \
+      || warn "Spaceship prune returned HTTP ${del_code:-000} — remove leftover $sub A-record(s) manually (Default Record Group entries may not be API-deletable)."
+  fi
+
+  ok "DNS A-record updated ($domain → $ip). Allow a few minutes for propagation + cert."
 }
 
 # set-dns-creds: store the Spaceship DNS API key + secret in Secret Manager so resume
@@ -992,7 +1026,8 @@ resume() {
   log "Resume kicked off. Next:"
   echo "  1. Watch the deploy:  gh run watch"
   echo "  2. bash infra/gcp-run/run.sh smoke   # wait for CI + health check"
-  warn "The managed cert re-provisions after DNS resolves to the new IP (up to ~60 min)."
+  warn "A new managed cert re-provisions after DNS resolves to the new IP (up to ~60 min)."
+  warn "Site stays reachable meanwhile via the pre-shared-cert fallback (mcrt-ac492906-...) in overlays/gcp/kustomization.yaml."
 }
 
 # ── dispatch ───────────────────────────────────────────────────────────────

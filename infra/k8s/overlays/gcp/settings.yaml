@@ -38,7 +38,7 @@ data:
   domain: gke.devstash.one
   # Sender email address — non-secret constant fanned out by Kustomize replacements.
   # Overwritten in CI by strenuous EMAIL_FROM variable.
-  emailFrom: DevStash <noreply@devstash.one>
+  emailFrom: DevStash <noreply@gke.devstash.one>
   # Full NEXTAUTH_URL — keep in sync with `domain`.
   nextAuthUrl: https://gke.devstash.one
   # Name of the global static IP reserved in Terraform (network module). Must
@@ -67,7 +67,7 @@ data:
   #   • Stripe publishable keys (pk_...) are explicitly public in Stripe's model.
   #   • Stripe price IDs (price_...) are non-sensitive identifiers.
   authGithubId: Iv23lio8hm0onA1p9D0q
-  authGoogleId: 468669254255-pk2l9hugc9vp1mgpjd1roo1mmea3f464.apps.googleusercontent.com
-  stripePublishableKey: pk_test_51Tegcx6xK4IZAULHUsQLvPoXmjjeXmFGvPlfxFSnX7cH01PP8WysG1Dak3EbtLAzLaXsqGta8ZanZVMKiyxL5BAi00Cl2FfIDX
-  stripePriceIdMonthly: price_1Teghf6xK4IZAULHzyqEVmnE
-  stripePriceIdYearly: price_1Tegjd6xK4IZAULH0JgrdCFs
+  authGoogleId: 468669254255-ppeflvfrva0sjeje6fpvtc5ugsekf5va.apps.googleusercontent.com
+  stripePublishableKey: pk_test_51SNJHG6wM42cyfYkwyN52auZJy4v7RHaH3lZTtJjoVJN6VSEoGT9ibGJUBGqWvcMI74eZyn2lEsby18UIzKnAsRv00RXBjK9lc
+  stripePriceIdMonthly: price_1Tfp8c6wM42cyfYkFrCqQA2K
+  stripePriceIdYearly: price_1Tfp7E6wM42cyfYkjjVkPT5r
