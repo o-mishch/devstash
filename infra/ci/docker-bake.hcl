@@ -65,9 +65,10 @@ target "migrate" {
     "${MIGRATE_URI}:${GITHUB_SHA}",
     "${MIGRATE_URI}:latest",
   ]
-  # Import the web cache too: the migrator shares the `deps` stage with web, so the
-  # web build's cache warms migrate's deps. The migrator's own unique layers (prisma
-  # generate in the migrator stage, seed files) are written to its own scope — the web
+  # Import the web cache too: the migrator no longer copies web's `deps` node_modules
+  # (it runs its own lean `npm ci --omit=dev`), but it still shares the base node:alpine
+  # + libc6-compat layers, so reading web's scope warms those. The migrator's own layers
+  # (lean install, prisma generate, seed files) are written to its own scope — the web
   # scope is read-only here (no cache-to for scope=web).
   cache-from = [
     "type=gha,scope=web",
