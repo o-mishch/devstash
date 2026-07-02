@@ -166,14 +166,20 @@ resource "google_service_account" "deployer" {
   display_name = "DevStash CI/CD deployer"
 }
 
-# Scope image pushes to this repository. The repository is created by a sibling root
-# module and passed in as an input; that dependency is acyclic and is preferable to a
-# project-wide artifactregistry.writer grant.
+# Scope image push AND post-deploy prune to this repository. repoAdmin (not writer) because
+# the deploy pipeline's final step (infra/ci/prune-registry.sh) deletes superseded image
+# versions the moment a rollout is healthy — an immediate equivalent of the repository's
+# keep_count=1 cleanup policy, which otherwise only runs on Artifact Registry's ~daily async
+# sweep. deleteArtifacts lives in repoAdmin; scope it to THIS repo only (not project-wide
+# artifactregistry.admin) — the same repo-scoped-grant posture as the node reader above and
+# the lifecycle purge SA in envs/dev/auto-suspend.tf. The repository is created by a sibling
+# root module and passed in as an input; that dependency is acyclic and is preferable to a
+# project-wide grant.
 resource "google_artifact_registry_repository_iam_member" "deployer_artifact_registry" {
   project    = var.project_id
   location   = var.region
   repository = var.artifact_registry_repository_id
-  role       = "roles/artifactregistry.writer"
+  role       = "roles/artifactregistry.repoAdmin"
   member     = "serviceAccount:${google_service_account.deployer.email}"
 }
 
