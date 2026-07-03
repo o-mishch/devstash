@@ -27,6 +27,16 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 BASE="$(ds_image_base "$REGION" "$GCP_PROJECT_ID" "$REPO")"
 
+# Calculate the cutoff time (30 minutes ago) in UTC to protect recent images
+# from being deleted by concurrent/overlapping GHA runs.
+if date --version &>/dev/null; then
+  # GNU date (Linux GHA runner)
+  CUTOFF=$(date -u -d "30 minutes ago" +"%Y-%m-%dT%H:%M:%SZ")
+else
+  # BSD date (macOS local runs)
+  CUTOFF=$(date -v-30M -u +"%Y-%m-%dT%H:%M:%SZ")
+fi
+
 for img in "${DEVSTASH_IMAGES[@]}"; do
   image_path="${BASE}/${img}"
   # Resolve the keep digest from the per-image env var: web -> WEB_DIGEST, migrate -> MIGRATE_DIGEST.
@@ -69,6 +79,7 @@ for img in "${DEVSTASH_IMAGES[@]}"; do
       echo "::warning::prune-registry: failed to delete ${image_path}@${version} (continuing)"
     fi
   done < <(gcloud artifacts docker images list "$image_path" \
+             --filter="createTime < $CUTOFF" \
              --format="value(version,metadata.mediaType)" \
              --project="$GCP_PROJECT_ID" 2>/dev/null || true)
 
@@ -91,6 +102,7 @@ for img in "${DEVSTASH_IMAGES[@]}"; do
       echo "::warning::prune-registry: failed to delete ${image_path}@${version} (continuing)"
     fi
   done < <(gcloud artifacts docker images list "$image_path" \
+             --filter="createTime < $CUTOFF" \
              --format="value(version,metadata.mediaType)" \
              --project="$GCP_PROJECT_ID" 2>/dev/null || true)
 done
