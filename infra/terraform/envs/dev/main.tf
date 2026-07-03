@@ -28,6 +28,7 @@ resource "google_project_service" "apis" {
     # is ever used. We currently use v1 (see below) due to provider bug #18281, but keep
     # this enabled so switching to v2 doesn't require a separate API-enable step.
     "orgpolicy.googleapis.com",
+    "cloudquotas.googleapis.com", # Cloud Quotas API — codifies the SSD_TOTAL_GB increase (quotas.tf)
   ])
   service            = each.value
   disable_on_destroy = false
