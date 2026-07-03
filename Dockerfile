@@ -137,11 +137,20 @@ COPY --from=migrator-build /app/src ./src
 # metadata layer without granting a capability the Job uses.
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 --ingroup nodejs nextjs
+
+# npx is never invoked at runtime (CMD below calls the installed binaries directly), so
+# drop the base image's bundled npm CLI (and its vendored, independently-versioned
+# undici) the same way the runner stage does — removes CVEs in that vendored copy
+# (e.g. CVE-2026-12151) from this image's scan results entirely.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
 USER nextjs
-# Apply pending migrations, then idempotently seed the system item types.
+# Apply pending migrations, then idempotently seed the system item types. Calling the
+# installed binaries directly (not via npx) also means SIGTERM on Job termination goes
+# straight to the running process instead of through an npx wrapper.
 # DB_DRIVER=pg selects the node-postgres adapter — managed Cloud SQL speaks plain
 # Postgres over TCP, not the Neon serverless protocol. The Job may override this CMD.
-CMD ["sh", "-c", "npx prisma migrate deploy && DB_DRIVER=pg SEED_ITEM_TYPES_ONLY=1 npx tsx prisma/seed.ts"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && DB_DRIVER=pg SEED_ITEM_TYPES_ONLY=1 ./node_modules/.bin/tsx prisma/seed.ts"]
 
 # ---- runner: minimal runtime image ----------------------------------------
 FROM node:${NODE_VERSION} AS runner
@@ -158,6 +167,12 @@ ENV HOSTNAME=0.0.0.0
 # (PodSecurity "restricted" rejects root containers).
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 --ingroup nodejs nextjs
+
+# The standalone server only ever runs `node server.js` — npm/npx/corepack are never
+# invoked at runtime. Removing them drops the base image's bundled npm CLI (and its
+# vendored, independently-versioned undici) from the shipped image entirely, so CVEs
+# in that vendored copy (e.g. CVE-2026-12151) no longer show up in image scans.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 # Standalone output bundles a minimal server.js + traced node_modules.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
