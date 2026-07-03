@@ -11,7 +11,14 @@ spec:
     kind: Deployment
     name: devstash-web
   minReplicas: 2
-  maxReplicas: 10
+  # Worst-case cost ceiling. Each replica requests 500m CPU + 512Mi (Autopilot bills the
+  # mutated request), and a scale-out can trigger new Autopilot nodes whose SSD boot disks
+  # count against the regional SSD_TOTAL_GB quota. Capping at 4 (2x the minReplicas burst)
+  # bounds both the maximum spend and the peak node/SSD footprint, so a scale-out — or a
+  # surge during a node-pool recreation/upgrade — stays well under the SSD quota and never
+  # trips GKE's "Can't scale up due to exceeded quota" event. Raise this only alongside a
+  # matching SSD_TOTAL_GB quota headroom check for the region.
+  maxReplicas: 4
   # This HPA is the only owner of desired replica count. Keep `spec.replicas`
   # absent from deployment.yaml so declarative re-applies cannot reset a scale-out.
   metrics:

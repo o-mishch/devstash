@@ -1,5 +1,5 @@
 Get recommendations, best practices, and modern approaches from websearch, eventually from context7
-
+ask questions untill you would have full context.
 
 
 Allow, and add all commands for which you are asking for permissions to allowed-tools in:

@@ -938,6 +938,18 @@ update_dns() {
       -d "$prune" || true)"
     [[ "$del_code" =~ ^2 ]] \
       || warn "Spaceship prune returned HTTP ${del_code:-000} — remove leftover $sub A-record(s) manually (Default Record Group entries may not be API-deletable)."
+    # 3) Re-assert the desired record LAST, so the final write is always the correct one.
+    #    The prune DELETE payload targets (type,name,address); if Spaceship ever widened
+    #    that match to (type,name) it would drop the good record with the stale ones,
+    #    leaving the host pointing nowhere. This idempotent upsert guarantees the zone ends
+    #    with exactly gke → the current ingress IP regardless of DELETE semantics. It does
+    #    NOT speed propagation (TTL-bound) — it only guarantees correctness after the prune.
+    code="$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+      "https://spaceship.dev/api/v1/dns/records/${root}" \
+      -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json' \
+      -d "{\"force\":true,\"items\":[{\"type\":\"A\",\"name\":\"${sub}\",\"address\":\"${ip}\",\"ttl\":300}]}" || true)"
+    [[ "$code" =~ ^2 ]] \
+      || warn "Spaceship re-assert returned HTTP ${code:-000} — verify the A-record manually: $domain → $ip"
   fi
 
   ok "DNS A-record updated ($domain → $ip). Allow a few minutes for propagation + cert."

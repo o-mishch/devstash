@@ -101,32 +101,24 @@ patches:
               cidr: 130.211.0.0/22
           - ipBlock:
               cidr: 35.191.0.0/16
-  # Cost: floor this dev environment at a single replica. The base keeps minReplicas: 2
-  # (prod-grade zone spread via the Deployment's topologySpreadConstraints); this is a
-  # dev-only override because the GKE deploy serves the gke.* subdomain, not revenue
-  # traffic. Rolling updates stay zero-downtime — maxSurge: 1 / maxUnavailable: 0 brings
-  # a second pod up before the old one drains. The HPA still bursts to maxReplicas: 10
-  # under load; this only lowers the idle floor (~halves baseline Autopilot pod cost).
-  # Raise back to 2 here if this env ever takes production traffic.
-  - target:
-      kind: HorizontalPodAutoscaler
-      name: devstash-web
-    patch: |
-      - op: replace
-        path: /spec/minReplicas
-        value: 1
+  # minReplicas is NOT overridden here — dev inherits the base minReplicas: 2 so a Spot
+  # reclaim (see the Spot patch below) never drops the service to zero serving pods: the
+  # surviving replica carries traffic while the reclaimed one reschedules. maxReplicas: 4
+  # (base) still bounds the burst. A same-value override would be redundant, so it's gone.
+
   # Cost: run the dev web pod on Autopilot SPOT compute at the minimum request.
   # Three stacked savings, ALL dev-only (prod keeps the base values for HA + stability):
-  #   1. Drop topologySpreadConstraints — with minReplicas: 1 zone-spread is moot, and
-  #      it is exactly what pins Autopilot's workload-separation floor at 500m/512Mi
-  #      (see base/deployment.yaml resources comment). Removing it lets the request fall
-  #      to Autopilot's general minimum.
+  #   1. Drop topologySpreadConstraints — dev deliberately forgoes prod's zone-spread HA
+  #      (the 2 replicas may co-locate), because that constraint is exactly what pins
+  #      Autopilot's workload-separation floor at 500m/512Mi (see base/deployment.yaml
+  #      resources comment). Removing it lets the request fall to Autopilot's general minimum.
   #   2. Lower the CPU request 500m → 250m (Autopilot general min; 250m:512Mi = 1:2, a
   #      valid ratio). Halves baseline pod CPU. Memory stays at the 512Mi floor. On
   #      Autopilot the CPU limit tracks the request, so lower it too.
   #   3. Pin to Spot Pods (~60–91% off pod compute) via the gke-spot nodeSelector +
   #      toleration. Trade-off: a Spot node can be reclaimed with ~25s notice → the pod
-  #      restarts (brief blip at 1 replica). Fine for a gke.* showcase, NOT for prod.
+  #      restarts; with minReplicas: 2 the surviving replica keeps serving during the
+  #      reschedule, so there's no full outage. Fine for a gke.* showcase, NOT for prod.
   #      The migrate Job is deliberately NOT on Spot — a one-shot migration must not be
   #      evicted mid-run.
   - target:
@@ -163,7 +155,7 @@ configMapGenerator:
       - DB_DRIVER=pg
       # Per-pod node-postgres pool ceiling. db-f1-micro real connection limit is ~25
       # (RAM-based, the max_connections flag is ignored on shared-core instances).
-      # maxReplicas(10) * DB_POOL_MAX(2) = 20 connections, leaving headroom for the
+      # maxReplicas(4) * DB_POOL_MAX(2) = 8 connections, leaving headroom for the
       # migrate Job + Cloud SQL internal connections.
       - DB_POOL_MAX=2
       # GCS S3-interop endpoint + region sentinel (modules/iam: HMAC creds only stay in

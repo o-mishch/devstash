@@ -55,6 +55,23 @@ resource "google_container_cluster" "primary" {
     parallelstore_csi_driver_config {
       enabled = false
     }
+
+    # Filestore CSI driver is DISABLED for the same reason. Autopilot enables it by
+    # default, and it ships a kube-system controller guarded by
+    # `filestore-lock-release-controller-pdb` (selector k8s-app=filestore-lock-release-
+    # controller). That PDB is what tripped GKE's Upgrade recommendation
+    # "Fix unpermissive Pod Disruption Budget": with a single controller replica its
+    # status.disruptionsAllowed sits at 0 whenever the pod isn't healthy, so it can
+    # block a node drain during an upgrade. This app stores files in GCS (S3-interop),
+    # not on Filestore/NFS ReadWriteMany volumes, so the driver is dead weight — turning
+    # it off removes the controller and its PDB entirely, resolving the recommendation.
+    # Toggling this on Autopilot is supported since provider bugfix #17215 (PR #19590),
+    # and the parallelstore toggle above already proves addons_config CSI switches apply
+    # under enable_autopilot. Do NOT enable it to "close a golden-path gap" — add it back
+    # only if a workload genuinely needs a Filestore-backed PersistentVolume.
+    gcp_filestore_csi_driver_config {
+      enabled = false
+    }
   }
 
   # Secret Manager add-on (secret_manager_config) is DELIBERATELY omitted. It is a GKE
