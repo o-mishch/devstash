@@ -35,7 +35,7 @@
 | **Cloud Shell**               | $0            | `gcloud`/`kubectl`/`tofu` вже встановлені, авторизація автоматична                                                            | Ефемерний диск; довгі apply краще з локалі                                                                    |
 
 **Висновок для цього репо:** стек тепер повністю керований — **Cloud SQL** (БД) +
-**Memorystore** (Redis, нативний ioredis) + GCS + Artifact Registry. Cloud SQL і
+**Memorystore** (Redis, нативний node-redis) + GCS + Artifact Registry. Cloud SQL і
 Memorystore **поза** always-free, тож тримайся **$300 trial** (90 днів покривають усе)
 і роби `tofu destroy` одразу після перевірки. Always-free сам по собі їх не покриває.
 
@@ -654,7 +654,7 @@ kubectl -n devstash get managedcertificate devstash-cert -o wide
 
 **Згенеровані Terraform (НЕ додавай руками)** — для керованих сховищ:
 `devstash-database-url` / `devstash-direct-url` (приватний IP керованого Cloud SQL),
-`devstash-redis-url` (`rediss://…@memorystore`, нативний ioredis; AUTH + in-transit
+`devstash-redis-url` (`rediss://…@memorystore`, нативний node-redis; AUTH + in-transit
 TLS) і `devstash-redis-ca-cert` (server CA для перевірки сертифіката). Усе це
 `random_password`/похідні модулів `cloudsql`/`memorystore` у
 [`main.tf`](../terraform/envs/dev/main.tf) — у tfvars їх **немає**. `DB_DRIVER=pg`

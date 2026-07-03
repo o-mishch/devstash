@@ -18,9 +18,10 @@ output "db_public_database_url" {
   sensitive = true
 }
 
-# Memorystore is PRIVATE (no public IP) — reach it from inside the VPC only. Host
-# for redis-cli / RedisInsight (run them in-cluster or via a bastion). AUTH + CA are
-# in the synced Secret; see "Підключення до Memorystore" in 08-gcp-bootstrap.md.
+# Memorystore for Valkey is PRIVATE (PSC endpoint, no public IP) — reach it from inside
+# the VPC only. Host for valkey-cli / RedisInsight (run them in-cluster or via a bastion).
+# There is no static password: auth is IAM (an OAuth2 access token minted for the caller);
+# the CA is in the synced Secret. See "Підключення до Memorystore" in 08-gcp-bootstrap.md.
 output "redis_host" {
   # Null when suspended (Memorystore destroyed). module.memorystore is count-indexed.
   value = one(module.memorystore[*].host)

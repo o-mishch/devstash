@@ -53,7 +53,7 @@ locals {
 
   # Exactly the roles the suspend build needs — nothing broader. Empty when disabled.
   #   container.admin        delete the GKE cluster (+ list/describe for the idle re-check)
-  #   redis.admin            delete Memorystore
+  #   memorystore.admin      delete Memorystore for Valkey
   #   compute.networkAdmin   delete ingress IP + Cloud Router + Cloud NAT
   #   compute.securityAdmin  delete the Cloud Armor policy
   #   cloudsql.admin         export the DB to GCS + DESTROY the instance (db_active=false)
@@ -64,7 +64,7 @@ locals {
   #   logging.logWriter      Cloud Build custom-SA builds must write their own logs
   lifecycle_roles = local.auto_suspend_on ? [
     "roles/container.admin",
-    "roles/redis.admin",
+    "roles/memorystore.admin",
     "roles/compute.networkAdmin",
     "roles/compute.securityAdmin",
     "roles/cloudsql.admin",

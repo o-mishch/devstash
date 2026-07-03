@@ -41,7 +41,7 @@ git push → CI (test gate → build → push → deploy → rollout gate)
 |---|---|---|---|
 | Compute | Vercel | GKE | контейнеризація; standalone output |
 | База даних | Neon | managed Cloud SQL | без зміни коду: `DB_DRIVER=pg` → node-postgres адаптер |
-| Кеш | Upstash (REST) | Memorystore | без зміни коду: нативний `ioredis` по TCP (`REDIS_URL`); на Vercel лишається Upstash REST |
+| Кеш | Upstash (REST) | Memorystore | без зміни коду: нативний `node-redis` по TCP (`REDIS_URL`); на Vercel лишається Upstash REST |
 | Файли | AWS S3 | GCS | S3 SDK на GCS S3-interop endpoint, або GCS SDK |
 | Registry | — | Artifact Registry | нове |
 | Секрети | env-змінні | Secret Manager + Workload Identity | читаються за ідентичністю |
@@ -129,7 +129,7 @@ Ready-поди; HPA масштабує за навантаженням; Cluster 
 - Перевірено **локально / офлайн**: `kubectl kustomize` рендерить обидва оверлеї,
   `tofu validate` + `fmt` проходять, CI YAML парситься. **Не** застосовано до живого
   GCP (вартість).
-- Адаптації коду застосунку SaaS→GCP (Prisma node-postgres адаптер, ioredis-клієнт
+- Адаптації коду застосунку SaaS→GCP (Prisma node-postgres адаптер, node-redis-клієнт
   замість Upstash REST, S3 SDK на GCS S3-interop endpoint) **повністю реалізовані** в
   `src/lib/infra/` (`db-local.ts`, `redis-tcp.ts`, `email-local.ts`) і перевірені
   локально на kind (`07-local-run.md`). На Vercel ці шляхи недосяжні — вони за

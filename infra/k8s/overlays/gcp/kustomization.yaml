@@ -163,6 +163,11 @@ configMapGenerator:
       # secrets). See the s3_interop_secrets comment in modules/iam/main.tf.
       - AWS_ENDPOINT_URL_S3=https://storage.googleapis.com
       - AWS_REGION=auto
+      # Memorystore for Valkey uses IAM AUTH: the app authenticates with a short-lived
+      # OAuth2 access token minted for its Workload-Identity SA instead of a static
+      # password (src/lib/infra/redis-tcp.ts). GCP-ONLY — the local kind run talks to a
+      # plain no-auth Valkey, so this flag is absent there and the token path stays off.
+      - REDIS_IAM_AUTH=true
       # NEXTAUTH_URL is injected entirely by the replacement below (data.nextAuthUrl
       # from settings.yaml at deploy time). Do not set it here — the replacement
       # always wins and a literal here is dead code that misleads readers.

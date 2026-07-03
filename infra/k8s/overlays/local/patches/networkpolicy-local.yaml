@@ -17,12 +17,12 @@ spec:
         - protocol: TCP
           port: 53
     # In-cluster backing services.
-    # Redis on 6379 only (plain TCP locally — no GCP TLS port 6378).
+    # Valkey on 6379 (TLS locally, mirroring GCP Memorystore for Valkey on 6379).
     - ports:
         - protocol: TCP
           port: 5432 # Postgres
         - protocol: TCP
-          port: 6379 # Redis (plain TCP locally; GCP uses 6378 TLS)
+          port: 6379 # Valkey (rediss:// TLS locally; GCP Memorystore for Valkey also 6379)
         - protocol: TCP
           port: 9000 # MinIO S3 API (absent on GCP — uses GCS)
         - protocol: TCP

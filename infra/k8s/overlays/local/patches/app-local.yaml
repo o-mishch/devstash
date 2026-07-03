@@ -17,6 +17,17 @@ spec:
             preStop:
               exec:
                 command: ["sh", "-c", "sleep 5"]
+          # REDIS_CA_CERT from the runtime-generated valkey-tls Secret (run.sh
+          # ensure_valkey_tls) — the CA the app verifies Valkey's TLS cert against. Kept out
+          # of secret.local.yaml because it is generated per `up`, not authored. Mirrors GCP,
+          # where the same env var is an ExternalSecret-synced key in devstash-secrets. Merges
+          # with the base container's envFrom (REDIS_CA_CERT is not in those sources).
+          env:
+            - name: REDIS_CA_CERT
+              valueFrom:
+                secretKeyRef:
+                  name: valkey-tls
+                  key: ca.crt
       # NATIVE SIDECAR (initContainer + restartPolicy: Always, GA in k8s 1.29+).
       # S3-endpoint shim: the app signs presigned S3 URLs against http://localhost:9000
       # (AWS_ENDPOINT_URL_S3) so the SAME endpoint is valid for the BROWSER (kind maps

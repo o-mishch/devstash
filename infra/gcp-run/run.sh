@@ -29,6 +29,7 @@
 #   bash infra/gcp-run/run.sh resume         recreate compute + Cloud SQL, restore dump, redeploy, fix DNS
 #   bash infra/gcp-run/run.sh dump-db        ad-hoc: export Cloud SQL to the GCS db-dumps bucket (no suspend)
 #   bash infra/gcp-run/run.sh restore-db     import the latest GCS dump into the current Cloud SQL instance
+#   bash infra/gcp-run/run.sh update-dns     re-point the gke.* A-record at the current ingress IP (Spaceship API)
 #   bash infra/gcp-run/run.sh set-dns-creds  store Spaceship DNS API key/secret in Secret Manager
 #   bash infra/gcp-run/run.sh down           tofu destroy (tear everything down, incl. Cloud SQL)
 #
@@ -296,12 +297,62 @@ bootstrap() {
     sqladmin.googleapis.com \
     artifactregistry.googleapis.com secretmanager.googleapis.com \
     iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
-    servicenetworking.googleapis.com redis.googleapis.com \
+    servicenetworking.googleapis.com memorystore.googleapis.com \
     orgpolicy.googleapis.com \
     binaryauthorization.googleapis.com \
     containeranalysis.googleapis.com \
     cloudresourcemanager.googleapis.com
   ok "APIs enabled"
+}
+
+# reconcile_state: heal state↔cloud drift that a plain `tofu plan` cannot resolve, so a
+# single `run.sh apply` is enough. Populates the RECONCILE_REPLACE array with any -replace
+# targets for the caller to fold into `tofu plan`. MUST run AFTER `tofu init` (needs state).
+# Both branches are self-disabling — once healed, subsequent applies are no-ops.
+#
+#   1. Cloud SQL `devstash` database present in the instance but ABSENT from state. The
+#      ABANDON deletion policy (modules/cloudsql) drops the DB resource from state on a
+#      db_active toggle WITHOUT dropping the physical database, so re-activating collides
+#      with "database already exists". Import the existing database instead of recreating it.
+#   2. The PSC subnet tracked with the legacy purpose PRIVATE_SERVICE_CONNECT. Memorystore
+#      service-connectivity automation requires an ordinary PRIVATE subnet, and GCP cannot
+#      PATCH a subnet's purpose in place — so the subnet must be REPLACED, not updated.
+reconcile_state() {
+  RECONCILE_REPLACE=()
+  local db_addr='module.cloudsql.google_sql_database.devstash[0]'
+  local subnet_addr='module.network.google_compute_subnetwork.psc'
+
+  # 1. Adopt an untracked-but-existing Cloud SQL database. The presence check filters state
+  # by the exact address (authoritative — no whole-list grep) so it can't be fooled by an
+  # unrelated line. The import is idempotent: a stale/locked state read right after `init`
+  # could miss an address that import then reports as already-managed, so treat that outcome
+  # as success and only fail if the address is genuinely still absent afterwards.
+  _db_in_state() { tofu_ state list "$db_addr" 2>/dev/null | grep -qxF "$db_addr"; }
+  if ! _db_in_state; then
+    local inst
+    inst="$(tf_out db_instance_name)"
+    if [[ -n "$inst" ]] && gcloud sql databases describe "$DB_NAME" \
+         --instance="$inst" --project="$PROJECT_ID" >/dev/null 2>&1; then
+      log "Reconcile: importing existing Cloud SQL database '$DB_NAME' into state (abandoned by a prior db-active toggle)"
+      if tofu_ import "$db_addr" \
+           "projects/$PROJECT_ID/instances/$inst/databases/$DB_NAME"; then
+        ok "database '$DB_NAME' adopted into state"
+      elif _db_in_state; then
+        warn "database '$DB_NAME' was already managed in state — import skipped"
+      else
+        die "failed to import $db_addr — resolve manually, then re-run apply"
+      fi
+    fi
+  fi
+
+  # 2. Force-replace a legacy-purpose PSC subnet (purpose is immutable → cannot be patched).
+  local purpose
+  purpose="$(tofu_ state show "$subnet_addr" 2>/dev/null \
+    | sed -nE 's/^[[:space:]]*purpose[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -1)"
+  if [[ "$purpose" == "PRIVATE_SERVICE_CONNECT" ]]; then
+    warn "Reconcile: PSC subnet has legacy purpose PRIVATE_SERVICE_CONNECT — scheduling a replace with a PRIVATE subnet"
+    RECONCILE_REPLACE+=("-replace=$subnet_addr")
+  fi
 }
 
 # apply: initialise the Terraform remote backend and run plan → apply.
@@ -321,10 +372,14 @@ apply() {
   fi
   log "OpenTofu init + plan ($TF_DIR)"
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
+  # Heal state↔cloud drift a plain plan can't (untracked DB → import; legacy-purpose PSC
+  # subnet → -replace). Runs after init (needs state); both branches self-disable once healed.
+  reconcile_state
   # Apply exactly the reviewed plan. A bare `tofu apply` would refresh and create a
   # second plan after confirmation, allowing infrastructure drift between review and
-  # mutation. The plan file is local, short-lived, and gitignored.
-  tofu_ plan -out="$PLAN_FILE"
+  # mutation. The plan file is local, short-lived, and gitignored. Any reconcile -replace
+  # targets are folded into THIS plan so the replacement is reviewed before it mutates GCP.
+  tofu_ plan ${RECONCILE_REPLACE[@]+"${RECONCILE_REPLACE[@]}"} -out="$PLAN_FILE"
   if confirm "Apply this plan? (review the resource changes above)"; then
     if tofu_ apply "$PLAN_FILE"; then
       rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
@@ -884,9 +939,13 @@ restore_db() {
 # host — instead of blindly adding one.
 update_dns() {
   local ip domain root sub key secret code existing prune del_code
-  ip="$(tf_out ingress_ip_address)"
+  # INGRESS_IP override: re-assert DNS when the tofu output is unavailable (mid-migration,
+  # inconsistent state, or a raw `tofu apply` that never surfaced the output). Read the live
+  # value with:  kubectl -n devstash get ingress devstash-web -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  ip="${INGRESS_IP:-$(tf_out ingress_ip_address)}"
   if [[ -z "$ip" || "$ip" == "null" ]]; then
     warn "no ingress IP available (environment suspended?) — skipping DNS update"
+    warn "Pass one explicitly:  INGRESS_IP=<ip> bash infra/gcp-run/run.sh update-dns"
     return 0
   fi
   domain="$(tf_out app_domain)"
@@ -1073,7 +1132,8 @@ case "$CMD" in
   resume)          preflight; resume ;;
   dump-db)         dump_db ;;
   restore-db)      restore_db ;;
+  update-dns)      ensure_tfvars; update_dns ;;
   set-dns-creds)   set_dns_creds ;;
   down)            down ;;
-  *) die "unknown command '$CMD' — one of: up | bootstrap | apply | eso | reloader | secrets | verify-secrets | rotate-secret | upgrade-helm | deploy | smoke | status | logs | suspend | resume | dump-db | restore-db | set-dns-creds | down" ;;
+  *) die "unknown command '$CMD' — one of: up | bootstrap | apply | eso | reloader | secrets | verify-secrets | rotate-secret | upgrade-helm | deploy | smoke | status | logs | suspend | resume | dump-db | restore-db | update-dns | set-dns-creds | down" ;;
 esac

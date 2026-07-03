@@ -76,6 +76,19 @@ resource "google_secret_manager_secret_iam_member" "app_access" {
   member    = "serviceAccount:${google_service_account.app.email}"
 }
 
+# --- Memorystore for Valkey IAM auth --------------------------------------
+# Valkey uses IAM AUTH instead of a static password: the app authenticates with a
+# short-lived OAuth2 access token minted for THIS SA via Workload Identity (see
+# src/lib/infra/redis-tcp.ts, gated by REDIS_IAM_AUTH). dbConnectionUser grants the
+# memorystore.instances.connect permission the AUTH handshake checks. The role is
+# project-scoped (it authorizes connecting to instances in the project); there is no
+# per-instance IAM binding for Memorystore.
+resource "google_project_iam_member" "app_memorystore_connect" {
+  project = var.project_id
+  role    = "roles/memorystore.dbConnectionUser"
+  member  = "serviceAccount:${google_service_account.app.email}"
+}
+
 # --- Bucket access ----------------------------------------------------------
 # The application calls DeleteObject when a file/image item or orphaned upload is
 # removed. objectCreator + objectViewer is therefore insufficient: deletes fail with

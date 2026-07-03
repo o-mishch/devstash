@@ -40,8 +40,10 @@
 #      kubectl apply -f infra/k8s/overlays/gcp/redisinsight-public.yaml
 #      kubectl -n devstash describe managedcertificate redisinsight-cert   # Active?
 #      open https://redis-ui.gke.devstash.one
-#    Add the Memorystore connection inside the UI — host/AUTH/CA come from the synced
-#    Secret exactly as in redisinsight.yaml (rediss://, TLS on, upload REDIS_CA_CERT).
+#    Add the Memorystore for Valkey connection inside the UI exactly as in
+#    redisinsight.yaml: host from the synced Secret, port 6379, username "default",
+#    password = a short-lived IAM token (`gcloud auth print-access-token`), TLS on,
+#    upload REDIS_CA_CERT. There is no static password — Valkey uses IAM auth.
 #
 # Tear down:  kubectl -n devstash delete -f infra/k8s/overlays/gcp/redisinsight-public.yaml
 #             gcloud compute addresses delete redisinsight-ip --global

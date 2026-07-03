@@ -79,9 +79,11 @@
   "_comment_optionalDependencies": "Self-hosted (GKE/local kind) path ONLY — loaded via runtime-gated require() in db-local.ts / redis-tcp.ts / email-local.ts, externalized in next.config.ts, never reached on Vercel/Neon. Optional so a Vercel `npm ci --omit=optional` can skip them; the container/local build does a full install and gets them.",
   "optionalDependencies": {
     "@prisma/adapter-pg": "^7.8.0",
-    "ioredis": "^5.11.1",
+    "google-auth-library": "^10.9.0",
     "nodemailer": "^9.0.3",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "rate-limiter-flexible": "^11.2.0",
+    "redis": "^6.1.0"
   },
   "overrides": {
     "@auth/prisma-adapter": {

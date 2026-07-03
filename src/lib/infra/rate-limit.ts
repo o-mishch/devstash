@@ -1,8 +1,9 @@
 import 'server-only'
-import { Ratelimit, type Duration } from '@upstash/ratelimit'
 import { headers } from 'next/headers'
-import { getRedis, isTcpRedis, RATE_LIMIT_NS } from '@/lib/infra/redis'
-import { tcpCheck, tcpResetBucket } from '@/lib/infra/rate-limit-tcp'
+import { isTcpRedis } from '@/lib/infra/redis'
+import { resetTcpLimitersForTests, tcpRateLimit } from '@/lib/infra/rate-limit-tcp'
+import { resetUpstashLimitersForTests, upstashRateLimit } from '@/lib/infra/rate-limit-upstash'
+import type { RateLimitBackend, RateLimitCheckResult, RateLimitConfig } from '@/lib/infra/rate-limit-types'
 import { logger } from '@/lib/infra/pino'
 import { AI_FEATURE_HOURLY_LIMIT } from '@/lib/utils/constants'
 import type { ActionState } from '@/types/actions'
@@ -35,13 +36,8 @@ export type RateLimitKey =
   | 'itemMutation'
   | 'uploadUrl'
 
-interface LimitConfig {
-  attempts: number
-  window: Duration
-}
-
 // Auth rate limit thresholds — adjust here to change any limit
-const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
+const LIMIT_CONFIG: Record<RateLimitKey, RateLimitConfig> = {
   login:                { attempts: 5,  window: '15 m' }, // keyed by IP + email
   loginIP:              { attempts: 20, window: '1 m'  }, // keyed by IP — broad guard before bcrypt in the /login route
   loginAuthorizeIP:     { attempts: 20, window: '1 m'  }, // keyed by IP — separate bucket for NextAuth authorize() so a successful /login (route guard + authorize) isn't charged twice against one budget
@@ -70,47 +66,29 @@ const LIMIT_CONFIG: Record<RateLimitKey, LimitConfig> = {
   uploadUrl:            { attempts: 30,  window: '1 h'  }, // keyed by userId — presign requests (Pro only)
 }
 
-// Lazily initialized so missing env vars fail open rather than crashing at import
-let limiters: Record<RateLimitKey, Ratelimit> | null = null
+// Backend selection (Strategy): node-redis + rate-limiter-flexible on long-running deployments
+// (REDIS_URL set), the connectionless Upstash REST limiter on Vercel. This module depends only on
+// the RateLimitBackend abstraction — each backend keeps its own dependencies out of the other's
+// deployment. Selected per-call because isTcpRedis() is an env read, not a build constant.
+function backend(): RateLimitBackend {
+  return isTcpRedis() ? tcpRateLimit : upstashRateLimit
+}
 
-/** Resets cached limiters — for tests only. */
+/** Resets cached limiters (both backends) — for tests only. */
 export function resetRateLimitersForTests(): void {
-  limiters = null
+  resetTcpLimitersForTests()
+  resetUpstashLimitersForTests()
 }
 
-function getLimiters(): Record<RateLimitKey, Ratelimit> | null {
-  if (limiters) return limiters
+async function check(key: RateLimitKey, identifier: string): Promise<RateLimitCheckResult> {
   try {
-    const redis = getRedis()
-    if (!redis) return null
-    limiters = Object.fromEntries(
-      Object.entries(LIMIT_CONFIG).map(([key, { attempts, window }]) => [
-        key,
-        new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(attempts, window), prefix: `${RATE_LIMIT_NS}:${key}` }),
-      ])
-    ) as Record<RateLimitKey, Ratelimit>
-    return limiters
+    return await backend().check(key, identifier, LIMIT_CONFIG[key])
   } catch {
-    return null
-  }
-}
-
-async function check(key: RateLimitKey, identifier: string) {
-  const failClosed = process.env.NODE_ENV === 'production'
-  const allowWhenUnavailable = { success: true as const, remaining: 1, retryAfter: 0 }
-  const denyWhenUnavailable = { success: false as const, remaining: 0, retryAfter: 60 }
-
-  try {
-    // ioredis path (Memorystore / local): @upstash/ratelimit needs the REST client,
-    // so the TCP backend runs the same algorithm in rate-limit-tcp.ts.
-    if (isTcpRedis()) return await tcpCheck(key, identifier, LIMIT_CONFIG[key])
-    const l = getLimiters()
-    if (!l) return failClosed ? denyWhenUnavailable : allowWhenUnavailable
-    const { success, remaining, reset } = await l[key].limit(identifier)
-    const retryAfter = Math.max(0, Math.ceil((reset - Date.now()) / 1000))
-    return { success, remaining, retryAfter }
-  } catch {
-    return failClosed ? denyWhenUnavailable : allowWhenUnavailable
+    // The store is unreachable (either backend rejects on failure) — fail closed in production,
+    // open in dev so local work isn't blocked by a missing Redis.
+    return process.env.NODE_ENV === 'production'
+      ? { success: false, remaining: 0, retryAfter: 60 }
+      : { success: true, remaining: 1, retryAfter: 0 }
   }
 }
 
@@ -134,17 +112,10 @@ export async function checkRateLimit(key: RateLimitKey, identifier: string): Pro
 
 const rateLimitLog = logger.child({ tag: 'rate-limit' })
 
-/** Resets the full usage counter for the window (i.e. refunds all consumed tokens in the current window). */
+/** Clears the entire window for this key — a full reset (delete/zero the counter), not a single-token decrement. */
 export async function resetRateLimit(key: RateLimitKey, identifier: string): Promise<void> {
   try {
-    if (isTcpRedis()) {
-      await tcpResetBucket(key, identifier)
-      return
-    }
-    const l = getLimiters()
-    if (!l) return
-    // WARNING: Upstash resetUsedTokens zeroes the entire window (all consumed tokens), not just one decrement.
-    await l[key].resetUsedTokens(identifier)
+    await backend().reset(key, identifier, LIMIT_CONFIG[key])
   } catch (err) {
     rateLimitLog.warn({ key, identifier, err }, 'rate-limit reset failed')
   }
@@ -179,7 +150,7 @@ export async function withRateLimit<T>(
 
 // ── AI usage meter (read-only observability) ────────────────────────────────────────────────────
 // The four per-feature AI buckets, each its own AI_FEATURE_HOURLY_LIMIT rolling window (no shared
-// pool). Surfaced by the dashboard AI Usage widget via the non-consuming `getRemaining` read.
+// pool). Surfaced by the dashboard AI Usage widget via the non-consuming `getRemainingMany` read.
 export const AI_RATE_LIMIT_KEYS = ['aiOptimize', 'aiExplain', 'aiTags', 'aiDescription'] as const
 
 export type AiRateLimitKey = (typeof AI_RATE_LIMIT_KEYS)[number]
@@ -200,36 +171,45 @@ function fullBudget(key: AiRateLimitKey): AiFeatureUsage {
   return { key, limit, remaining: limit, resetAt: 0 }
 }
 
+interface UsageEntry {
+  key: string
+  limit: number
+  remaining: number
+  resetAt: number
+}
+
 /**
- * Reads the remaining AI budget per feature for a user WITHOUT consuming a token (`getRemaining`,
- * never `limit()`/`check()`). The four reads fire synchronously before one `await Promise.all`, so
- * with `enableAutoPipelining` they collapse to a single `/pipeline` round-trip.
+ * Non-consuming budget read for a set of rate-limit keys — the shared read+map core behind the AI
+ * and Brain Dump meters. Issues the reads in one tick (Upstash auto-pipelines them) and maps each
+ * result to `{key, limit, remaining, resetAt}`. Throws on backend error; callers own the fail-open
+ * fallback (they log/degrade differently).
+ */
+async function readUsage(keys: RateLimitKey[], identifier: string): Promise<UsageEntry[]> {
+  const results = await backend().getRemainingMany(
+    keys.map((key) => ({ key, identifier, config: LIMIT_CONFIG[key] })),
+  )
+  return keys.map((key, i) => ({
+    key,
+    limit: LIMIT_CONFIG[key].attempts,
+    remaining: results[i].remaining,
+    resetAt: results[i].resetAt,
+  }))
+}
+
+/**
+ * Reads the remaining AI budget per feature for a user WITHOUT consuming a token (a non-consuming
+ * read, never `check()`). Delegates to the active backend's `getRemainingMany`, which on Upstash issues
+ * the reads in one tick so auto-pipelining collapses them into a single round-trip.
  *
- * Always fails OPEN (full budget per feature) on any error or missing limiters, regardless of
- * NODE_ENV — the meter is observability, never enforcement, so it must never block the UI or
- * mislead the user into thinking they are throttled. A single try/catch degrades the whole payload
- * (never a mix of real + zeroed entries).
+ * Always fails OPEN (full budget per feature) on any error, regardless of NODE_ENV — the meter is
+ * observability, never enforcement, so it must never block the UI or mislead the user into thinking
+ * they are throttled. A single try/catch degrades the whole payload (never a mix of real + zeroed).
  */
 export async function getAiUsage(userId: string): Promise<AiFeatureUsage[]> {
   try {
-    const l = getLimiters()
-    if (!l) {
-      // Static config state (Redis unconfigured), not an incident — keep it at debug so the 60s
-      // per-Pro-user poll never floods logs. Real read failures still surface via the catch below.
-      aiUsageLog.debug({ userId }, 'ai usage read skipped — no limiters (Redis unconfigured), failing open with full budget')
-      return AI_RATE_LIMIT_KEYS.map(fullBudget)
-    }
-
-    // Fire all four reads synchronously (no `await` between them) so auto-pipelining groups them.
-    const reads = AI_RATE_LIMIT_KEYS.map((key) => l[key].getRemaining(userId))
-    const results = await Promise.all(reads)
-
-    return AI_RATE_LIMIT_KEYS.map((key, i) => ({
-      key,
-      limit: LIMIT_CONFIG[key].attempts,
-      remaining: results[i].remaining,
-      resetAt: results[i].reset,
-    }))
+    // readUsage already sets `key` from the same AI_RATE_LIMIT_KEYS in order; the cast just
+    // narrows the string key to the AiRateLimitKey literal the return type wants.
+    return (await readUsage([...AI_RATE_LIMIT_KEYS], userId)) as AiFeatureUsage[]
   } catch (err) {
     aiUsageLog.warn({ userId, err }, 'ai usage read failed — failing open with full budget')
     return AI_RATE_LIMIT_KEYS.map(fullBudget)
@@ -249,17 +229,12 @@ export interface BrainDumpUsage {
 
 export async function getBrainDumpUsage(userId: string): Promise<BrainDumpUsage> {
   const limit = LIMIT_CONFIG.aiBrainDump.attempts
-  const fullOpen: BrainDumpUsage = { key: 'aiBrainDump', limit, remaining: limit, resetAt: 0 }
   try {
-    const l = getLimiters()
-    if (!l) {
-      aiUsageLog.debug({ userId }, 'brain-dump usage read skipped — no limiters, failing open')
-      return fullOpen
-    }
-    const { remaining, reset } = await l.aiBrainDump.getRemaining(userId)
-    return { key: 'aiBrainDump', limit, remaining, resetAt: reset }
+    // Single read = one-element batch (the interface is batch-only; see RateLimitBackend).
+    const [{ remaining, resetAt }] = await readUsage(['aiBrainDump'], userId)
+    return { key: 'aiBrainDump', limit, remaining, resetAt }
   } catch (err) {
     aiUsageLog.warn({ userId, err }, 'brain-dump usage read failed — failing open with full budget')
-    return fullOpen
+    return { key: 'aiBrainDump', limit, remaining: limit, resetAt: 0 }
   }
 }

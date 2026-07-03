@@ -52,6 +52,46 @@ resource "google_service_networking_connection" "psa" {
   reserved_peering_ranges = [google_compute_global_address.private_service_range.name]
 }
 
+# --- Private Service Connect for Memorystore for Valkey -------------------------
+# Unlike Cloud SQL (PSA peering above), Memorystore for Valkey ONLY supports Private
+# Service Connect service-connectivity automation: the instance's endpoints are
+# auto-created as PSC forwarding rules with IPs drawn from a dedicated subnet in THIS
+# VPC, governed by a service connection policy. PSA is not an option for Valkey. The
+# two coexist — Cloud SQL keeps PSA, Valkey uses PSC.
+#
+# ALWAYS-ON (not gated on compute_active): the subnet and policy are free and hold no
+# state, so keeping them up avoids destroying/recreating network plumbing on every
+# suspend/resume. Only the Valkey instance itself (modules/memorystore) is count-gated;
+# on resume its endpoints are re-allocated from this same subnet.
+resource "google_compute_subnetwork" "psc" {
+  name    = "${var.name_prefix}-psc"
+  region  = var.region
+  network = google_compute_network.vpc.id
+  # Purpose must be PRIVATE (a regular subnet), NOT PRIVATE_SERVICE_CONNECT. Memorystore
+  # PSC service-connectivity automation draws endpoint IPs from an ordinary subnet via the
+  # service connection policy below; it rejects PRIVATE_SERVICE_CONNECT subnets (those are
+  # for self-managed PSC endpoints pointing at service attachments). PRIVATE is the default,
+  # set explicitly here for clarity.
+  purpose       = "PRIVATE"
+  ip_cidr_range = "10.10.16.0/29" # 8 IPs, clear of the 10.10.0.0/20 node subnet
+}
+
+# Enables PSC service-connectivity automation for Memorystore. service_class
+# "gcp-memorystore" is the well-known class Valkey targets; connection_limit caps how
+# many instances can draw endpoints from the subnet (2 endpoints reserved per instance,
+# so 2 covers a single non-HA instance + headroom).
+resource "google_network_connectivity_service_connection_policy" "memorystore" {
+  name          = "${var.name_prefix}-memorystore-psc"
+  location      = var.region
+  service_class = "gcp-memorystore"
+  network       = google_compute_network.vpc.id
+
+  psc_config {
+    subnetworks = [google_compute_subnetwork.psc.id]
+    limit       = 2
+  }
+}
+
 # --- Global static IP for the Ingress (HTTP(S) Load Balancer) --------------
 # The GCE Ingress in overlays/gcp references this by name via the
 # `kubernetes.io/ingress.global-static-ip-name` annotation. It must be a GLOBAL

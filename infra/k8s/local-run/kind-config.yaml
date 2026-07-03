@@ -8,7 +8,6 @@
 #   30900 → localhost:9000   (MinIO — S3 API; browser uploads/downloads hit this)
 #   30901 → localhost:9001   (MinIO — object-storage web console)
 #   30978 → localhost:8978   (pgAdmin — Postgres web UI)
-#   30801 → localhost:8001   (RedisInsight — Redis web UI)
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: devstash
@@ -35,7 +34,4 @@ nodes:
         protocol: TCP
       - containerPort: 30978
         hostPort: 8978
-        protocol: TCP
-      - containerPort: 30801
-        hostPort: 8001
         protocol: TCP

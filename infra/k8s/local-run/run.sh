@@ -26,6 +26,38 @@ NS=devstash
 HERE=infra/k8s/local-run
 OVERLAY=infra/k8s/overlays/local
 
+# ── Helper: self-signed TLS for local Valkey (mirrors GCP Memorystore) ────────
+# GCP Memorystore for Valkey serves in-transit TLS (SERVER_AUTHENTICATION). To keep the
+# local run on the SAME app code path (rediss:// + REDIS_CA_CERT verification, the TLS
+# branch of redis-tcp.ts), generate a throwaway CA + server cert with openssl and load
+# them into ONE Secret (valkey-tls). Both sides consume it: the Valkey pod mounts
+# cert/key/ca to serve TLS; the app reads REDIS_CA_CERT from ca.crt (secretKeyRef in
+# overlays/local/patches/app-local.yaml). Regenerated each `up` — the cluster is
+# disposable, so key rotation on rebuild is fine. DRY: one CA, generated here, never
+# committed to git. IAM auth is the one GCP feature not mirrored — Valkey OSS has no GCP
+# IAM support, so the local instance stays no-auth over TLS (REDIS_IAM_AUTH unset).
+ensure_valkey_tls() {
+  local dir cnf
+  dir="$(mktemp -d)"
+  cnf="$HERE/valkey-openssl.cnf"
+  echo "--- generating local Valkey TLS certs (self-signed, dev-only) ---"
+  # CA — the root of trust the app verifies the server cert against (REDIS_CA_CERT).
+  openssl req -x509 -newkey rsa:4096 -nodes -sha256 -days 3650 \
+    -keyout "$dir/ca.key" -out "$dir/ca.crt" -subj "/CN=devstash-local-valkey-ca"
+  # Server key + CSR + cert signed by the CA, with SANs from the cnf (serverAuth EKU).
+  openssl req -newkey rsa:2048 -nodes -sha256 \
+    -keyout "$dir/tls.key" -out "$dir/tls.csr" -config "$cnf"
+  openssl x509 -req -in "$dir/tls.csr" -CA "$dir/ca.crt" -CAkey "$dir/ca.key" \
+    -CAcreateserial -sha256 -days 3650 \
+    -extensions v3_req -extfile "$cnf" -out "$dir/tls.crt"
+  kubectl -n "$NS" create secret generic valkey-tls \
+    --from-file=ca.crt="$dir/ca.crt" \
+    --from-file=tls.crt="$dir/tls.crt" \
+    --from-file=tls.key="$dir/tls.key" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  rm -rf "$dir"
+}
+
 # ── Helper: run the migrate Job (delete-then-apply, then wait) ────────────────
 # Mirrors the GCP CI gate: apply infra (everything except Deployment) first, then
 # the migrate Job, then the Deployment. Keeps the same migrate→rollout ordering
@@ -59,6 +91,10 @@ up() {
   # 3. Namespace (created by the overlay's namespace.yaml via kustomize; also
   #    pre-create here so backing services can be applied before the app overlay).
   kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+
+  # 3b. TLS material for Valkey — must exist BEFORE the redis pod starts (it mounts the
+  #     valkey-tls Secret to serve rediss://, mirroring GCP Memorystore SERVER_AUTHENTICATION).
+  ensure_valkey_tls
 
   # 4. Backing services (applied raw, NOT via the overlay kustomization):
   #    Postgres, Redis, MinIO, Mailpit. The overlay is the app under test, not
@@ -152,7 +188,7 @@ info() {
   echo "Postgres UI:    http://localhost:8978  (pgAdmin — login admin@devstash.dev/admin12345)"
   echo "Mailpit UI:     http://localhost:8025  (captured emails)"
   echo "MinIO console:  http://localhost:9001  (minioadmin/minioadmin)"
-  echo "RedisInsight:   http://localhost:8001  (Redis web UI)"
+  echo "Valkey:         kubectl -n devstash exec deploy/redis -- redis-cli --tls --cacert /tls/ca.crt  (TLS, no bundled web UI)"
   echo "Billing (Pro):  OFFLINE — grant Pro with a signed fake webhook (no Stripe acct):"
   echo "                STRIPE_WEBHOOK_SECRET=whsec_local_test \\"
   echo "                  npx tsx infra/k8s/local-run/stripe-fake-webhook.ts <userId> [active|canceled]"

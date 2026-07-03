@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
       "tmp/**",
       "coverage/**",
       "src/generated/**",
+      "**/.obsidian/**",
       "next-env.d.ts",
       "prisma.config.ts",
     ],

@@ -1,0 +1,27 @@
+# OpenSSL config for the local Valkey server certificate (self-signed, dev-only).
+# Generated + consumed by infra/k8s/local-run/run.sh (ensure_valkey_tls). Mirrors GCP
+# Memorystore's in-transit TLS (SERVER_AUTHENTICATION): the Valkey server presents this
+# cert and the app verifies it against the CA. SANs let hostname-verifying clients
+# (valkey-cli, RedisInsight) connect too; the app itself skips the hostname check
+# (checkServerIdentity in redis-tcp.ts), exactly as it does against Memorystore's
+# private PSC IP on GCP.
+[req]
+distinguished_name = dn
+req_extensions     = v3_req
+prompt             = no
+
+[dn]
+CN = redis
+
+[v3_req]
+subjectAltName   = @alt_names
+keyUsage         = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+
+[alt_names]
+DNS.1 = redis
+DNS.2 = redis.devstash
+DNS.3 = redis.devstash.svc
+DNS.4 = redis.devstash.svc.cluster.local
+DNS.5 = localhost
+IP.1  = 127.0.0.1

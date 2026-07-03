@@ -1,8 +1,8 @@
-# RedisInsight — on-demand web UI for the managed Memorystore instance.
+# RedisInsight — on-demand web UI for the managed Memorystore for Valkey instance.
 #
-# Memorystore has NO public IP and requires AUTH + TLS, so you cannot point a
+# Memorystore has NO public IP and requires IAM AUTH + TLS, so you cannot point a
 # laptop GUI straight at it. RedisInsight runs HERE, inside the cluster, where it
-# reaches Memorystore over the VPC private range — then you tunnel the UI to your
+# reaches Valkey over the VPC private PSC endpoint — then you tunnel the UI to your
 # laptop with port-forward.
 #
 # Deliberately NOT in kustomization.yaml `resources` — it's a debugging tool you
@@ -16,10 +16,13 @@
 #
 # Then "Add Redis database" with:
 #   Host     = tofu -chdir=infra/terraform/envs/dev output -raw redis_host
-#   Port     = 6378  (Memorystore for Redis TLS port — NOT 6379 or 6380)
-#   Password = the AUTH from the synced Secret:
-#       kubectl -n devstash get secret devstash-secrets \
-#         -o jsonpath='{.data.REDIS_URL}' | base64 -d   # → rediss://default:<AUTH>@host:6378
+#   Port     = 6379  (Valkey — the PSC endpoint port)
+#   Username = default
+#   Password = a SHORT-LIVED IAM access token (Valkey uses IAM auth, no static password).
+#              The token expires in ~1h, so mint a fresh one right before connecting:
+#       gcloud auth print-access-token
+#              (run it as / impersonating a principal with roles/memorystore.dbConnectionUser).
+#              REDIS_URL in the synced Secret is host:port only — it carries NO password.
 #   Use TLS  = ON, then upload the CA (server-authentication):
 #       kubectl -n devstash get secret devstash-secrets \
 #         -o jsonpath='{.data.REDIS_CA_CERT}' | base64 -d > /tmp/memorystore-ca.pem

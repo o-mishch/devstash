@@ -7,7 +7,7 @@ resource "google_project_service" "apis" {
   for_each = toset([
     "compute.googleapis.com",
     "container.googleapis.com",
-    "redis.googleapis.com",             # Memorystore
+    "memorystore.googleapis.com",       # Memorystore for Valkey (google_memorystore_instance)
     "sqladmin.googleapis.com",          # Cloud SQL
     "servicenetworking.googleapis.com", # VPC peering for Cloud SQL + Memorystore private IP
     "secretmanager.googleapis.com",
@@ -32,6 +32,19 @@ resource "google_project_service" "apis" {
   ])
   service            = each.value
   disable_on_destroy = false
+}
+
+# GCP API enablement is eventually consistent: google_project_service returns as soon as the
+# enable operation completes, but a freshly-enabled control plane can still 403 with
+# SERVICE_DISABLED for a few minutes afterward ("wait a few minutes for the action to
+# propagate to our systems and retry"). A plain depends_on cannot wait this out — we hit it
+# on the Memorystore/Valkey instance when adopting the API mid-life via `run.sh apply` (the
+# bootstrap pre-enable only runs on `up`/`bootstrap`). Bridge the gap with a one-time,
+# create-only sleep so API-consuming resources (the Valkey instance) only build once the API
+# is actually usable. No-op on later applies (create-only, no triggers → never re-runs).
+resource "time_sleep" "api_propagation" {
+  depends_on      = [google_project_service.apis]
+  create_duration = "120s"
 }
 
 # The org-level `constraints/iam.disableServiceAccountKeyCreation` (enforced by
@@ -185,17 +198,23 @@ module "cloudsql" {
 }
 
 module "memorystore" {
-  # Cost toggle: Redis holds only disposable rate-limit/cache state, so it is fully
+  # Cost toggle: Valkey holds only disposable rate-limit/cache state, so it is fully
   # destroyed when suspended and re-created on resume. The redis-url/redis-ca-cert
   # secrets are conditionally omitted from app_secrets below while suspended.
   count            = var.environment_active ? 1 : 0
   source           = "../../modules/memorystore"
   name_prefix      = local.name_prefix
   region           = var.region
+  project_id       = var.project_id
   network_id       = module.network.network_id
   highly_available = var.memory_highly_available
   labels           = local.common_labels
-  depends_on       = [module.network.private_vpc_connection]
+  # Valkey auto-creates its endpoints via PSC, which requires the service connection policy
+  # (always-on in the network module) to exist first. It also needs the Memorystore API
+  # enabled AND propagated — the instance create 403s on SERVICE_DISABLED for minutes after
+  # enable, so depend on the api_propagation sleep (which itself waits on google_project_service.apis)
+  # rather than the raw APIs resource.
+  depends_on = [module.network.memorystore_psc_policy, time_sleep.api_propagation]
 }
 
 # Generated Cloud SQL app-user password. special=false keeps it URL-safe so it
@@ -251,13 +270,15 @@ module "iam" {
       direct-url       = module.cloudsql.database_url
       database-ca-cert = module.cloudsql.server_ca_cert
     } : {},
-    # Native Redis: the app talks straight to Memorystore via ioredis (no SRH proxy).
-    # AUTH on + in-transit TLS → rediss://; REDIS_CA_CERT verifies the Google-managed
-    # server cert. REDIS_URL takes precedence over the Upstash vars (src/lib/infra/redis.ts).
+    # Native Valkey: the app talks straight to Memorystore via node-redis (no SRH proxy).
+    # IAM AUTH + in-transit TLS → rediss://; REDIS_CA_CERT verifies the Google-managed
+    # server cert. The URL carries NO password — Valkey uses IAM auth, so the app supplies
+    # a short-lived OAuth2 access token at runtime (REDIS_IAM_AUTH=true, set in the GKE
+    # overlay). REDIS_URL takes precedence over the Upstash vars (src/lib/infra/redis.ts).
     # Conditional: Memorystore is destroyed when suspended, so these two secrets are
     # omitted then (and re-created on resume). module.memorystore is count-indexed.
     var.environment_active ? {
-      redis-url     = "rediss://default:${module.memorystore[0].auth_string}@${module.memorystore[0].host}:${module.memorystore[0].port}"
+      redis-url     = "rediss://${module.memorystore[0].host}:${module.memorystore[0].port}"
       redis-ca-cert = module.memorystore[0].server_ca_cert
   } : {})
 

@@ -168,19 +168,19 @@ Dockerfile, .dockerignore   # repo root
 | Середовище | DB | Redis | S3 | Email |
 |---|---|---|---|---|
 | **Vercel** | Neon (WS-драйвер) | Upstash REST | AWS S3 | Resend |
-| **GKE** | Cloud SQL (node-postgres) | Memorystore (ioredis, TLS) | GCS (S3-interop HMAC) | Resend |
+| **GKE** | Cloud SQL (node-postgres) | Memorystore (node-redis, TLS) | GCS (S3-interop HMAC) | Resend |
 | **Local kind** | postgres pod | redis-stack pod | MinIO pod | Mailpit (SMTP) |
 
 **Механізм ізоляції — три шари:**
 
-1. **`optionalDependencies` у `package.json`** — GKE/Local-специфічні пакети (`ioredis`, `nodemailer`, `@prisma/adapter-pg`, `pg`) є optional. Vercel виконує `npm ci` (без `--omit=optional`), але ці пакети не інсталюються, якщо вони відсутні в production mid-tier.  
+1. **`optionalDependencies` у `package.json`** — GKE/Local-специфічні пакети (`redis`, `nodemailer`, `@prisma/adapter-pg`, `pg`) є optional. Vercel виконує `npm ci` (без `--omit=optional`), але ці пакети не інсталюються, якщо вони відсутні в production mid-tier.  
    _Насправді Vercel теж їх ставить — але `serverExternalPackages` не бандлить їх у чанки._
 
 2. **`serverExternalPackages` у `next.config.ts`** — перераховані пакети не потрапляють у webpack-бандл і резолвяться через рідний `require()` у runtime. На Vercel вони просто не викликаються (div. нижче).
 
 3. **Env-ворота з lazy `require()`** — код `src/lib/infra/` перевіряє env-змінні перед тим, як доторкнутись до GKE-пакетів:
    - `DB_DRIVER=pg` → `require('@prisma/adapter-pg')` у [`src/lib/infra/db-local.ts`](../../src/lib/infra/db-local.ts)
-   - `REDIS_URL` → `require('ioredis')` у [`src/lib/infra/redis.ts`](../../src/lib/infra/redis.ts)
+   - `REDIS_URL` → `require('./redis-tcp')` (node-redis) у [`src/lib/infra/redis.ts`](../../src/lib/infra/redis.ts)
    - `SMTP_HOST` → `import('nodemailer')` (Mailpit SMTP) у [`src/lib/infra/email-local.ts`](../../src/lib/infra/email-local.ts)
    - `AWS_ENDPOINT_URL_S3` → `forcePathStyle` для MinIO/GCS у [`src/lib/storage/s3-local.ts`](../../src/lib/storage/s3-local.ts)
 

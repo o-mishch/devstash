@@ -33,10 +33,16 @@ output "services_range_name" {
   value = "services"
 }
 
-# The GKE/Cloud SQL/Memorystore modules depend on PSA being established before
-# they create private-IP resources; expose it so the root can wire `depends_on`.
+# The GKE/Cloud SQL modules depend on PSA being established before they create
+# private-IP resources; expose it so the root can wire `depends_on`.
 output "private_vpc_connection" {
   value = google_service_networking_connection.psa.id
+}
+
+# Memorystore for Valkey depends on the PSC service connection policy existing before
+# it can auto-create its endpoints; expose it so the root can wire `depends_on`.
+output "memorystore_psc_policy" {
+  value = google_network_connectivity_service_connection_policy.memorystore.id
 }
 
 # Cloud Armor security policy name — passed to the GKE overlay's BackendConfig

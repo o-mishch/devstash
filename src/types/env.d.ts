@@ -15,16 +15,20 @@ declare namespace NodeJS {
     DISABLE_EMAIL_VERIFICATION?: string;
 
     // Upstash Redis REST client — required on Vercel, optional on GKE/local where
-    // REDIS_URL is set and ioredis is used instead (getRedis() checks REDIS_URL first).
+    // REDIS_URL is set and node-redis is used instead (getRedis() checks REDIS_URL first).
     UPSTASH_REDIS_REST_URL?: string;
     UPSTASH_REDIS_REST_TOKEN?: string;
 
-    // Native TCP Redis (ioredis) — set ONLY on long-running deployments (GKE/
-    // Memorystore, local kind). When present, getRedis() uses ioredis instead of
-    // the Upstash REST client. Unset on Vercel. REDIS_CA_CERT is the optional PEM
-    // to verify Memorystore's server-authentication (in-transit TLS) cert.
+    // Native TCP Redis/Valkey (node-redis) — set ONLY on long-running deployments (GKE/
+    // Memorystore for Valkey, local kind). When present, getRedis() uses node-redis instead
+    // of the Upstash REST client. Unset on Vercel. REDIS_CA_CERT is the optional PEM to
+    // verify Memorystore's server-authentication (in-transit TLS) cert. REDIS_IAM_AUTH is
+    // set ("true") only in the GKE overlay: it makes the client authenticate with a
+    // short-lived Google IAM access token (Valkey IAM auth) instead of connecting no-auth
+    // (local kind). See src/lib/infra/redis-tcp.ts.
     REDIS_URL?: string;
     REDIS_CA_CERT?: string;
+    REDIS_IAM_AUTH?: string;
 
     AWS_ACCESS_KEY_ID: string;
     AWS_SECRET_ACCESS_KEY: string;
@@ -83,8 +87,14 @@ declare namespace NodeJS {
     SKIP_ENV_VALIDATION?: string;
     LOG_LEVEL?: string;
 
-    // Set automatically by Vercel to "1". Absent on GKE and local kind, so the
-    // Analytics component is conditionally rendered only on Vercel.
+    // Set automatically by Vercel to "1" on its builds (independent of the "expose System
+    // Environment Variables" toggle). Absent on GKE and local kind. next.config reads it at
+    // build time to select each target's dependency-pruning set (see outputFileTracingExcludes).
     VERCEL?: string;
+    // Build-time constant injected by next.config (`env`), derived from VERCEL: '1' on Vercel
+    // builds, '' otherwise. Unlike VERCEL it is inlined into the CLIENT bundle, so client code
+    // (root-provider-shell.tsx) can dead-code-eliminate Vercel-only packages (@vercel/analytics)
+    // on self-hosted builds. Not user-configurable — never set it by hand.
+    NEXT_PUBLIC_VERCEL?: string;
   }
 }
