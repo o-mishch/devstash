@@ -26,3 +26,16 @@ DEVSTASH_IMAGES=(web migrate)
 ds_image_base() {
   printf '%s-docker.pkg.dev/%s/%s' "$1" "$2" "$3"
 }
+
+# helm_release_at_version <release> <namespace> <expected-chart>: exit 0 iff <release> is
+# deployed in <namespace> at exactly <expected-chart> (e.g. "external-secrets-0.20.0"),
+# else non-zero. Lets the ensure-*.sh installers short-circuit an already-current release
+# without each repeating the helm-list/jq probe. A missing jq or helm returns non-zero so
+# the caller proceeds with the install rather than falsely reporting "already installed".
+helm_release_at_version() {
+  command -v jq >/dev/null 2>&1 && command -v helm >/dev/null 2>&1 || return 1
+  local current
+  current="$(helm list -n "$2" -o json 2>/dev/null \
+    | jq -r --arg r "$1" '.[] | select(.name==$r and .status=="deployed") | .chart' 2>/dev/null || true)"
+  [[ "$current" == "$3" ]]
+}

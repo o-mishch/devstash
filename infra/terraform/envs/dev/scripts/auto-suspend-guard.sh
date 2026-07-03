@@ -34,17 +34,18 @@ if [ "$AGE" -lt "$_IDLE_WINDOW" ]; then
 fi
 START="$(date -u -d "-$_IDLE_WINDOW seconds" +%Y-%m-%dT%H:%M:%SZ)"
 END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-RESP="$(curl -s -G "https://monitoring.googleapis.com/v3/projects/$_PROJECT_ID/timeSeries" \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  --data-urlencode 'filter=metric.type="loadbalancing.googleapis.com/https/request_count"' \
-  --data-urlencode "interval.startTime=$START" \
-  --data-urlencode "interval.endTime=$END" \
-  --data-urlencode "aggregation.alignmentPeriod=${_IDLE_WINDOW}s" \
-  --data-urlencode 'aggregation.perSeriesAligner=ALIGN_SUM' \
-  --data-urlencode 'aggregation.crossSeriesReducer=REDUCE_SUM')"
-COUNT="$(printf '%s' "$RESP" | python3 -c 'import json,sys
-d = json.load(sys.stdin)
-print(int(sum(float(p["value"].get("int64Value", p["value"].get("doubleValue", 0))) for s in d.get("timeSeries", []) for p in s.get("points", []))))')"
+# The idle traffic check needs the standalone idle-count helper from the repo. cloud-sdk:slim
+# ships git, so shallow-clone the repo here — reached ONLY on the genuinely-idle path (the
+# no-cluster / too-fresh / uptime-cap paths above already exited), so a suspended or just-resumed
+# env never clones. prepare reuses this same checkout. Languages stay segregated: the JSON
+# summation lives in the .py helper, invoked with python3 — never inlined into this shell.
+[ -d /workspace/repo ] || git clone --depth 1 --branch "$_REPO_BRANCH" "https://github.com/$_REPO_SLUG.git" /workspace/repo
+# All query params + the OAuth token go through the ENVIRONMENT so the token never appears in argv.
+COUNT="$(
+  MON_PROJECT="$_PROJECT_ID" MON_START="$START" MON_END="$END" MON_WINDOW="$_IDLE_WINDOW" \
+  MON_TOKEN="$(gcloud auth print-access-token)" \
+  python3 /workspace/repo/infra/terraform/envs/dev/scripts/auto-suspend-idle-count.py
+)"
 echo "LB request_count over idle window: $COUNT"
 if [ "$COUNT" -eq 0 ]; then
   echo "idle — will suspend"

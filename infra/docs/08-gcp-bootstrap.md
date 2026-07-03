@@ -174,7 +174,7 @@ gcloud storage buckets update gs://project-39965ce5-4c4b-495e-8d4-tfstate-dev --
 Terraform сам вмикає потрібні API (`google_project_service` в [`envs/dev/main.tf`](../terraform/envs/dev/main.tf):
 compute, container, redis, servicenetworking, secretmanager, artifactregistry, **iam,
 iamcredentials, sts, sqladmin, cloudresourcemanager, orgpolicy, binaryauthorization,
-containeranalysis**). Вмикати руками не обов'язково, але перший `apply` буде швидший,
+containeranalysis, cloudkms, billingbudgets, cloudquotas**). Вмикати руками не обов'язково, але перший `apply` буде швидший,
 якщо зробити це наперед:
 
 ```bash
@@ -187,6 +187,9 @@ gcloud services enable \
   orgpolicy.googleapis.com \
   binaryauthorization.googleapis.com \
   containeranalysis.googleapis.com \
+  cloudkms.googleapis.com \
+  billingbudgets.googleapis.com \
+  cloudquotas.googleapis.com \
   cloudresourcemanager.googleapis.com
 ```
 
@@ -212,6 +215,23 @@ gcloud services enable \
 > `containeranalysis.googleapis.com` — потрібен для зберігання SLSA-приміток і відповідей,
 > які CI заливає через `actions/attest-build-provenance`. Без цих API `tofu apply` падає
 > з помилкою `403 API not enabled`.
+>
+> `cloudkms.googleapis.com` — потрібен для KMS-ключа підпису attestor-а Binary Authorization
+> (gated-блок `binauthz_enabled` у [`modules/gke`](../terraform/modules/gke)). У dev
+> `binauthz_enabled=false` за замовчуванням, тож keyring/ключ **не створюються** (KMS не має
+> free tier), але API лишається у списку для паритету з prod, де enforcement увімкнено.
+>
+> `billingbudgets.googleapis.com` — потрібен для Cloud Billing budget + порогових алертів
+> (50/90/100%) у [`budget.tf`](../terraform/envs/dev/budget.tf). Бюджет лише **алертить**, не
+> зупиняє витрати — реальний $0-контроль дає event-driven auto-suspend.
+>
+> `cloudquotas.googleapis.com` — потрібен Terraform-ресурсу `google_cloud_quotas_quota_preference`
+> у [`quotas.tf`](../terraform/envs/dev/quotas.tf), який кодифікує підвищення регіональної квоти
+> `SSD_TOTAL_GB` (500 → 1500 GB). Boot-диски вузлів Autopilot біжать проти цієї квоти (~400 GB у
+> steady-state); дефолтних 500 GB замало для surge, коли пересоздання node pool або auto-upgrade
+> створює нові вузли **до** видалення старих → `QUOTA_EXCEEDED`, поди без місця, NEG порожніє,
+> ingress віддає 502, поки старі вузли не звільняться. Підняття ліміту **безкоштовне** (біллінг за
+> usage, не за ліміт; deep-suspend → $0).
 
 > 📚 **Для співбесіди — чому API треба «вмикати».** У GCP кожен сервіс — це окремий
 > **API**, **вимкнений за замовчуванням** у новому проєкті (модель найменших

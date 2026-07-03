@@ -10,14 +10,14 @@ set -euo pipefail
 
 # shellcheck source=infra/versions.env
 source infra/versions.env
+# shellcheck source=infra/lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-# Check if already installed with the correct version
-if command -v jq &>/dev/null && command -v helm &>/dev/null; then
-  CURRENT_CHART=$(helm list -n external-secrets -o json 2>/dev/null | jq -r '.[] | select(.name=="external-secrets" and .status=="deployed") | .chart' 2>/dev/null || true)
-  if [[ "$CURRENT_CHART" == "external-secrets-$ESO_VERSION" ]]; then
-    echo "External Secrets Operator version $ESO_VERSION is already installed. Skipping Helm upgrade."
-    exit 0
-  fi
+# Skip the Helm upgrade if the release is already deployed at the pinned version. The
+# helm-list/jq probe is shared with ensure-reloader.sh via common.sh.
+if helm_release_at_version external-secrets external-secrets "external-secrets-$ESO_VERSION"; then
+  echo "External Secrets Operator version $ESO_VERSION is already installed. Skipping Helm upgrade."
+  exit 0
 fi
 
 helm repo add external-secrets https://charts.external-secrets.io

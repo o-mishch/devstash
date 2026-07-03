@@ -131,6 +131,24 @@ locals {
   # is provisioned lazily and a hardcoded email races its creation on a fresh project.)
   cloudbuild_agent     = "service-${data.google_project.current.number}@gcp-sa-cloudbuild.iam.gserviceaccount.com"
   cloudscheduler_agent = "service-${data.google_project.current.number}@gcp-sa-cloudscheduler.iam.gserviceaccount.com"
+
+  # Builder images pinned by DIGEST, not just a mutable tag. cloud-sdk:stable silently dropped
+  # git (and later python3) across rebuilds — twice breaking this suspend build — precisely
+  # because a tag is mutable and Google ships these images with --no-install-recommends. Pinning
+  # the digest freezes the exact image so its binary set can never change beneath us again; the
+  # tag is kept alongside purely as human-readable documentation. Tradeoff: no automatic security
+  # refresh — bump these deliberately (docker pull <img>:<tag> && docker buildx imagetools
+  # inspect <img>:<tag> --format '{{.Manifest.Digest}}', then paste the new digest here) and
+  # re-run infra/ci/auto-suspend-image-check.sh before applying.
+  #
+  # cloud-sdk:slim is the Google-recommended variant that PREINSTALLS gcloud + python3 + git +
+  # ca-certificates (unlike :stable, which is gcloud + bq only). We use it so the step scripts
+  # install NOTHING at runtime (no apt-get, no network-dependent package fetch) and so each
+  # language stays in its own file — the guard/prepare Python lives in standalone *.py helpers
+  # invoked with `python3`, never inlined into the shell. It is larger than :stable, which is the
+  # deliberate tradeoff for zero installs + clean language segregation.
+  cloud_sdk_image = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:7805e8f25c698ac26606177ae77f1d68a14e6e276570bab4ecbb75de898cb4cb"
+  opentofu_image  = "ghcr.io/opentofu/opentofu:1.12.3@sha256:a0766d12f07b43e66f2ed40d7a8babe97d581d20339c68ad0ab561737af9a5b3"
 }
 
 # Pub/Sub + Cloud Build APIs — enabled only with the feature. (Monitoring API is enabled
@@ -379,7 +397,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     #     sentinel that the later steps require. Any other case is a clean no-op.
     step {
       id     = "guard"
-      name   = "gcr.io/google.com/cloudsdktool/cloud-sdk:stable"
+      name   = local.cloud_sdk_image
       env    = local.auto_suspend_build_env
       script = file("${path.module}/scripts/auto-suspend-guard.sh")
     }
@@ -388,7 +406,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     #     app/Spaceship secrets from Secret Manager into tofu-autoloaded *.auto.tfvars.json.
     step {
       id     = "prepare"
-      name   = "gcr.io/google.com/cloudsdktool/cloud-sdk:stable"
+      name   = local.cloud_sdk_image
       env    = local.auto_suspend_build_env
       script = file("${path.module}/scripts/auto-suspend-prepare.sh")
     }
@@ -400,7 +418,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     #     fails the build so the suspend step below NEVER destroys an un-dumped instance.
     step {
       id     = "dump"
-      name   = "gcr.io/google.com/cloudsdktool/cloud-sdk:stable"
+      name   = local.cloud_sdk_image
       env    = local.auto_suspend_build_env
       script = file("${path.module}/scripts/auto-suspend-dump.sh")
     }
@@ -410,7 +428,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     #     apply (and this SA's perms) scoped to just what these two vars change.
     step {
       id     = "suspend"
-      name   = "ghcr.io/opentofu/opentofu:1.12.3"
+      name   = local.opentofu_image
       env    = local.auto_suspend_build_env
       script = file("${path.module}/scripts/auto-suspend-suspend.sh")
     }
@@ -421,7 +439,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     #     does not fail the build; resume's apply recreates the repo and CI repushes).
     step {
       id     = "delete-registry"
-      name   = "gcr.io/google.com/cloudsdktool/cloud-sdk:stable"
+      name   = local.cloud_sdk_image
       env    = local.auto_suspend_build_env
       script = file("${path.module}/scripts/auto-suspend-delete-repo.sh")
     }

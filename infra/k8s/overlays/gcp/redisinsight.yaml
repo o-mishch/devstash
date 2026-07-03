@@ -55,7 +55,7 @@ spec:
           # Pin to a specific version — :latest is not reproducible and may introduce
           # breaking UI changes. Check https://hub.docker.com/r/redis/redisinsight/tags
           # and update when a new stable release is available.
-          image: redis/redisinsight:2.62
+          image: redis/redisinsight:3.6.0
           ports:
             - { name: http, containerPort: 5540 }
           readinessProbe:
