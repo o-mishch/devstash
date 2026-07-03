@@ -33,7 +33,7 @@ beforeEach(() => {
   mockQueryRaw.mockResolvedValue([{ '?column?': 1 }])
   mockRedis.mockResolvedValue('ok')
   mockS3.mockResolvedValue('ok')
-  mockEmail.mockResolvedValue('ok')
+  mockEmail.mockResolvedValue({ transport: 'resend', health: 'ok' })
 })
 
 describe('GET /api/health (liveness)', () => {
@@ -47,10 +47,29 @@ describe('GET /api/health (liveness)', () => {
 })
 
 describe('GET /api/health?deep=1 (readiness)', () => {
-  it('returns 200 with all dependencies ok', async () => {
+  it('returns 200 with all dependencies ok (email keyed by resend transport in prod)', async () => {
     const res = await GET(req('?deep=1'))
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ status: 'ok', db: 'ok', redis: 'ok', s3: 'ok', email: 'ok' })
+    expect(await res.json()).toEqual({
+      status: 'ok',
+      db: 'ok',
+      redis: 'ok',
+      s3: 'ok',
+      resend: 'ok',
+    })
+  })
+
+  it('keys the email field by the active transport (mailpit) when running locally', async () => {
+    mockEmail.mockResolvedValue({ transport: 'mailpit', health: 'ok' })
+    const res = await GET(req('?deep=1'))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      status: 'ok',
+      db: 'ok',
+      redis: 'ok',
+      s3: 'ok',
+      mailpit: 'ok',
+    })
   })
 
   it('returns 503 when the database is unreachable (DB is the only critical dep)', async () => {
@@ -63,7 +82,7 @@ describe('GET /api/health?deep=1 (readiness)', () => {
   it('stays 200 when an optional dep is down (redis/s3/email never fail readiness)', async () => {
     mockRedis.mockResolvedValue('down')
     mockS3.mockResolvedValue('down')
-    mockEmail.mockResolvedValue('disabled')
+    mockEmail.mockResolvedValue({ transport: 'resend', health: 'disabled' })
     const res = await GET(req('?deep=1'))
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
@@ -71,7 +90,7 @@ describe('GET /api/health?deep=1 (readiness)', () => {
       db: 'ok',
       redis: 'down',
       s3: 'down',
-      email: 'disabled',
+      resend: 'disabled',
     })
   })
 

@@ -3,6 +3,8 @@ import 'server-only'
 import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3'
 import { getRedis } from '@/lib/infra/redis'
 import { localS3Overrides } from '@/lib/storage/s3-local'
+import { isLocalEmailEnabled } from '@/lib/infra/email-local'
+import { outboundEmailEnabled } from '@/lib/utils/auth'
 import { logger } from '@/lib/infra/pino'
 
 const log = logger.child({ tag: 'health' })
@@ -82,22 +84,46 @@ export async function checkS3(): Promise<DependencyHealth> {
   }
 }
 
-export async function checkEmail(): Promise<DependencyHealth> {
-  // Local SMTP path (Mailpit): probe its HTTP readiness endpoint. Gated on SMTP_HOST
-  // presence — the same signal isLocalEmailEnabled() uses (set only by the local Secret).
-  if (process.env.SMTP_HOST) {
-    const host = process.env.SMTP_HOST ?? 'mailpit'
-    try {
-      const res = await fetch(`http://${host}:8025/readyz`, {
-        signal: AbortSignal.timeout(2000),
-      })
-      return res.ok ? 'ok' : 'down'
-    } catch (err) {
-      log.warn({ err }, 'readiness: mailpit unreachable (non-critical)')
-      return 'down'
-    }
+// HTTP reachability probe shared by the two email transports (Mailpit, Resend):
+// a 2xx means 'ok'; anything else or a thrown/timed-out request means 'down' (logged,
+// never fatal). Redis/S3 use SDK clients with withTimeout, so they don't route through here.
+async function probeHttp(url: string, label: string, init?: RequestInit): Promise<DependencyHealth> {
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(OPTIONAL_CHECK_TIMEOUT_MS) })
+    return res.ok ? 'ok' : 'down'
+  } catch (err) {
+    log.warn({ err }, `readiness: ${label} unreachable (non-critical)`)
+    return 'down'
   }
-  // Production path: Resend is a fire-and-forget HTTP API with no health endpoint.
-  // We report 'ok' when an API key is configured (nothing to ping), else 'disabled'.
-  return process.env.RESEND_API_KEY ? 'ok' : 'disabled'
+}
+
+export interface EmailHealth {
+  transport: 'resend' | 'mailpit'
+  health: DependencyHealth
+}
+
+// Email transport check — probes whichever transport is actually wired, and names it so the
+// probe reflects what mail really flows through: Resend in production, or the local-cluster
+// Mailpit when SMTP_HOST is set (isLocalEmailEnabled). The Mailpit branch never runs outside
+// a local run, so production only ever verifies Resend.
+//   'disabled' — outbound email is killed (DISABLE_EMAIL_VERIFICATION=true), or Resend has no key.
+//   'ok'/'down' — Mailpit: its HTTP readiness endpoint. Resend: an authenticated GET to its API
+//                 confirms the key is valid and the API reachable (i.e. we could send) — we never
+//                 send a real email on a probe, so a live authenticated call is the closest signal.
+export async function checkEmail(): Promise<EmailHealth> {
+  if (isLocalEmailEnabled()) {
+    const health = outboundEmailEnabled()
+      ? await probeHttp(`http://${process.env.SMTP_HOST}:8025/readyz`, 'mailpit')
+      : 'disabled'
+    return { transport: 'mailpit', health }
+  }
+
+  const apiKey = process.env.RESEND_API_KEY
+  const health =
+    outboundEmailEnabled() && apiKey
+      ? await probeHttp('https://api.resend.com/domains', 'resend', {
+          headers: { authorization: `Bearer ${apiKey}` },
+        })
+      : 'disabled'
+  return { transport: 'resend', health }
 }

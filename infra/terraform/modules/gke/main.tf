@@ -47,6 +47,11 @@ resource "google_container_cluster" "primary" {
   }
 
   addons_config {
+    # Parallelstore CSI driver stays disabled — it is a high-performance HPC/AI
+    # parallel filesystem this Next.js app has no use for. Leaving it off keeps the
+    # gke-managed-parallelstorecsi namespace (and its maxUnavailable:0 PDB) out of
+    # the cluster, which otherwise trips GKE's "unpermissive PodDisruptionBudget"
+    # recommendation. Do NOT enable it to "close a golden-path gap".
     parallelstore_csi_driver_config {
       enabled = false
     }

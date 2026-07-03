@@ -147,6 +147,43 @@ terraform {
 
 > State може містити чутливі дані (паролі, connection strings) → **ніколи не в git**. Зберігати тільки в зашифрованому GCS-бакеті з увімкненим versioning.
 
+#### Застряглий state lock (`force-unlock`)
+
+На час `apply`/`destroy` OpenTofu кладе в backend-бакет файл-замок (`…/gke/dev/default.tflock`). Якщо процес **перервали** (Ctrl-C, впав термінал, завис apply на Autopilot) — замок може лишитися «висіти», і наступний запуск падає з:
+
+```
+Error: Error acquiring the state lock
+Error message: writing "gs://<PROJECT>-tfstate-dev/gke/dev/default.tflock" failed:
+  googleapi: Error 412: … conditionNotMet
+Lock Info:
+  ID:        1783076688992603              ← ID замка беремо звідси
+  Path:      gs://<PROJECT>-tfstate-dev/gke/dev/default.tflock
+  Operation: OperationTypeApply
+  Who:       user@host.local
+  Created:   2026-07-03 11:04:48 +0000 UTC
+```
+
+**Як подивитися замок вручну** (без помилки):
+
+```bash
+# 1. Чи є lock-файл у бакеті
+gcloud storage ls gs://<PROJECT>-tfstate-dev/gke/dev/          # default.tflock = замок висить
+
+# 2. Хто/що тримає (вміст = JSON з тим самим ID / Who / Created)
+gcloud storage cat gs://<PROJECT>-tfstate-dev/gke/dev/default.tflock
+```
+
+**Як зняти** — `ID` беремо з `Lock Info` у помилці (або з вмісту lock-файлу):
+
+```bash
+cd infra/terraform/envs/dev
+tofu force-unlock -force <LOCK_ID>          # напр. 1783076688992603
+```
+
+`force-unlock` **лише видаляє lock-файл** — інфраструктуру й state не змінює. `-force` пропускає інтерактивне підтвердження.
+
+> ⚠️ **Знімати можна ЛИШЕ коли жоден реальний `apply` не виконується** — тобто замок завис після перерваного запуску. Якщо хтось прямо зараз застосовує зміни — `force-unlock` може пошкодити state (два записи одночасно). Спершу переконайся, що процес-власник замка (`Who`/`Created`) справді мертвий.
+
 ---
 
 ### Terraform — for_each vs count
