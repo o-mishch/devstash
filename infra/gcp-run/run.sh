@@ -926,7 +926,7 @@ restore_db() {
 # DNS API. Needed on resume because the ingress IP is released on suspend and a fresh
 # one is allocated each resume. Best-effort: prints a manual hint if creds are missing.
 # Credentials come from env (SPACESHIP_API_KEY / SPACESHIP_API_SECRET) or, failing that,
-# Secret Manager (devstash-spaceship-api-key / -secret — see `set-dns-creds`).
+# the consolidated Secret Manager ops blob devstash-ops-config (see `set-dns-creds`).
 #
 # REPLACE, never append. Spaceship's PUT /dns/records upserts by (type,name) but ONLY
 # within the API's own "External API Custom Group", and force:true silences the conflict
@@ -955,11 +955,17 @@ update_dns() {
   root="${domain#*.}"
   sub="${domain%%.*}"
 
-  key="${SPACESHIP_API_KEY:-$(gcloud secrets versions access latest --secret=devstash-spaceship-api-key --project="$PROJECT_ID" 2>/dev/null || true)}"
-  secret="${SPACESHIP_API_SECRET:-$(gcloud secrets versions access latest --secret=devstash-spaceship-api-secret --project="$PROJECT_ID" 2>/dev/null || true)}"
+  # Ops creds live consolidated in the devstash-ops-config JSON blob (spaceship-api-key /
+  # spaceship-api-secret properties). Read the blob ONCE, then pull each property with jq —
+  # env vars still win for a one-off override. `|| true` keeps a missing/suspended secret a
+  # warn-and-skip, not a hard failure.
+  local ops_blob
+  ops_blob="$(gcloud secrets versions access latest --secret=devstash-ops-config --project="$PROJECT_ID" 2>/dev/null || true)"
+  key="${SPACESHIP_API_KEY:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-key" // empty' 2>/dev/null || true)}"
+  secret="${SPACESHIP_API_SECRET:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-secret" // empty' 2>/dev/null || true)}"
   if [[ -z "$key" || -z "$secret" ]]; then
     warn "Spaceship API creds not found (env SPACESHIP_API_KEY/SPACESHIP_API_SECRET or"
-    warn "Secret Manager devstash-spaceship-api-key/-secret via 'run.sh set-dns-creds')."
+    warn "Secret Manager devstash-ops-config via 'run.sh set-dns-creds')."
     warn "Update the A-record manually:  $domain  →  $ip"
     return 0
   fi
@@ -1027,16 +1033,18 @@ set_dns_creds() {
     read -r key; read -r secret
   fi
   [[ -n "$key" && -n "$secret" ]] || die "both key and secret are required"
-  log "Storing Spaceship DNS API creds in Secret Manager (project $PROJECT_ID)"
-  # Create the secret if absent, then add a new version. --replication-policy matches
-  # the auto replication used elsewhere in this project.
-  for pair in "devstash-spaceship-api-key:$key" "devstash-spaceship-api-secret:$secret"; do
-    local name="${pair%%:*}" val="${pair#*:}"
-    gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1 \
-      || gcloud secrets create "$name" --replication-policy=automatic --project="$PROJECT_ID"
-    printf '%s' "$val" | gcloud secrets versions add "$name" --data-file=- --project="$PROJECT_ID"
-  done
-  ok "Spaceship DNS creds stored. Rotate them in the Spaceship dashboard if they were ever shared in plaintext."
+  log "Storing Spaceship DNS API creds in the consolidated devstash-ops-config secret (project $PROJECT_ID)"
+  # Both creds live as properties of ONE JSON blob (matches the Terraform-managed
+  # devstash-ops-config in envs/dev/dns.tf — see update_dns's reader). jq builds the object
+  # so values with special characters are encoded correctly and never touch the process
+  # arg list. Create the secret if absent, then add a new version. --replication-policy
+  # matches the auto replication used elsewhere in this project.
+  local name=devstash-ops-config blob
+  blob="$(jq -nc --arg k "$key" --arg s "$secret" '{"spaceship-api-key":$k,"spaceship-api-secret":$s}')"
+  gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1 \
+    || gcloud secrets create "$name" --replication-policy=automatic --project="$PROJECT_ID"
+  printf '%s' "$blob" | gcloud secrets versions add "$name" --data-file=- --project="$PROJECT_ID"
+  ok "Spaceship DNS creds stored in devstash-ops-config. Rotate them in the Spaceship dashboard if they were ever shared in plaintext."
 }
 
 # suspend: drive the environment to true ~$0. DUMPS Cloud SQL to GCS and verifies the

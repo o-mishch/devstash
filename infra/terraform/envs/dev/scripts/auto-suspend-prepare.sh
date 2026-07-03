@@ -15,13 +15,13 @@ mkdir -p /workspace/sec
 # All app credentials are now ONE consolidated JSON secret (devstash-app-config); fetch it
 # once. The build helper extracts the third_party_secrets subset ($_SECRET_KEYS) from it so
 # `tofu apply -var environment_active=false` re-supplies the required user keys (rather than
-# wiping them). Spaceship DNS creds stay as their own opt-in secrets — fetched separately.
+# wiping them). Ops-only DNS creds are ALSO one consolidated JSON secret (devstash-ops-config,
+# spaceship-api-key/-secret properties) — fetch it as a whole blob if present (opt-in: a
+# project without DNS creds omits it). The Python helper splits the blob into the two tfvars.
 gcloud secrets versions access latest --secret="devstash-app-config" --project="$_PROJECT_ID" > /workspace/sec/app-config.json
-for s in spaceship-api-key spaceship-api-secret; do
-  if gcloud secrets describe "devstash-$s" --project="$_PROJECT_ID" >/dev/null 2>&1; then
-    gcloud secrets versions access latest --secret="devstash-$s" --project="$_PROJECT_ID" > "/workspace/sec/$s"
-  fi
-done
+if gcloud secrets describe "devstash-ops-config" --project="$_PROJECT_ID" >/dev/null 2>&1; then
+  gcloud secrets versions access latest --secret="devstash-ops-config" --project="$_PROJECT_ID" > /workspace/sec/ops-config.json
+fi
 # Assemble the secrets tfvars via the standalone Python helper (kept out of this shell step so
 # the JSON-assembly logic is independently lintable/testable and languages stay segregated — not
 # an inline heredoc). The repo was cloned above, so the script is on disk at this path.

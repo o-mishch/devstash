@@ -880,137 +880,75 @@ tofu destroy
 
 ## 8. Підключення до Memorystore (Redis) — web UI / CLI
 
-Memorystore **не має публічного IP** — він живе лише на приватному VPC-діапазоні, до
-того ж з **AUTH + TLS** (`SERVER_AUTHENTICATION`). Тож із ноутбука напряму не
-під'єднаєшся: треба «місток» **усередині VPC**. Способи А/Б тягнуть AUTH і CA з уже
-синхронізованого Secret (`devstash-secrets`); спосіб В публікує UI за публічним URL
-через IAP.
+Memorystore for **Valkey** **не має публічного IP** — він живе лише на приватному
+VPC-діапазоні (PSC-ендпоінт), до того ж з **IAM AUTH + TLS** (`SERVER_AUTHENTICATION`).
+Статичного пароля більше немає: клієнт автентифікується **короткоживучим IAM-токеном**
+(OAuth2 access token, TTL ~1 год), який видає Workload Identity. Тож із ноутбука напряму
+не під'єднаєшся: треба «місток» **усередині VPC**. Спосіб А під'єднується сам (мінтить
+токен у поді); спосіб В публікує UI за публічним URL через IAP.
 
-**Дані для під'єднання:**
+**Дані для під'єднання (host/port + CA; пароль — це IAM-токен, не з Secret):**
 
 ```bash
-# Хост (приватний IP):
-tofu -chdir=infra/terraform/envs/dev output -raw redis_host
-# Повний URL з AUTH (rediss://default:<AUTH>@host:6378):
+# Повний URL — БЕЗ креденшелів (rediss://host:6379):
 kubectl -n devstash get secret devstash-secrets -o jsonpath='{.data.REDIS_URL}' | base64 -d; echo
 # Server CA (для перевірки TLS-сертифіката):
 kubectl -n devstash get secret devstash-secrets -o jsonpath='{.data.REDIS_CA_CERT}' | base64 -d > /tmp/memorystore-ca.pem
+# Пароль = свіжий IAM-токен принципала з roles/memorystore.dbConnectionUser. Цю роль має
+# ЛИШЕ devstash-app@, і мінтить її токен лише Workload Identity ВСЕРЕДИНІ кластера (KSA
+# devstash) — тому з ноутбука валідний токен так просто не видобути. Способи А і Б мінтять
+# його самі в поді. З ноутбука — тільки якщо тобі окремо видали доступ:
+#   • roles/memorystore.dbConnectionUser на твій акаунт → `gcloud auth print-access-token`;
+#   • АБО roles/iam.serviceAccountTokenCreator на devstash-app@ → додай прапорець нижче:
+#     gcloud auth print-access-token \
+#       --impersonate-service-account=devstash-app@project-39965ce5-4c4b-495e-8d4.iam.gserviceaccount.com
 ```
 
 ### Спосіб А — RedisInsight (web UI)
 
-In-cluster RedisInsight бачить Memorystore по VPC; UI прокидаємо на ноутбук через
-`port-forward`. Маніфест — [`overlays/gcp/redisinsight.yaml`](../k8s/overlays/gcp/redisinsight.yaml)
-(навмисно **поза** kustomization — застосовуй за потребою):
+In-cluster RedisInsight бачить Valkey по VPC; UI прокидаємо на ноутбук через
+`port-forward`. Пакет — [`overlays/gcp/redisinsight/`](../k8s/overlays/gcp/redisinsight/)
+(власний kustomize-пакет, навмисно **поза** оверлеєм — застосовуй за потребою).
+
+**Під'єднується автоматично** — жодного ручного «Add database». Под стартує під SA
+`devstash` (Workload-Identity → `devstash-app@`, має `roles/memorystore.dbConnectionUser`),
+[`entrypoint.sh`](../k8s/overlays/gcp/redisinsight/entrypoint.sh) мінтить свіжий IAM-токен
+з metadata-сервера, бере host/port з живого `REDIS_URL` і CA з `REDIS_CA_CERT`, і
+предконфігурує TLS-з'єднання. Нічого не захардкоджено.
 
 ```bash
-kubectl apply -f infra/k8s/overlays/gcp/redisinsight.yaml
+kubectl apply -k infra/k8s/overlays/gcp/redisinsight/   # -k (не -f): kustomize генерує ConfigMap зі скриптом
 kubectl -n devstash rollout status deploy/redisinsight
 kubectl -n devstash port-forward svc/redisinsight 5540:5540
-open http://localhost:5540
-# Add Redis database: Host=<redis_host>, Port=6378, Password=<AUTH з URL вище>,
-# Use TLS=ON, CA = /tmp/memorystore-ca.pem. Прибрати: kubectl delete -f …redisinsight.yaml
+open http://localhost:5540   # база "devstash-dev (Valkey)" вже там і під'єднана
+# Токен читається лише на старті (TTL ~1 год; з'єднання живе ~12 год). Оновити токен:
+#   kubectl -n devstash rollout restart deploy/redisinsight
+# Прибрати:  kubectl delete -k infra/k8s/overlays/gcp/redisinsight/
 ```
 
 ### Спосіб Б — redis-cli з ефемерного пода (швидка перевірка)
 
+Швидкий `PING` без web UI. Под стартує під SA `devstash` (Workload Identity →
+`devstash-app@` з `roles/memorystore.dbConnectionUser`) і **сам мінтить IAM-токен** з
+metadata-сервера — з ноутбука валідний токен не видобути (див. блок «Дані для
+під'єднання» вище). Overrides для пода —
+[`redis-cli-probe.json`](../k8s/overlays/gcp/redisinsight/redis-cli-probe.json): host з
+живого `REDIS_URL` (secretKeyRef), PSA-restricted securityContext, а токен мінтиться прямо
+в `args` (`wget` до metadata → `redis-cli --user default --pass <token>`).
+
 ```bash
-URL=$(kubectl -n devstash get secret devstash-secrets -o jsonpath='{.data.REDIS_URL}' | base64 -d)
-
-# Варіант 1 — Швидкий неінтерактивний ping (100% без попереджень та помилок)
-kubectl -n devstash run redis-cli --restart=Never --image=redis:7-alpine \
-  --overrides='{
-    "spec": {
-      "securityContext": {
-        "runAsNonRoot": true,
-        "runAsUser": 1001,
-        "runAsGroup": 1001,
-        "fsGroup": 1001,
-        "seccompProfile": {
-          "type": "RuntimeDefault"
-        }
-      },
-      "containers": [
-        {
-          "name": "redis-cli",
-          "image": "redis:7-alpine",
-          "env": [
-            {
-              "name": "REDIS_URL",
-              "value": "'"$URL"'"
-            }
-          ],
-          "args": ["redis-cli", "--no-auth-warning", "-u", "$(REDIS_URL)", "--tls", "--insecure", "ping"],
-          "resources": {
-            "requests": {
-              "cpu": "100m",
-              "memory": "128Mi"
-            }
-          },
-          "securityContext": {
-            "allowPrivilegeEscalation": false,
-            "capabilities": {
-              "drop": ["ALL"]
-            },
-            "seccompProfile": {
-              "type": "RuntimeDefault"
-            }
-          }
-        }
-      ]
-    }
-  }'
-
-# Зачекати виконання пода, вивести лог (→ PONG) та видалити под:
-kubectl -n devstash wait --for=jsonpath='{.status.phase}'=Succeeded pod/redis-cli --timeout=30s
-kubectl -n devstash logs pod/redis-cli
+kubectl -n devstash run redis-cli --image=redis:7-alpine \
+  --overrides="$(cat infra/k8s/overlays/gcp/redisinsight/redis-cli-probe.json)"
+kubectl -n devstash wait --for=jsonpath='{.status.phase}'=Succeeded pod/redis-cli --timeout=40s
+kubectl -n devstash logs pod/redis-cli    # → PONG
 kubectl -n devstash delete pod redis-cli
-
-# ──────────────────────────────────────────────────────────────────────────
-
-# Варіант 2 — Інтерактивна консоль redis-cli (натисніть Enter після запуску для появи промпту)
-kubectl -n devstash run redis-cli --rm -it --restart=Never --image=redis:7-alpine \
-  --overrides='{
-    "spec": {
-      "securityContext": {
-        "runAsNonRoot": true,
-        "runAsUser": 1001,
-        "runAsGroup": 1001,
-        "fsGroup": 1001,
-        "seccompProfile": {
-          "type": "RuntimeDefault"
-        }
-      },
-      "containers": [
-        {
-          "name": "redis-cli",
-          "image": "redis:7-alpine",
-          "args": ["redis-cli", "--no-auth-warning", "-u", "'"$URL"'", "--tls", "--insecure"],
-          "stdin": true,
-          "tty": true,
-          "resources": {
-            "requests": {
-              "cpu": "100m",
-              "memory": "128Mi"
-            }
-          },
-          "securityContext": {
-            "allowPrivilegeEscalation": false,
-            "capabilities": {
-              "drop": ["ALL"]
-            },
-            "seccompProfile": {
-              "type": "RuntimeDefault"
-            }
-          }
-        }
-      ]
-    }
-  }'
 ```
 
-> `--insecure` пропускає перевірку CA для разової перевірки. Для повної перевірки
-> змонтуй `REDIS_CA_CERT` у под і додай `--cacert`.
+> `--insecure` у probe пропускає перевірку CA для разової перевірки; для повної —
+> змонтуй `REDIS_CA_CERT` у под і додай `--cacert /certs/ca.pem`.
+>
+> Потрібна **інтерактивна** консоль redis-cli? Візьми вбудований CLI в RedisInsight зі
+> Способу А — він уже під'єднаний до Valkey (свіжий токен + TLS), мінтити нічого не треба.
 
 ### Спосіб В — публічний web UI за IAP (без `kubectl`)
 

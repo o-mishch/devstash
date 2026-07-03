@@ -40,10 +40,19 @@ locals {
     s3-access-id = google_storage_hmac_key.uploads.access_id
     s3-secret    = google_storage_hmac_key.uploads.secret
   }
-  merged_secrets = merge(var.app_secrets, local.s3_interop_secrets)
+  merged_secrets     = merge(var.app_secrets, local.s3_interop_secrets)
+  app_config_json    = jsonencode(local.merged_secrets)
+
+  # Content-derived version for the write-only secret_data_wo below. secret_data_wo is not read
+  # back from the API and not stored in state, so Terraform can't tell when the blob changed —
+  # it only re-writes the version when secret_data_wo_version changes. Deriving that integer from
+  # the blob's sha256 makes it auto-bump whenever ANY key changes (including the Terraform-managed
+  # HMAC key, which rotates on its own), with no manual bookkeeping. Take 7 hex digits (max
+  # ~2.68e8) so the value stays a positive int32 (the provider's type for this field).
+  app_config_wo_version = parseint(substr(sha256(local.app_config_json), 0, 7), 16)
 }
 
-# ONE consolidated secret holding a JSON object of every app credential, keyed by the
+# ONE consolidated secret holding a JSON object of every APP credential, keyed by the
 # same short names the old per-secret suffixes used (auth-secret, database-url, s3-secret,
 # …). Consolidated from ~14 individual Secret Manager secrets into a single secret so a
 # deep-suspended env stays inside Secret Manager's 6-active-version always-free tier: one
@@ -51,6 +60,11 @@ locals {
 # Secret keys via remoteRef.property (see infra/k8s/overlays/gcp/external-secrets.yaml).
 # The conditional infra keys (database-*/redis-*) are simply absent from the JSON while the
 # environment is suspended — the blob is still a single version either way.
+#
+# Only APP creds live here — the app SA gets secretAccessor on this secret (below), so nothing
+# the app never uses belongs in it. OPS-only credentials (the Spaceship DNS API pair that
+# run.sh uses on resume) live in a SEPARATE consolidated secret, devstash-ops-config (see
+# envs/dev/dns.tf), which the app SA is deliberately NOT granted — least privilege.
 resource "google_secret_manager_secret" "app_config" {
   secret_id = "devstash-app-config"
 
@@ -61,12 +75,29 @@ resource "google_secret_manager_secret" "app_config" {
   labels = var.labels
 }
 
-# secret_data is jsonencode() of the merged (sensitive) map, so the whole blob is sensitive
-# and never appears in plan output. Rewritten in place on every apply — one version, whether
-# the env is active (all keys) or suspended (infra keys omitted).
+# The version holding the JSON blob. WRITE-ONLY + hash-versioned + disable-not-destroy —
+# three deliberate choices that fix a production outage the naive `secret_data` form caused:
+#
+#   1. secret_data_wo (write-only) — the value is NEVER written to Terraform state, and NEVER
+#      read back from the API. This is the current best-practice for sensitive values (needs
+#      Terraform ≥1.11 + a recent google provider). The plain `secret_data` field, by contrast,
+#      is FORCE-NEW: every value change REPLACES the version (destroy-then-create), and the
+#      provider default DESTROYS the old version. That left a trail of destroyed versions and —
+#      when a replace was interrupted or two applies raced — left the NEWEST version DESTROYED.
+#      A destroyed latest is unrecoverable: `gcloud secrets versions access latest` returns
+#      FAILED_PRECONDITION, which broke ESO sync, the app pods, AND the auto-suspend `prepare`
+#      step (so the cluster ran 24/7). secret_data_wo updates IN PLACE on a version bump — no
+#      ForceNew, no version churn, no destroyed-latest.
+#   2. secret_data_wo_version = a content-derived hash (see local above). Because the value is
+#      write-only, Terraform re-pushes it only when this integer changes; deriving it from the
+#      blob's sha256 makes it auto-bump on any real change with zero manual bookkeeping.
+#   3. deletion_policy = "DISABLE" — belt-and-suspenders: should a version ever be removed, it is
+#      DISABLED, never DESTROYED, so it can't rot into the unrecoverable DESTROYED state.
 resource "google_secret_manager_secret_version" "app_config" {
-  secret      = google_secret_manager_secret.app_config.id
-  secret_data = jsonencode(local.merged_secrets)
+  secret                 = google_secret_manager_secret.app_config.id
+  secret_data_wo         = local.app_config_json
+  secret_data_wo_version = local.app_config_wo_version
+  deletion_policy        = "DISABLE"
 }
 
 # Grant the app SA read access to the one consolidated secret.

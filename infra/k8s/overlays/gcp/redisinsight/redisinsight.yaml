@@ -1,0 +1,151 @@
+# RedisInsight — on-demand web UI for the managed Memorystore for Valkey instance.
+#
+# Memorystore has NO public IP and requires IAM AUTH + TLS, so you cannot point a
+# laptop GUI straight at it. RedisInsight runs HERE, inside the cluster, where it
+# reaches Valkey over the VPC private PSC endpoint — then you tunnel the UI to your
+# laptop with port-forward.
+#
+# This is its own kustomize package (NOT referenced by the gcp overlay's kustomization) —
+# it's a debugging tool you apply on demand with `-k`, not part of the steady-state deploy.
+# The `-k` apply is required (not `-f redisinsight.yaml`) so kustomize can generate the
+# entrypoint.sh ConfigMap the pod mounts.
+#
+# USAGE (auto-connects on open — no manual "Add database" step):
+#   kubectl apply -k infra/k8s/overlays/gcp/redisinsight/
+#   kubectl -n devstash rollout status deploy/redisinsight
+#   kubectl -n devstash port-forward svc/redisinsight 5540:5540
+#   open http://localhost:5540   # the "devstash-dev (Valkey)" database is already there & connected
+#
+# HOW THE AUTOCONNECT WORKS — nothing is hardcoded; every value is read live at pod start:
+#   * The pod runs as the `devstash` ServiceAccount, which is Workload-Identity-bound to
+#     the devstash-app@ GSA (it holds roles/memorystore.dbConnectionUser — the permission
+#     Valkey's IAM AUTH handshake checks).
+#   * The start wrapper mints a FRESH Valkey IAM access token from the GKE metadata server
+#     on every pod start and feeds it to RedisInsight as RI_REDIS_PASSWORD (user `default`).
+#     The token TTL is ~1h; an already-authenticated connection stays valid ~12h. To get a
+#     new token just re-roll the pod (kubectl -n devstash rollout restart deploy/redisinsight).
+#   * Host/port come from the live devstash-secrets REDIS_URL (rediss://host:6379 — no creds);
+#     the server CA comes from the same Secret's REDIS_CA_CERT, mounted at /certs/ca.pem for
+#     in-transit TLS (SERVER_AUTHENTICATION). RedisInsight reads all RI_* env at startup only,
+#     so a token refresh needs a pod restart — fine for an on-demand debugging tool.
+#
+# Tear down when done:  kubectl delete -k infra/k8s/overlays/gcp/redisinsight/
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redisinsight
+  namespace: devstash
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: redisinsight
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redisinsight }
+  template:
+    metadata:
+      labels: { app: redisinsight }
+    spec:
+      # Run as the app's ServiceAccount: it is Workload-Identity-bound to the
+      # devstash-app@ GSA, which holds roles/memorystore.dbConnectionUser. That is the
+      # identity the start wrapper's metadata-server token is minted for, so the token
+      # authenticates against Valkey IAM AUTH. (The `default` KSA would NOT work.)
+      serviceAccountName: devstash
+      # Pod-level security context — PSA "restricted" (namespace label) requires
+      # runAsNonRoot, seccompProfile, and no privilege escalation. RedisInsight 2.x
+      # ships as non-root (UID 1000) so these constraints are satisfied.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redisinsight
+          # Pin to a specific version — :latest is not reproducible and may introduce
+          # breaking UI changes. Check https://hub.docker.com/r/redis/redisinsight/tags
+          # and update when a new stable release is available.
+          image: redis/redisinsight:3.6.0
+          # Start wrapper (mints the IAM token + preconfigures the connection) lives in
+          # entrypoint.sh, mounted read-only at /scripts from the `redisinsight-entrypoint`
+          # ConfigMap that kustomize generates from that file. Setting `command` overrides
+          # the image ENTRYPOINT; the script re-execs the image's own docker-entry.sh + CMD.
+          command: ["/bin/sh", "/scripts/entrypoint.sh"]
+          env:
+            # Host/port only — carries NO password (Valkey uses IAM auth). Read live so a
+            # Secret rebuild (e.g. suspend/resume repoints the PSC endpoint) is picked up
+            # on the next pod start with no manifest edit.
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: devstash-secrets
+                  key: REDIS_URL
+          ports:
+            - { name: http, containerPort: 5540 }
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            # cpu limit required by GKE Autopilot (pods without cpu limits are
+            # billed at a higher burstable rate and may be evicted under pressure).
+            limits: { cpu: 500m, memory: 512Mi }
+          # Container-level security — PSA "restricted" requires all three of these
+          # at the container level in addition to the pod-level securityContext above.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # RedisInsight writes its database under /data; mount an emptyDir there
+            # so the root filesystem can be read-only (PSA restricted requirement).
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            # Server CA for TLS verification (SERVER_AUTHENTICATION). Projected read-only
+            # from the live Secret so it always matches the running instance's cert.
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+            # Start wrapper, generated from entrypoint.sh by kustomize.
+            - name: entrypoint
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: data
+          # Ephemeral — RedisInsight's connection config persists only for the
+          # lifetime of this pod. Re-add the Memorystore connection after a restart.
+          # To persist connections, switch to a PVC (standard-rwo StorageClass on GKE).
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: certs
+          secret:
+            secretName: devstash-secrets
+            items:
+              - key: REDIS_CA_CERT
+                path: ca.pem
+        - name: entrypoint
+          configMap:
+            # Name is rewritten (hash-suffixed) by kustomize's configMapGenerator; editing
+            # entrypoint.sh changes the hash and triggers a rollout with the new script.
+            name: redisinsight-entrypoint
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redisinsight
+  namespace: devstash
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: redisinsight
+spec:
+  type: ClusterIP
+  selector: { app: redisinsight }
+  ports:
+    - { port: 5540, targetPort: http }

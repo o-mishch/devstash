@@ -142,11 +142,13 @@ Vercel deployment.
 The ingress IP is released on suspend and a fresh one is allocated on resume, so `resume`
 re-points the `gke.devstash.one` A-record via the **Spaceship DNS API**
 (`PUT /v1/dns/records/devstash.one`). It reads credentials from `SPACESHIP_API_KEY` /
-`SPACESHIP_API_SECRET` (env) or Secret Manager (`devstash-spaceship-api-key` / `-secret`).
+`SPACESHIP_API_SECRET` (env) or the consolidated Secret Manager ops blob `devstash-ops-config`
+(`spaceship-api-key` / `spaceship-api-secret` JSON properties).
 
 **Where to put the credentials** — add them to the gitignored `terraform.tfvars` like
-every other real credential; `dns.tf` pushes them to Secret Manager on `apply` (they are
-kept OUT of `third_party_secrets`, so the app never sees them):
+every other real credential; `dns.tf` pushes them to the single `devstash-ops-config` secret
+on `apply` (kept OUT of the app blob `devstash-app-config` and its app-SA grant, so the app
+never sees them):
 
 ```hcl
 spaceship_api_key    = "..."

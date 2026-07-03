@@ -318,19 +318,30 @@ jobs:
         # devstash-secrets is materialized by External Secrets Operator from
         # Secret Manager. Both the migrate Job and the web pods need it, so block
         # until the ExternalSecret reports Ready before running anything against
-        # the database.
-        run: kubectl -n devstash wait --for=condition=Ready externalsecret/devstash-secrets --timeout=180s
+        # the database. The source blob (devstash-app-config) always has an enabled
+        # version, but its infra keys (redis-*/database-*) are omitted while the env
+        # is suspended / mid-resume — ESO can't sync then. When the script finds
+        # those properties missing it warns, sets synced=false, and finishes without
+        # failing; a blob with every property that still won't sync fails loudly.
+        # The migrate + rollout steps below gate on synced=true.
+        id: eso-sync
+        run: infra/ci/wait-secrets-sync.sh
 
       - name: Run DB migrations + seed item types (gated)
+        # Skipped when secrets never synced (suspended/mid-resume env) — the migrate
+        # Job would otherwise fail on missing DB credentials.
+        if: steps.eso-sync.outputs.synced == 'true'
         run: infra/ci/run-migrations.sh
 
       # Migrations have landed — apply the digest-pinned web Deployment from the same
       # render to trigger the rolling update. Same SSA/--force-conflicts posture as the
       # infra apply; see infra/ci/rollout-web.sh.
       - name: Roll out the web Deployment (post-migration)
+        if: steps.eso-sync.outputs.synced == 'true'
         run: infra/ci/rollout-web.sh
 
       - name: Wait for rollout
+        if: steps.eso-sync.outputs.synced == 'true'
         run: infra/ci/wait-rollout.sh
 
       # Delete superseded image versions the instant the rollout is healthy, keeping only the

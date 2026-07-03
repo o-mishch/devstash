@@ -1,0 +1,17 @@
+# On-demand RedisInsight debugging tool — applied with `kubectl apply -k` (see the header
+# of redisinsight.yaml). Kept as its own package, NOT wired into the gcp overlay's
+# kustomization, so it never ships in the steady-state deploy.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: devstash
+
+resources:
+  - redisinsight.yaml
+
+# Generate the start-wrapper ConfigMap from the real entrypoint.sh file (so the script is
+# never inlined into YAML and stays lintable/shellcheck-able). The default name-suffix hash
+# means editing entrypoint.sh rolls the Deployment onto the new script automatically.
+configMapGenerator:
+  - name: redisinsight-entrypoint
+    files:
+      - entrypoint.sh

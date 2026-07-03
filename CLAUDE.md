@@ -47,7 +47,7 @@ npm run test:run  # Vitest single run
 Project rules live in `.agents/rules/` and are auto-discovered by Claude Code through the `.claude/rules → ../.agents/rules` symlink (mirrors `.claude/skills`):
 
 - **Always loaded:** `ai-interaction.md`, `coding-standards.md` (no `paths:` frontmatter).
-- **Path-scoped** (load only when you touch matching files, via `paths:` frontmatter): `nextjs-architecture.md`, `database.md`, `security.md`, `testing.md`, `api-contract.md`.
+- **Path-scoped** (load only when you touch matching files, via `paths:` frontmatter): `nextjs-architecture.md`, `database.md`, `security.md`, `testing.md`, `api-contract.md`, `infra.md`.
 
 Antigravity reads the same files natively via each file's `trigger`/`globs` frontmatter.
 
