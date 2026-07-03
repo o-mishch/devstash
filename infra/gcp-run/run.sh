@@ -311,6 +311,8 @@ bootstrap() {
 # deleted after apply (success or failure) so no sensitive state lingers on disk.
 apply() {
   ensure_tfvars
+  # Delete any stale plan file to ensure a fresh start
+  rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
   # Guard: the GCS state bucket must exist before `tofu init` can initialise the
   # remote backend. If `bootstrap` was skipped, the init fails with a cryptic
   # "bucket not found" error. Check explicitly so the message is actionable.
@@ -325,14 +327,14 @@ apply() {
   tofu_ plan -out="$PLAN_FILE"
   if confirm "Apply this plan? (review the resource changes above)"; then
     if tofu_ apply "$PLAN_FILE"; then
-      rm -f "$TF_DIR/$PLAN_FILE"
+      rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
     else
       # Saved plans contain sensitive values; remove it on failure as well as success.
-      rm -f "$TF_DIR/$PLAN_FILE"
+      rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
       die "OpenTofu apply failed"
     fi
   else
-    rm -f "$TF_DIR/$PLAN_FILE"
+    rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
     die "aborted before apply"
   fi
   # Only fetch kubectl creds when a cluster exists. When suspended, the
