@@ -12,7 +12,7 @@ cd /workspace
 # than owning a bespoke image for a single binary in a step that only runs when actually
 # suspending. set -eu aborts if the install fails.
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends git
+apt-get install -y -qq --no-install-recommends git ca-certificates
 git clone --depth 1 --branch "$_REPO_BRANCH" "https://github.com/$_REPO_SLUG.git" repo
 echo "$_NONSECRET_B64" | base64 -d > repo/infra/terraform/envs/dev/zz-nonsecret.auto.tfvars.json
 mkdir -p /workspace/sec
