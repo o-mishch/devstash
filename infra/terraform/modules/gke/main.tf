@@ -7,6 +7,12 @@
 #              monthly free-tier credit per billing account to Autopilot/zonal clusters.
 #              No google_container_node_pool resource needed or allowed.
 
+resource "google_service_account" "gke_nodes" {
+  count        = var.cluster_active ? 1 : 0
+  account_id   = "${var.name_prefix}-gke-node-sa"
+  display_name = "GKE Node Service Account"
+}
+
 resource "google_container_cluster" "primary" {
   # Cost toggle. The cluster is the largest line item; it holds no persistent state
   # (the app's data lives in Cloud SQL, which is kept), so it is fully destroyed when
@@ -32,6 +38,18 @@ resource "google_container_cluster" "primary" {
   # Workload Identity: pods authenticate to GCP APIs as a Google SA, no JSON keys.
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  cluster_autoscaling {
+    auto_provisioning_defaults {
+      service_account = try(google_service_account.gke_nodes[0].email, null)
+    }
+  }
+
+  addons_config {
+    parallelstore_csi_driver_config {
+      enabled = false
+    }
   }
 
   # Secret Manager add-on (secret_manager_config) is DELIBERATELY omitted. It is a GKE

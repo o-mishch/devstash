@@ -43,3 +43,8 @@ output "binauthz_kms_keyring" {
 output "binauthz_kms_key" {
   value = one(google_kms_crypto_key.binauthz_signer[*].name)
 }
+
+output "node_service_account_email" {
+  value = try(google_service_account.gke_nodes[0].email, "")
+}
+

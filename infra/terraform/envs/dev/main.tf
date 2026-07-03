@@ -211,6 +211,7 @@ module "iam" {
   # Null when suspended (cluster destroyed); the iam module does not actually consume
   # this value, so an empty string is a safe placeholder that keeps the type (string).
   gke_cluster_name                = module.gke.cluster_name != null ? module.gke.cluster_name : ""
+  gke_node_sa_email               = module.gke.node_service_account_email
   uploads_bucket_name             = module.gcs.bucket_name
   artifact_registry_repository_id = module.artifact_registry.repository_id
   github_repository               = var.github_repository

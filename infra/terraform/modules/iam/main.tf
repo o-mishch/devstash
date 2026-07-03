@@ -101,10 +101,10 @@ resource "google_storage_hmac_key" "uploads" {
 
 # --- GKE Autopilot node service account IAM ------------------------------
 # Autopilot manages its own node pool using the project's Compute Engine default SA
-# ({project_number}-compute@developer.gserviceaccount.com). Without
-# roles/container.defaultNodeServiceAccount on that SA, nodes boot, fail to register
-# with the cluster, and are immediately deleted by Autopilot — causing the cluster to
-# appear empty despite pods being pending. This is separate from the app SA above.
+# ({project_number}-compute@developer.gserviceaccount.com) by default, or a custom
+# service account if configured. We grant permissions to both the default SA (to prevent
+# breaking any legacy/existing nodes in flight) and the new custom GKE node service
+# account.
 #
 # WHY a data source: the default Compute Engine SA email is always
 # "{project_number}-compute@developer.gserviceaccount.com". We cannot derive the
@@ -130,31 +130,33 @@ resource "google_project_iam_member" "compute_default_sa_node" {
   member  = local.compute_default_sa_member
 }
 
+# Custom GKE Node Service Account role bindings.
+resource "google_project_iam_member" "gke_node_sa_node" {
+  count   = var.gke_node_sa_email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/container.defaultNodeServiceAccount"
+  member  = "serviceAccount:${var.gke_node_sa_email}"
+}
+
 # Node image-pull access to Artifact Registry.
 #
-# DO NOT remove this binding. Autopilot nodes run as the Compute Engine default SA
-# (above) and the kubelet uses THAT SA to fetch a pull token from Artifact Registry.
-# roles/container.defaultNodeServiceAccount grants node registration + logging/monitoring
-# but ZERO Artifact Registry permissions, and this project enforces the
-# iam.automaticIamGrantsForDefaultServiceAccounts org-policy constraint (so the default SA
-# starts with no roles at all — the same reason the node-role grant above is explicit).
-# Without artifactregistry.reader the kubelet's token request returns 403 and every
-# AR-hosted image (migrate, web) lands in ImagePullBackOff. System charts pulled from
-# Docker Hub/quay are unaffected — they need no GCP auth — so the tell is "only the
-# in-project AR images fail to pull" (e.g. the migrate Job hangs ImagePullBackOff while
-# external-secrets/reloader start fine).
-#
-# Scoped to THIS repository (least privilege), mirroring the deployer's writer grant
-# below — not a project-wide roles/artifactregistry.reader. Both the node SA (read) and
-# the deployer SA (write) are bound on the same repository resource.
-# Ref: Google "Troubleshoot image pulls" — grant the node SA roles/artifactregistry.reader
-# so GKE can pull images from Artifact Registry repositories in the same project.
+# Both the default compute SA (legacy) and the custom GKE node SA need roles/artifactregistry.reader
+# to pull images from Artifact Registry.
 resource "google_artifact_registry_repository_iam_member" "node_artifact_registry_reader" {
   project    = var.project_id
   location   = var.region
   repository = var.artifact_registry_repository_id
   role       = "roles/artifactregistry.reader"
   member     = local.compute_default_sa_member
+}
+
+resource "google_artifact_registry_repository_iam_member" "custom_node_artifact_registry_reader" {
+  count      = var.gke_node_sa_email != "" ? 1 : 0
+  project    = var.project_id
+  location   = var.region
+  repository = var.artifact_registry_repository_id
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${var.gke_node_sa_email}"
 }
 
 # --- CI/CD deployer service account ---------------------------------------

@@ -158,4 +158,4 @@ History is ordered oldest to newest. New entries are appended to the END.
 - **Artifact Registry Cleanup** - Fixed the post-rollout prune script to resolve child OCI manifests via `docker manifest inspect`, enabling immediate cleanup of orphaned untagged manifests and avoiding storage cost drift. Updated `prune-registry.sh` to run in a robust two-pass deletion pattern. (Completed)
 - **Silence npm update notifications** - Set NO_UPDATE_NOTIFIER=true in Dockerfile stages and GKE deploy workflow env to silence npm update warnings in CI/CD (Completed)
 - **Fix concurrent GKE deploy prune race condition** - Added a 30-minute grace period cutoff to prune-registry.sh to prevent overlapping GHA deploy runs from deleting each other's newly built images; key files changed: `infra/ci/prune-registry.sh` (Completed)
-
+- **Custom GKE Node Service Account** - Created custom GKE Node Service Account, bound container and Artifact Registry roles, configured GKE auto-provisioning defaults, and disabled Parallelstore CSI driver (Completed)

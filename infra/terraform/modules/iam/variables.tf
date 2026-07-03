@@ -59,3 +59,10 @@ variable "labels" {
   type    = map(string)
   default = {}
 }
+
+variable "gke_node_sa_email" {
+  type        = string
+  default     = ""
+  description = "Service account email of the GKE nodes."
+}
+
