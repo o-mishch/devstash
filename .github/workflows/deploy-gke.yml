@@ -85,7 +85,6 @@ jobs:
   # unaffected: run.sh resume recreates the cluster BEFORE dispatching this workflow, so by
   # the time preflight runs the environment is active again.
   preflight:
-    needs: verify
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -109,7 +108,7 @@ jobs:
 
   # ---- Build the image, push to Artifact Registry, deploy to GKE -------------
   build-deploy:
-    needs: preflight # runs after verify (transitively) + the suspended check
+    needs: [verify, preflight] # runs after verify + the suspended check
     # Two guards. (1) GCP Workload Identity Federation pins the OIDC token to refs/heads/main
     # (iam module attribute_condition: assertion.ref == "refs/heads/main"); a workflow_dispatch
     # on any other branch would reach google-github-actions/auth and fail with a cryptic
@@ -224,29 +223,6 @@ jobs:
       # deploy (exit-code: '0'); flip exit-code to '1' to make this a hard gate. Time-bound
       # exceptions live in infra/security/.trivyignore.yaml. Docker is already authenticated
       # to Artifact Registry from the build-push step, so Trivy pulls the images by digest.
-      - name: Scan web image for vulnerabilities
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE_URI }}@${{ env.WEB_DIGEST }}
-          scan-type: image
-          format: table
-          severity: CRITICAL,HIGH
-          vuln-type: os,library
-          ignore-unfixed: true
-          exit-code: '0'
-          trivyignores: infra/security/.trivyignore.yaml
-
-      - name: Scan migrate image for vulnerabilities
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.MIGRATE_IMAGE }}
-          scan-type: image
-          format: table
-          severity: CRITICAL,HIGH
-          vuln-type: os,library
-          ignore-unfixed: true
-          exit-code: '0'
-          trivyignores: infra/security/.trivyignore.yaml
 
       # The control plane has no public IP endpoint (enable_private_endpoint = true);
       # access is via the IAM-gated DNS-based endpoint, so request DNS-based creds.
@@ -324,7 +300,11 @@ jobs:
       # post-migration rollout below both consume that same render (real migrate→rollout
       # gate, not the old :latest race). See infra/ci/render-manifests.sh.
       - name: Render manifests
-        run: infra/ci/render-manifests.sh
+        run: |
+          infra/ci/render-manifests.sh
+          # Inject the current commit SHA as an annotation to the web Deployment
+          # so we can track the deployed version for migration diffing.
+          yq -i '(select(.kind == "Deployment") | .metadata.annotations.devstash-commit-sha) = strenv(GITHUB_SHA)' /tmp/rendered.yaml
 
       # Apply everything EXCEPT the web Deployment (server-side, --force-conflicts) so
       # existing pods keep the previous image until the post-migration rollout. The full
@@ -363,3 +343,30 @@ jobs:
           WEB_DIGEST: ${{ steps.build-push.outputs.web_digest }}
           MIGRATE_DIGEST: ${{ steps.build-push.outputs.migrate_digest }}
         run: infra/ci/prune-registry.sh
+
+      # Vulnerability scans (warn-only). Moved to the end of the deployment workflow
+      # so that the web app rollout begins and completes earlier, reducing time-to-live.
+      # Docker is authenticated to Artifact Registry; Trivy pulls the images by digest.
+      - name: Scan web image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_URI }}@${{ env.WEB_DIGEST }}
+          scan-type: image
+          format: table
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+          ignore-unfixed: true
+          exit-code: '0'
+          trivyignores: infra/security/.trivyignore.yaml
+
+      - name: Scan migrate image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.MIGRATE_IMAGE }}
+          scan-type: image
+          format: table
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+          ignore-unfixed: true
+          exit-code: '0'
+          trivyignores: infra/security/.trivyignore.yaml

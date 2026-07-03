@@ -14,6 +14,34 @@
 set -euo pipefail
 
 NS=devstash   # target namespace (base kustomize; matches settings.yaml)
+
+# Navigate to the repository root directory for Git commands
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$REPO_ROOT"
+
+# Check if we can skip migrations based on git diff against the running deployment version
+PREV_SHA=$(kubectl -n "$NS" get deployment devstash-web -o jsonpath='{.metadata.annotations.devstash-commit-sha}' 2>/dev/null || true)
+
+if [ -n "$PREV_SHA" ]; then
+  echo "Found running deployment version: $PREV_SHA"
+  # Fetch the previous commit to allow diffing.
+  # We use a shallow fetch to minimize time/network overhead.
+  if git fetch --depth=1 origin "$PREV_SHA" 2>/dev/null; then
+    # Compare files under the prisma directory (migrations, schema, seed)
+    if git diff --quiet "$PREV_SHA" HEAD -- prisma; then
+      echo "No database schema, migrations, or seeding changes detected in prisma/ directory since $PREV_SHA."
+      echo "Skipping db-run-migration job execution."
+      exit 0
+    else
+      echo "Database changes detected in prisma/ directory. Running migration job."
+    fi
+  else
+    echo "Could not fetch commit $PREV_SHA from remote. Running migration job to be safe."
+  fi
+else
+  echo "No devstash-commit-sha annotation found on devstash-web deployment. Running migration job."
+fi
+
 cd infra/k8s/overlays/gcp
 
 # Capture logs from any prior failed job BEFORE deleting it. If this step failed in a

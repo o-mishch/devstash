@@ -11,6 +11,15 @@ set -euo pipefail
 # shellcheck source=infra/versions.env
 source infra/versions.env
 
+# Check if already installed with the correct version
+if command -v jq &>/dev/null && command -v helm &>/dev/null; then
+  CURRENT_CHART=$(helm list -n reloader -o json 2>/dev/null | jq -r '.[] | select(.name=="reloader" and .status=="deployed") | .chart' 2>/dev/null || true)
+  if [[ "$CURRENT_CHART" == "reloader-$RELOADER_VERSION" ]]; then
+    echo "Stakater Reloader version $RELOADER_VERSION is already installed. Skipping Helm upgrade."
+    exit 0
+  fi
+fi
+
 helm repo add stakater https://stakater.github.io/stakater-charts
 helm repo update stakater
 
