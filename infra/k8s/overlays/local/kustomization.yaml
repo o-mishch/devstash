@@ -18,7 +18,6 @@ namespace: devstash
 
 resources:
   - ../../base        # Deployment, Service, Ingress, HPA, ConfigMap, PDB, NetworkPolicy
-  - namespace.yaml    # devstash namespace with PSA restricted (enforce-version: v1.31)
   - secret.local.yaml # throwaway local credentials (mirrors GCP ExternalSecret key set)
   # migrate-job-local.yaml is intentionally NOT listed here — a Job's pod template
   # is immutable on re-apply. run.sh applies it separately (delete-then-apply) and

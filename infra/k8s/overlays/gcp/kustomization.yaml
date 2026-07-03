@@ -9,7 +9,6 @@ namespace: devstash
 
 resources:
   - ../../base
-  - namespace.yaml
   - serviceaccount.yaml
   - backendconfig.yaml
   - frontendconfig.yaml
