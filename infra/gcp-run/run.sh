@@ -974,26 +974,26 @@ set_dns_creds() {
 # Cloud SQL instance (no kept disk). The data lives only in the verified GCS dump; resume
 # restores it. The dump-and-verify happens before any destroy, so a failed dump aborts the
 # suspend with the instance fully intact.
-# Delete the web+migrate images (all versions + tags, incl. :buildcache) from Artifact
-# Registry so a deep-suspended env holds ZERO image storage — the last standing cost above
-# the always-free tier. Safe: 'resume' rebuilds + repushes from source via CI before the
-# app is applied, and the Deployment pins images by the digest CI just produced. Best-effort
-# — a purge miss (repo already empty) must not abort the suspend. Mirrors the unattended
-# auto-suspend purge step (scripts/auto-suspend-purge-images.sh); keep the two in sync.
-purge_images() {
-  local base img
-  # Prefer Terraform's own artifact_registry_url output (single source of truth for the repo
-  # name — modules/artifact-registry) so this never drifts from a repository_id rename. Fall
-  # back to reconstructing it locally (ds_image_base) if the output isn't readable, e.g. state
-  # unavailable. The "devstash" literal lives in exactly one place now: the fallback.
-  base="$(tf_out artifact_registry_url)"
-  [[ -n "$base" ]] || base="$(ds_image_base "$REGION" "$PROJECT_ID" devstash)"
-  for img in "${DEVSTASH_IMAGES[@]}"; do
-    log "Purging ${base}/${img} (all versions + tags) from Artifact Registry"
-    gcloud artifacts docker images delete "${base}/${img}" \
-      --delete-tags --quiet --project="$PROJECT_ID" \
-      || warn "purge of ${img} returned non-zero (likely already empty) — continuing"
-  done
+# Delete the ENTIRE Artifact Registry repository (every image, version, tag, incl.
+# :buildcache) so a deep-suspended env holds ZERO image storage AND no lingering repo — the
+# last standing cost above the always-free tier. Safe: 'resume' runs a full-refresh apply
+# that RECREATES the repo (TF-managed, ungated on environment_active), then CI rebuilds +
+# repushes from source before the app is applied, and the Deployment pins images by the
+# digest CI just produced. Best-effort — a delete miss (repo already gone) must not abort the
+# suspend. Mirrors the unattended auto-suspend delete step
+# (scripts/auto-suspend-delete-repo.sh); keep the two in sync.
+delete_registry() {
+  local repo
+  # Prefer Terraform's own repository_id output (single source of truth — modules/artifact-
+  # registry) so this never drifts from a repository_id rename. Fall back to the "devstash"
+  # literal if the output isn't readable, e.g. state unavailable.
+  repo="$(tf_out artifact_registry_url)"
+  repo="${repo##*/}"                 # last path segment of region-docker.pkg.dev/project/repo
+  [[ -n "$repo" ]] || repo="devstash"
+  log "Deleting Artifact Registry repository ${repo} (all images + tags)"
+  gcloud artifacts repositories delete "${repo}" \
+    --location="$REGION" --quiet --project="$PROJECT_ID" \
+    || warn "repository delete returned non-zero (likely already gone) — continuing"
 }
 
 suspend() {
@@ -1004,7 +1004,7 @@ suspend() {
   dump_db                       # export + verify BEFORE anything is destroyed — aborts on failure
   set_active_state false false  # compute off + Cloud SQL instance destroyed
   apply                         # plan → review → apply; the plan shows the destroys
-  purge_images                  # reclaim AR image storage (CI rebuilds on resume) — after apply, off the destroy path
+  delete_registry               # delete the AR repo (resume recreates it, CI rebuilds) — after apply, off the destroy path
   ok "Suspended to ~\$0 (data safe in the GCS dump). Run 'resume' to bring it back."
 }
 

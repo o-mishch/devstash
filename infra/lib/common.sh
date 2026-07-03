@@ -13,17 +13,16 @@
 [[ -n "${_DEVSTASH_COMMON_SH:-}" ]] && return 0
 _DEVSTASH_COMMON_SH=1
 
-# The container images this project builds, deploys, and purges — declared once so adding
-# or renaming an image is a single edit shared by the builder and the laptop purge path
-# (run.sh purge_images). MIRRORED by local.devstash_images in
-# infra/terraform/envs/dev/auto-suspend.tf, which feeds the Cloud Build purge step's $_IMAGES
-# — that /bin/sh step can't source this bash lib, so keep the two lists in sync.
+# The container images this project builds and deploys — declared once so adding or renaming
+# an image is a single edit shared by every script that sources this library (the builder in
+# build-push.sh). The deep-suspend path no longer needs this list: it deletes the whole
+# Artifact Registry repo rather than looping individual images.
 # shellcheck disable=SC2034  # consumed by scripts that source this library, not here
 DEVSTASH_IMAGES=(web migrate)
 
 # ds_image_base <region> <project> <repo>: the Artifact Registry repo path that every
 # devstash image hangs off (e.g. us-central1-docker.pkg.dev/<project>/devstash). Kept here
-# so build-push.sh and run.sh purge_images() derive it identically.
+# so build-push.sh derives it identically to the rest of the tooling.
 ds_image_base() {
   printf '%s-docker.pkg.dev/%s/%s' "$1" "$2" "$3"
 }

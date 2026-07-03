@@ -102,12 +102,6 @@ locals {
   # build fetches them from Secret Manager. Sorted for a stable trigger diff.
   auto_suspend_secret_keys = nonsensitive(join(" ", sort(keys(var.third_party_secrets))))
 
-  # The images the purge step deletes. MIRRORS infra/lib/common.sh DEVSTASH_IMAGES (the bash
-  # source of truth run.sh purge_images uses) — Cloud Build's /bin/sh steps can't source that
-  # bash lib, so this is the necessary second copy. Passed to the purge step as $_IMAGES so
-  # the script has no hard-coded app-specific list. Keep the two in sync.
-  devstash_images = ["web", "migrate"]
-
   # Substitutions → step environment variables. The `script` field does NOT apply
   # substitutions to script CONTENT (and the provider doesn't expose automapSubstitutions),
   # so every $_VAR a script reads must be handed in as a real env var here — Cloud Build DOES
@@ -128,7 +122,6 @@ locals {
     "_DB_DUMPS_BUCKET=$_DB_DUMPS_BUCKET",
     "_DB_DUMP_OBJECT=$_DB_DUMP_OBJECT",
     "_AR_REPO=$_AR_REPO",
-    "_IMAGES=$_IMAGES",
   ]
 
   # Pub/Sub + Cloud Build + Cloud Scheduler service agents (data.google_project is declared
@@ -185,15 +178,28 @@ resource "google_storage_bucket_iam_member" "lifecycle_db_dumps" {
   member = "serviceAccount:${google_service_account.lifecycle[0].email}"
 }
 
-# The purge step (step 5) deletes the web+migrate images. deleteArtifacts is in repoAdmin;
-# scope it to THIS repo only (not project-wide artifactregistry.admin) — the same repo-
-# scoped-grant posture as the node reader in modules/iam.
-resource "google_artifact_registry_repository_iam_member" "lifecycle_ar_purge" {
+# The delete-registry step (step 5) deletes the WHOLE repo. No predefined role scopes just
+# repository deletion (repoAdmin covers deleteArtifacts but NOT repositories.delete), and
+# project-wide artifactregistry.admin is far broader than needed — so mint a custom role with
+# exactly the two permissions `gcloud artifacts repositories delete` calls, then bind it to
+# THIS repo only. Same repo-scoped least-privilege posture as the node reader in modules/iam.
+resource "google_project_iam_custom_role" "lifecycle_ar_deleter" {
+  count       = local.auto_suspend_on ? 1 : 0
+  role_id     = "${replace(local.name_prefix, "-", "_")}_ar_repo_deleter"
+  title       = "DevStash ${var.environment} AR repo deleter (idle auto-suspend)"
+  description = "Delete the Artifact Registry repo on deep-suspend so idle storage is $0."
+  permissions = [
+    "artifactregistry.repositories.delete",
+    "artifactregistry.repositories.get",
+  ]
+}
+
+resource "google_artifact_registry_repository_iam_member" "lifecycle_ar_delete" {
   count      = local.auto_suspend_on ? 1 : 0
   project    = var.project_id
   location   = var.region
   repository = module.artifact_registry.repository_id
-  role       = "roles/artifactregistry.repoAdmin"
+  role       = google_project_iam_custom_role.lifecycle_ar_deleter[0].id
   member     = "serviceAccount:${google_service_account.lifecycle[0].email}"
 }
 
@@ -355,12 +361,10 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     _DB_INSTANCE     = local.db_instance_name
     _DB_DUMPS_BUCKET = google_storage_bucket.db_dumps.name
     _DB_DUMP_OBJECT  = local.db_dump_object
-    # Artifact Registry repo — the purge step deletes web+migrate images for $0 idle
-    # storage (CI rebuilds + repushes on resume). Same repo id run.sh purge_images uses.
+    # Artifact Registry repo — the delete-registry step removes the whole repo for $0 idle
+    # storage (resume's full-refresh apply recreates it; CI rebuilds + repushes). Same repo
+    # id run.sh delete_registry uses.
     _AR_REPO = module.artifact_registry.repository_id
-    # Space-separated image names the purge step loops over (mirrors common.sh
-    # DEVSTASH_IMAGES). Passed in so the script carries no hard-coded list.
-    _IMAGES = join(" ", local.devstash_images)
   }
 
   build {
@@ -411,15 +415,15 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
       script = file("${path.module}/scripts/auto-suspend-suspend.sh")
     }
 
-    # 5 — PURGE IMAGES (only if idle). Delete the web+migrate images from Artifact Registry
-    #     so idle image storage is $0 (the last cost above the always-free tier). Runs after
-    #     the tofu suspend — off the critical dump→destroy path — and is best-effort (a
-    #     purge failure does not fail the build; CI rebuilds+repushes on resume).
+    # 5 — DELETE REGISTRY (only if idle). Delete the whole Artifact Registry repo so idle
+    #     storage is $0 (the last cost above the always-free tier). Runs after the tofu
+    #     suspend — off the critical dump→destroy path — and is best-effort (a delete failure
+    #     does not fail the build; resume's apply recreates the repo and CI repushes).
     step {
-      id     = "purge-images"
+      id     = "delete-registry"
       name   = "gcr.io/google.com/cloudsdktool/cloud-sdk:stable"
       env    = local.auto_suspend_build_env
-      script = file("${path.module}/scripts/auto-suspend-purge-images.sh")
+      script = file("${path.module}/scripts/auto-suspend-delete-repo.sh")
     }
   }
 
@@ -428,6 +432,6 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     google_project_iam_member.lifecycle,
     google_service_account_iam_member.lifecycle_actas,
     google_storage_bucket_iam_member.lifecycle_db_dumps,
-    google_artifact_registry_repository_iam_member.lifecycle_ar_purge,
+    google_artifact_registry_repository_iam_member.lifecycle_ar_delete,
   ]
 }

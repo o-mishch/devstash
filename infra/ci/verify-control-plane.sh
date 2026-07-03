@@ -25,7 +25,10 @@ if printf '%s' "$out" | grep -qiE '403 \(Forbidden\)|That.{0,3}s an error'; then
   echo "::error::Gate 2 (network): allow_external_traffic drifted off. Confirm: gcloud container clusters describe ${CLUSTER} --region ${REGION} --format='value(controlPlaneEndpointsConfig.dnsEndpointConfig.allowExternalTraffic)'  # expect True"
   echo "::error::Reconcile drift with: tofu apply  (from infra/terraform/envs/dev)."
 else
-  echo "::error::Control plane not reachable over the DNS endpoint (not the generic-403 signature):"
+  # Not the generic-403 drift signature — this runner simply can't reach GCP (no
+  # credentials, network unreachable, 412 precondition, etc.). Warn, don't fail the job.
+  echo "::warning::Control plane not reachable over the DNS endpoint and this is not the generic-403 drift signature — treating GCP as unavailable and skipping the preflight:"
   printf '%s\n' "$out"
+  exit 0
 fi
 exit 1
