@@ -26,6 +26,7 @@ ARG NODE_VERSION=24.18.0-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4
 # ---- deps: install dependencies only (best layer-cache hit rate) ----------
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
+ENV NO_UPDATE_NOTIFIER=true
 # libc6-compat: Prisma's query engine binary is a glibc-linked ELF; Alpine ships
 # musl only. This shim satisfies the missing symbols so the engine starts.
 # --no-cache skips storing the Alpine package index in a layer (saves ~8 MB).
@@ -40,6 +41,7 @@ RUN npm ci
 # ---- builder: compile the app ---------------------------------------------
 FROM node:${NODE_VERSION} AS builder
 WORKDIR /app
+ENV NO_UPDATE_NOTIFIER=true
 # libc6-compat: `npx prisma generate` spawns the native query-engine binary to
 # introspect the schema — same glibc-shim requirement as the deps stage.
 # --no-cache skips storing the Alpine package index in a layer (saves ~8 MB).
@@ -87,6 +89,7 @@ RUN npm run build
 # `pg` would make the seed's `import('@prisma/adapter-neon')` fail — intended for GCP.)
 FROM node:${NODE_VERSION} AS migrator-build
 WORKDIR /app
+ENV NO_UPDATE_NOTIFIER=true
 # The lockfile lives at /tmp, NOT in the install cwd: with a package-lock.json present in
 # the working dir, `npm install <pkgs>` reconciles against the whole lockfile and pulls the
 # entire app tree (chart.js, hono, radix, …) — defeating the subset. Reading versions from
@@ -123,6 +126,7 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NO_UPDATE_NOTIFIER=true
 COPY --from=migrator-build /app/node_modules ./node_modules
 COPY --from=migrator-build /app/package.json /app/tsconfig.json /app/prisma.config.ts ./
 COPY --from=migrator-build /app/prisma ./prisma
@@ -144,6 +148,7 @@ FROM node:${NODE_VERSION} AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NO_UPDATE_NOTIFIER=true
 # Next listens on PORT; HOSTNAME 0.0.0.0 is required so the server is reachable
 # from outside the container (default 127.0.0.1 only binds loopback).
 ENV PORT=3000

@@ -36,6 +36,7 @@ env:
   REPO: devstash # Artifact Registry repository id (modules/artifact-registry/main.tf)
   IMAGE: web # runtime image (default last Dockerfile stage)
   IMAGE_MIGRATE: migrate # migrator image (Dockerfile --target migrator)
+  NO_UPDATE_NOTIFIER: true # silence npm update notifications in CI steps
 
 # Default: read-only for all jobs. id-token + attestations are scoped to
 # build-deploy only — granting them workflow-wide would expose the GCP OIDC
