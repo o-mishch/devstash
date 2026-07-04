@@ -73,6 +73,24 @@ locals {
     "roles/browser",
     "roles/cloudkms.viewer",
     "roles/logging.logWriter",
+    # In-place UPDATE of the auto-suspend's OWN alert policy + Cloud Build trigger. The
+    # suspend apply runs with -refresh=false, so if config drifts from the last-written
+    # state on these two always-on resources (e.g. a computed notification-channel id or a
+    # substitutions reorder) it plans a self-update the SA must be able to write — otherwise
+    # the whole apply 403s AFTER the cheap resources (Valkey, NAT, IP, SQL) are already gone,
+    # leaving the env half-torn and re-firing every cycle. This is NOT an escalation: the SA
+    # only gains update on the two resources this automation itself owns (custom role below,
+    # same repo-scoped least-privilege posture as lifecycle_ar_deleter). It deliberately does
+    # NOT get resourcemanager.projects.setIamPolicy — the node-SA/AR-reader bindings are kept
+    # stable across suspend instead (deterministic gke_node_sa_email in main.tf), so the apply
+    # never needs to delete a project-IAM member.
+    #
+    # Built as a STATIC string, not google_project_iam_custom_role.lifecycle_self_updater.id:
+    # for_each keys must be known at plan time, and a not-yet-created resource's .id reads as
+    # unknown, which errors with "Invalid for_each argument". The custom role's canonical id
+    # is projects/<project>/roles/<role_id> — every part is a plan-time-known input — so
+    # reconstruct it here (the role resource below uses the same role_id expression).
+    "projects/${var.project_id}/roles/${replace(local.name_prefix, "-", "_")}_lifecycle_self_updater",
   ] : []
 
   # Non-secret tfvars for the headless apply — built from THIS module so the values match a
@@ -175,6 +193,11 @@ resource "google_project_iam_member" "lifecycle" {
   project  = var.project_id
   role     = each.value
   member   = "serviceAccount:${google_service_account.lifecycle[0].email}"
+
+  # lifecycle_roles now includes the self-updater custom role by its static id, so the role
+  # must exist before this binding references it (a static for_each key can't imply the
+  # ordering the way a resource reference would).
+  depends_on = [google_project_iam_custom_role.lifecycle_self_updater]
 }
 
 # Read/write the Terraform state object (+ lock) — scoped to the state bucket, not project.
@@ -219,6 +242,28 @@ resource "google_artifact_registry_repository_iam_member" "lifecycle_ar_delete" 
   repository = module.artifact_registry.repository_id
   role       = google_project_iam_custom_role.lifecycle_ar_deleter[0].id
   member     = "serviceAccount:${google_service_account.lifecycle[0].email}"
+}
+
+# Exactly the permissions to UPDATE-IN-PLACE the auto-suspend's own alert policy + Cloud
+# Build trigger (see the lifecycle_roles comment). No predefined role is this narrow —
+# roles/monitoring.editor and roles/cloudbuild.builds.editor each pull in create/delete
+# across every monitoring + build resource — so mint a custom role with only the four get +
+# update permissions the -refresh=false self-diff can require. Bound project-wide via
+# lifecycle_roles (the trigger + alert policy are project-scoped resources), NOT granting
+# resourcemanager.projects.setIamPolicy: the node IAM bindings are kept stable across
+# suspend so the apply never deletes a project-IAM member. Same custom-role least-privilege
+# posture as lifecycle_ar_deleter above.
+resource "google_project_iam_custom_role" "lifecycle_self_updater" {
+  count       = local.auto_suspend_on ? 1 : 0
+  role_id     = "${replace(local.name_prefix, "-", "_")}_lifecycle_self_updater"
+  title       = "DevStash ${var.environment} lifecycle self-updater (idle auto-suspend)"
+  description = "Update the auto-suspend's own alert policy + Cloud Build trigger so a -refresh=false self-diff never 403s the suspend apply."
+  permissions = [
+    "monitoring.alertPolicies.get",
+    "monitoring.alertPolicies.update",
+    "cloudbuild.builds.get",
+    "cloudbuild.builds.update",
+  ]
 }
 
 # Pub/Sub-triggered builds run as the trigger's service_account via the Cloud Build service

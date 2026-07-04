@@ -7,10 +7,30 @@
 #              monthly free-tier credit per billing account to Autopilot/zonal clusters.
 #              No google_container_node_pool resource needed or allowed.
 
+# ALWAYS-ON, not gated on cluster_active. A service account is free, and gating it made the
+# suspend/resume cycle churn it: on suspend the SA was destroyed, which forced its
+# project-IAM (container.defaultNodeServiceAccount) + Artifact Registry reader bindings to be
+# DESTROYED too — and deleting a google_project_iam_member needs
+# resourcemanager.projects.setIamPolicy, which the least-privilege auto-suspend lifecycle SA
+# deliberately does not have. So the suspend `tofu apply` 403'd there, AFTER Valkey/NAT/IP/SQL
+# were already gone, leaving a half-suspended env that recreated Valkey and re-fired every
+# 15 min. Keeping the SA alive across suspend keeps its email + bindings stable (no destroy,
+# no setIamPolicy needed) and also avoids the stale `deleted:serviceAccount:...?uid=` binding
+# a same-email recreate on resume would otherwise leave (see the terraform-provider-google
+# deleted-IAM-members guide). The cluster it belongs to is still fully destroyed on suspend.
 resource "google_service_account" "gke_nodes" {
-  count        = var.cluster_active ? 1 : 0
   account_id   = "${var.name_prefix}-gke-node-sa"
   display_name = "GKE Node Service Account"
+}
+
+# Dropping the old `count` renames the state address gke_nodes[0] -> gke_nodes. Without this
+# moved block Terraform would destroy the [0] instance and create the un-indexed one — i.e.
+# delete + recreate the live SA, the exact same-email churn (stale deleted:serviceAccount
+# bindings) this change exists to prevent. moved makes it an in-place state rename: no API
+# call, the SA and its bindings are untouched.
+moved {
+  from = google_service_account.gke_nodes[0]
+  to   = google_service_account.gke_nodes
 }
 
 resource "google_container_cluster" "primary" {
@@ -42,7 +62,7 @@ resource "google_container_cluster" "primary" {
 
   cluster_autoscaling {
     auto_provisioning_defaults {
-      service_account = try(google_service_account.gke_nodes[0].email, null)
+      service_account = google_service_account.gke_nodes.email
     }
   }
 

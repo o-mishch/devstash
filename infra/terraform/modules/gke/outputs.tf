@@ -45,6 +45,7 @@ output "binauthz_kms_key" {
 }
 
 output "node_service_account_email" {
-  value = try(google_service_account.gke_nodes[0].email, "")
+  # Always-on (not count-gated) — stable across suspend/resume. See the resource comment in main.tf.
+  value = google_service_account.gke_nodes.email
 }
 
