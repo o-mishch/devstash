@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot: build the full local stack on kind and verify it. Idempotent-ish.
-# The cloud analog is infra/gcp-run/run.sh; this mirrors its lifecycle on kind.
+# The cloud analog is infra/run/gcp/run.sh; this mirrors its lifecycle on kind.
 #
 # Deployment flow mirrors GCP CI (.github/workflows/deploy-gke.yml):
 #   1. Build images (web + migrator)
@@ -8,34 +8,48 @@
 #   3. Gate: run the migrate Job, wait for completion
 #   4. Roll out the web Deployment (same order as GCP: migrate → rollout)
 #
-# The Kubernetes manifests live in infra/k8s/overlays/local/ (mirrors overlays/gcp/).
-# This directory (local-run/) contains only the orchestrator (run.sh) and the
-# in-cluster backing services (Postgres, Redis, MinIO, Mailpit, dashboards).
+# The app manifests live in infra/k8s/overlays/local/ (mirrors overlays/gcp/); the in-cluster
+# backing services (Postgres, Redis, MinIO, Mailpit, dashboards) live in the kustomize base
+# infra/k8s/local/. This directory (infra/run/local/) holds only the orchestrator (run.sh)
+# and its sidecars (valkey-openssl.cnf, stripe-fake-webhook.ts).
 #
 # Usage:
-#   bash infra/k8s/local-run/run.sh           bring the whole stack up (default)
-#   bash infra/k8s/local-run/run.sh up        same as above
-#   bash infra/k8s/local-run/run.sh deploy    rebuild images + re-run migrate + roll out (fast iterate)
-#   bash infra/k8s/local-run/run.sh status    cluster / app / health summary
-#   bash infra/k8s/local-run/run.sh info      print all service URLs (app, Postgres, MinIO, etc.)
-#   bash infra/k8s/local-run/run.sh down      tear down the kind cluster
+#   bash infra/run/local/run.sh           bring the whole stack up (default)
+#   bash infra/run/local/run.sh up        same as above
+#   bash infra/run/local/run.sh deploy    rebuild images + re-run migrate + roll out (fast iterate)
+#   bash infra/run/local/run.sh status    cluster / app / health summary
+#   bash infra/run/local/run.sh info      print all service URLs (app, Postgres, MinIO, etc.)
+#   bash infra/run/local/run.sh down      tear down the kind cluster
 set -euo pipefail
 cd "$(dirname "$0")/../../.."   # repo root
 
-# Shared log/ok/warn/die + need() — one logging/preflight vocabulary with gcp-run/run.sh.
+# Shared log/ok/warn/die + need() — one logging/preflight vocabulary with run/gcp/run.sh.
 # BASH_SOURCE[0] resolves the lib path regardless of the caller's CWD.
 # shellcheck source=../../lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 NS=devstash
-HERE=infra/k8s/local-run
+# HERE = this orchestrator's own dir (valkey cnf, tofu state live beside run.sh).
+# LOCAL_K8S = the backing-services kustomize base (Postgres/Redis/MinIO/Mailpit/dashboards +
+# their init-script ConfigMaps + kind-config.yaml). OVERLAY = the app-under-test overlay.
+HERE=infra/run/local
+LOCAL_K8S=infra/k8s/local
 OVERLAY=infra/k8s/overlays/local
+
+# OpenTofu drives cluster creation (the local analog of infra/run/gcp/run.sh's GKE flow).
+# TF_DIR is the envs/local root; the local-file backend keeps its state HERE (gitignored) so
+# a `down` can destroy exactly what `up` created, and so the cluster is state-tracked rather
+# than being an untracked `kind create`.
+TF_DIR=infra/terraform/envs/local
+TF_STATE="$HERE/.tofu-state/local.tfstate"
+tofu_() { tofu -chdir="$TF_DIR" "$@"; }
 
 # preflight: assert every CLI this local stack drives is on PATH before we start, so a
 # missing tool fails fast with an install hint instead of a cryptic error deep in `up`.
 preflight() {
   need docker  "https://docs.docker.com/get-docker/"
   need kind    "https://kind.sigs.k8s.io/docs/user/quick-start/#installation"
+  need tofu    "https://opentofu.org/docs/intro/install (or use terraform)"
   need kubectl "https://kubernetes.io/docs/tasks/tools/"
   need yq      "brew install yq"
   need openssl "brew install openssl"
@@ -103,16 +117,25 @@ build_and_load() {
   kind load docker-image devstash-migrate:local --name devstash
 }
 
-# ── Helper: (re)create a ConfigMap from a single on-disk script ───────────────
-# The backing-service manifests mount their init scripts from ConfigMaps so the shell stays in
-# real, shellcheckable files (see infra/.agents/rules/infra.md — no inline scripts in YAML).
-# Because those manifests are applied raw (not via kustomize configMapGenerator), run.sh
-# materialises the ConfigMap here, idempotently, before the manifest that mounts it.
-# $1 = ConfigMap name, $2 = path to the script file (its basename becomes the mounted key).
-configmap_from_script() {
-  kubectl -n "$NS" create configmap "$1" --from-file="$2" \
-    --dry-run=client -o yaml | kubectl apply -f -
+# ── Helper: apply a named slice of the backing-services base ($LOCAL_K8S) ─────
+# The base (infra/k8s/local) bundles ALL backing services + the two init-script ConfigMaps
+# (generated via configMapGenerator, so run.sh no longer materialises them by hand). But the
+# up-flow must still stage them: the data services (Postgres/Redis/MinIO/Mailpit) come up
+# BEFORE the migrate gate, and the dashboards (Headlamp/pgAdmin) roll out AFTER the app — so
+# we render the base once and apply it in slices, mirroring apply_overlay_slice's approach for
+# the app overlay. $1 is a yq boolean expression over each doc (e.g. a .metadata.name test).
+# The generated ConfigMaps ride along with whichever slice mounts them (name match below).
+apply_local_slice() {
+  kubectl kustomize "$LOCAL_K8S" \
+    | yq "select($1)" \
+    | kubectl apply -f -
 }
+
+# The dashboards (Headlamp + pgAdmin) and their objects, by name — the one group held back
+# until after the app rolls out. Slice 1 (data services) is the complement of this set;
+# slice 2 (dashboards) is this set. Kept as a single yq predicate so the two slices stay
+# exact complements and can never overlap or drop a resource.
+DASHBOARD_NAMES='["headlamp","headlamp-admin","pgadmin","pgadmin-config","pgadmin-seed-script"]'
 
 # ── Helper: render the local overlay and apply one kind slice server-side ─────
 # The migrate gate requires infra (everything except the Deployment) to exist BEFORE the
@@ -124,11 +147,39 @@ apply_overlay_slice() {
     | kubectl apply --server-side -f -
 }
 
+# ── Helper: provision the kind cluster via OpenTofu (envs/local) ──────────────
+# Mirrors infra/run/gcp/run.sh's tofu flow (init -backend-config → apply), scaled down to a
+# single kind_cluster resource. The local-file backend's state path is supplied at init via a
+# partial backend-config (envs/local/backend.tf is `backend "local" {}` with no path), exactly
+# as the GCP env passes its GCS bucket. cluster_active=true is the resume state; run.sh `down`
+# flips it false through cluster_down. Idempotent: a second `up` re-applies to no-op if the
+# cluster already exists in state. The tofu-managed cluster replaces the old bare
+# `kind create cluster --config kind-config.yaml` — same config file, now referenced by the
+# kind module via path.
+cluster_up() {
+  mkdir -p "$(dirname "$TF_STATE")"
+  log "provisioning kind cluster via OpenTofu (envs/local)"
+  tofu_ init -input=false -backend-config="path=$(cd "$(dirname "$TF_STATE")" && pwd)/$(basename "$TF_STATE")"
+  tofu_ apply -input=false -auto-approve -var cluster_active=true
+}
+
+# ── Helper: destroy the kind cluster via OpenTofu (state-tracked teardown) ─────
+# The counterpart to cluster_up. tofu destroy removes exactly what the state tracks (the one
+# kind_cluster), replacing the old untracked `kind delete cluster`. Re-init first so a `down`
+# on a fresh checkout (no .terraform) still resolves the backend path.
+cluster_down() {
+  [[ -f "$TF_STATE" ]] || { warn "no local tofu state — nothing to destroy"; return 0; }
+  log "destroying kind cluster via OpenTofu (envs/local)"
+  tofu_ init -input=false -backend-config="path=$(cd "$(dirname "$TF_STATE")" && pwd)/$(basename "$TF_STATE")"
+  tofu_ destroy -input=false -auto-approve
+}
+
 up() {
   preflight
 
-  # 1. Cluster (skip if it already exists)
-  kind get clusters | grep -qx devstash || kind create cluster --config "$HERE/kind-config.yaml"
+  # 1. Cluster — provisioned by OpenTofu (state-tracked). The kind module reuses this
+  #    directory's kind-config.yaml by path, so the node/port-mapping layout is unchanged.
+  cluster_up
 
   # 2. Build images: web (runtime) + migrator (Dockerfile --target migrator).
   #    Both are loaded into kind so no registry pull is needed.
@@ -142,12 +193,11 @@ up() {
   #     valkey-tls Secret to serve rediss://, mirroring GCP Memorystore SERVER_AUTHENTICATION).
   ensure_valkey_tls
 
-  # 4. Backing services (applied raw, NOT via the overlay kustomization):
-  #    Postgres, Redis, MinIO, Mailpit. The overlay is the app under test, not
-  #    its dependencies. Wait for each to be ready before running migrations.
-  #    The minio-bucket-init Job mounts its script from this ConfigMap — create it first.
-  configmap_from_script minio-bucket-init-script "$HERE/scripts/minio-bucket-init.sh"
-  kubectl apply -f "$HERE/01-postgres.yaml" -f "$HERE/02-redis.yaml" -f "$HERE/05-minio-mailpit.yaml"
+  # 4. Backing services from the base ($LOCAL_K8S), NOT the app overlay: Postgres, Redis,
+  #    MinIO, Mailpit + the minio-bucket-init Job and its generated init-script ConfigMap.
+  #    The dashboards (Headlamp/pgAdmin) are held back to step 8 (post-app). Wait for each
+  #    to be ready before running migrations.
+  apply_local_slice "(.metadata.name as \$n | $DASHBOARD_NAMES | contains([\$n]) | not)"
   kubectl -n "$NS" rollout status statefulset/postgres --timeout=120s
   kubectl -n "$NS" rollout status deploy/redis         --timeout=120s
   kubectl -n "$NS" rollout status deploy/minio         --timeout=120s
@@ -169,12 +219,11 @@ up() {
   apply_overlay_slice '== "Deployment"'
   kubectl -n "$NS" rollout status deploy/devstash-web --timeout=180s
 
-  # 8. Dashboards (not in the app overlay — applied separately as extras).
-  kubectl apply -f "$HERE/06-headlamp.yaml"
+  # 8. Dashboards (Headlamp + pgAdmin) — the held-back slice of the base, applied post-app.
+  #    pgAdmin's seed-pgpass initContainer mounts its script from the pgadmin-seed-script
+  #    ConfigMap, which the base generates and this slice carries.
+  apply_local_slice "(.metadata.name as \$n | $DASHBOARD_NAMES | contains([\$n]))"
   kubectl -n headlamp rollout status deploy/headlamp --timeout=120s
-  # pgAdmin's seed-pgpass initContainer mounts its script from this ConfigMap — create it first.
-  configmap_from_script pgadmin-seed-script "$HERE/scripts/pgadmin-seed-pgpass.sh"
-  kubectl apply -f "$HERE/07-pgadmin.yaml"
   kubectl -n "$NS" rollout status deploy/pgadmin --timeout=120s
 
   # 9. Verify
@@ -216,7 +265,7 @@ status() {
   curl -s -w '\nHTTP %{http_code}\n' 'http://localhost:8080/api/health?deep=1' || echo "app unreachable on :8080"
 }
 
-down() { kind delete cluster --name devstash; }
+down() { cluster_down; }
 
 info() {
   echo "App:            http://localhost:8080"
@@ -229,7 +278,7 @@ info() {
   echo "Valkey:         kubectl -n devstash exec deploy/redis -- redis-cli --tls --cacert /tls/ca.crt  (TLS, no bundled web UI)"
   echo "Billing (Pro):  OFFLINE — grant Pro with a signed fake webhook (no Stripe acct):"
   echo "                STRIPE_WEBHOOK_SECRET=whsec_local_test \\"
-  echo "                  npx tsx infra/k8s/local-run/stripe-fake-webhook.ts <userId> [active|canceled]"
+  echo "                  npx tsx infra/run/local/stripe-fake-webhook.ts <userId> [active|canceled]"
 }
 
 case "${1:-up}" in

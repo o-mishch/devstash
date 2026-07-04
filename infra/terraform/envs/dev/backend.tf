@@ -13,7 +13,7 @@
 # must use run.sh or pass the explicit bucket with `-backend-config`.
 terraform {
   backend "gcs" {
-    # Partial backend config: bucket is supplied by infra/gcp-run/run.sh after it
+    # Partial backend config: bucket is supplied by infra/run/gcp/run.sh after it
     # reads project_id/environment from the gitignored terraform.tfvars.
     prefix = "gke/dev"
   }

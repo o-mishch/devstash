@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot: stand up the full GCP deploy of DevStash on GKE Autopilot — the cloud
-# analog of infra/k8s/local-run/run.sh. Idempotent: every step checks existence
+# analog of infra/run/local/run.sh. Idempotent: every step checks existence
 # before creating, so re-runs are safe.
 #
 # What the LOCAL run.sh does on kind, this does on GCP. The heavy infra (VPC, GKE,
@@ -12,26 +12,26 @@
 # Full manual walkthrough: infra/docs/08-gcp-bootstrap.md.
 #
 # Usage:
-#   bash infra/gcp-run/run.sh up             bootstrap → terraform apply → gh secrets → fix DNS
-#   bash infra/gcp-run/run.sh bootstrap      project/billing/ADC/state-bucket/APIs only
-#   bash infra/gcp-run/run.sh apply          terraform init + apply, then re-point the gke.* A-record
-#   bash infra/gcp-run/run.sh eso            install External Secrets Operator (once per cluster)
-#   bash infra/gcp-run/run.sh reloader       install Stakater Reloader (once per cluster)
-#   bash infra/gcp-run/run.sh secrets        push GCP_PROJECT_ID/DEPLOYER_SA/WIF + APP_DOMAIN to GitHub
-#   bash infra/gcp-run/run.sh verify-secrets check all expected Secret Manager secrets exist + ESO sync status
-#   bash infra/gcp-run/run.sh rotate-secret  <name-suffix>   securely prompt for value + force ESO sync
-#   bash infra/gcp-run/run.sh upgrade-helm   bump ESO + Reloader to latest chart versions + apply to cluster
-#   bash infra/gcp-run/run.sh deploy         trigger the deploy-gke CI workflow (build+migrate+rollout)
-#   bash infra/gcp-run/run.sh smoke          wait for latest CI run + health-check the app
-#   bash infra/gcp-run/run.sh status         show cluster / ingress IP / cert / pod health
-#   bash infra/gcp-run/run.sh logs           tail app pod logs (last 100 lines, all pods)
-#   bash infra/gcp-run/run.sh suspend        cost→~$0: dump Cloud SQL to GCS, then destroy compute + DB
-#   bash infra/gcp-run/run.sh resume         recreate compute + Cloud SQL, restore dump, redeploy, fix DNS
-#   bash infra/gcp-run/run.sh dump-db        ad-hoc: export Cloud SQL to the GCS db-dumps bucket (no suspend)
-#   bash infra/gcp-run/run.sh restore-db     import the latest GCS dump into the current Cloud SQL instance
-#   bash infra/gcp-run/run.sh update-dns     re-point the gke.* A-record at the current ingress IP (Spaceship API)
-#   bash infra/gcp-run/run.sh set-dns-creds  store Spaceship DNS API key/secret in Secret Manager
-#   bash infra/gcp-run/run.sh down           tofu destroy (tear everything down, incl. Cloud SQL)
+#   bash infra/run/gcp/run.sh up             bootstrap → terraform apply → gh secrets → fix DNS
+#   bash infra/run/gcp/run.sh bootstrap      project/billing/ADC/state-bucket/APIs only
+#   bash infra/run/gcp/run.sh apply          terraform init + apply, then re-point the gke.* A-record
+#   bash infra/run/gcp/run.sh eso            install External Secrets Operator (once per cluster)
+#   bash infra/run/gcp/run.sh reloader       install Stakater Reloader (once per cluster)
+#   bash infra/run/gcp/run.sh secrets        push GCP_PROJECT_ID/DEPLOYER_SA/WIF + APP_DOMAIN to GitHub
+#   bash infra/run/gcp/run.sh verify-secrets check all expected Secret Manager secrets exist + ESO sync status
+#   bash infra/run/gcp/run.sh rotate-secret  <name-suffix>   securely prompt for value + force ESO sync
+#   bash infra/run/gcp/run.sh upgrade-helm   bump ESO + Reloader to latest chart versions + apply to cluster
+#   bash infra/run/gcp/run.sh deploy         trigger the deploy-gke CI workflow (build+migrate+rollout)
+#   bash infra/run/gcp/run.sh smoke          wait for latest CI run + health-check the app
+#   bash infra/run/gcp/run.sh status         show cluster / ingress IP / cert / pod health
+#   bash infra/run/gcp/run.sh logs           tail app pod logs (last 100 lines, all pods)
+#   bash infra/run/gcp/run.sh suspend        cost→~$0: dump Cloud SQL to GCS, then destroy compute + DB
+#   bash infra/run/gcp/run.sh resume         recreate compute + Cloud SQL, restore dump, redeploy, fix DNS
+#   bash infra/run/gcp/run.sh dump-db        ad-hoc: export Cloud SQL to the GCS db-dumps bucket (no suspend)
+#   bash infra/run/gcp/run.sh restore-db     import the latest GCS dump into the current Cloud SQL instance
+#   bash infra/run/gcp/run.sh update-dns     re-point the gke.* A-record at the current ingress IP (Spaceship API)
+#   bash infra/run/gcp/run.sh set-dns-creds  store Spaceship DNS API key/secret in Secret Manager
+#   bash infra/run/gcp/run.sh down           tofu destroy (tear everything down, incl. Cloud SQL)
 #
 # SUSPEND/RESUME (on-demand showcase, true ~$0 while idle):
 #   `suspend` first DUMPS Cloud SQL to the GCS db-dumps bucket (`gcloud sql export`) and
@@ -51,14 +51,14 @@
 #   BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX   billing account to link (else first open one)
 #   AUTO_APPROVE=1                         skip the confirmation before `tofu apply`/`destroy`
 set -euo pipefail
-cd "$(dirname "$0")/../.."   # repo root
+cd "$(dirname "$0")/../../.."   # repo root
 
 TF_DIR=infra/terraform/envs/dev
 TFVARS="$TF_DIR/terraform.tfvars"
 STATE_BUCKET="${STATE_BUCKET:-}"
 # GCS lifecycle config for the out-of-band state bucket. Kept as a standalone JSON file
 # (not an inline heredoc) so it is diffable, jq-validatable, and reviewable as JSON.
-STATE_LIFECYCLE=infra/gcp-run/tfstate-lifecycle.json
+STATE_LIFECYCLE=infra/run/gcp/tfstate-lifecycle.json
 PLAN_FILE=devstash.tfplan
 NS=devstash
 DB_NAME=devstash   # logical DB inside the Cloud SQL instance (dump/restore --database target)
@@ -72,16 +72,16 @@ export HELM_FAILURE_POLICY="--rollback-on-failure"
 
 # Pinned Helm chart versions — single source of truth shared with deploy-gke.yml.
 # shellcheck source-path=SCRIPTDIR
-# shellcheck source=../versions.env
-source "$(dirname "$0")/../versions.env"
+# shellcheck source=../../versions.env
+source "$(dirname "$0")/../../versions.env"
 # Shared image coordinates (DEVSTASH_IMAGES, ds_image_base) — the same helpers the CI
 # scripts source, so run.sh and infra/ci/*.sh never drift on the registry path.
-# shellcheck source=../lib/common.sh
-source "$(dirname "$0")/../lib/common.sh"
+# shellcheck source=../../lib/common.sh
+source "$(dirname "$0")/../../lib/common.sh"
 
 # ── helpers ────────────────────────────────────────────────────────────────
 # log/ok/warn/die + need() are provided by the sourced infra/lib/common.sh (shared with
-# infra/k8s/local-run/run.sh so both orchestrators speak one logging/preflight vocabulary).
+# infra/run/local/run.sh so both orchestrators speak one logging/preflight vocabulary).
 
 confirm() {
   [[ "${AUTO_APPROVE:-}" == "1" ]] && return 0
@@ -718,7 +718,7 @@ verify_secrets() {
     fi
   else
     warn "ExternalSecret devstash-secrets not found — cluster not reachable or ESO not installed"
-    warn "Run: bash infra/gcp-run/run.sh eso   (installs ESO + Reloader once per cluster)"
+    warn "Run: bash infra/run/gcp/run.sh eso   (installs ESO + Reloader once per cluster)"
   fi
 }
 
@@ -799,7 +799,7 @@ upgrade_helm() {
   [[ -n "$latest_reloader" ]] || die "could not fetch latest Reloader chart version"
 
   local versions_file
-  versions_file="$(dirname "$0")/../versions.env"
+  versions_file="$(dirname "$0")/../../versions.env"
 
   if [[ "$ESO_VERSION" == "$latest_eso" ]]; then
     ok "ESO already at latest ($ESO_VERSION)"
@@ -1068,7 +1068,7 @@ update_dns() {
   ip="${INGRESS_IP:-$(tf_out ingress_ip_address)}"
   if [[ -z "$ip" || "$ip" == "null" ]]; then
     warn "no ingress IP available (environment suspended?) — skipping DNS update"
-    warn "Pass one explicitly:  INGRESS_IP=<ip> bash infra/gcp-run/run.sh update-dns"
+    warn "Pass one explicitly:  INGRESS_IP=<ip> bash infra/run/gcp/run.sh update-dns"
     return 0
   fi
   domain="$(tf_out app_domain)"
@@ -1220,7 +1220,7 @@ resume() {
   update_dns
   log "Resume kicked off. Next:"
   echo "  1. Watch the deploy:  gh run watch"
-  echo "  2. bash infra/gcp-run/run.sh smoke   # wait for CI + health check"
+  echo "  2. bash infra/run/gcp/run.sh smoke   # wait for CI + health check"
   warn "A new managed cert re-provisions after DNS resolves to the new IP (up to ~60 min)."
   warn "Site stays reachable meanwhile via the pre-shared-cert fallback (mcrt-ac492906-...) in overlays/gcp/kustomization.yaml."
 }
@@ -1238,9 +1238,9 @@ case "$CMD" in
     log "Bootstrap + infra done. Next:"
     echo "  1. If the DNS A-record above was not set automatically (creds missing),"
     echo "     add it by hand, then wait for the cert to go Active."
-    echo "  2. bash infra/gcp-run/run.sh verify-secrets  # confirm all SM secrets exist + ESO synced"
-    echo "  3. bash infra/gcp-run/run.sh deploy          # build + migrate + roll out the app"
-    echo "  4. bash infra/gcp-run/run.sh smoke           # wait for CI + verify health endpoint"
+    echo "  2. bash infra/run/gcp/run.sh verify-secrets  # confirm all SM secrets exist + ESO synced"
+    echo "  3. bash infra/run/gcp/run.sh deploy          # build + migrate + roll out the app"
+    echo "  4. bash infra/run/gcp/run.sh smoke           # wait for CI + verify health endpoint"
     ;;
   bootstrap)       preflight; bootstrap ;;
   # update_dns re-points the gke.* A-record at the current ingress IP. The IP is

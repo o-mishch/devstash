@@ -6,7 +6,7 @@
 
 > 🎓 **Як учити (швидко).** 📚-блоки = короткий концепт для співбесіди (з джерелом);
 > ⚙️-блоки = команда `run.sh`, що інкапсулює крок. Спершу прожени руками, далі —
-> одним викликом. Образ цього рівня збирають [`infra/k8s/local-run/run.sh`](../k8s/local-run/run.sh)
+> одним викликом. Образ цього рівня збирають [`infra/run/local/run.sh`](../run/local/run.sh)
 > (kind) і CI [`deploy-gke.yml`](../../.github/workflows/deploy-gke.yml) (GKE).
 
 ## Що ми будуємо
@@ -225,7 +225,7 @@ docker history devstash:local
 > ⚙️ **Автоматизація.** Ручний `docker build` вище — щоб зрозуміти стадії. У реальному
 > циклі обидва образи (web + migrator) збирає й вантажить у кластер один крок:
 > ```bash
-> bash infra/k8s/local-run/run.sh up   # build devstash:local + devstash-migrate:local → kind load
+> bash infra/run/local/run.sh up   # build devstash:local + devstash-migrate:local → kind load
 > ```
 > На GKE те саме робить CI: `docker build` обох таргетів → push в Artifact Registry →
 > deploy за digest (Рівень 4, [04-cicd.md](04-cicd.md)).

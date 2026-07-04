@@ -12,8 +12,8 @@
 
 > 🎓 **Як учити (швидко).** Це runbook встановлення. Кожен інструмент тут потрібен
 > якомусь кроку `run.sh`: `gcloud/tofu/gh/kubectl/helm/jq/yq` звіряє preflight у
-> [`infra/gcp-run/run.sh`](../gcp-run/run.sh); `docker/kind/kubectl` — основа
-> [`infra/k8s/local-run/run.sh`](../k8s/local-run/run.sh).
+> [`infra/run/gcp/run.sh`](../run/gcp/run.sh); `docker/kind/kubectl` — основа
+> [`infra/run/local/run.sh`](../run/local/run.sh).
 
 ## Terraform
 
@@ -119,7 +119,7 @@ brew install kustomize
 
 ## Helm (менеджер пакетів для Kubernetes)
 
-Потрібен для встановлення **External Secrets Operator** (крок 7.0 у `gcp-run/run.sh`). Без
+Потрібен для встановлення **External Secrets Operator** (крок 7.0 у `run/gcp/run.sh`). Без
 нього `run.sh eso` впаде на `need helm`.
 
 ```bash
@@ -129,7 +129,7 @@ helm version
 
 ## jq та yq (обробники JSON / YAML)
 
-Обидва перевіряються preflight-функцією `gcp-run/run.sh`. `jq` для JSON-виводу gcloud/gh,
+Обидва перевіряються preflight-функцією `run/gcp/run.sh`. `jq` для JSON-виводу gcloud/gh,
 `yq` для маніпуляцій із YAML-маніфестами (інʼєкція PROJECT_ID, domain, imageTag у CI та
 у run.sh):
 
@@ -216,7 +216,7 @@ gke-gcloud-auth-plugin --version   # якщо підключаєтесь до GK
 ```
 
 > ⚙️ **Автоматизація.** Замість звіряти руками — `preflight()` у
-> [`infra/gcp-run/run.sh`](../gcp-run/run.sh) перевіряє наявність кожного CLI і падає
+> [`infra/run/gcp/run.sh`](../run/gcp/run.sh) перевіряє наявність кожного CLI і падає
 > з посиланням на встановлення, якщо чогось бракує. Будь-яка підкоманда (`up`,
 > `bootstrap`, `apply`…) запускає його першою.
 
@@ -230,7 +230,7 @@ gke-gcloud-auth-plugin --version   # якщо підключаєтесь до GK
 | **kind** | `brew install kind` | Швидкі локальні кластери; поєднується з Docker |
 | **Docker** | `brew install --cask docker` | Потрібен для kind; також Layer 1 |
 | **helm** | `brew install helm` | Встановлення External Secrets Operator (ESO) на GKE |
-| **jq / yq** | `brew install jq yq` | JSON/YAML-обробка; preflight-перевірка `gcp-run/run.sh` |
+| **jq / yq** | `brew install jq yq` | JSON/YAML-обробка; preflight-перевірка `run/gcp/run.sh` |
 | **gh** | `brew install gh` | Запис GitHub Actions secrets; запуск CI-деплою з run.sh |
 | **gcloud** | `brew install --cask google-cloud-sdk` | Лише для реального plan/apply у GCP |
 | **gke-gcloud-auth-plugin** | `gcloud components install gke-gcloud-auth-plugin` | Обов'язковий для `kubectl` проти GKE-кластерів |

@@ -6,7 +6,7 @@
 # mean a failed/empty dump exits non-zero, which fails the build so the suspend step NEVER
 # destroys an un-dumped instance.
 # SIBLING: this is the same export+non-empty-size safety gate run.sh's dump_db() runs on the
-# laptop path (infra/gcp-run/run.sh). Different execution model (Cloud Build container vs.
+# laptop path (infra/run/gcp/run.sh). Different execution model (Cloud Build container vs.
 # local shell) so it can't be shared code — if you change the verification rule here, change
 # it there too.
 set -eu

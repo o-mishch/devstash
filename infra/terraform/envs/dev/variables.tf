@@ -148,7 +148,7 @@ variable "spaceship_api_secret" {
 # Driven through to module.network (compute_active), module.gke (cluster_active),
 # module.cloudsql (activation_policy), and module.memorystore (count). The event-driven
 # auto-suspend (auto-suspend.tf) flips ONLY this — never db_active — so it can never
-# destroy the database. Operated via `infra/gcp-run/run.sh suspend|resume`, which persist
+# destroy the database. Operated via `infra/run/gcp/run.sh suspend|resume`, which persist
 # the value in active.auto.tfvars so a plain `tofu apply` keeps the chosen state. See
 # infra/docs/10-suspend-resume.md.
 variable "environment_active" {

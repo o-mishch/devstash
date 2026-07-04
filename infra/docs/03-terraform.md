@@ -348,11 +348,11 @@ tofu fmt -recursive -check   # ✅ canonical formatting
 
 > ⚙️ **Автоматизація.** Офлайн-валідація вище — ручна. Реальний цикл проти GCP
 > (init з GCS-backend → plan → apply, плюс отримання kubeconfig) інкапсульовано в
-> [`infra/gcp-run/run.sh`](../gcp-run/run.sh):
+> [`infra/run/gcp/run.sh`](../run/gcp/run.sh):
 > ```bash
-> bash infra/gcp-run/run.sh bootstrap   # передумови ДО init: проєкт/білінг/ADC/state-бакет/API
-> bash infra/gcp-run/run.sh apply       # tofu init -backend-config=… → plan → apply → get-credentials
-> bash infra/gcp-run/run.sh down        # tofu destroy (deletion_protection треба зняти першим)
+> bash infra/run/gcp/run.sh bootstrap   # передумови ДО init: проєкт/білінг/ADC/state-бакет/API
+> bash infra/run/gcp/run.sh apply       # tofu init -backend-config=… → plan → apply → get-credentials
+> bash infra/run/gcp/run.sh down        # tofu destroy (deletion_protection треба зняти першим)
 > ```
 > `apply` завжди планує у файл і застосовує **саме цей plan** — нуль дрейфу між
 > рев'ю diff і реальною мутацією GCP. Покрокові передумови та повний порядок

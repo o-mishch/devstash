@@ -16,7 +16,7 @@
  *
  * Usage (app must be reachable; defaults target the kind NodePort on :8080):
  *   STRIPE_WEBHOOK_SECRET=whsec_local_test \
- *     npx tsx infra/k8s/local-run/stripe-fake-webhook.ts <userId> [active|canceled|past_due]
+ *     npx tsx infra/run/local/stripe-fake-webhook.ts <userId> [active|canceled|past_due]
  *
  *   APP_URL=http://localhost:8080 overrides the target.
  *
@@ -30,7 +30,7 @@ const userId = process.argv[2]
 const status = (process.argv[3] ?? 'active') as Stripe.Subscription.Status
 
 if (!userId) {
-  console.error('Usage: npx tsx infra/k8s/local-run/stripe-fake-webhook.ts <userId> [status]')
+  console.error('Usage: npx tsx infra/run/local/stripe-fake-webhook.ts <userId> [status]')
   process.exit(1)
 }
 

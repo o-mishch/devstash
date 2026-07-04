@@ -11,13 +11,7 @@ Critically review all flows related to GCP deployment, to verify that nothing is
 
 
 @.agents/agents/refactor-scanner.md 
-infra/gcp-run/run.sh 
-infra/k8s/local-run/run.sh 
-infra/ci 
-infra/terraform/envs/dev/scripts
-infra/lib
-infra/k8s/local-run/scripts
-infra/k8s/overlays/gcp/redisinsight/entrypoint.sh
+all `*.sh` scripts in directory `infra`
 
 KISS, DRY, SOLID
 

@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars to override defaults. All variables already have sensible
+# defaults (see variables.tf), so a local run needs NO tfvars at all — this file documents
+# the knobs. terraform.tfvars is gitignored.
+#
+# The suspend/resume toggle is NOT set here — run.sh persists it in active.auto.tfvars
+# (gitignored), mirroring how envs/dev keeps environment_active in its own active.auto.tfvars.
+
+# kind cluster name. Must match what run.sh / kubectl tooling expects (default "devstash").
+# cluster_name = "devstash"
+
+# Path to kind-config.yaml, relative to modules/kind. Default already points at the
+# checked-in infra/k8s/local/kind-config.yaml — override only to use a different file.
+# kind_config_path = "../../../k8s/local/kind-config.yaml"

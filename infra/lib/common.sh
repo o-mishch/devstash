@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Shared bash helpers for the DevStash deploy tooling. SOURCED (never executed) so the
 # Artifact Registry image coordinates live in exactly one place, consumed identically by
-# infra/gcp-run/run.sh (laptop bootstrap) and infra/ci/*.sh (GitHub Actions steps).
+# infra/run/gcp/run.sh (laptop bootstrap) and infra/ci/*.sh (GitHub Actions steps).
 #
 # NOT usable from infra/terraform/envs/dev/scripts/*.sh — those are Cloud Build /bin/sh
 # substitution templates ($_VAR / $$), a different dialect that runs inside a container

@@ -1,6 +1,6 @@
 # Ops-only credentials → ONE consolidated Secret Manager secret (devstash-ops-config).
 #
-# Today this holds the Spaceship DNS API key/secret pair used by `infra/gcp-run/run.sh resume`
+# Today this holds the Spaceship DNS API key/secret pair used by `infra/run/gcp/run.sh resume`
 # to re-point the gke.* A-record at the freshly-allocated ingress IP after a suspend (the global
 # IP is released on suspend and reallocated on resume). They are OPS creds — the application
 # never needs them — so they are deliberately kept OUT of the app blob (devstash-app-config) and

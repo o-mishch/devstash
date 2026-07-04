@@ -165,9 +165,10 @@ resource "google_sql_database_instance" "postgres" {
 
     # Password strength policy — resolves the "No password policy" / "No user password
     # policy" instance health issues. Cloud SQL enforces these rules on built-in
-    # (password) users at creation/change time. The app user's password is a 32-char
-    # random_password (root module) that already satisfies them; this makes the policy
-    # explicit and blocks weak passwords on any future built-in user.
+    # (password) users at creation/change time. COMPLEXITY_DEFAULT requires
+    # upper+lower+numeric+special, so the app user's random_password (root module) MUST
+    # set min_special >= 1 and a URL-safe override_special — an alphanumeric-only password
+    # (special=false) is REJECTED at google_sql_user create with INVALID_PASSWORD.
     password_validation_policy {
       enable_password_policy      = true
       min_length                  = 12

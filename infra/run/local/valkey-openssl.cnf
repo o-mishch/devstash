@@ -1,5 +1,5 @@
 # OpenSSL config for the local Valkey server certificate (self-signed, dev-only).
-# Generated + consumed by infra/k8s/local-run/run.sh (ensure_valkey_tls). Mirrors GCP
+# Generated + consumed by infra/run/local/run.sh (ensure_valkey_tls). Mirrors GCP
 # Memorystore's in-transit TLS (SERVER_AUTHENTICATION): the Valkey server presents this
 # cert and the app verifies it against the CA. SANs let hostname-verifying clients
 # (valkey-cli, RedisInsight) connect too; the app itself skips the hostname check

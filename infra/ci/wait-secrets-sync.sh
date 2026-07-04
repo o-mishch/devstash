@@ -68,7 +68,7 @@ if [ -z "$blob" ]; then
   # No accessible enabled version at all — the secret was never created, or IAM access is broken.
   # Rare (Terraform keeps one enabled version at all times), but treat a missing source as the
   # benign parked state per the warn-and-finish directive rather than failing the build.
-  echo "::warning::Could not read any enabled version of '$SM_SECRET' (missing or inaccessible) — treating as a suspended/parked env and finishing without failing the build. Downstream migrate + rollout steps self-skip. Repopulate with: bash infra/gcp-run/run.sh resume."
+  echo "::warning::Could not read any enabled version of '$SM_SECRET' (missing or inaccessible) — treating as a suspended/parked env and finishing without failing the build. Downstream migrate + rollout steps self-skip. Repopulate with: bash infra/run/gcp/run.sh resume."
   echo "synced=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi
@@ -83,7 +83,7 @@ for k in "${INFRA_KEYS[@]}"; do
 done
 
 if [ "${#missing[@]}" -gt 0 ]; then
-  echo "::warning::'$SM_SECRET' is present but missing infra properties [${missing[*]}] that ESO extracts for '$ES' — the dev env is suspended or mid-resume (Terraform omits redis-*/database-* keys until the env is fully active), so ESO cannot sync. Treating as an expected parked state and finishing without failing the build. Downstream migrate + rollout steps self-skip. Repopulate with: bash infra/gcp-run/run.sh resume (or a Terraform apply on the active env)."
+  echo "::warning::'$SM_SECRET' is present but missing infra properties [${missing[*]}] that ESO extracts for '$ES' — the dev env is suspended or mid-resume (Terraform omits redis-*/database-* keys until the env is fully active), so ESO cannot sync. Treating as an expected parked state and finishing without failing the build. Downstream migrate + rollout steps self-skip. Repopulate with: bash infra/run/gcp/run.sh resume (or a Terraform apply on the active env)."
   echo "synced=false" >> "$GITHUB_OUTPUT"
   exit 0
 fi

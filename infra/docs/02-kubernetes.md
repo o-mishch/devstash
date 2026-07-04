@@ -10,8 +10,8 @@
 > **Автоматизація** показує, яка команда `run.sh` інкапсулює ручні кроки — спершу
 > прожени їх руками (щоб бачити control loop наживо), далі відтворюй одним
 > викликом. Локальний стек на kind автоматизує
-> [`infra/k8s/local-run/run.sh`](../k8s/local-run/run.sh), хмарний на GKE — CI, який
-> запускає [`infra/gcp-run/run.sh`](../gcp-run/run.sh).
+> [`infra/run/local/run.sh`](../run/local/run.sh), хмарний на GKE — CI, який
+> запускає [`infra/run/gcp/run.sh`](../run/gcp/run.sh).
 
 ## Ментальна модель (озвучте це на співбесіді)
 
@@ -372,14 +372,14 @@ kind delete cluster --name devstash
 > (in-cluster Postgres/Redis/MinIO/Mailpit + міграції + seed, у тому ж порядку
 > migrate→rollout, що й CI) піднімає один скрипт:
 > ```bash
-> bash infra/k8s/local-run/run.sh up       # kind → build web+migrate → migrate Job → rollout → verify
-> bash infra/k8s/local-run/run.sh deploy   # швидка ітерація: rebuild + migrate + rollout
-> bash infra/k8s/local-run/run.sh status   # стан кластера / подів / health
-> bash infra/k8s/local-run/run.sh info     # URL усіх сервісів (app, Postgres, MinIO, Mailpit…)
-> bash infra/k8s/local-run/run.sh down     # знести kind-кластер
+> bash infra/run/local/run.sh up       # kind → build web+migrate → migrate Job → rollout → verify
+> bash infra/run/local/run.sh deploy   # швидка ітерація: rebuild + migrate + rollout
+> bash infra/run/local/run.sh status   # стан кластера / подів / health
+> bash infra/run/local/run.sh info     # URL усіх сервісів (app, Postgres, MinIO, Mailpit…)
+> bash infra/run/local/run.sh down     # знести kind-кластер
 > ```
 > На GKE ті самі base-маніфести застосовує CI (`deploy-gke.yml`), що його тригерить
-> [`infra/gcp-run/run.sh deploy`](../gcp-run/run.sh) (Рівень 4). Детальний розбір
+> [`infra/run/gcp/run.sh deploy`](../run/gcp/run.sh) (Рівень 4). Детальний розбір
 > kind-стека — у [07-local-run.md](07-local-run.md).
 
 ## Шпаргалка з налагодження (вас про це запитають)

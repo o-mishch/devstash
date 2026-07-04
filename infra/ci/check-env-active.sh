@@ -27,6 +27,6 @@ if [ -n "$found" ]; then
   echo "Environment active — GKE cluster '$CLUSTER' is present. Proceeding with build + deploy."
   echo "suspended=false" >> "$GITHUB_OUTPUT"
 else
-  echo "::warning::Environment is suspended — no GKE cluster '$CLUSTER'. Skipping build + deploy: no images are rebuilt or pushed, and nothing fails. Bring it back with: bash infra/gcp-run/run.sh resume"
+  echo "::warning::Environment is suspended — no GKE cluster '$CLUSTER'. Skipping build + deploy: no images are rebuilt or pushed, and nothing fails. Bring it back with: bash infra/run/gcp/run.sh resume"
   echo "suspended=true" >> "$GITHUB_OUTPUT"
 fi

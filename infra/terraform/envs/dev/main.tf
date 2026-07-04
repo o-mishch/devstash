@@ -217,11 +217,19 @@ module "memorystore" {
   depends_on = [module.network.memorystore_psc_policy, time_sleep.api_propagation]
 }
 
-# Generated Cloud SQL app-user password. special=false keeps it URL-safe so it
-# embeds cleanly in the Postgres connection string below.
+# Generated Cloud SQL app-user password. The instance password_validation_policy
+# (modules/cloudsql, COMPLEXITY_DEFAULT) requires upper+lower+numeric+special, so
+# the password MUST include a special character — special=false fails the create.
+# Restrict specials to the RFC 3986 unreserved set (-._~), which needs no percent-
+# encoding in a connection-string userinfo component, so it still embeds cleanly.
+# min_* guarantees at least one of each required category is present.
 resource "random_password" "db" {
-  length  = 32
-  special = false
+  length           = 32
+  override_special = "-._~"
+  min_lower        = 1
+  min_upper        = 1
+  min_numeric      = 1
+  min_special      = 1
 }
 
 module "iam" {

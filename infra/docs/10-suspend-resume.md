@@ -121,8 +121,8 @@ instance (e.g. after a bare `run.sh apply` following an auto-suspend — see the
 ## Operating it
 
 ```bash
-bash infra/gcp-run/run.sh suspend   # → ~$0: destroy compute, STOP Cloud SQL (data kept)
-bash infra/gcp-run/run.sh resume    # recreate compute, START Cloud SQL, redeploy, fix DNS
+bash infra/run/gcp/run.sh suspend   # → ~$0: destroy compute, STOP Cloud SQL (data kept)
+bash infra/run/gcp/run.sh resume    # recreate compute, START Cloud SQL, redeploy, fix DNS
 ```
 
 The chosen state is persisted to `infra/terraform/envs/dev/active.auto.tfvars` (gitignored,
@@ -243,7 +243,7 @@ Only fires while your Mac is on/awake. Save as
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string><REPO_ROOT>/infra/gcp-run/run.sh</string>
+    <string><REPO_ROOT>/infra/run/gcp/run.sh</string>
     <string>suspend</string>
   </array>
   <key>EnvironmentVariables</key><dict><key>AUTO_APPROVE</key><string>1</string></dict>

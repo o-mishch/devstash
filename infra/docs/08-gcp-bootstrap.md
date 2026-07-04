@@ -13,7 +13,7 @@
 > - 📚 **Для співбесіди** — концепт, який стоїть за кроком (ADC, remote state,
 >   WIF, ієрархія ресурсів…) і який питають на технічних інтерв'ю, з посиланнями
 >   на першоджерела.
-> - ⚙️ **Автоматизація** — яка команда [`run.sh`](../gcp-run/run.sh) інкапсулює цей
+> - ⚙️ **Автоматизація** — яка команда [`run.sh`](../run/gcp/run.sh) інкапсулює цей
 >   крок, щоб після того, як зрозумів механіку руками, відтворити її одним викликом.
 > - 🔒 **Тільки вручну** — крок виконується в зовнішньому дашборді або потребує
 >   значень, відомих лише тобі; `run.sh` не може його автоматизувати.
@@ -84,10 +84,10 @@ gcloud billing projects link project-39965ce5-4c4b-495e-8d4 --billing-account=01
 > «billing link» у `bootstrap()`. Кожен ідемпотентний: `auth list` / `projects describe` /
 > `billing projects describe` перевіряє перед діє.
 > ```bash
-> bash infra/gcp-run/run.sh bootstrap   # містить розділи 1–4
-> # Білінг-акаунт явно: BILLING_ACCOUNT=015202-D54745-ABDDC9 bash infra/gcp-run/run.sh bootstrap
+> bash infra/run/gcp/run.sh bootstrap   # містить розділи 1–4
+> # Білінг-акаунт явно: BILLING_ACCOUNT=015202-D54745-ABDDC9 bash infra/run/gcp/run.sh bootstrap
 > ```
-> Код: [`infra/gcp-run/run.sh`](../gcp-run/run.sh) → `bootstrap()`, блоки «gcloud auth login» / «project create + set» / «billing link».
+> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `bootstrap()`, блоки «gcloud auth login» / «project create + set» / «billing link».
 
 ---
 
@@ -117,9 +117,9 @@ gcloud auth application-default login
 > ⚙️ **Автоматизація:** перевіряє `gcloud auth application-default print-access-token` і
 > запускає логін лише якщо токена немає (ідемпотентно; у Cloud Shell пропускається).
 > ```bash
-> bash infra/gcp-run/run.sh bootstrap   # містить крок ADC
+> bash infra/run/gcp/run.sh bootstrap   # містить крок ADC
 > ```
-> Код: [`infra/gcp-run/run.sh`](../gcp-run/run.sh) → `bootstrap()`, блок «Application Default Credentials».
+> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `bootstrap()`, блок «Application Default Credentials».
 
 ---
 
@@ -163,9 +163,9 @@ gcloud storage buckets update gs://project-39965ce5-4c4b-495e-8d4-tfstate-dev --
 > реконсайлить безпеку (`--uniform-bucket-level-access --public-access-prevention --versioning`).
 > Ім'я бакета виводиться з `project_id`: `${PROJECT_ID}-tfstate-${ENVIRONMENT}`.
 > ```bash
-> bash infra/gcp-run/run.sh bootstrap   # містить крок state bucket
+> bash infra/run/gcp/run.sh bootstrap   # містить крок state bucket
 > ```
-> Код: [`infra/gcp-run/run.sh`](../gcp-run/run.sh) → `bootstrap()`, блок «Terraform state bucket».
+> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `bootstrap()`, блок «Terraform state bucket».
 
 ---
 
@@ -246,9 +246,9 @@ gcloud services enable \
 > ⚙️ **Автоматизація:** викликає `gcloud services enable` з явним `--project` (бо
 > `gcloud config` мутабельний між терміналами). Ідемпотентно — повторний enable безпечний.
 > ```bash
-> bash infra/gcp-run/run.sh bootstrap   # завершується enable APIs
+> bash infra/run/gcp/run.sh bootstrap   # завершується enable APIs
 > ```
-> Код: [`infra/gcp-run/run.sh`](../gcp-run/run.sh) → `bootstrap()`, блок «Enable APIs».
+> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `bootstrap()`, блок «Enable APIs».
 
 ---
 
@@ -305,7 +305,7 @@ third_party_secrets = {
 }
 ```
 
-> ⚠️ `gcp-run/run.sh` перевіряє наявність плейсхолдерів (`sk_...`, `whsec_...`, `re_...`,
+> ⚠️ `run/gcp/run.sh` перевіряє наявність плейсхолдерів (`sk_...`, `whsec_...`, `re_...`,
 > `openssl rand`) і **зупиниться** до `tofu apply`, якщо їх знайде. Заповни реальні значення.
 
 > 📚 **Для співбесіди — Workload Identity Federation (keyless CI).** `github_owner_id`
@@ -329,9 +329,9 @@ third_party_secrets = {
 > (копіює з `.example` якщо ні, і зупиняється), та попереджає про незаповнені
 > плейсхолдери в `third_party_secrets`. Запускається автоматично перед кожним `apply`.
 > ```bash
-> bash infra/gcp-run/run.sh apply   # ensure_tfvars() → tofu init/plan/apply (§6)
+> bash infra/run/gcp/run.sh apply   # ensure_tfvars() → tofu init/plan/apply (§6)
 > ```
-> Код: [`infra/gcp-run/run.sh`](../gcp-run/run.sh) → `ensure_tfvars()`.
+> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `ensure_tfvars()`.
 
 ---
 
@@ -419,9 +419,9 @@ kubectl get nodes   # має показати вузли кластера
 > ⚙️ **Автоматизація:** `apply()` у `run.sh` виконує `tofu init/plan/apply`, після чого
 > прив'язує kubeconfig (`get_credentials_command`) і встановлює ESO + Reloader.
 > ```bash
-> bash infra/gcp-run/run.sh apply   # tofu init → plan → apply → get-credentials → ESO
+> bash infra/run/gcp/run.sh apply   # tofu init → plan → apply → get-credentials → ESO
 > ```
-> Код: [`infra/gcp-run/run.sh`](../gcp-run/run.sh) → `apply()`.
+> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `apply()`.
 
 ---
 
@@ -566,10 +566,10 @@ gh variable get BINAUTHZ_ATTESTOR
 > (`helm … --wait --atomic`) **і** Stakater Reloader; `secrets` заливає 3 GitHub-секрети
 > + `APP_DOMAIN`; `dns_hint` друкує готовий рядок A-запису.
 > ```bash
-> bash infra/gcp-run/run.sh eso       # ESO + Reloader (раз на кластер, розділ 7.0)
-> bash infra/gcp-run/run.sh secrets   # gh-секрети з tofu output (розділ 7.1)
+> bash infra/run/gcp/run.sh eso       # ESO + Reloader (раз на кластер, розділ 7.0)
+> bash infra/run/gcp/run.sh secrets   # gh-секрети з tofu output (розділ 7.1)
 > ```
-> Код: [`infra/gcp-run/run.sh`](../gcp-run/run.sh) → `eso()`, `secrets()`, `dns_hint()`.
+> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `eso()`, `secrets()`, `dns_hint()`.
 
 ---
 
@@ -714,7 +714,7 @@ Terraform складає всі ключі в один JSON-blob.
 
 ```bash
 # Оновлює одну властивість у devstash-app-config і форсить ESO-синк:
-bash infra/gcp-run/run.sh rotate-secret resend-api-key   # значення — з прихованого prompt
+bash infra/run/gcp/run.sh rotate-secret resend-api-key   # значення — з прихованого prompt
 
 # Або вручну через jq (read-modify-write однієї властивості):
 blob="$(gcloud secrets versions access latest --secret=devstash-app-config)"
@@ -976,26 +976,26 @@ open https://redis-ui.gke.devstash.one
 
 ---
 
-## 9. Скрипт «у одну команду»: `infra/gcp-run/run.sh`
+## 9. Скрипт «у одну команду»: `infra/run/gcp/run.sh`
 
 Усе з розділів 1–7 (окрім того, що фізично робиться в чужих дашбордах — DNS, Stripe,
 OAuth) автоматизовано в одному ідемпотентному скрипті — хмарний аналог локального
-[`infra/k8s/local-run/run.sh`](../k8s/local-run/run.sh). Кожен крок перевіряє існування
+[`infra/run/local/run.sh`](../run/local/run.sh). Кожен крок перевіряє існування
 перед створенням, тож повторний запуск безпечний.
 
 ```bash
-bash infra/gcp-run/run.sh up             # preflight → bootstrap → tofu apply → ESO+Reloader → gh-секрети → DNS-підказка
-bash infra/gcp-run/run.sh bootstrap      # лише project/billing/ADC/state-bucket/APIs (розділи 1–4)
-bash infra/gcp-run/run.sh apply          # лише tofu init/plan/apply (+ get-credentials, + ESO+Reloader)
-bash infra/gcp-run/run.sh eso            # встановити ESO + Stakater Reloader (раз на кластер, розділ 7.0)
-bash infra/gcp-run/run.sh reloader       # лише встановити Stakater Reloader окремо (раз на кластер)
-bash infra/gcp-run/run.sh secrets        # лише gh secret/variable set із tofu output (розділ 7)
-bash infra/gcp-run/run.sh verify-secrets # перевірити, що всі очікувані Secret Manager секрети існують
-bash infra/gcp-run/run.sh deploy         # запустити CI deploy-gke (build web+migrate → migrate Job → rollout)
-bash infra/gcp-run/run.sh smoke          # дочекатись CI + перевірити health endpoint
-bash infra/gcp-run/run.sh status         # кластер / Ingress IP / стан cert / поди
-bash infra/gcp-run/run.sh logs           # хвіст логів app-подів (останні 100 рядків, усі поди)
-bash infra/gcp-run/run.sh down           # tofu destroy (з підтвердженням)
+bash infra/run/gcp/run.sh up             # preflight → bootstrap → tofu apply → ESO+Reloader → gh-секрети → DNS-підказка
+bash infra/run/gcp/run.sh bootstrap      # лише project/billing/ADC/state-bucket/APIs (розділи 1–4)
+bash infra/run/gcp/run.sh apply          # лише tofu init/plan/apply (+ get-credentials, + ESO+Reloader)
+bash infra/run/gcp/run.sh eso            # встановити ESO + Stakater Reloader (раз на кластер, розділ 7.0)
+bash infra/run/gcp/run.sh reloader       # лише встановити Stakater Reloader окремо (раз на кластер)
+bash infra/run/gcp/run.sh secrets        # лише gh secret/variable set із tofu output (розділ 7)
+bash infra/run/gcp/run.sh verify-secrets # перевірити, що всі очікувані Secret Manager секрети існують
+bash infra/run/gcp/run.sh deploy         # запустити CI deploy-gke (build web+migrate → migrate Job → rollout)
+bash infra/run/gcp/run.sh smoke          # дочекатись CI + перевірити health endpoint
+bash infra/run/gcp/run.sh status         # кластер / Ingress IP / стан cert / поди
+bash infra/run/gcp/run.sh logs           # хвіст логів app-подів (останні 100 рядків, усі поди)
+bash infra/run/gcp/run.sh down           # tofu destroy (з підтвердженням)
 ```
 
 ### 9.1. Що скрипт автоматизує (повністю)
@@ -1455,7 +1455,7 @@ ESO синхронізує секрети щогодини. **Stakater Reloader*
 
 ```bash
 # Без видалення live Secret: додай нову версію, форсуй ESO sync, дочекайся Reloader.
-bash infra/gcp-run/run.sh rotate-secret <name-suffix>   # hidden prompt; value not in shell history
+bash infra/run/gcp/run.sh rotate-secret <name-suffix>   # hidden prompt; value not in shell history
 kubectl -n devstash rollout status deploy/devstash-web
 ```
 
