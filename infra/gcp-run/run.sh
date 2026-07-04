@@ -12,9 +12,9 @@
 # Full manual walkthrough: infra/docs/08-gcp-bootstrap.md.
 #
 # Usage:
-#   bash infra/gcp-run/run.sh up             bootstrap → terraform apply → gh secrets → DNS hint
+#   bash infra/gcp-run/run.sh up             bootstrap → terraform apply → gh secrets → fix DNS
 #   bash infra/gcp-run/run.sh bootstrap      project/billing/ADC/state-bucket/APIs only
-#   bash infra/gcp-run/run.sh apply          terraform init + apply only
+#   bash infra/gcp-run/run.sh apply          terraform init + apply, then re-point the gke.* A-record
 #   bash infra/gcp-run/run.sh eso            install External Secrets Operator (once per cluster)
 #   bash infra/gcp-run/run.sh reloader       install Stakater Reloader (once per cluster)
 #   bash infra/gcp-run/run.sh secrets        push GCP_PROJECT_ID/DEPLOYER_SA/WIF + APP_DOMAIN to GitHub
@@ -922,6 +922,22 @@ restore_db() {
   ok "DB restored from $uri"
 }
 
+# spaceship_api: single Spaceship DNS API entrypoint — owns the host, auth headers, and the
+# `|| true` (a transport error must stay non-fatal so DNS work never hard-fails a resume).
+# Reads $key/$secret from the caller's scope (update_dns is the sole consumer).
+#   GET             → echoes the response body
+#   PUT/DELETE/...  → echoes the HTTP status code (-o /dev/null -w '%{http_code}')
+spaceship_api() {
+  local method="$1" path="$2" body="${3:-}"
+  local url="https://spaceship.dev/api/v1/dns/records/${path}"
+  local -a hdr=(-H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json')
+  if [[ "$method" == GET ]]; then
+    curl -s -X GET "${hdr[@]}" "$url" || true
+  else
+    curl -s -o /dev/null -w '%{http_code}' -X "$method" "${hdr[@]}" "$url" ${body:+-d "$body"} || true
+  fi
+}
+
 # update_dns: re-point the app's A-record at the current ingress IP via the Spaceship
 # DNS API. Needed on resume because the ingress IP is released on suspend and a fresh
 # one is allocated each resume. Best-effort: prints a manual hint if creds are missing.
@@ -971,14 +987,13 @@ update_dns() {
   fi
 
   log "Updating Spaceship DNS A-record: $domain → $ip"
+  # Desired-state payload — shared by the upsert (step 1) and re-assert (step 3) so the two
+  # writes can never drift apart. Short TTL (300s) so the change is picked up quickly.
+  local put_body="{\"force\":true,\"items\":[{\"type\":\"A\",\"name\":\"${sub}\",\"address\":\"${ip}\",\"ttl\":300}]}"
   # 1) Upsert the desired record FIRST so the host is never left without an A-record even
   #    if the prune below fails. force:true is still required — the stale record still
-  #    exists at this point, so without it the conflict checker would reject the PUT. Short
-  #    TTL (300s) so the change is picked up quickly after each resume.
-  code="$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
-    "https://spaceship.dev/api/v1/dns/records/${root}" \
-    -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json' \
-    -d "{\"force\":true,\"items\":[{\"type\":\"A\",\"name\":\"${sub}\",\"address\":\"${ip}\",\"ttl\":300}]}" || true)"
+  #    exists at this point, so without it the conflict checker would reject the PUT.
+  code="$(spaceship_api PUT "$root" "$put_body")"
   if [[ ! "$code" =~ ^2 ]]; then
     warn "Spaceship API returned HTTP ${code:-000} — set the A-record manually: $domain → $ip"
     return 0
@@ -988,19 +1003,14 @@ update_dns() {
   #    the zone, keep only host A-records whose address differs, and DELETE them so exactly
   #    one A-record for $sub remains. Best-effort: a prune miss must not fail the resume,
   #    but it is warned so the leftover can be removed by hand.
-  existing="$(curl -s -X GET \
-    "https://spaceship.dev/api/v1/dns/records/${root}?take=500&skip=0" \
-    -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" || true)"
+  existing="$(spaceship_api GET "${root}?take=500&skip=0")"
   prune="$(printf '%s' "$existing" \
     | jq -c --arg n "$sub" --arg ip "$ip" \
         '[.items[]? | select(.type == "A" and .name == $n and .address != $ip) | {type, name, address}]' \
     2>/dev/null || printf '[]')"
   if [[ -n "$prune" && "$prune" != "[]" ]]; then
     log "Pruning stale $sub A-record(s): $(printf '%s' "$prune" | jq -r 'map(.address) | join(", ")')"
-    del_code="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
-      "https://spaceship.dev/api/v1/dns/records/${root}" \
-      -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json' \
-      -d "$prune" || true)"
+    del_code="$(spaceship_api DELETE "$root" "$prune")"
     [[ "$del_code" =~ ^2 ]] \
       || warn "Spaceship prune returned HTTP ${del_code:-000} — remove leftover $sub A-record(s) manually (Default Record Group entries may not be API-deletable)."
     # 3) Re-assert the desired record LAST, so the final write is always the correct one.
@@ -1009,10 +1019,7 @@ update_dns() {
     #    leaving the host pointing nowhere. This idempotent upsert guarantees the zone ends
     #    with exactly gke → the current ingress IP regardless of DELETE semantics. It does
     #    NOT speed propagation (TTL-bound) — it only guarantees correctness after the prune.
-    code="$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
-      "https://spaceship.dev/api/v1/dns/records/${root}" \
-      -H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json' \
-      -d "{\"force\":true,\"items\":[{\"type\":\"A\",\"name\":\"${sub}\",\"address\":\"${ip}\",\"ttl\":300}]}" || true)"
+    code="$(spaceship_api PUT "$root" "$put_body")"
     [[ "$code" =~ ^2 ]] \
       || warn "Spaceship re-assert returned HTTP ${code:-000} — verify the A-record manually: $domain → $ip"
   fi
@@ -1117,15 +1124,26 @@ case "$CMD" in
   up)
     preflight; bootstrap; apply
     wait_for_cluster
-    eso; secrets; dns_hint
+    # dns_hint prints the record; update_dns then asserts it automatically. On a
+    # first-ever bring-up the Spaceship creds may not be stored yet — update_dns
+    # warns and falls back to the printed hint, so the manual path still works.
+    eso; secrets; dns_hint; update_dns
     log "Bootstrap + infra done. Next:"
-    echo "  1. Add the DNS A-record above and wait for the cert to go Active."
+    echo "  1. If the DNS A-record above was not set automatically (creds missing),"
+    echo "     add it by hand, then wait for the cert to go Active."
     echo "  2. bash infra/gcp-run/run.sh verify-secrets  # confirm all SM secrets exist + ESO synced"
     echo "  3. bash infra/gcp-run/run.sh deploy          # build + migrate + roll out the app"
     echo "  4. bash infra/gcp-run/run.sh smoke           # wait for CI + verify health endpoint"
     ;;
   bootstrap)       preflight; bootstrap ;;
-  apply)           preflight; apply; wait_for_cluster; eso; secrets; dns_hint ;;
+  # update_dns re-points the gke.* A-record at the current ingress IP. The IP is
+  # released on suspend and re-allocated fresh on every bring-up, so DNS MUST be
+  # re-asserted after each apply — not just on resume — or the site resolves to the
+  # dead prior IP (TLS reset / 502) until the record is fixed by hand. update_dns is
+  # self-guarding: it warns-and-prints a manual hint if creds/IP are missing, and it
+  # only ever touches the gke A-record (prod Vercel/email records are never affected),
+  # so it strictly supersedes the print-only dns_hint here.
+  apply)           preflight; apply; wait_for_cluster; eso; secrets; dns_hint; update_dns ;;
   eso)             eso ;;
   reloader)        reloader ;;
   secrets)         secrets ;;

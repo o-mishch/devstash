@@ -230,7 +230,15 @@ module "iam" {
   region     = var.region
   # Null when suspended (cluster destroyed); the iam module does not actually consume
   # this value, so an empty string is a safe placeholder that keeps the type (string).
-  gke_cluster_name                = module.gke.cluster_name != null ? module.gke.cluster_name : ""
+  gke_cluster_name = module.gke.cluster_name != null ? module.gke.cluster_name : ""
+  # Always non-empty now: the node SA is kept always-on across suspend (modules/gke —
+  # SAs are free), so its email is stable and its project-IAM + AR-reader bindings never
+  # flip to a DESTROY on suspend. That churn was the root cause of the suspend build's
+  # 403: deleting a google_project_iam_member needs resourcemanager.projects.setIamPolicy
+  # (the "grants-everything" permission the least-privilege lifecycle SA deliberately
+  # lacks), so the apply failed AFTER Valkey was already gone, leaving the env half-torn
+  # and recreating Valkey every 15-min cycle. Keeping the SA alive avoids both the delete
+  # 403 AND the stale `deleted:serviceAccount:` binding a same-email recreate would leave.
   gke_node_sa_email               = module.gke.node_service_account_email
   uploads_bucket_name             = module.gcs.bucket_name
   artifact_registry_repository_id = module.artifact_registry.repository_id
