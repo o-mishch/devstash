@@ -1471,15 +1471,18 @@ helm upgrade --install reloader stakater/reloader \
 
 ### Де взяти пароль до Cloud SQL (для Cloud SQL Studio / psql)
 
-Terraform генерує пароль для `devstash_app` через `random_password.db` і кладе його у Secret Manager як частину `DATABASE_URL`. Найпростіший спосіб — витягнути з уже синхронізованого секрета:
+Terraform генерує пароль для `devstash_app` через `random_password.db` і кладе його у Secret Manager як властивість `database-url` **консолідованого** секрета `devstash-app-config`
+(секретів по одному на ключ, як-от `devstash-database-url`, більше немає — див. розділ 7b вище / [10-suspend-resume.md](10-suspend-resume.md)). Найпростіший спосіб — витягнути з уже синхронізованого секрета:
 
 ```bash
-# Варіант А — з Secret Manager (рекомендований):
+# Варіант А — з Secret Manager (рекомендований). Парсимо лише поле database-url
+# з JSON-blob, не друкуючи решту секретів (auth/OAuth/Stripe і т.д.) в термінал:
 gcloud secrets versions access latest \
-  --secret=devstash-database-url \
-  --project=project-39965ce5-4c4b-495e-8d4
-# Виводить: postgres://devstash_app:<PASSWORD>@<host>/<db>?sslmode=require&sslrootcert=...
-# Пароль — між devstash_app: та @
+  --secret=devstash-app-config \
+  --project=project-39965ce5-4c4b-495e-8d4 \
+  --format='value(payload.data)' \
+  | python3 -c "import json,sys,re; u=json.load(sys.stdin)['database-url']; print(re.search(r'devstash_app:([^@]+)@', u).group(1))"
+# Виводить лише пароль (значення між devstash_app: та @ у database-url).
 
 # Варіант Б — безпосередньо зі стану Terraform:
 cd infra/terraform/envs/dev
@@ -1487,6 +1490,9 @@ tofu state show 'random_password.db' | grep result
 ```
 
 > У Cloud SQL Studio: Database=`devstash`, User=`devstash_app`, Authentication=Built-in, Password = значення вище.
+>
+> Секрет містить й інші чутливі властивості (`auth-secret`, `auth-github-secret`, `stripe-secret-key` тощо) —
+> уникай `gcloud secrets versions access ... --format='value(payload.data)'` без подальшого парсингу, це друкує весь blob у відкритому вигляді.
 
 ---
 

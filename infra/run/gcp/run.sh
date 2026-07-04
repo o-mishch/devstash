@@ -647,10 +647,27 @@ secrets() {
 # deploy: dispatch the deploy-gke.yml GitHub Actions workflow via `gh workflow run`.
 # The workflow builds the container, pushes to Artifact Registry, runs DB migrations,
 # and rolls out the new image to GKE. Follow progress with `gh run watch`.
+#
+# Sets DEPLOY_RUN_ID to the dispatched run's database ID so a caller (e.g. resume) can
+# watch it directly instead of re-discovering "the latest run" later, which would race
+# against any other deploy-gke run a human or auto-suspend triggers in between. `gh
+# workflow run` itself does not return the new run's ID, so the ID of the newest
+# existing run is recorded BEFORE dispatch and poll_until waits for a strictly newer
+# one to appear (GitHub takes a few seconds to register a dispatched run).
 deploy() {
   log "Triggering the deploy-gke CI workflow (build web+migrate → push → apply -k → migrate Job → rollout)"
+  local before_id
+  before_id="$(gh run list --workflow deploy-gke.yml --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
   gh workflow run deploy-gke.yml
-  ok "dispatched — follow it with:  gh run watch"
+  DEPLOY_RUN_ID=""
+  _new_run_appeared() {
+    local id
+    id="$(gh run list --workflow deploy-gke.yml --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
+    [[ -n "$id" && "$id" != "$before_id" ]] && DEPLOY_RUN_ID="$id"
+  }
+  poll_until 12 5 -- _new_run_appeared \
+    || { warn "dispatched, but could not confirm the new run ID — follow it with: gh run watch"; return 0; }
+  ok "dispatched — run $DEPLOY_RUN_ID — follow it with:  gh run watch $DEPLOY_RUN_ID"
 }
 
 # verify-secrets: list expected Secret Manager secrets and flag any that are missing.

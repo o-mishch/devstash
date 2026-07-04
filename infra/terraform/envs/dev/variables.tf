@@ -370,11 +370,21 @@ variable "auto_suspend_max_uptime_seconds" {
 # Cloud Scheduler cadence for the hard-uptime-cap backstop. The cron publishes to the same
 # auto-suspend Pub/Sub topic the idle alert uses; the guard then decides (age-cap OR
 # zero-traffic). Every 15 min keeps the worst-case overshoot past max_uptime to <= this
-# interval while staying trivially inside Cloud Scheduler's 3-free-jobs tier.
+# interval while staying trivially inside Cloud Scheduler's 3-free-jobs tier — but each tick
+# still costs a full Cloud Build invocation (~35-50s) even on the near-universal no-op path
+# (already suspended / too fresh / lock held), and Cloud Build's shared free tier is
+# 2,500 build-min/MONTH, not per-day: at */15 this alone burns ~2,000 build-min/mo (~80% of
+# the free tier) before any real suspend/dump work. Every 30 min halves that to ~1,000
+# build-min/mo (~40%) while doubling the worst-case scanner-pinned overshoot past max_uptime
+# from 15min to 30min — negligible for an on-demand showcase. A cheaper precheck (e.g. a
+# Cloud Run function gating the Pub/Sub publish) was considered and rejected: it would add a
+# first-of-its-kind serverless deployment surface (zip source, dedicated SA, new IAM) to save
+# a few dollars/month at most on an environment whose own docs already reject that tradeoff
+# for a Cloud Function billing kill-switch (see 10-suspend-resume.md's budget.tf discussion).
 variable "auto_suspend_schedule_cron" {
   type        = string
-  default     = "*/15 * * * *"
-  description = "Cron schedule for the Cloud Scheduler job that fires the hard-uptime-cap suspend check (unicron format, evaluated in America/Chicago — us-central1 local time). The guard is idempotent and re-checks liveness, so a frequent cadence is harmless."
+  default     = "*/30 * * * *"
+  description = "Cron schedule for the Cloud Scheduler job that fires the hard-uptime-cap suspend check (unicron format, evaluated in America/Chicago — us-central1 local time). The guard is idempotent and re-checks liveness, so a frequent cadence is harmless — but each tick still costs a full Cloud Build invocation, so cadence is a build-minutes/month vs. worst-case-overshoot tradeoff, not free. Default 30min: ~40% of the 2,500 build-min/mo free tier, <=30min worst-case overshoot past auto_suspend_max_uptime_seconds."
 }
 
 variable "log_system_exclusion_enabled" {

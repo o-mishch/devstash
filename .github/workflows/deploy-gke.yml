@@ -177,9 +177,23 @@ jobs:
       - name: Expose GitHub Actions runtime for buildx gha cache
         uses: crazy-max/ghaction-github-runtime@3cb05d89e1f492524af3d41a1c98c83bc3025124 # v3.0.0
 
+      # Wrapped in a retry: the build+push (docker buildx bake) has hung in practice
+      # (GHA cache backend / registry-push flakiness) well past its normal ~90-105s
+      # runtime, with no per-step signal until the whole job's 45m cap fired. 8m is
+      # ~4.5x the worst observed successful run (278s, cold GHA cache) — enough
+      # headroom to never false-positive on a legitimately slow cache-miss build, tight
+      # enough to fail fast on a genuine hang. 2 attempts self-heals a one-off flake
+      # without a human re-running `deploy`. build-push.sh's GITHUB_OUTPUT/GITHUB_ENV
+      # writes still land in the real files — the wrapper spawns the command inheriting
+      # this process's environment, it does not sandbox or discard them.
       - name: Build & push images
         id: build-push
-        run: infra/ci/build-push.sh
+        uses: step-security/retry@38808b4332b98bb36ca031abff0c100231608288 # v4.0.0
+        with:
+          timeout_minutes: 8
+          max_attempts: 2
+          retry_on: any
+          command: infra/ci/build-push.sh
 
       # Binary Authorization attestations (KMS-backed attestor, see modules/gke/main.tf).
       # This is the CI half of "step 2" in that module's enforcement-path comment: sign

@@ -229,6 +229,43 @@ have an empty instance, run **`run.sh restore-db`** to import the dump into it �
 tear down and resume. To test before merging, point `auto_suspend_repo_branch` at your
 feature branch.
 
+#### Checking the last run
+
+Neither the Cloud Scheduler job (`devstash-dev-auto-suspend-uptime-cap`) nor the Monitoring
+alert carry useful logs themselves — they only publish a Pub/Sub message. The real
+guard/prepare/dump/suspend/delete-registry output lives in the **Cloud Build** run they
+trigger (`devstash-dev-auto-suspend`).
+
+Find the trigger id once (stable across runs):
+
+```bash
+gcloud builds triggers list --project=project-39965ce5-4c4b-495e-8d4 --region=us-central1 \
+  --format="value(name,id)"
+```
+
+Get the latest build for that trigger — `--filter` scopes to just this trigger (otherwise
+you'd get builds from every trigger in the project), `--limit=1` + newest-first gives you
+the last one, `--format="value(id)"` strips it to the bare ID:
+
+```bash
+gcloud builds list --project=project-39965ce5-4c4b-495e-8d4 --region=us-central1 \
+  --filter="buildTriggerId=<TRIGGER_ID>" --limit=1 --format="value(id)"
+```
+
+Drop `--format`/`--limit` (or raise `--limit`) to see full JSON — status, timestamps,
+substitutions — across the last few runs instead of just the latest.
+
+Then fetch the full step-by-step log for that build:
+
+```bash
+gcloud builds log <BUILD_ID> --project=project-39965ce5-4c4b-495e-8d4 --region=us-central1
+```
+
+Or open it in the console: `https://console.cloud.google.com/cloud-build/builds;region=us-central1/<BUILD_ID>?project=<PROJECT_NUMBER>`
+
+A no-op tick (guard found no cluster, or cluster too fresh, or traffic present) shows every
+step logging `skipping` and exiting clean — that's expected on most ticks, not a failure.
+
 ### Option B — local launchd job (simplest, no new infra, but laptop-dependent)
 
 Runs `run.sh suspend` nightly with *your* credentials (`AUTO_APPROVE=1` skips the confirm).

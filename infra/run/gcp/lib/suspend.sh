@@ -87,11 +87,29 @@ resume() {
   wait_for_cluster
   eso
   log "Redeploying the app (build → migrate → rollout) via CI"
-  deploy
+  deploy   # sets DEPLOY_RUN_ID on success
   update_dns
-  log "Resume kicked off. Next:"
-  echo "  1. Watch the deploy:  gh run watch"
-  echo "  2. bash infra/run/gcp/run.sh smoke   # wait for CI + health check"
+
+  # Block on the dispatched run instead of firing-and-forgetting it: a resume that
+  # merely kicks off CI and returns "done" hides a hung/failed build behind a
+  # healthy-looking cluster (GKE shows ESO/Reloader up, but no devstash-web
+  # Deployment until this run's rollout step completes). Surfacing pass/fail here,
+  # in the same terminal invocation, replaces having to separately notice the gap
+  # in the GCP console or run 'status'/'smoke' by hand.
+  if [[ -n "${DEPLOY_RUN_ID:-}" ]]; then
+    log "Watching deploy-gke run $DEPLOY_RUN_ID (build+push has its own retry/timeout — see deploy-gke.yml)"
+    if gh run watch "$DEPLOY_RUN_ID" --exit-status; then
+      ok "CI run $DEPLOY_RUN_ID completed successfully — devstash-web is rolled out"
+      log "Next: bash infra/run/gcp/run.sh smoke   # health-check the live app"
+    else
+      warn "CI run $DEPLOY_RUN_ID FAILED — devstash-web is not deployed. Check: gh run view $DEPLOY_RUN_ID --log-failed"
+      warn "Re-run the deploy once fixed:  bash infra/run/gcp/run.sh deploy"
+      return 1
+    fi
+  else
+    warn "could not confirm the dispatched run — follow it manually:  gh run watch"
+  fi
+
   warn "A new managed cert re-provisions after DNS resolves to the new IP (up to ~60 min)."
   warn "Site stays reachable meanwhile via the pre-shared-cert fallback (mcrt-ac492906-...) in overlays/gcp/kustomization.yaml."
 }
