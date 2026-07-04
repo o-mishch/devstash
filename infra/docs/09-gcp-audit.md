@@ -60,7 +60,7 @@ so future AI/human reviewers don't retry the same wrong fixes.
    blocks the web, migrator, and third-party init images immediately.
 4. **Vulnerability scan** — DONE: `deploy-gke.yml` runs Trivy (`aquasecurity/trivy-action`,
    pinned by SHA) against the freshly built web + migrate images inside the runner, on
-   CRITICAL/HIGH with `ignore-unfixed`, exceptions in `infra/ci/.trivyignore.yaml`.
+   CRITICAL/HIGH with `ignore-unfixed`, exceptions in `.github/.trivyignore.yaml`.
    This replaced the earlier gcloud/Artifact Analysis poll, which depended on the billable
    `containerscanning.googleapis.com` (left DISABLED for $0 idle cost), never actually
    scanned an image, and wasted ~10 min per deploy polling a field that was never emitted.

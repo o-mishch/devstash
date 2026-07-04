@@ -43,6 +43,13 @@ OVERLAY=infra/k8s/overlays/local
 TF_DIR=infra/terraform/envs/local
 TF_STATE="$HERE/.tofu-state/local.tfstate"
 tofu_() { tofu -chdir="$TF_DIR" "$@"; }
+# tofu_init_local: `tofu init` against the local-file backend, passing the state path as an
+# absolute path (the partial backend-config envs/local/backend.tf leaves unset). Both cluster_up
+# and cluster_down must init with the identical path before apply/destroy, so it lives here once.
+tofu_init_local() {
+  tofu_ init -input=false \
+    -backend-config="path=$(cd "$(dirname "$TF_STATE")" && pwd)/$(basename "$TF_STATE")"
+}
 
 # preflight: assert every CLI this local stack drives is on PATH before we start, so a
 # missing tool fails fast with an install hint instead of a cryptic error deep in `up`.
@@ -159,7 +166,7 @@ apply_overlay_slice() {
 cluster_up() {
   mkdir -p "$(dirname "$TF_STATE")"
   log "provisioning kind cluster via OpenTofu (envs/local)"
-  tofu_ init -input=false -backend-config="path=$(cd "$(dirname "$TF_STATE")" && pwd)/$(basename "$TF_STATE")"
+  tofu_init_local
   tofu_ apply -input=false -auto-approve -var cluster_active=true
 }
 
@@ -170,7 +177,7 @@ cluster_up() {
 cluster_down() {
   [[ -f "$TF_STATE" ]] || { warn "no local tofu state — nothing to destroy"; return 0; }
   log "destroying kind cluster via OpenTofu (envs/local)"
-  tofu_ init -input=false -backend-config="path=$(cd "$(dirname "$TF_STATE")" && pwd)/$(basename "$TF_STATE")"
+  tofu_init_local
   tofu_ destroy -input=false -auto-approve
 }
 

@@ -222,7 +222,7 @@ jobs:
       # containerscanning.googleapis.com is intentionally left DISABLED to keep the dev env
       # at $0 idle cost. Findings print to the job log for visibility but never block the
       # deploy (exit-code: '0'); flip exit-code to '1' to make this a hard gate. Time-bound
-      # exceptions live in infra/ci/.trivyignore.yaml. Docker is already authenticated
+      # exceptions live in .github/.trivyignore.yaml. Docker is already authenticated
       # to Artifact Registry from the build-push step, so Trivy pulls the images by digest.
 
       # The control plane has no public IP endpoint (enable_private_endpoint = true);
@@ -369,7 +369,7 @@ jobs:
           vuln-type: os,library
           ignore-unfixed: true
           exit-code: '0'
-          trivyignores: infra/ci/.trivyignore.yaml
+          trivyignores: .github/.trivyignore.yaml
 
       - name: Scan migrate image for vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -381,4 +381,4 @@ jobs:
           vuln-type: os,library
           ignore-unfixed: true
           exit-code: '0'
-          trivyignores: infra/ci/.trivyignore.yaml
+          trivyignores: .github/.trivyignore.yaml

@@ -15,7 +15,10 @@
 #   (b) GENUINELY IDLE — the cluster is older than the fresh-resume grace ($_IDLE_WINDOW) AND
 #       served zero LB requests across that window. Fast path for a real idle gap.
 set -eu
-CREATED="$(gcloud container clusters list --region="$_REGION" --project="$_PROJECT_ID" --format='value(createTime)' | head -n1)"
+# --limit=1 (not `| head -n1`): POSIX sh has no pipefail, so a piped `head` would mask a
+# gcloud/API error as an empty CREATED and misread a transient failure as "already suspended".
+# Letting gcloud itself cap the output keeps `set -e` able to abort on a real gcloud failure.
+CREATED="$(gcloud container clusters list --region="$_REGION" --project="$_PROJECT_ID" --format='value(createTime)' --limit=1)"
 if [ -z "$CREATED" ]; then
   echo "no cluster found (already suspended) — nothing to do"
   exit 0

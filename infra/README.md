@@ -15,7 +15,7 @@ infra/
 ├── run/                   # оркестратори (одна команда на кожен таргет)
 │   ├── gcp/               #   run.sh (GKE) + tfstate-lifecycle.json
 │   └── local/             #   run.sh (kind) + valkey-openssl.cnf + stripe-fake-webhook.ts
-├── ci/                    # CI shell (build/sign/rollout/…) + .trivyignore.yaml
+├── ci/                    # CI shell (build/sign/rollout/…)
 ├── lib/common.sh          # спільний log/ok/warn/die + need() для обох run.sh і ci/
 ├── versions.env           # пін версій Helm-чартів (ESO, Reloader)
 ├── k8s/

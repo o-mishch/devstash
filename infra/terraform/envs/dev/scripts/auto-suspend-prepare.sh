@@ -29,7 +29,15 @@ app_config_ver="$(gcloud secrets versions list devstash-app-config --project="$_
 [ -n "$app_config_ver" ] || { echo "devstash-app-config has no ENABLED version — cannot proceed"; exit 1; }
 gcloud secrets versions access "$app_config_ver" --secret="devstash-app-config" --project="$_PROJECT_ID" > /workspace/sec/app-config.json
 if gcloud secrets describe "devstash-ops-config" --project="$_PROJECT_ID" >/dev/null 2>&1; then
-  gcloud secrets versions access latest --secret="devstash-ops-config" --project="$_PROJECT_ID" > /workspace/sec/ops-config.json
+  # Resolve the newest ENABLED version, exactly as app-config above — NOT `access latest`. A
+  # stray DISABLED/DESTROYED top version (e.g. from an interrupted DNS-cred rotation) makes
+  # `access latest` fail with FAILED_PRECONDITION and would wedge the whole suspend. This
+  # mirrors ds_newest_enabled_secret_version (infra/lib/common.sh) — kept symmetric with the
+  # app-config path so one bad top version can never block suspend for either secret.
+  ops_config_ver="$(gcloud secrets versions list devstash-ops-config --project="$_PROJECT_ID" \
+    --filter=state:ENABLED --sort-by=~createTime --limit=1 --format='value(name)')"
+  [ -n "$ops_config_ver" ] || { echo "devstash-ops-config exists but has no ENABLED version — cannot proceed"; exit 1; }
+  gcloud secrets versions access "$ops_config_ver" --secret="devstash-ops-config" --project="$_PROJECT_ID" > /workspace/sec/ops-config.json
 fi
 # Assemble the secrets tfvars via the standalone Python helper (kept out of this shell step so
 # the JSON-assembly logic is independently lintable/testable and languages stay segregated — not
