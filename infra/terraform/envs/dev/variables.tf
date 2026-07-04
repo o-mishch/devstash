@@ -41,7 +41,7 @@ variable "github_owner_id" {
 # DNS A-record for this domain must point at the Ingress static IP (network module).
 variable "app_domain" {
   type        = string
-  description = "Public hostname for the app, e.g. \"devstash.example.com\"."
+  description = "Public hostname for the app, e.g. \"gke.devstash.one\"."
 }
 
 # Sender identity for transactional email — non-secret, drives EMAIL_FROM in the

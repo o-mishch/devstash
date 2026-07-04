@@ -13,22 +13,17 @@ source infra/versions.env
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-# Skip the Helm upgrade if the release is already deployed at the pinned version. The
-# helm-list/jq probe is shared with ensure-eso.sh via common.sh.
-if helm_release_at_version reloader reloader "reloader-$RELOADER_VERSION"; then
-  echo "Stakater Reloader version $RELOADER_VERSION is already installed. Skipping Helm upgrade."
-  exit 0
-fi
+# Skip the Helm upgrade if the release is already deployed at the pinned version. The skip-guard
+# (and the helm-list/jq probe it wraps) is shared with ensure-eso.sh via common.sh.
+helm_skip_if_current reloader reloader "reloader-$RELOADER_VERSION" "Stakater Reloader"
 
 helm repo add stakater https://stakater.github.io/stakater-charts
 helm repo update stakater
 
-# Resource requests set to Autopilot's 50m CPU floor. Failure policy is HELM_FAILURE_POLICY
-# — same rationale and default as ensure-eso.sh; see the note there.
-HELM_FAILURE_POLICY="${HELM_FAILURE_POLICY:---atomic}"
-
+# Resource requests set to Autopilot's 50m CPU floor. Failure policy comes from
+# helm_failure_policy (common.sh) — same "--atomic" default and override as ensure-eso.sh.
 helm upgrade --install reloader stakater/reloader \
-  -n reloader --create-namespace --wait --timeout 5m "$HELM_FAILURE_POLICY" \
+  -n reloader --create-namespace --wait --timeout 5m "$(helm_failure_policy)" \
   --version "$RELOADER_VERSION" \
   --set reloader.deployment.resources.requests.cpu=50m \
   --set reloader.deployment.resources.requests.memory=128Mi

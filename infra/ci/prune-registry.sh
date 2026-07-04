@@ -37,6 +37,35 @@ else
   CUTOFF=$(date -v-30M -u +"%Y-%m-%dT%H:%M:%SZ")
 fi
 
+# prune_pass <label> <want-index>: delete every superseded manifest of the selected media-type
+# class from $image_path. <want-index> is "index" to act on OCI Indexes (parent manifests) or
+# "manifest" to act on the rest (child/platform/attestation manifests); the other class is
+# skipped. Kept digests (the parent index + its children, in the $keep_list array) are always
+# preserved. Closes over image_path/keep_list/CUTOFF/GCP_PROJECT_ID from the per-image loop
+# below. The two passes MUST re-list (not cache) because pass 1 deleting indexes is what orphans
+# the children pass 2 then collects — so re-listing is correct, not wasteful.
+prune_pass() {
+  local label="$1" want_index="$2" version media_type is_index
+  while IFS=$'\t' read -r version media_type; do
+    [[ -z "$version" ]] && continue
+    [[ "$media_type" == *"index"* ]] && is_index=index || is_index=manifest
+    [[ "$is_index" != "$want_index" ]] && continue
+    # Exact-match membership against the keep-digest array (no whitespace-string matching).
+    if printf '%s\n' "${keep_list[@]}" | grep -qxF "$version"; then
+      echo "prune-registry: keeping active $label ${image_path}@${version}"
+      continue
+    fi
+    echo "prune-registry: deleting superseded $label ${image_path}@${version}"
+    if ! gcloud artifacts docker images delete "${image_path}@${version}" \
+         --delete-tags --quiet --project="$GCP_PROJECT_ID"; then
+      echo "::warning::prune-registry: failed to delete ${image_path}@${version} (continuing)"
+    fi
+  done < <(gcloud artifacts docker images list "$image_path" \
+             --filter="createTime < $CUTOFF" \
+             --format="value(version,metadata.mediaType)" \
+             --project="$GCP_PROJECT_ID" 2>/dev/null || true)
+}
+
 for img in "${DEVSTASH_IMAGES[@]}"; do
   image_path="${BASE}/${img}"
   # Resolve the keep digest from the per-image env var: web -> WEB_DIGEST, migrate -> MIGRATE_DIGEST.
@@ -51,58 +80,21 @@ for img in "${DEVSTASH_IMAGES[@]}"; do
   echo "prune-registry: ${image_path} — keeping ${keep_digest} and its children"
 
   # Protect both the parent index digest and all child digests referenced by the index
-  # (e.g. platform manifests, SBOM, provenance).
-  keep_list=" ${keep_digest} "
-  if children=$(docker manifest inspect "${image_path}@${keep_digest}" | jq -r 'if .manifests then .manifests[].digest else empty end' 2>/dev/null); then
-    for child in $children; do
-      keep_list="${keep_list}${child} "
-      echo "prune-registry: protecting child manifest ${child}"
-    done
-  fi
+  # (e.g. platform manifests, SBOM, provenance). Read the children into an array (mapfile)
+  # rather than a whitespace-joined string, so membership is an exact-match test and there is
+  # no unquoted word-split. `|| true` keeps a childless single-arch image (jq → empty) from
+  # tripping set -e; the -t drops the trailing newline mapfile would otherwise keep.
+  keep_list=("$keep_digest")
+  mapfile -t children < <(docker manifest inspect "${image_path}@${keep_digest}" \
+    | jq -r 'if .manifests then .manifests[].digest else empty end' 2>/dev/null || true)
+  for child in "${children[@]}"; do
+    [[ -z "$child" ]] && continue
+    keep_list+=("$child")
+    echo "prune-registry: protecting child manifest ${child}"
+  done
 
   # Pass 1: delete OCI Indexes (parent manifests) first to unreference child manifests.
-  while IFS=$'\t' read -r version media_type; do
-    [[ -z "${version}" ]] && continue
-    if [[ "$media_type" != *"index"* ]]; then
-      continue
-    fi
-    case " $keep_list " in
-      *" ${version} "*)
-        echo "prune-registry: keeping active index ${image_path}@${version}"
-        continue
-        ;;
-    esac
-
-    echo "prune-registry: deleting superseded index ${image_path}@${version}"
-    if ! gcloud artifacts docker images delete "${image_path}@${version}" \
-         --delete-tags --quiet --project="$GCP_PROJECT_ID"; then
-      echo "::warning::prune-registry: failed to delete ${image_path}@${version} (continuing)"
-    fi
-  done < <(gcloud artifacts docker images list "$image_path" \
-             --filter="createTime < $CUTOFF" \
-             --format="value(version,metadata.mediaType)" \
-             --project="$GCP_PROJECT_ID" 2>/dev/null || true)
-
-  # Pass 2: delete any remaining manifests (child/attestation manifests) that are not kept.
-  while IFS=$'\t' read -r version media_type; do
-    [[ -z "${version}" ]] && continue
-    if [[ "$media_type" == *"index"* ]]; then
-      continue
-    fi
-    case " $keep_list " in
-      *" ${version} "*)
-        echo "prune-registry: keeping active manifest ${image_path}@${version}"
-        continue
-        ;;
-    esac
-
-    echo "prune-registry: deleting superseded/orphaned manifest ${image_path}@${version}"
-    if ! gcloud artifacts docker images delete "${image_path}@${version}" \
-         --delete-tags --quiet --project="$GCP_PROJECT_ID"; then
-      echo "::warning::prune-registry: failed to delete ${image_path}@${version} (continuing)"
-    fi
-  done < <(gcloud artifacts docker images list "$image_path" \
-             --filter="createTime < $CUTOFF" \
-             --format="value(version,metadata.mediaType)" \
-             --project="$GCP_PROJECT_ID" 2>/dev/null || true)
+  prune_pass index index
+  # Pass 2: delete any remaining child/attestation manifests that are not kept.
+  prune_pass manifest manifest
 done

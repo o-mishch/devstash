@@ -10,6 +10,21 @@ Allow, and add all commands for which you are asking for permissions to allowed-
 Critically review all flows related to GCP deployment, to verify that nothing is missed or anything can be improved.
 
 
+@.agents/agents/refactor-scanner.md 
+infra/gcp-run/run.sh 
+infra/k8s/local-run/run.sh 
+infra/ci 
+infra/terraform/envs/dev/scripts
+infra/lib
+infra/k8s/local-run/scripts
+infra/k8s/overlays/gcp/redisinsight/entrypoint.sh
+
+KISS, DRY, SOLID
+
+Get recommendations, best practices, and modern approaches from websearch, eventually from context7
+ask questions untill you would have full context.
+
+
 1. Verify that GCP config fully satisfies and complies with recommendations, best practices, and modern approaches. All features present in the application utilize the existing GCP components.
 2. Verify that the local run cluster is aligned with GCP, etc.
 3. The Vercel deployment shouldn't be affected

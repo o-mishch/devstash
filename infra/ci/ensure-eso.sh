@@ -13,12 +13,9 @@ source infra/versions.env
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-# Skip the Helm upgrade if the release is already deployed at the pinned version. The
-# helm-list/jq probe is shared with ensure-reloader.sh via common.sh.
-if helm_release_at_version external-secrets external-secrets "external-secrets-$ESO_VERSION"; then
-  echo "External Secrets Operator version $ESO_VERSION is already installed. Skipping Helm upgrade."
-  exit 0
-fi
+# Skip the Helm upgrade if the release is already deployed at the pinned version. The skip-guard
+# (and the helm-list/jq probe it wraps) is shared with ensure-reloader.sh via common.sh.
+helm_skip_if_current external-secrets external-secrets "external-secrets-$ESO_VERSION" "External Secrets Operator"
 
 helm repo add external-secrets https://charts.external-secrets.io
 helm repo update external-secrets
@@ -27,15 +24,10 @@ helm repo update external-secrets
 # defaults to 10m, which Autopilot silently mutates — explicit values here eliminate the
 # mutation warning and make billing predictable.
 #
-# Failure policy is HELM_FAILURE_POLICY, defaulting to "--atomic". CRITICAL: the default
-# must stay "--atomic" — the GitHub Actions runner (ubuntu-latest) runs Helm 3, which does
-# NOT support "--rollback-on-failure" and fails the build; "--atomic" works on both Helm 3
-# and Helm 4 (deprecated but functional). Local run.sh runs modern Helm and overrides this
-# to "--rollback-on-failure" (the non-deprecated flag). Never hardcode the flag here.
-HELM_FAILURE_POLICY="${HELM_FAILURE_POLICY:---atomic}"
-
+# Failure policy comes from helm_failure_policy (common.sh) — "--atomic" by default (required
+# for CI's Helm 3), overridable via HELM_FAILURE_POLICY (local run.sh sets --rollback-on-failure).
 helm upgrade --install external-secrets external-secrets/external-secrets \
-  -n external-secrets --create-namespace --wait --timeout 5m "$HELM_FAILURE_POLICY" \
+  -n external-secrets --create-namespace --wait --timeout 5m "$(helm_failure_policy)" \
   --version "$ESO_VERSION" \
   --set resources.requests.cpu=50m \
   --set resources.requests.memory=128Mi \

@@ -80,12 +80,8 @@ source "$(dirname "$0")/../versions.env"
 source "$(dirname "$0")/../lib/common.sh"
 
 # ── helpers ────────────────────────────────────────────────────────────────
-log()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
-ok()   { printf '\033[0;32m  ✓ %s\033[0m\n' "$*"; }
-warn() { printf '\033[0;33m  ! %s\033[0m\n' "$*"; }
-die()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
-
-need() { command -v "$1" >/dev/null 2>&1 || die "missing required CLI: $1 ($2)"; }
+# log/ok/warn/die + need() are provided by the sourced infra/lib/common.sh (shared with
+# infra/k8s/local-run/run.sh so both orchestrators speak one logging/preflight vocabulary).
 
 confirm() {
   [[ "${AUTO_APPROVE:-}" == "1" ]] && return 0
@@ -110,15 +106,12 @@ tofu_() { tofu -chdir="$TF_DIR" "$@"; }
 tf_out() { tofu_ output -raw "$1" 2>/dev/null || printf '%s' "${2:-}"; }
 
 # app_config_blob: print the devstash-app-config JSON from its newest ENABLED version, or
-# nothing (empty output, non-fatal) if the secret is absent/has no enabled version. We resolve
-# the newest state:ENABLED version rather than `access latest`, because `latest` points at the
-# highest-numbered version regardless of state — one DISABLED/DESTROYED top version (e.g. from
-# an interrupted rotation) makes `access latest` fail with FAILED_PRECONDITION and breaks
-# reads. Same hardening as the auto-suspend prepare step (auto-suspend-prepare.sh).
+# nothing (empty output, non-fatal) if the secret is absent/has no enabled version. The
+# newest-ENABLED-version resolution (and the reason we avoid `access latest`) lives in
+# ds_newest_enabled_secret_version (infra/lib/common.sh), shared with the CI tooling.
 app_config_blob() {
   local ver
-  ver="$(gcloud secrets versions list devstash-app-config --project="$PROJECT_ID" \
-    --filter=state:ENABLED --sort-by=~createTime --limit=1 --format='value(name)' 2>/dev/null || true)"
+  ver="$(ds_newest_enabled_secret_version devstash-app-config "$PROJECT_ID")"
   [[ -n "$ver" ]] || return 0
   gcloud secrets versions access "$ver" --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true
 }
@@ -126,10 +119,21 @@ app_config_blob() {
 # use_cluster / use_cluster_soft: point kubeconfig at the GKE cluster via the tofu-emitted
 # get_credentials_command. `use_cluster` aborts if no cluster exists; the _soft variant only
 # warns and continues (for read-only status/log commands that still work partially offline).
-# Optional $1 overrides the default message. NOTE: apply() intentionally does NOT use these —
-# it inspects the suspended-sentinel output before eval-ing, which these helpers do not.
-use_cluster()      { eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null || die "${1:-no cluster yet — run 'apply' first}"; }
-use_cluster_soft() { eval "$(tofu_ output -raw get_credentials_command)" 2>/dev/null || warn "${1:-no cluster yet}"; }
+# Optional $1 overrides the default message. Guard on the `gcloud*` prefix before eval-ing:
+# when the env is suspended, get_credentials_command is a human-readable sentinel (NOT a gcloud
+# command), so eval-ing it is meaningless — bail with the same message as a missing cluster.
+# This is the guard apply() applies inline (line ~493); centralising it here makes every caller
+# (eso/status/rotate-secret/verify-secrets/upgrade-helm) sentinel-safe, not just apply().
+use_cluster() {
+  local c; c="$(tofu_ output -raw get_credentials_command 2>/dev/null || true)"
+  [[ "$c" == gcloud* ]] || die "${1:-no cluster yet — run 'apply' first}"
+  eval "$c"
+}
+use_cluster_soft() {
+  local c; c="$(tofu_ output -raw get_credentials_command 2>/dev/null || true)"
+  [[ "$c" == gcloud* ]] || { warn "${1:-no cluster yet}"; return 0; }
+  eval "$c" 2>/dev/null || warn "${1:-no cluster yet}"
+}
 
 # helm_repo <name> <url>: register (idempotent — ignore "already exists") + refresh a single
 # Helm chart repo. Used by upgrade_helm to freshen both repos before querying latest versions
@@ -331,10 +335,22 @@ bootstrap() {
 #   2. The PSC subnet tracked with the legacy purpose PRIVATE_SERVICE_CONNECT. Memorystore
 #      service-connectivity automation requires an ordinary PRIVATE subnet, and GCP cannot
 #      PATCH a subnet's purpose in place — so the subnet must be REPLACED, not updated.
+#   3. The Artifact Registry repo DELETED out-of-band by a deep-suspend (auto-suspend step 5
+#      / `run.sh suspend` run `artifactregistry.repositories.delete` on the WHOLE repo for $0
+#      idle storage — see infra/docs/10-suspend-resume.md), yet still tracked in state along
+#      with its four repo-scoped IAM members. On resume, refreshing those IAM members calls
+#      getIamPolicy on the vanished repo, and GCP answers 403 (NOT 404) for an IAM read on a
+#      missing resource — aborting the apply before the repo can be recreated. `state rm` the
+#      repo + its members so the next plan recreates them cleanly (nothing exists remotely, so
+#      there is no name-conflict on re-create). CI rebuilds+repushes the images after apply.
 reconcile_state() {
   RECONCILE_REPLACE=()
   local db_addr='module.cloudsql.google_sql_database.devstash[0]'
   local subnet_addr='module.network.google_compute_subnetwork.psc'
+  # _in_state <addr>: true iff <addr> is tracked in state. Filters by the exact address
+  # (authoritative — no whole-list grep) so an unrelated line can't fool it. Used by all
+  # three reconcile branches below.
+  _in_state() { tofu_ state list "$1" 2>/dev/null | grep -qxF "$1"; }
 
   # 1. Adopt an untracked-but-existing Cloud SQL database. The presence check filters state
   # by the exact address (authoritative — no whole-list grep) so it can't be fooled by an
@@ -350,8 +366,7 @@ reconcile_state() {
   local db_active
   db_active="$(sed -nE 's/^[[:space:]]*db_active[[:space:]]*=[[:space:]]*(true|false).*/\1/p' \
     "$TF_DIR/active.auto.tfvars" 2>/dev/null | head -1)"
-  _db_in_state() { tofu_ state list "$db_addr" 2>/dev/null | grep -qxF "$db_addr"; }
-  if [[ "$db_active" != "false" ]] && ! _db_in_state; then
+  if [[ "$db_active" != "false" ]] && ! _in_state "$db_addr"; then
     local inst
     inst="$(tf_out db_instance_name)"
     if [[ -n "$inst" ]] && gcloud sql databases describe "$DB_NAME" \
@@ -360,7 +375,7 @@ reconcile_state() {
       if tofu_ import -lock-timeout=120s "$db_addr" \
            "projects/$PROJECT_ID/instances/$inst/databases/$DB_NAME"; then
         ok "database '$DB_NAME' adopted into state"
-      elif _db_in_state; then
+      elif _in_state "$db_addr"; then
         warn "database '$DB_NAME' was already managed in state — import skipped"
       else
         die "failed to import $db_addr — resolve manually, then re-run apply"
@@ -375,6 +390,35 @@ reconcile_state() {
   if [[ "$purpose" == "PRIVATE_SERVICE_CONNECT" ]]; then
     warn "Reconcile: PSC subnet has legacy purpose PRIVATE_SERVICE_CONNECT — scheduling a replace with a PRIVATE subnet"
     RECONCILE_REPLACE+=("-replace=$subnet_addr")
+  fi
+
+  # 3. Forget an Artifact Registry repo a deep-suspend deleted out-of-band but state still
+  # tracks. The repo id is the literal from modules/artifact-registry ("devstash"). Only act
+  # when the repo is ABSENT in GCP (describe fails) AND its resource is PRESENT in state — so
+  # this self-disables the moment the next plan recreates it. The four repo-scoped IAM members
+  # are removed alongside the repo: their getIamPolicy refresh is exactly what 403s on the
+  # missing repo. Filter state by each exact address (authoritative — no whole-list grep). The
+  # count-gated addresses ([0]) may be absent depending on toggles, so rm each individually and
+  # tolerate an already-absent one rather than failing the whole reconcile.
+  local ar_repo='devstash'
+  local ar_repo_addr='module.artifact_registry.google_artifact_registry_repository.docker'
+  if _in_state "$ar_repo_addr" \
+     && ! gcloud artifacts repositories describe "$ar_repo" \
+            --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    warn "Reconcile: Artifact Registry repo '$ar_repo' was deleted by a deep-suspend but is still in state — forgetting the repo + its IAM members so the apply recreates them"
+    local ar_addr
+    for ar_addr in \
+      'module.iam.google_artifact_registry_repository_iam_member.node_artifact_registry_reader' \
+      'module.iam.google_artifact_registry_repository_iam_member.custom_node_artifact_registry_reader[0]' \
+      'module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry' \
+      'google_artifact_registry_repository_iam_member.lifecycle_ar_delete[0]' \
+      "$ar_repo_addr"; do
+      if _in_state "$ar_addr"; then
+        tofu_ state rm -lock-timeout=120s "$ar_addr" \
+          || die "failed to forget $ar_addr — resolve manually, then re-run apply"
+      fi
+    done
+    ok "Artifact Registry repo + IAM members forgotten — the plan will recreate them"
   fi
 }
 
@@ -913,6 +957,21 @@ set_active_state() {
   } > "$TF_DIR/active.auto.tfvars"
 }
 
+# resolve_dump_target: read the three GCS-dump coordinates from tofu output and set the
+# shared globals DUMP_INSTANCE + DUMP_URI. Returns non-zero (setting nothing) if any output
+# is empty — the normal case for a not-yet-applied env. Callers decide the severity of that
+# (dump_db dies, restore_db warns+skips), so the resolution logic lives here exactly once.
+# db_dump_object is the single source of truth (locals.tf) shared with the auto-suspend path,
+# so suspend writes and resume read the exact same GCS object.
+resolve_dump_target() {
+  local bucket object
+  DUMP_INSTANCE="$(tf_out db_instance_name)"
+  bucket="$(tf_out db_dumps_bucket)"
+  object="$(tf_out db_dump_object)"
+  [[ -n "$DUMP_INSTANCE" && -n "$bucket" && -n "$object" ]] || return 1
+  DUMP_URI="gs://${bucket}/${object}"
+}
+
 # dump_db: server-side export of the live Cloud SQL DB to the GCS dump bucket, run BEFORE
 # a deep suspend destroys the instance. `gcloud sql export` makes Cloud SQL's own service
 # agent run pg_dump straight to GCS, so it works over the instance's private-only network
@@ -922,31 +981,25 @@ _sql_runnable() {
   [[ "$(gcloud sql instances describe "$1" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null)" == "RUNNABLE" ]]
 }
 dump_db() {
-  local instance bucket object uri state size
+  local state size
   ensure_tfvars
-  instance="$(tf_out db_instance_name)"
-  bucket="$(tf_out db_dumps_bucket)"
-  # db_dump_object is the single source of truth (locals.tf) shared with the auto-suspend
-  # path, so suspend writes and resume reads the exact same GCS object.
-  object="$(tf_out db_dump_object)"
-  [[ -n "$instance" && -n "$bucket" && -n "$object" ]] || die "cannot resolve Cloud SQL instance / dump bucket / object from tofu output — run 'apply' first"
-  uri="gs://${bucket}/${object}"
+  resolve_dump_target || die "cannot resolve Cloud SQL instance / dump bucket / object from tofu output — run 'apply' first"
 
   # Must be RUNNABLE to export. If a prior compute-only suspend left it STOPPED
   # (activation_policy=NEVER), start it just long enough to dump; the apply that follows
   # destroys it anyway, so this transient start is harmless.
-  state="$(gcloud sql instances describe "$instance" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null || true)"
-  [[ -n "$state" ]] || die "Cloud SQL instance '$instance' not found — nothing to dump (already deep-suspended?)"
+  state="$(gcloud sql instances describe "$DUMP_INSTANCE" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null || true)"
+  [[ -n "$state" ]] || die "Cloud SQL instance '$DUMP_INSTANCE' not found — nothing to dump (already deep-suspended?)"
   if [[ "$state" != "RUNNABLE" ]]; then
     warn "instance is '$state' — starting it to take a consistent dump"
-    gcloud sql instances patch "$instance" --project="$PROJECT_ID" --activation-policy=ALWAYS --quiet
-    poll_until 30 10 -- _sql_runnable "$instance" \
+    gcloud sql instances patch "$DUMP_INSTANCE" --project="$PROJECT_ID" --activation-policy=ALWAYS --quiet
+    poll_until 30 10 -- _sql_runnable "$DUMP_INSTANCE" \
       || die "instance did not reach RUNNABLE in time — aborting suspend"
     echo
   fi
 
-  log "Exporting Cloud SQL '$instance' → $uri (server-side pg_dump)"
-  gcloud sql export sql "$instance" "$uri" --database="$DB_NAME" --project="$PROJECT_ID" \
+  log "Exporting Cloud SQL '$DUMP_INSTANCE' → $DUMP_URI (server-side pg_dump)"
+  gcloud sql export sql "$DUMP_INSTANCE" "$DUMP_URI" --database="$DB_NAME" --project="$PROJECT_ID" \
     || die "gcloud sql export failed — NOT suspending (instance left intact)"
 
   # Verify the dump exists and is non-empty BEFORE the caller is allowed to destroy the
@@ -954,8 +1007,8 @@ dump_db() {
   # SIBLING: the event-driven path duplicates this exact export+non-empty-size gate in
   # scripts/auto-suspend-dump.sh (different execution model — Cloud Build container — so it
   # can't be shared code). If you change the verification rule here, change it there too.
-  size="$(gcloud storage objects describe "$uri" --format='value(size)' 2>/dev/null || true)"
-  [[ "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]] || die "dump $uri missing or empty (size='${size:-none}') — NOT suspending"
+  size="$(gcloud storage objects describe "$DUMP_URI" --format='value(size)' 2>/dev/null || true)"
+  [[ "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]] || die "dump $DUMP_URI missing or empty (size='${size:-none}') — NOT suspending"
   ok "DB exported and verified ($((size / 1024)) KiB) — safe to destroy the instance"
 }
 
@@ -964,22 +1017,16 @@ dump_db() {
 # CI Prisma migrations create the schema. The dump includes the _prisma_migrations table,
 # so when a dump IS restored the CI migrate step is a no-op.
 restore_db() {
-  local instance bucket object uri
   ensure_tfvars
-  instance="$(tf_out db_instance_name)"
-  bucket="$(tf_out db_dumps_bucket)"
-  # Same single-sourced dump object as dump_db (locals.tf db_dump_object).
-  object="$(tf_out db_dump_object)"
-  [[ -n "$instance" && -n "$bucket" && -n "$object" ]] || { warn "no instance / dump bucket / object resolved — skipping restore"; return 0; }
-  uri="gs://${bucket}/${object}"
-  if ! gcloud storage objects describe "$uri" >/dev/null 2>&1; then
-    warn "no dump at $uri — fresh database; CI migrations will create the schema"
+  resolve_dump_target || { warn "no instance / dump bucket / object resolved — skipping restore"; return 0; }
+  if ! gcloud storage objects describe "$DUMP_URI" >/dev/null 2>&1; then
+    warn "no dump at $DUMP_URI — fresh database; CI migrations will create the schema"
     return 0
   fi
-  log "Importing $uri → Cloud SQL '$instance' (database $DB_NAME)"
-  gcloud sql import sql "$instance" "$uri" --database="$DB_NAME" --project="$PROJECT_ID" --quiet \
+  log "Importing $DUMP_URI → Cloud SQL '$DUMP_INSTANCE' (database $DB_NAME)"
+  gcloud sql import sql "$DUMP_INSTANCE" "$DUMP_URI" --database="$DB_NAME" --project="$PROJECT_ID" --quiet \
     || die "gcloud sql import failed — the instance is up but empty; investigate before the app deploys"
-  ok "DB restored from $uri"
+  ok "DB restored from $DUMP_URI"
 }
 
 # spaceship_api: single Spaceship DNS API entrypoint — owns the host, auth headers, and the

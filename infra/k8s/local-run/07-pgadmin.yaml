@@ -61,16 +61,14 @@ spec:
       initContainers:
         - name: seed-pgpass
           image: busybox:latest
-          command:
-            - sh
-            - -c
-            - |
-              cp /seed/pgpass /pgpass-dir/pgpass
-              chown 5050:5050 /pgpass-dir/pgpass
-              chmod 600 /pgpass-dir/pgpass
+          # Script mounted from the pgadmin-seed-script ConfigMap (run.sh creates it from
+          # scripts/pgadmin-seed-pgpass.sh via --from-file). Kept out of this manifest per
+          # infra/.agents/rules/infra.md (no inline scripts in YAML).
+          command: ['sh', '/scripts/pgadmin-seed-pgpass.sh']
           volumeMounts:
             - { name: config, mountPath: /seed }
             - { name: pgpass, mountPath: /pgpass-dir }
+            - { name: seed-script, mountPath: /scripts }
       containers:
         - name: pgadmin
           image: dpage/pgadmin4:latest
@@ -99,6 +97,8 @@ spec:
           configMap: { name: pgadmin-config }
         - name: pgpass
           emptyDir: {}
+        - name: seed-script
+          configMap: { name: pgadmin-seed-script }
 ---
 apiVersion: v1
 kind: Service

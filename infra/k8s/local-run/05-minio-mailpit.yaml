@@ -69,15 +69,15 @@ spec:
       containers:
         - name: mc
           image: minio/mc:latest
-          command: ['/bin/sh', '-c']
-          args:
-            - |
-              until mc alias set local http://minio:9000 minioadmin minioadmin; do
-                echo "waiting for minio..."; sleep 2;
-              done
-              mc mb --ignore-existing local/devstash-uploads
-              mc anonymous set download local/devstash-uploads
-              echo "bucket ready"
+          # Script mounted from the minio-bucket-init-script ConfigMap (run.sh creates it from
+          # scripts/minio-bucket-init.sh via --from-file). Kept out of this manifest so it is a
+          # real, shellcheckable file — see infra/.agents/rules/infra.md (no inline scripts in YAML).
+          command: ['/bin/sh', '/scripts/minio-bucket-init.sh']
+          volumeMounts:
+            - { name: init-script, mountPath: /scripts }
+      volumes:
+        - name: init-script
+          configMap: { name: minio-bucket-init-script }
 ---
 # ───────────────────────── Mailpit ─────────────────────────
 apiVersion: apps/v1
