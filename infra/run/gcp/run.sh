@@ -79,6 +79,17 @@ source "$(dirname "$0")/../../versions.env"
 # shellcheck source=../../lib/common.sh
 source "$(dirname "$0")/../../lib/common.sh"
 
+# Cohesive step clusters split into sourced sub-libraries beside this file, purely to keep this
+# orchestrator readable. They SHARE this shell's scope (globals + helpers defined above and
+# below), so this is organisational, not a decoupling. Source order matters: suspend.sh's
+# suspend/resume call into db.sh (dump_db/restore_db) and dns.sh (update_dns), so it comes last.
+# shellcheck source=lib/db.sh
+source "$(dirname "$0")/lib/db.sh"
+# shellcheck source=lib/dns.sh
+source "$(dirname "$0")/lib/dns.sh"
+# shellcheck source=lib/suspend.sh
+source "$(dirname "$0")/lib/suspend.sh"
+
 # ── helpers ────────────────────────────────────────────────────────────────
 # log/ok/warn/die + need() are provided by the sourced infra/lib/common.sh (shared with
 # infra/run/local/run.sh so both orchestrators speak one logging/preflight vocabulary).
@@ -150,7 +161,9 @@ count_missing() {
   local have="$1"; shift
   local n=0 item
   for item in "$@"; do
-    if echo "$have" | grep -qx "$item"; then
+    # -qxF + --: fixed-string, whole-line match, metachar-safe (matches the sibling
+    # membership tests in _in_state / verify_secrets so all three read identically).
+    if printf '%s\n' "$have" | grep -qxF -- "$item"; then
       ok "$item"
     else
       warn "MISSING: $item"
@@ -620,24 +633,7 @@ secrets() {
   done
 }
 
-# dns_hint: print the DNS A-record the user must create after `apply`.
-# The GCP-managed certificate won't provision until the domain resolves to the
-# Ingress static IP; the app stays at 502/404 until the cert reaches Active status
-# (up to 60 min after DNS propagates). Also reminds about Stripe webhook + OAuth URIs.
-dns_hint() {
-  local ip dom
-  ip="$(tf_out ingress_ip_address)"
-  dom="$(tf_out app_domain)"
-  log "DNS — point your subdomain at the Ingress static IP, then the managed cert provisions"
-  echo "  Add an A-record:  ${dom:-<app_domain>}  →  ${ip:-<run: tofu output ingress_ip_address>}"
-  echo "  Verify:           dig +short ${dom:-<app_domain>}"
-  echo "  Cert status:      kubectl -n $NS get managedcertificate devstash-cert -o wide"
-  warn "Do NOT repoint the apex/www (those serve prod on Vercel) — use the subdomain only."
-  warn "Also do §7c (Stripe webhook) + §7d (OAuth redirect URIs) in 08-gcp-bootstrap.md."
-  warn "IMPORTANT: GCP-managed cert provisioning takes up to 60 min after DNS propagates."
-  warn "The site will return 502/404 until the ManagedCertificate status is 'Active'."
-  warn "Poll with: kubectl -n $NS get managedcertificate devstash-cert -o wide"
-}
+# dns_hint / update_dns / spaceship_api / set_dns_creds live in lib/dns.sh (sourced above).
 
 # deploy: dispatch the deploy-gke.yml GitHub Actions workflow via `gh workflow run`.
 # The workflow builds the container, pushes to Artifact Registry, runs DB migrations,
@@ -688,7 +684,7 @@ verify_secrets() {
     warn "$missing required key(s) absent from devstash-app-config — pods will fail to start until all are present"
     warn "See §7b of infra/docs/08-gcp-bootstrap.md for how to add them"
   else
-    ok "all $((${#expected[@]})) required keys present in devstash-app-config"
+    ok "all ${#expected[@]} required keys present in devstash-app-config"
     # Report the active-only infra keys so an operator can tell active from suspended state.
     local infra_key present_infra=()
     for infra_key in database-url direct-url database-ca-cert redis-url redis-ca-cert; do
@@ -943,287 +939,10 @@ down() {
 }
 
 # ── suspend / resume (on-demand showcase) ───────────────────────────────────
-
-# active.auto.tfvars is auto-loaded by OpenTofu (*.auto.tfvars) and is gitignored.
-# Persisting the toggles here makes the suspended/active state STICKY: a plain
-# `tofu apply` or `run.sh apply` keeps whatever state suspend/resume last set, instead
-# of silently reverting to the defaults (active). suspend/resume write this file.
-# $1 = environment_active (compute), $2 = db_active (Cloud SQL instance). Both lines are
-# written together so they never drift out of sync.
-set_active_state() {
-  {
-    printf 'environment_active = %s\n' "$1"
-    printf 'db_active          = %s\n' "$2"
-  } > "$TF_DIR/active.auto.tfvars"
-}
-
-# resolve_dump_target: read the three GCS-dump coordinates from tofu output and set the
-# shared globals DUMP_INSTANCE + DUMP_URI. Returns non-zero (setting nothing) if any output
-# is empty — the normal case for a not-yet-applied env. Callers decide the severity of that
-# (dump_db dies, restore_db warns+skips), so the resolution logic lives here exactly once.
-# db_dump_object is the single source of truth (locals.tf) shared with the auto-suspend path,
-# so suspend writes and resume read the exact same GCS object.
-resolve_dump_target() {
-  local bucket object
-  DUMP_INSTANCE="$(tf_out db_instance_name)"
-  bucket="$(tf_out db_dumps_bucket)"
-  object="$(tf_out db_dump_object)"
-  [[ -n "$DUMP_INSTANCE" && -n "$bucket" && -n "$object" ]] || return 1
-  DUMP_URI="gs://${bucket}/${object}"
-}
-
-# dump_db: server-side export of the live Cloud SQL DB to the GCS dump bucket, run BEFORE
-# a deep suspend destroys the instance. `gcloud sql export` makes Cloud SQL's own service
-# agent run pg_dump straight to GCS, so it works over the instance's private-only network
-# (no public IP / laptop connectivity needed). Verifies the object is non-empty and ABORTS
-# on any failure — suspend() must not destroy the instance unless this returns 0.
-_sql_runnable() {
-  [[ "$(gcloud sql instances describe "$1" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null)" == "RUNNABLE" ]]
-}
-dump_db() {
-  local state size
-  ensure_tfvars
-  resolve_dump_target || die "cannot resolve Cloud SQL instance / dump bucket / object from tofu output — run 'apply' first"
-
-  # Must be RUNNABLE to export. If a prior compute-only suspend left it STOPPED
-  # (activation_policy=NEVER), start it just long enough to dump; the apply that follows
-  # destroys it anyway, so this transient start is harmless.
-  state="$(gcloud sql instances describe "$DUMP_INSTANCE" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null || true)"
-  [[ -n "$state" ]] || die "Cloud SQL instance '$DUMP_INSTANCE' not found — nothing to dump (already deep-suspended?)"
-  if [[ "$state" != "RUNNABLE" ]]; then
-    warn "instance is '$state' — starting it to take a consistent dump"
-    gcloud sql instances patch "$DUMP_INSTANCE" --project="$PROJECT_ID" --activation-policy=ALWAYS --quiet
-    poll_until 30 10 -- _sql_runnable "$DUMP_INSTANCE" \
-      || die "instance did not reach RUNNABLE in time — aborting suspend"
-    echo
-  fi
-
-  log "Exporting Cloud SQL '$DUMP_INSTANCE' → $DUMP_URI (server-side pg_dump)"
-  gcloud sql export sql "$DUMP_INSTANCE" "$DUMP_URI" --database="$DB_NAME" --project="$PROJECT_ID" \
-    || die "gcloud sql export failed — NOT suspending (instance left intact)"
-
-  # Verify the dump exists and is non-empty BEFORE the caller is allowed to destroy the
-  # instance. This is the safety gate that replaces Cloud SQL deletion_protection.
-  # SIBLING: the event-driven path duplicates this exact export+non-empty-size gate in
-  # scripts/auto-suspend-dump.sh (different execution model — Cloud Build container — so it
-  # can't be shared code). If you change the verification rule here, change it there too.
-  size="$(gcloud storage objects describe "$DUMP_URI" --format='value(size)' 2>/dev/null || true)"
-  [[ "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]] || die "dump $DUMP_URI missing or empty (size='${size:-none}') — NOT suspending"
-  ok "DB exported and verified ($((size / 1024)) KiB) — safe to destroy the instance"
-}
-
-# restore_db: import the latest GCS dump into the freshly-recreated Cloud SQL instance on
-# resume. Best-effort: on a first-ever bring-up there is no dump, so it skips and lets the
-# CI Prisma migrations create the schema. The dump includes the _prisma_migrations table,
-# so when a dump IS restored the CI migrate step is a no-op.
-restore_db() {
-  ensure_tfvars
-  resolve_dump_target || { warn "no instance / dump bucket / object resolved — skipping restore"; return 0; }
-  if ! gcloud storage objects describe "$DUMP_URI" >/dev/null 2>&1; then
-    warn "no dump at $DUMP_URI — fresh database; CI migrations will create the schema"
-    return 0
-  fi
-  log "Importing $DUMP_URI → Cloud SQL '$DUMP_INSTANCE' (database $DB_NAME)"
-  gcloud sql import sql "$DUMP_INSTANCE" "$DUMP_URI" --database="$DB_NAME" --project="$PROJECT_ID" --quiet \
-    || die "gcloud sql import failed — the instance is up but empty; investigate before the app deploys"
-  ok "DB restored from $DUMP_URI"
-}
-
-# spaceship_api: single Spaceship DNS API entrypoint — owns the host, auth headers, and the
-# `|| true` (a transport error must stay non-fatal so DNS work never hard-fails a resume).
-# Reads $key/$secret from the caller's scope (update_dns is the sole consumer).
-#   GET             → echoes the response body
-#   PUT/DELETE/...  → echoes the HTTP status code (-o /dev/null -w '%{http_code}')
-spaceship_api() {
-  local method="$1" path="$2" body="${3:-}"
-  local url="https://spaceship.dev/api/v1/dns/records/${path}"
-  local -a hdr=(-H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json')
-  if [[ "$method" == GET ]]; then
-    curl -s -X GET "${hdr[@]}" "$url" || true
-  else
-    curl -s -o /dev/null -w '%{http_code}' -X "$method" "${hdr[@]}" "$url" ${body:+-d "$body"} || true
-  fi
-}
-
-# update_dns: re-point the app's A-record at the current ingress IP via the Spaceship
-# DNS API. Needed on resume because the ingress IP is released on suspend and a fresh
-# one is allocated each resume. Best-effort: prints a manual hint if creds are missing.
-# Credentials come from env (SPACESHIP_API_KEY / SPACESHIP_API_SECRET) or, failing that,
-# the consolidated Secret Manager ops blob devstash-ops-config (see `set-dns-creds`).
-#
-# REPLACE, never append. Spaceship's PUT /dns/records upserts by (type,name) but ONLY
-# within the API's own "External API Custom Group", and force:true silences the conflict
-# checker rather than reconciling the zone — so any OTHER A-record for this host survives:
-# a stale IP from a prior resume, or a duplicate created by hand in the "Default Record
-# Group". Two live A-records for one host make resolvers round-robin onto the dead ingress
-# IP (intermittent 502s) AND stall managed-cert provisioning, which needs the name to
-# resolve consistently to the current ingress. So we mirror the Spaceship Terraform
-# provider's contract — upsert the desired record, then DELETE every other A-record for the
-# host — instead of blindly adding one.
-update_dns() {
-  local ip domain root sub key secret code existing prune del_code
-  # INGRESS_IP override: re-assert DNS when the tofu output is unavailable (mid-migration,
-  # inconsistent state, or a raw `tofu apply` that never surfaced the output). Read the live
-  # value with:  kubectl -n devstash get ingress devstash-web -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-  ip="${INGRESS_IP:-$(tf_out ingress_ip_address)}"
-  if [[ -z "$ip" || "$ip" == "null" ]]; then
-    warn "no ingress IP available (environment suspended?) — skipping DNS update"
-    warn "Pass one explicitly:  INGRESS_IP=<ip> bash infra/run/gcp/run.sh update-dns"
-    return 0
-  fi
-  domain="$(tf_out app_domain)"
-  [[ -n "$domain" ]] || { warn "app_domain not set — skipping DNS update"; return 0; }
-  # gke.devstash.one → registered domain "devstash.one" (API path) + host label "gke".
-  # Assumes a single subdomain label; adjust if app_domain ever gains more.
-  root="${domain#*.}"
-  sub="${domain%%.*}"
-
-  # Ops creds live consolidated in the devstash-ops-config JSON blob (spaceship-api-key /
-  # spaceship-api-secret properties). Read the blob ONCE, then pull each property with jq —
-  # env vars still win for a one-off override. `|| true` keeps a missing/suspended secret a
-  # warn-and-skip, not a hard failure.
-  local ops_blob
-  ops_blob="$(gcloud secrets versions access latest --secret=devstash-ops-config --project="$PROJECT_ID" 2>/dev/null || true)"
-  key="${SPACESHIP_API_KEY:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-key" // empty' 2>/dev/null || true)}"
-  secret="${SPACESHIP_API_SECRET:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-secret" // empty' 2>/dev/null || true)}"
-  if [[ -z "$key" || -z "$secret" ]]; then
-    warn "Spaceship API creds not found (env SPACESHIP_API_KEY/SPACESHIP_API_SECRET or"
-    warn "Secret Manager devstash-ops-config via 'run.sh set-dns-creds')."
-    warn "Update the A-record manually:  $domain  →  $ip"
-    return 0
-  fi
-
-  log "Updating Spaceship DNS A-record: $domain → $ip"
-  # Desired-state payload — shared by the upsert (step 1) and re-assert (step 3) so the two
-  # writes can never drift apart. Short TTL (300s) so the change is picked up quickly.
-  local put_body="{\"force\":true,\"items\":[{\"type\":\"A\",\"name\":\"${sub}\",\"address\":\"${ip}\",\"ttl\":300}]}"
-  # 1) Upsert the desired record FIRST so the host is never left without an A-record even
-  #    if the prune below fails. force:true is still required — the stale record still
-  #    exists at this point, so without it the conflict checker would reject the PUT.
-  code="$(spaceship_api PUT "$root" "$put_body")"
-  if [[ ! "$code" =~ ^2 ]]; then
-    warn "Spaceship API returned HTTP ${code:-000} — set the A-record manually: $domain → $ip"
-    return 0
-  fi
-
-  # 2) Prune every OTHER A-record for this host (any address != the new ingress IP). GET
-  #    the zone, keep only host A-records whose address differs, and DELETE them so exactly
-  #    one A-record for $sub remains. Best-effort: a prune miss must not fail the resume,
-  #    but it is warned so the leftover can be removed by hand.
-  existing="$(spaceship_api GET "${root}?take=500&skip=0")"
-  prune="$(printf '%s' "$existing" \
-    | jq -c --arg n "$sub" --arg ip "$ip" \
-        '[.items[]? | select(.type == "A" and .name == $n and .address != $ip) | {type, name, address}]' \
-    2>/dev/null || printf '[]')"
-  if [[ -n "$prune" && "$prune" != "[]" ]]; then
-    log "Pruning stale $sub A-record(s): $(printf '%s' "$prune" | jq -r 'map(.address) | join(", ")')"
-    del_code="$(spaceship_api DELETE "$root" "$prune")"
-    [[ "$del_code" =~ ^2 ]] \
-      || warn "Spaceship prune returned HTTP ${del_code:-000} — remove leftover $sub A-record(s) manually (Default Record Group entries may not be API-deletable)."
-    # 3) Re-assert the desired record LAST, so the final write is always the correct one.
-    #    The prune DELETE payload targets (type,name,address); if Spaceship ever widened
-    #    that match to (type,name) it would drop the good record with the stale ones,
-    #    leaving the host pointing nowhere. This idempotent upsert guarantees the zone ends
-    #    with exactly gke → the current ingress IP regardless of DELETE semantics. It does
-    #    NOT speed propagation (TTL-bound) — it only guarantees correctness after the prune.
-    code="$(spaceship_api PUT "$root" "$put_body")"
-    [[ "$code" =~ ^2 ]] \
-      || warn "Spaceship re-assert returned HTTP ${code:-000} — verify the A-record manually: $domain → $ip"
-  fi
-
-  ok "DNS A-record updated ($domain → $ip). Allow a few minutes for propagation + cert."
-}
-
-# set-dns-creds: store the Spaceship DNS API key + secret in Secret Manager so resume
-# can fetch them without keeping them in shell history. Values are read from hidden
-# prompts (or stdin) and never echoed. Re-run to rotate.
-set_dns_creds() {
-  ensure_tfvars
-  local key secret
-  if [[ -t 0 ]]; then
-    read -r -s -p "Spaceship API key: " key; printf '\n'
-    read -r -s -p "Spaceship API secret: " secret; printf '\n'
-  else
-    read -r key; read -r secret
-  fi
-  [[ -n "$key" && -n "$secret" ]] || die "both key and secret are required"
-  log "Storing Spaceship DNS API creds in the consolidated devstash-ops-config secret (project $PROJECT_ID)"
-  # Both creds live as properties of ONE JSON blob (matches the Terraform-managed
-  # devstash-ops-config in envs/dev/dns.tf — see update_dns's reader). jq builds the object
-  # so values with special characters are encoded correctly and never touch the process
-  # arg list. Create the secret if absent, then add a new version. --replication-policy
-  # matches the auto replication used elsewhere in this project.
-  local name=devstash-ops-config blob
-  blob="$(jq -nc --arg k "$key" --arg s "$secret" '{"spaceship-api-key":$k,"spaceship-api-secret":$s}')"
-  gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1 \
-    || gcloud secrets create "$name" --replication-policy=automatic --project="$PROJECT_ID"
-  printf '%s' "$blob" | gcloud secrets versions add "$name" --data-file=- --project="$PROJECT_ID"
-  ok "Spaceship DNS creds stored in devstash-ops-config. Rotate them in the Spaceship dashboard if they were ever shared in plaintext."
-}
-
-# suspend: drive the environment to true ~$0. DUMPS Cloud SQL to GCS and verifies the
-# dump FIRST, then sets environment_active=false + db_active=false and applies — this
-# destroys the GKE cluster, Memorystore, Cloud NAT, Cloud Armor, the ingress IP AND the
-# Cloud SQL instance (no kept disk). The data lives only in the verified GCS dump; resume
-# restores it. The dump-and-verify happens before any destroy, so a failed dump aborts the
-# suspend with the instance fully intact.
-# Delete the ENTIRE Artifact Registry repository (every image, version, tag, incl.
-# :buildcache) so a deep-suspended env holds ZERO image storage AND no lingering repo — the
-# last standing cost above the always-free tier. Safe: 'resume' runs a full-refresh apply
-# that RECREATES the repo (TF-managed, ungated on environment_active), then CI rebuilds +
-# repushes from source before the app is applied, and the Deployment pins images by the
-# digest CI just produced. Best-effort — a delete miss (repo already gone) must not abort the
-# suspend. Mirrors the unattended auto-suspend delete step
-# (scripts/auto-suspend-delete-repo.sh); keep the two in sync.
-delete_registry() {
-  local repo
-  # Prefer Terraform's own repository_id output (single source of truth — modules/artifact-
-  # registry) so this never drifts from a repository_id rename. Fall back to the "devstash"
-  # literal if the output isn't readable, e.g. state unavailable.
-  repo="$(tf_out artifact_registry_url)"
-  repo="${repo##*/}"                 # last path segment of region-docker.pkg.dev/project/repo
-  [[ -n "$repo" ]] || repo="devstash"
-  log "Deleting Artifact Registry repository ${repo} (all images + tags)"
-  gcloud artifacts repositories delete "${repo}" \
-    --location="$REGION" --quiet --project="$PROJECT_ID" \
-    || warn "repository delete returned non-zero (likely already gone) — continuing"
-}
-
-suspend() {
-  ensure_tfvars
-  log "Deep-suspending environment → ~\$0 (compute + Cloud SQL DESTROYED; data kept in GCS dump)"
-  warn "Cloud SQL is DUMPED to GCS and verified, then DESTROYED. 'resume' recreates + restores it."
-  warn "DNS for $APP_DOMAIN will go stale until 'resume' (the ingress IP is released)."
-  dump_db                       # export + verify BEFORE anything is destroyed — aborts on failure
-  set_active_state false false  # compute off + Cloud SQL instance destroyed
-  apply                         # plan → review → apply; the plan shows the destroys
-  delete_registry               # delete the AR repo (resume recreates it, CI rebuilds) — after apply, off the destroy path
-  ok "Suspended to ~\$0 (data safe in the GCS dump). Run 'resume' to bring it back."
-}
-
-# resume: bring the environment back from a deep-suspended state. Recreates compute AND
-# the Cloud SQL instance, RESTORES the DB from the latest GCS dump, reinstalls the
-# in-cluster operators (ESO + Reloader, gone with the old cluster), redeploys the app, and
-# re-points DNS at the new ingress IP. Skips bootstrap (project/billing/state/APIs persist
-# across a suspend). The restore runs after apply (instance is RUNNABLE) and before deploy,
-# so the app + migrate Job see the restored schema + data.
-resume() {
-  ensure_tfvars
-  log "Resuming environment (recreate compute + Cloud SQL, restore the dump). Takes several minutes."
-  set_active_state true true
-  apply
-  restore_db   # import the GCS dump into the fresh instance BEFORE the app deploys
-  wait_for_cluster
-  eso
-  log "Redeploying the app (build → migrate → rollout) via CI"
-  deploy
-  update_dns
-  log "Resume kicked off. Next:"
-  echo "  1. Watch the deploy:  gh run watch"
-  echo "  2. bash infra/run/gcp/run.sh smoke   # wait for CI + health check"
-  warn "A new managed cert re-provisions after DNS resolves to the new IP (up to ~60 min)."
-  warn "Site stays reachable meanwhile via the pre-shared-cert fallback (mcrt-ac492906-...) in overlays/gcp/kustomization.yaml."
-}
+# The DB dump/restore (resolve_dump_target/dump_db/restore_db), DNS (spaceship_api/update_dns/
+# set_dns_creds/dns_hint), and the suspend/resume orchestrators (set_active_state/
+# delete_registry/suspend/resume) live in lib/db.sh, lib/dns.sh, and lib/suspend.sh — all
+# sourced above and sharing this shell's scope.
 
 # ── dispatch ───────────────────────────────────────────────────────────────
 

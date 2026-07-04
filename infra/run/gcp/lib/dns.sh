@@ -1,0 +1,164 @@
+# shellcheck shell=bash
+# Spaceship DNS management for the GCP deploy tooling. SOURCED by infra/run/gcp/run.sh (never
+# executed) — it shares run.sh's shell scope, so the functions here rely on state the parent
+# already established. Split out of run.sh purely to keep that orchestrator readable; this is
+# organisational, not a standalone module.
+#
+# Depends on (provided by run.sh before this file is sourced):
+#   globals   PROJECT_ID, NS; optional env overrides INGRESS_IP, SPACESHIP_API_KEY/-SECRET
+#   helpers   log/ok/warn/die (infra/lib/common.sh), tf_out
+#
+# Source-guard: sourcing twice is a harmless no-op.
+[[ -n "${_DEVSTASH_GCP_DNS_SH:-}" ]] && return 0
+_DEVSTASH_GCP_DNS_SH=1
+
+# dns_hint: print the DNS A-record the user must create after `apply`.
+# The GCP-managed certificate won't provision until the domain resolves to the
+# Ingress static IP; the app stays at 502/404 until the cert reaches Active status
+# (up to 60 min after DNS propagates). Also reminds about Stripe webhook + OAuth URIs.
+dns_hint() {
+  local ip dom
+  ip="$(tf_out ingress_ip_address)"
+  dom="$(tf_out app_domain)"
+  log "DNS — point your subdomain at the Ingress static IP, then the managed cert provisions"
+  echo "  Add an A-record:  ${dom:-<app_domain>}  →  ${ip:-<run: tofu output ingress_ip_address>}"
+  echo "  Verify:           dig +short ${dom:-<app_domain>}"
+  echo "  Cert status:      kubectl -n $NS get managedcertificate devstash-cert -o wide"
+  warn "Do NOT repoint the apex/www (those serve prod on Vercel) — use the subdomain only."
+  warn "Also do §7c (Stripe webhook) + §7d (OAuth redirect URIs) in 08-gcp-bootstrap.md."
+  warn "IMPORTANT: GCP-managed cert provisioning takes up to 60 min after DNS propagates."
+  warn "The site will return 502/404 until the ManagedCertificate status is 'Active'."
+  warn "Poll with: kubectl -n $NS get managedcertificate devstash-cert -o wide"
+}
+
+# spaceship_api: single Spaceship DNS API entrypoint — owns the host, auth headers, and the
+# `|| true` (a transport error must stay non-fatal so DNS work never hard-fails a resume).
+# Reads $key/$secret from the caller's scope (update_dns is the sole consumer).
+#   GET             → echoes the response body
+#   PUT/DELETE/...  → echoes the HTTP status code (-o /dev/null -w '%{http_code}')
+spaceship_api() {
+  local method="$1" path="$2" body="${3:-}"
+  local url="https://spaceship.dev/api/v1/dns/records/${path}"
+  local -a hdr=(-H "X-API-Key: ${key}" -H "X-API-Secret: ${secret}" -H 'Content-Type: application/json')
+  if [[ "$method" == GET ]]; then
+    curl -s -X GET "${hdr[@]}" "$url" || true
+  else
+    curl -s -o /dev/null -w '%{http_code}' -X "$method" "${hdr[@]}" "$url" ${body:+-d "$body"} || true
+  fi
+}
+
+# update_dns: re-point the app's A-record at the current ingress IP via the Spaceship
+# DNS API. Needed on resume because the ingress IP is released on suspend and a fresh
+# one is allocated each resume. Best-effort: prints a manual hint if creds are missing.
+# Credentials come from env (SPACESHIP_API_KEY / SPACESHIP_API_SECRET) or, failing that,
+# the consolidated Secret Manager ops blob devstash-ops-config (see `set-dns-creds`).
+#
+# REPLACE, never append. Spaceship's PUT /dns/records upserts by (type,name) but ONLY
+# within the API's own "External API Custom Group", and force:true silences the conflict
+# checker rather than reconciling the zone — so any OTHER A-record for this host survives:
+# a stale IP from a prior resume, or a duplicate created by hand in the "Default Record
+# Group". Two live A-records for one host make resolvers round-robin onto the dead ingress
+# IP (intermittent 502s) AND stall managed-cert provisioning, which needs the name to
+# resolve consistently to the current ingress. So we mirror the Spaceship Terraform
+# provider's contract — upsert the desired record, then DELETE every other A-record for the
+# host — instead of blindly adding one.
+update_dns() {
+  local ip domain root sub key secret code existing prune del_code
+  # INGRESS_IP override: re-assert DNS when the tofu output is unavailable (mid-migration,
+  # inconsistent state, or a raw `tofu apply` that never surfaced the output). Read the live
+  # value with:  kubectl -n devstash get ingress devstash-web -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  ip="${INGRESS_IP:-$(tf_out ingress_ip_address)}"
+  if [[ -z "$ip" || "$ip" == "null" ]]; then
+    warn "no ingress IP available (environment suspended?) — skipping DNS update"
+    warn "Pass one explicitly:  INGRESS_IP=<ip> bash infra/run/gcp/run.sh update-dns"
+    return 0
+  fi
+  domain="$(tf_out app_domain)"
+  [[ -n "$domain" ]] || { warn "app_domain not set — skipping DNS update"; return 0; }
+  # gke.devstash.one → registered domain "devstash.one" (API path) + host label "gke".
+  # Assumes a single subdomain label; adjust if app_domain ever gains more.
+  root="${domain#*.}"
+  sub="${domain%%.*}"
+
+  # Ops creds live consolidated in the devstash-ops-config JSON blob (spaceship-api-key /
+  # spaceship-api-secret properties). Read the blob ONCE, then pull each property with jq —
+  # env vars still win for a one-off override. `|| true` keeps a missing/suspended secret a
+  # warn-and-skip, not a hard failure.
+  local ops_blob
+  ops_blob="$(gcloud secrets versions access latest --secret=devstash-ops-config --project="$PROJECT_ID" 2>/dev/null || true)"
+  key="${SPACESHIP_API_KEY:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-key" // empty' 2>/dev/null || true)}"
+  secret="${SPACESHIP_API_SECRET:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-secret" // empty' 2>/dev/null || true)}"
+  if [[ -z "$key" || -z "$secret" ]]; then
+    warn "Spaceship API creds not found (env SPACESHIP_API_KEY/SPACESHIP_API_SECRET or"
+    warn "Secret Manager devstash-ops-config via 'run.sh set-dns-creds')."
+    warn "Update the A-record manually:  $domain  →  $ip"
+    return 0
+  fi
+
+  log "Updating Spaceship DNS A-record: $domain → $ip"
+  # Desired-state payload — shared by the upsert (step 1) and re-assert (step 3) so the two
+  # writes can never drift apart. Short TTL (300s) so the change is picked up quickly.
+  local put_body="{\"force\":true,\"items\":[{\"type\":\"A\",\"name\":\"${sub}\",\"address\":\"${ip}\",\"ttl\":300}]}"
+  # 1) Upsert the desired record FIRST so the host is never left without an A-record even
+  #    if the prune below fails. force:true is still required — the stale record still
+  #    exists at this point, so without it the conflict checker would reject the PUT.
+  code="$(spaceship_api PUT "$root" "$put_body")"
+  if [[ ! "$code" =~ ^2 ]]; then
+    warn "Spaceship API returned HTTP ${code:-000} — set the A-record manually: $domain → $ip"
+    return 0
+  fi
+
+  # 2) Prune every OTHER A-record for this host (any address != the new ingress IP). GET
+  #    the zone, keep only host A-records whose address differs, and DELETE them so exactly
+  #    one A-record for $sub remains. Best-effort: a prune miss must not fail the resume,
+  #    but it is warned so the leftover can be removed by hand.
+  existing="$(spaceship_api GET "${root}?take=500&skip=0")"
+  prune="$(printf '%s' "$existing" \
+    | jq -c --arg n "$sub" --arg ip "$ip" \
+        '[.items[]? | select(.type == "A" and .name == $n and .address != $ip) | {type, name, address}]' \
+    2>/dev/null || printf '[]')"
+  if [[ -n "$prune" && "$prune" != "[]" ]]; then
+    log "Pruning stale $sub A-record(s): $(printf '%s' "$prune" | jq -r 'map(.address) | join(", ")')"
+    del_code="$(spaceship_api DELETE "$root" "$prune")"
+    [[ "$del_code" =~ ^2 ]] \
+      || warn "Spaceship prune returned HTTP ${del_code:-000} — remove leftover $sub A-record(s) manually (Default Record Group entries may not be API-deletable)."
+    # 3) Re-assert the desired record LAST, so the final write is always the correct one.
+    #    The prune DELETE payload targets (type,name,address); if Spaceship ever widened
+    #    that match to (type,name) it would drop the good record with the stale ones,
+    #    leaving the host pointing nowhere. This idempotent upsert guarantees the zone ends
+    #    with exactly gke → the current ingress IP regardless of DELETE semantics. It does
+    #    NOT speed propagation (TTL-bound) — it only guarantees correctness after the prune.
+    code="$(spaceship_api PUT "$root" "$put_body")"
+    [[ "$code" =~ ^2 ]] \
+      || warn "Spaceship re-assert returned HTTP ${code:-000} — verify the A-record manually: $domain → $ip"
+  fi
+
+  ok "DNS A-record updated ($domain → $ip). Allow a few minutes for propagation + cert."
+}
+
+# set-dns-creds: store the Spaceship DNS API key + secret in Secret Manager so resume
+# can fetch them without keeping them in shell history. Values are read from hidden
+# prompts (or stdin) and never echoed. Re-run to rotate.
+set_dns_creds() {
+  ensure_tfvars
+  local key secret
+  if [[ -t 0 ]]; then
+    read -r -s -p "Spaceship API key: " key; printf '\n'
+    read -r -s -p "Spaceship API secret: " secret; printf '\n'
+  else
+    read -r key; read -r secret
+  fi
+  [[ -n "$key" && -n "$secret" ]] || die "both key and secret are required"
+  log "Storing Spaceship DNS API creds in the consolidated devstash-ops-config secret (project $PROJECT_ID)"
+  # Both creds live as properties of ONE JSON blob (matches the Terraform-managed
+  # devstash-ops-config in envs/dev/dns.tf — see update_dns's reader). jq builds the object
+  # so values with special characters are encoded correctly and never touch the process
+  # arg list. Create the secret if absent, then add a new version. --replication-policy
+  # matches the auto replication used elsewhere in this project.
+  local name=devstash-ops-config blob
+  blob="$(jq -nc --arg k "$key" --arg s "$secret" '{"spaceship-api-key":$k,"spaceship-api-secret":$s}')"
+  gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1 \
+    || gcloud secrets create "$name" --replication-policy=automatic --project="$PROJECT_ID"
+  printf '%s' "$blob" | gcloud secrets versions add "$name" --data-file=- --project="$PROJECT_ID"
+  ok "Spaceship DNS creds stored in devstash-ops-config. Rotate them in the Spaceship dashboard if they were ever shared in plaintext."
+}

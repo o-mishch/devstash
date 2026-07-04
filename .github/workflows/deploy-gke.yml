@@ -52,6 +52,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       # Lint the extracted deploy scripts (infra/ci/*.sh) + the shared bash library
       # (infra/lib/*.sh) as real shell — the whole point of pulling them out of this YAML.
       # shellcheck is preinstalled on ubuntu-latest. -x follows `source infra/versions.env`
@@ -95,6 +97,8 @@ jobs:
       suspended: ${{ steps.env-state.outputs.suspended }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
@@ -135,6 +139,8 @@ jobs:
       attestations: write # SLSA provenance attestation push
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Validate deployment inputs
         env:

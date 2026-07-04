@@ -2,9 +2,6 @@
 # Static analysis settings for actionlint.
 # Reference: https://github.com/rhysd/actionlint/blob/main/docs/config.md
 
-# Allow custom/self-hosted runners if needed
-self-hosted-runner: true
-
 # Declare repository secrets so actionlint does not flag them as invalid context access
 secrets:
   - GCP_PROJECT_ID
@@ -17,5 +14,14 @@ secrets:
 # and flag every workflow usage of `${{ vars.VAR_NAME }}` as "invalid context access".
 config-variables:
   - APP_DOMAIN
+  - ARMOR_ENABLED
+  - AUTH_GITHUB_ID
+  - AUTH_GOOGLE_ID
+  - BINAUTHZ_ATTESTOR
+  - BINAUTHZ_KMS_KEY
+  - BINAUTHZ_KMS_KEYRING
   - EMAIL_FROM
   - ENABLE_GITHUB_ATTESTATIONS
+  - STRIPE_PRICE_ID_MONTHLY
+  - STRIPE_PRICE_ID_YEARLY
+  - STRIPE_PUBLISHABLE_KEY
