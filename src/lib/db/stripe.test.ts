@@ -1,41 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mockReset } from 'vitest-mock-extended'
 import { objectContaining } from '@/test/matchers'
 
-const { mockUpdate, mockFindUnique, mockUpdateMany, mockFindMany } = vi.hoisted(() => ({
-  mockUpdate: vi.fn(),
-  mockFindUnique: vi.fn(),
-  mockUpdateMany: vi.fn(),
-  mockFindMany: vi.fn(),
-}))
+vi.mock('@/lib/infra/prisma', async () => (await import('@/test/prisma-mock')).createPrismaMockModule())
 
-vi.mock('@/lib/infra/prisma', () => ({
-  prisma: {
-    user: {
-      update: mockUpdate,
-      findUnique: mockFindUnique,
-      updateMany: mockUpdateMany,
-      findMany: mockFindMany,
-    },
-  },
-}))
-
-vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
-}))
-
+import { prisma } from '@/lib/infra/prisma'
+import { asPrismaMock } from '@/test/prisma-mock'
 import { updateUserStripeSubscription } from './stripe'
+
+const prismaMock = asPrismaMock(prisma)
+
+const mockUpdate = prismaMock.user.update
+const mockFindUnique = prismaMock.user.findUnique
+
+// The full Prisma User row; lets partial test fixtures satisfy mockResolvedValue's typing
+// without pulling in the model type or falling back to `as unknown as never`.
+type PrismaUser = NonNullable<Awaited<ReturnType<typeof prismaMock.user.findUnique>>>
 
 describe('updateUserStripeSubscription', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockFindUnique.mockResolvedValue(null)
-    mockUpdate.mockResolvedValue({ id: 'user-target' })
+    mockReset(prismaMock)
+    prismaMock.user.findUnique.mockResolvedValue(null)
+    prismaMock.user.update.mockResolvedValue({ id: 'user-target' } as PrismaUser)
   })
 
   it('clears full billing state from the previous customer owner before reassignment', async () => {
     mockFindUnique
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'user-previous' })
+      .mockResolvedValueOnce({ id: 'user-previous' } as PrismaUser)
 
     await updateUserStripeSubscription('user-target', {
       stripeCustomerId: 'cus_new',

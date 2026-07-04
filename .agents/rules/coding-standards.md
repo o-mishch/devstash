@@ -151,6 +151,13 @@ Example v4 configuration:
 ## Code Quality
 
 - Code must comply with ESLint rules. Check and fix linting errors on every attempt of code editing.
+- **Type-aware linting is on.** The flat config (`eslint.config.mjs`) extends `typescript-eslint`'s `recommendedTypeChecked` at **error** level across `**/*.ts`, `**/*.tsx`, `**/*.mts` via `projectService`. Write code that satisfies these type-checked rules from the start — they are not warnings:
+  - `no-floating-promises` — every Promise must be `await`ed, `void`-ed, or `.catch()`-handled. Prefix deliberate fire-and-forget with `void` (e.g. `void queryClient.invalidateQueries(...)`).
+  - `no-misused-promises` — no async function where a `void`-returning callback is expected (event handlers, `Array.forEach`, etc.).
+  - `await-thenable` / `require-await` — only `await` real thenables; don't mark a function `async` with no `await`.
+  - `no-unsafe-*` family (`no-unsafe-assignment`/`-call`/`-member-access`/`-argument`/`-return`) — no `any` flowing through the code. Type external/untyped values as `unknown` and narrow, or wrap them (see the typed test-matcher wrappers `objectContaining`/`arrayContaining`/`stringContaining`/`anything`/`anyOf`/`readJson` in `src/test/matchers.ts`, kept expressly to satisfy `no-unsafe-*` against Vitest's `any`-typed asymmetric matchers).
+- `no-unused-vars` is an **error** (the config overrides `next/typescript`'s `warn`).
+- `scripts/**/*.ts` is outside `tsconfig.json`, so type-checked rules are disabled there (`disableTypeChecked`); `src/generated/**`, `src/types/openapi.ts`, and `prisma.config.ts` are ignored — never hand-edit or auto-fix generated files.
 - No commented-out code unless specified
 - No unused imports or variables
 - Keep functions under 50 lines when possible

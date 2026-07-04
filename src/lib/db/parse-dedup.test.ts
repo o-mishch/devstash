@@ -1,12 +1,16 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { mockReset } from 'vitest-mock-extended'
 import { matchDraftsToItems, findDuplicateMatches, type DedupCandidateItem } from './parse-dedup'
 import { prisma } from '@/lib/infra/prisma'
+import { asPrismaMock } from '@/test/prisma-mock'
 
-vi.mock('@/lib/infra/prisma', () => ({
-  prisma: { item: { findMany: vi.fn() } },
-}))
+vi.mock('@/lib/infra/prisma', async () => (await import('@/test/prisma-mock')).createPrismaMockModule())
 
-const mockFindMany = prisma.item.findMany as ReturnType<typeof vi.fn>
+const prismaMock = asPrismaMock(prisma)
+
+// Element type of item.findMany's result — lets the partial fixture (with its included
+// itemType relation) satisfy mockResolvedValue without an `as unknown as never` escape.
+type PrismaItemRow = Awaited<ReturnType<typeof prismaMock.item.findMany>>[number]
 
 const item = (over: Partial<DedupCandidateItem> & { id: string }): DedupCandidateItem => ({
   title: '',
@@ -93,18 +97,18 @@ describe('matchDraftsToItems', () => {
 })
 
 describe('findDuplicateMatches', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => mockReset(prismaMock))
 
   it('returns an empty map (and skips the query) when there are no drafts', async () => {
     const result = await findDuplicateMatches('u1', [], null)
     expect(result.size).toBe(0)
-    expect(mockFindMany).not.toHaveBeenCalled()
+    expect(prismaMock.item.findMany).not.toHaveBeenCalled()
   })
 
   it('queries IDOR-scoped, bounded, newest-first', async () => {
-    mockFindMany.mockResolvedValue([])
+    prismaMock.item.findMany.mockResolvedValue([])
     await findDuplicateMatches('u1', [{ id: 'd1', title: 'x', content: null }], null)
-    expect(mockFindMany).toHaveBeenCalledWith(
+    expect(prismaMock.item.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 'u1' },
         take: 500,
@@ -114,16 +118,18 @@ describe('findDuplicateMatches', () => {
   })
 
   it('excludes the job source item so paste/select drafts do not all match their source text', async () => {
-    mockFindMany.mockResolvedValue([])
+    prismaMock.item.findMany.mockResolvedValue([])
     await findDuplicateMatches('u1', [{ id: 'd1', title: 'x', content: 'export const a = 1' }], 'src-item')
-    expect(mockFindMany).toHaveBeenCalledWith(
+    expect(prismaMock.item.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId: 'u1', id: { not: 'src-item' } } }),
     )
   })
 
   it('maps committed items through the matcher and resolves the item type name', async () => {
-    mockFindMany.mockResolvedValue([
-      { id: 'i1', title: 'Deploy Script', content: null, itemType: { name: 'command' } },
+    // Runtime shape includes the itemType relation the production query selects, which the
+    // default findMany return type omits — so bridge through unknown to the row type.
+    prismaMock.item.findMany.mockResolvedValue([
+      { id: 'i1', title: 'Deploy Script', content: null, itemType: { name: 'command' } } as unknown as PrismaItemRow,
     ])
     const result = await findDuplicateMatches('u1', [{ id: 'd1', title: 'deploy script', content: null }], null)
     expect(result.get('d1')).toEqual({ id: 'i1', title: 'Deploy Script', itemTypeName: 'command' })

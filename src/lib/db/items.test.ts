@@ -1,7 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { mockReset } from 'vitest-mock-extended'
 
-// Prisma mocks are plain vi.fn(), so `mock.calls[0][0]` is `any`; this shapes the
-// args we assert on without pulling in Prisma's deep input unions.
+// `mock.calls[0][0]` is Prisma's deep input union (via mockDeep); this narrows it to
+// the handful of fields we assert on without pulling that whole union into each test.
 interface PrismaCallArg {
   skip?: unknown
   cursor?: unknown
@@ -10,14 +11,7 @@ interface PrismaCallArg {
   data: Record<string, unknown>
 }
 
-vi.mock('@/lib/infra/prisma', () => ({
-  prisma: {
-    item: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
-    itemType: { findFirst: vi.fn(), findMany: vi.fn() },
-    collection: { findMany: vi.fn() },
-    $queryRaw: vi.fn(),
-  },
-}))
+vi.mock('@/lib/infra/prisma', async () => (await import('@/test/prisma-mock')).createPrismaMockModule())
 
 vi.mock('@/lib/infra/cache', () => ({
   CacheTags: {
@@ -37,22 +31,25 @@ vi.mock('@/lib/infra/cache', () => ({
 }))
 
 import { prisma } from '@/lib/infra/prisma'
+import { asPrismaMock } from '@/test/prisma-mock'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
 import { createItem, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem, getItemTypeDistribution, getDashboardActivity, updateItem } from './items'
 
-const mockFindMany = prisma.itemType.findMany as ReturnType<typeof vi.fn>
-const mockItemFindFirst = prisma.item.findFirst as ReturnType<typeof vi.fn>
-const mockItemFindMany = prisma.item.findMany as ReturnType<typeof vi.fn>
-const mockItemCreate = prisma.item.create as ReturnType<typeof vi.fn>
-const mockGroupBy = prisma.item.groupBy as ReturnType<typeof vi.fn>
-const mockDeleteMany = prisma.item.deleteMany as ReturnType<typeof vi.fn>
-const mockItemUpdate = prisma.item.update as ReturnType<typeof vi.fn>
-const mockQueryRaw = prisma.$queryRaw as ReturnType<typeof vi.fn>
+const prismaMock = asPrismaMock(prisma)
+
+const mockFindMany = prismaMock.itemType.findMany
+const mockItemFindFirst = prismaMock.item.findFirst
+const mockItemFindMany = prismaMock.item.findMany
+const mockItemCreate = prismaMock.item.create
+const mockGroupBy = prismaMock.item.groupBy
+const mockDeleteMany = prismaMock.item.deleteMany
+const mockItemUpdate = prismaMock.item.update
+const mockQueryRaw = prismaMock.$queryRaw
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  mockReset(prismaMock)
   // Default: no text previews (non-text pages skip this call; text pages get empty map)
-  mockQueryRaw.mockResolvedValue([])
+  prismaMock.$queryRaw.mockResolvedValue([])
 })
 
 // ── compareBySystemTypeOrder ─────────────────────────────────────────────────

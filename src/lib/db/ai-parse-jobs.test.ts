@@ -1,20 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mockReset } from 'vitest-mock-extended'
 import { Prisma } from '@/generated/prisma/client'
-import type { Mock } from 'vitest'
 import { objectContaining, arrayContaining, anything } from '@/test/matchers'
 
-vi.mock('@/lib/infra/prisma', () => {
-  const prisma = {
-    aiParseJob: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
-    aiParseJobItem: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
-    item: { findFirst: vi.fn(), findMany: vi.fn() },
-    collection: { create: vi.fn(), findMany: vi.fn() },
-    // Interactive transaction: invoke the callback with the same mock client so per-table mocks
-    // configured in a test flow through the `tx` handle (claim/create/persist run atomically in prod).
-    $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(prisma)),
-  }
-  return { prisma }
-})
+vi.mock('@/lib/infra/prisma', async () => (await import('@/test/prisma-mock')).createPrismaMockModule())
 vi.mock('@/lib/db/items', () => ({ createItem: vi.fn() }))
 vi.mock('@/lib/storage/s3', () => ({ getTextFromS3: vi.fn() }))
 // Default: no Redis → the sweep cooldown fails open (sweep proceeds), matching production without Redis.
@@ -51,28 +40,28 @@ import {
 } from '@/lib/db/ai-parse-jobs'
 import { SPLIT_FILE_MAX_INPUT_CHARS, PARSE_JOB_TTL_MS } from '@/lib/utils/constants'
 import { brainDumpProgress, type BrainDumpDraft } from '@/lib/ai/brain-dump'
+import { asPrismaMock } from '@/test/prisma-mock'
 
-const mockJob = prisma.aiParseJob as unknown as {
-  findFirst: ReturnType<typeof vi.fn>
-  findMany: ReturnType<typeof vi.fn>
-  deleteMany: ReturnType<typeof vi.fn>
-}
-const mockJobItem = prisma.aiParseJobItem as unknown as {
-  // Typed to return a Promise so mockImplementation accepts an async draft factory.
-  create: Mock<(args: { data: { order: number } }) => Promise<unknown>>
-  deleteMany: ReturnType<typeof vi.fn>
-  updateMany: ReturnType<typeof vi.fn>
-  findFirst: ReturnType<typeof vi.fn>
-  count: ReturnType<typeof vi.fn>
-}
-const mockJobUpdate = prisma.aiParseJob as unknown as { updateMany: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> }
-const mockItem = prisma.item as unknown as { findFirst: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> }
-const mockCollection = prisma.collection as unknown as { create: ReturnType<typeof vi.fn> }
+const prismaMock = asPrismaMock(prisma)
+
+const mockJob = prismaMock.aiParseJob
+const mockJobItem = prismaMock.aiParseJobItem
+// Deliberate second alias for the same aiParseJob model: mockJob reads assertions on
+// findFirst/deleteMany; mockJobUpdate names the update/create-claim assertions apart.
+const mockJobUpdate = prismaMock.aiParseJob
+const mockItem = prismaMock.item
+const mockCollection = prismaMock.collection
 const mockCreateItem = createItem as ReturnType<typeof vi.fn>
 const mockGetTextFromS3 = getTextFromS3 as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
+  mockReset(prismaMock)
+  // clearAllMocks also resets the non-prisma vi.fn() mocks (createItem/getTextFromS3)
+  // that mockReset(prismaMock) does not touch.
   vi.clearAllMocks()
+  prismaMock.$transaction.mockImplementation((callback: (tx: typeof prismaMock) => Promise<unknown>) => {
+    return callback(prismaMock)
+  })
 })
 
 describe('commitJob', () => {
@@ -509,8 +498,6 @@ describe('commitDraftItem', () => {
         data: { committedCount: { increment: 1 }, committedByType: { note: 6 } },
       }),
     )
-
-    real.mockImplementation(passthrough) // restore the default passthrough for later tests
   })
 
   it('rethrows after exhausting the P2034 retry budget when the conflict never clears', async () => {
@@ -537,8 +524,6 @@ describe('commitDraftItem', () => {
 
     await expect(commitDraftItem('user-1', 'job-1', 'd1')).rejects.toThrow('write conflict')
     expect(serializableAttempts).toBe(5) // MAX_RETRIES attempts, then it gives up
-
-    real.mockImplementation(passthrough)
   })
 
   it('rethrows a non-P2034 transaction error immediately without retrying', async () => {
@@ -563,8 +548,6 @@ describe('commitDraftItem', () => {
 
     await expect(commitDraftItem('user-1', 'job-1', 'd1')).rejects.toThrow('db exploded')
     expect(serializableAttempts).toBe(1) // a non-conflict error is not a retryable condition
-
-    real.mockImplementation(passthrough)
   })
 })
 
@@ -717,15 +700,21 @@ describe('updateJobCollections', () => {
   })
 
   it('returns invalid_collections when an id is not owned by the user', async () => {
-    const mockCollectionFindMany = prisma.collection.findMany as ReturnType<typeof vi.fn>
-    mockCollectionFindMany.mockResolvedValue([])
+    mockCollection.findMany.mockResolvedValue([])
     expect(await updateJobCollections('user-1', 'job-1', { collectionIds: ['foreign'] })).toBe('invalid_collections')
     expect(mockJobUpdate.updateMany).not.toHaveBeenCalled()
   })
 
-  it('returns not_found when the job is not the user\'s (IDOR)', async () => {
+  it('returns not_found when the job is not the user\'s, even with an owned collection (IDOR)', async () => {
+    // Owned collection passes validation, so this exercises the job-level IDOR guard specifically:
+    // updateMany scopes `where: { id: jobId, userId }`, and a foreign job matches 0 rows.
+    mockCollection.findMany.mockResolvedValue([{ id: 'c1' } as unknown as never])
     mockJobUpdate.updateMany.mockResolvedValue({ count: 0 })
-    expect(await updateJobCollections('user-1', 'job-x', { collectionIds: [] })).toBe('not_found')
+
+    expect(await updateJobCollections('user-1', 'job-x', { collectionIds: ['c1'] })).toBe('not_found')
+    expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
+      objectContaining({ where: { id: 'job-x', userId: 'user-1' } }),
+    )
   })
 })
 
