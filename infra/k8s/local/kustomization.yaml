@@ -14,6 +14,12 @@ kind: Kustomization
 #
 # kind-config.yaml is NOT a resource here — it is the kind cluster config (consumed by
 # infra/terraform/modules/kind via file() and by run.sh), not a Kubernetes manifest.
+#
+# NOTE: do NOT add a top-level `namespace:` field here — it stamps every rendered
+# resource including the standalone `Namespace: headlamp` object in 06-headlamp.yaml,
+# renaming it to "devstash" and silently breaking headlamp's own namespace creation.
+# Use the `patches` block below instead to scope the namespace fix to just the two
+# generated ConfigMaps.
 resources:
   - 01-postgres.yaml
   - 02-redis.yaml
@@ -37,3 +43,24 @@ configMapGenerator:
   - name: pgadmin-seed-script
     files:
       - scripts/pgadmin-seed-pgpass.sh
+
+# configMapGenerator has no per-entry namespace field, so its output carries none —
+# `kubectl apply -f -` (run without -n) then drops these into the caller's current-context
+# default namespace instead of devstash, breaking the Job/pods in devstash that mount them.
+# minio-bucket-init-script lands in devstash (mounted by the minio-bucket-init Job there);
+# pgadmin-seed-script lands in devstash too (mounted by the pgadmin Deployment there).
+patches:
+  - target:
+      kind: ConfigMap
+      name: minio-bucket-init-script
+    patch: |-
+      - op: add
+        path: /metadata/namespace
+        value: devstash
+  - target:
+      kind: ConfigMap
+      name: pgadmin-seed-script
+    patch: |-
+      - op: add
+        path: /metadata/namespace
+        value: devstash

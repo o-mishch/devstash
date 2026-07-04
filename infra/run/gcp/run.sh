@@ -51,7 +51,7 @@
 #   BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX   billing account to link (else first open one)
 #   AUTO_APPROVE=1                         skip the confirmation before `tofu apply`/`destroy`
 set -euo pipefail
-cd "$(dirname "$0")/../../.."   # repo root
+cd "$(dirname "${BASH_SOURCE[0]}")/../../.."   # repo root
 
 TF_DIR=infra/terraform/envs/dev
 TFVARS="$TF_DIR/terraform.tfvars"
@@ -73,22 +73,22 @@ export HELM_FAILURE_POLICY="--rollback-on-failure"
 # Pinned Helm chart versions — single source of truth shared with deploy-gke.yml.
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=../../versions.env
-source "$(dirname "$0")/../../versions.env"
+source "$(dirname "${BASH_SOURCE[0]}")/../../versions.env"
 # Shared image coordinates (DEVSTASH_IMAGES, ds_image_base) — the same helpers the CI
 # scripts source, so run.sh and infra/ci/*.sh never drift on the registry path.
 # shellcheck source=../../lib/common.sh
-source "$(dirname "$0")/../../lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 # Cohesive step clusters split into sourced sub-libraries beside this file, purely to keep this
 # orchestrator readable. They SHARE this shell's scope (globals + helpers defined above and
 # below), so this is organisational, not a decoupling. Source order matters: suspend.sh's
 # suspend/resume call into db.sh (dump_db/restore_db) and dns.sh (update_dns), so it comes last.
 # shellcheck source=lib/db.sh
-source "$(dirname "$0")/lib/db.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/db.sh"
 # shellcheck source=lib/dns.sh
-source "$(dirname "$0")/lib/dns.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/dns.sh"
 # shellcheck source=lib/suspend.sh
-source "$(dirname "$0")/lib/suspend.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/suspend.sh"
 
 # ── helpers ────────────────────────────────────────────────────────────────
 # log/ok/warn/die + need() are provided by the sourced infra/lib/common.sh (shared with
@@ -231,6 +231,7 @@ ensure_tfvars() {
   PROJECT_ID="$(tfvar project_id)"; [[ -n "${PROJECT_ID:-}" ]] || die "project_id not set in $TFVARS"
   REGION="$(tfvar region)";         REGION="${REGION:-us-central1}"
   ENVIRONMENT="$(tfvar environment)"; ENVIRONMENT="${ENVIRONMENT:-dev}"
+  # shellcheck disable=SC2034  # read by the sourced lib/suspend.sh (shared scope), not here
   APP_DOMAIN="$(tfvar app_domain)"
   # GCS bucket names are global. Deriving the backend bucket from the globally unique
   # project ID avoids collisions; STATE_BUCKET remains an explicit escape hatch for an
@@ -795,7 +796,7 @@ upgrade_helm() {
   [[ -n "$latest_reloader" ]] || die "could not fetch latest Reloader chart version"
 
   local versions_file
-  versions_file="$(dirname "$0")/../../versions.env"
+  versions_file="$(dirname "${BASH_SOURCE[0]}")/../../versions.env"
 
   if [[ "$ESO_VERSION" == "$latest_eso" ]]; then
     ok "ESO already at latest ($ESO_VERSION)"

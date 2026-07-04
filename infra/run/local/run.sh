@@ -188,6 +188,12 @@ up() {
   #    directory's kind-config.yaml by path, so the node/port-mapping layout is unchanged.
   cluster_up
 
+  # 1b. Guard: kind switches kubectl's current-context to kind-devstash as a side effect of
+  #     cluster creation, so this must run AFTER cluster_up, not before. Prevents applying the
+  #     local-only backing-services base onto whatever cluster kubectl happened to be pointed
+  #     at (e.g. GKE dev, left active by a prior `gcp/run.sh apply`).
+  require_kube_context "kind-devstash" "run: kubectl config use-context kind-devstash"
+
   # 2. Build images: web (runtime) + migrator (Dockerfile --target migrator).
   #    Both are loaded into kind so no registry pull is needed.
   build_and_load
@@ -244,6 +250,7 @@ up() {
 deploy() {
   preflight
   kind get clusters | grep -qx devstash || die "no kind cluster — run 'up' first"
+  require_kube_context "kind-devstash" "run: kubectl config use-context kind-devstash"
 
   build_and_load
 

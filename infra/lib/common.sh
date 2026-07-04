@@ -26,6 +26,24 @@ die()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # Callers build their own tool list (each script needs a different set) and call need per tool.
 need() { command -v "$1" >/dev/null 2>&1 || die "missing required CLI: $1 ($2)"; }
 
+# require_kube_context <expected-glob> <fix-hint>: die if the CURRENT kubectl context does
+# not match <expected-glob> (a glob, so the GCP caller can match "gke_*_devstash-*-gke" without
+# hardcoding the project id). Guards against exactly the failure mode that motivated this: GCP's
+# `run.sh apply` calls `gcloud container clusters get-credentials`, which switches kubectl's
+# context to GKE and LEAVES IT THERE — a subsequent `local run.sh up` then silently applies the
+# local-only backing-services base (Postgres/Redis/MinIO pods) onto the real GKE dev cluster,
+# since kubectl has no cluster-type awareness and `kubectl apply` never asks "are you sure".
+# Call this as the first line of every kubectl-mutating entry point (both run.sh `up`, `deploy`,
+# `apply`, etc.) — never rely on preflight alone, since preflight only checks CLI presence.
+require_kube_context() {
+  local expected="$1" hint="$2" current
+  current="$(kubectl config current-context 2>/dev/null || true)"
+  [[ -n "$current" ]] || die "no active kubectl context — $hint"
+  # shellcheck disable=SC2053  # intentional glob match, not literal string compare
+  [[ "$current" == $expected ]] || die "kubectl context is '$current', expected to match '$expected' — $hint"
+  ok "kubectl context: $current"
+}
+
 # The container images this project builds and deploys — declared once so adding or renaming
 # an image is a single edit shared by every script that sources this library (the builder in
 # build-push.sh). The deep-suspend path no longer needs this list: it deletes the whole

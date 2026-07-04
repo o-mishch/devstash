@@ -79,4 +79,6 @@ tmp
 # .terraform.lock.hcl is intentionally tracked — it pins provider versions so
 # `tofu init` on any machine or CI run produces the same providers. Only the
 # .terraform/ working directory (downloaded plugins) is excluded.
+# kind kubeconfig written by local cluster provisioning — contains a live client cert/key
+infra/terraform/envs/local/devstash-config
 **.obsidian
