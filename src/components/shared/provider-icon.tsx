@@ -12,10 +12,10 @@ interface ProviderIconProps {
 
 export function ProviderIcon({ provider, className }: ProviderIconProps) {
   if (provider === 'github') {
-    return <SvgIcon src={githubSvg as string} className={className} />
+    return <SvgIcon src={githubSvg} className={className} />
   }
   if (provider === 'google') {
-    return <SvgIcon src={googleSvg as string} className={className} />
+    return <SvgIcon src={googleSvg} className={className} />
   }
   return <Globe className={className} />
 }

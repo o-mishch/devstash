@@ -18,8 +18,8 @@ interface LinkAccountPageProps {
 }
 
 const PROVIDER_ICONS: Record<string, { src: string; alt: string }> = {
-  github: { src: githubSvg as string, alt: 'GitHub' },
-  google: { src: googleSvg as string, alt: 'Google' },
+  github: { src: githubSvg, alt: 'GitHub' },
+  google: { src: googleSvg, alt: 'Google' },
 }
 
 export default async function LinkAccountPage({ searchParams }: LinkAccountPageProps) {
