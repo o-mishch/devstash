@@ -40,8 +40,8 @@ locals {
     s3-access-id = google_storage_hmac_key.uploads.access_id
     s3-secret    = google_storage_hmac_key.uploads.secret
   }
-  merged_secrets     = merge(var.app_secrets, local.s3_interop_secrets)
-  app_config_json    = jsonencode(local.merged_secrets)
+  merged_secrets  = merge(var.app_secrets, local.s3_interop_secrets)
+  app_config_json = jsonencode(local.merged_secrets)
 
   # Content-derived version for the write-only secret_data_wo below. secret_data_wo is not read
   # back from the API and not stored in state, so Terraform can't tell when the blob changed —
@@ -150,22 +150,23 @@ resource "google_storage_hmac_key" "uploads" {
 # breaking any legacy/existing nodes in flight) and the new custom GKE node service
 # account.
 #
-# WHY a data source: the default Compute Engine SA email is always
-# "{project_number}-compute@developer.gserviceaccount.com". We cannot derive the
-# project number from project_id (a name, not a number) without a lookup. The
-# google_project data source gives us the number without any additional inputs.
+# The default Compute Engine SA email is always
+# "{project_number}-compute@developer.gserviceaccount.com". The project number comes from
+# var.project_number (passed in statically) rather than a google_project data source, so the
+# member string is plan-time known and the bindings never REPLACE on the -refresh=false suspend
+# apply (see var.project_number + the local below).
 #
-# DO NOT remove this binding. Without it, kubectl get nodes returns "No resources found"
-# and all system pods stay Pending indefinitely on Autopilot.
-data "google_project" "current" {
-  project_id = var.project_id
-}
-
+# DO NOT remove the compute_default_sa_node binding. Without it, kubectl get nodes returns "No
+# resources found" and all system pods stay Pending indefinitely on Autopilot.
 locals {
   # Compute Engine default SA — the identity Autopilot nodes run as. Both the node-role
   # binding and the Artifact Registry reader binding below target it, so single-source the
-  # member string here (it embeds the project number, resolvable only via the data source).
-  compute_default_sa_member = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+  # member string here. Built from var.project_number (a plan-time-known static input), NOT
+  # data.google_project.current.number: under the auto-suspend's `-refresh=false` apply the
+  # data source is read-during-apply, so a member derived from it is unknown at plan time and
+  # the binding is REPLACED — whose destroy needs setIamPolicy/getIamPolicy the lifecycle SA
+  # lacks (403). A static project number keeps these two bindings stable no-ops across suspend.
+  compute_default_sa_member = "serviceAccount:${var.project_number}-compute@developer.gserviceaccount.com"
 }
 
 resource "google_project_iam_member" "compute_default_sa_node" {

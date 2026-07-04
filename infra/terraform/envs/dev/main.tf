@@ -225,9 +225,10 @@ resource "random_password" "db" {
 }
 
 module "iam" {
-  source     = "../../modules/iam"
-  project_id = var.project_id
-  region     = var.region
+  source         = "../../modules/iam"
+  project_id     = var.project_id
+  project_number = var.project_number
+  region         = var.region
   # Null when suspended (cluster destroyed); the iam module does not actually consume
   # this value, so an empty string is a safe placeholder that keeps the type (string).
   gke_cluster_name = module.gke.cluster_name != null ? module.gke.cluster_name : ""

@@ -109,6 +109,20 @@ tofu_() { tofu -chdir="$TF_DIR" "$@"; }
 # output must fail loudly (e.g. pushing required GitHub secrets).
 tf_out() { tofu_ output -raw "$1" 2>/dev/null || printf '%s' "${2:-}"; }
 
+# app_config_blob: print the devstash-app-config JSON from its newest ENABLED version, or
+# nothing (empty output, non-fatal) if the secret is absent/has no enabled version. We resolve
+# the newest state:ENABLED version rather than `access latest`, because `latest` points at the
+# highest-numbered version regardless of state — one DISABLED/DESTROYED top version (e.g. from
+# an interrupted rotation) makes `access latest` fail with FAILED_PRECONDITION and breaks
+# reads. Same hardening as the auto-suspend prepare step (auto-suspend-prepare.sh).
+app_config_blob() {
+  local ver
+  ver="$(gcloud secrets versions list devstash-app-config --project="$PROJECT_ID" \
+    --filter=state:ENABLED --sort-by=~createTime --limit=1 --format='value(name)' 2>/dev/null || true)"
+  [[ -n "$ver" ]] || return 0
+  gcloud secrets versions access "$ver" --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true
+}
+
 # use_cluster / use_cluster_soft: point kubeconfig at the GKE cluster via the tofu-emitted
 # get_credentials_command. `use_cluster` aborts if no cluster exists; the _soft variant only
 # warns and continues (for read-only status/log commands that still work partially offline).
@@ -567,7 +581,7 @@ verify_secrets() {
   )
 
   local blob keys
-  blob="$(gcloud secrets versions access latest --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true)"
+  blob="$(app_config_blob)"
   if [[ -z "$blob" ]]; then
     warn "consolidated secret devstash-app-config is missing or unreadable — pods cannot start"
     warn "Apply Terraform (run.sh apply) to create it, or see §7b of infra/docs/08-gcp-bootstrap.md"
@@ -651,7 +665,7 @@ rotate_secret() {
   # --arg keeps both the key name and the value out of the jq program text (no injection,
   # no shell-history/process-list exposure). The whole blob is piped, never echoed.
   local blob
-  blob="$(gcloud secrets versions access latest --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true)"
+  blob="$(app_config_blob)"
   [[ -n "$blob" ]] || die "devstash-app-config not found — run 'apply' first to create it"
   printf '%s' "$blob" \
     | jq --arg k "$secret_name" --arg v "$new_value" '.[$k] = $v' \

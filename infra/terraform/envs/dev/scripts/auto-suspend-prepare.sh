@@ -18,7 +18,16 @@ mkdir -p /workspace/sec
 # wiping them). Ops-only DNS creds are ALSO one consolidated JSON secret (devstash-ops-config,
 # spaceship-api-key/-secret properties) — fetch it as a whole blob if present (opt-in: a
 # project without DNS creds omits it). The Python helper splits the blob into the two tfvars.
-gcloud secrets versions access latest --secret="devstash-app-config" --project="$_PROJECT_ID" > /workspace/sec/app-config.json
+# Resolve the newest ENABLED version rather than `access latest`: `latest` points at the
+# highest-numbered version regardless of state, so a single DISABLED/DESTROYED top version
+# (e.g. left by an interrupted rotation) makes `access latest` fail with FAILED_PRECONDITION
+# and blocks the whole suspend — the outage the secret_data_wo redesign (modules/iam) was
+# meant to end, still reachable via a stray disabled version. Pick the newest state:ENABLED
+# version explicitly so one bad top version can never wedge suspend again.
+app_config_ver="$(gcloud secrets versions list devstash-app-config --project="$_PROJECT_ID" \
+  --filter=state:ENABLED --sort-by=~createTime --limit=1 --format='value(name)')"
+[ -n "$app_config_ver" ] || { echo "devstash-app-config has no ENABLED version — cannot proceed"; exit 1; }
+gcloud secrets versions access "$app_config_ver" --secret="devstash-app-config" --project="$_PROJECT_ID" > /workspace/sec/app-config.json
 if gcloud secrets describe "devstash-ops-config" --project="$_PROJECT_ID" >/dev/null 2>&1; then
   gcloud secrets versions access latest --secret="devstash-ops-config" --project="$_PROJECT_ID" > /workspace/sec/ops-config.json
 fi

@@ -98,6 +98,7 @@ locals {
   # secrets are reconstructed at runtime.
   auto_suspend_nonsecret_tfvars = base64encode(jsonencode({
     project_id                = var.project_id
+    project_number            = var.project_number
     region                    = var.region
     environment               = var.environment
     github_repository         = var.github_repository
@@ -209,13 +210,42 @@ resource "google_storage_bucket_iam_member" "lifecycle_state" {
 }
 
 # The dump step's VERIFY (`gcloud storage objects describe`) reads the exported object as
-# the lifecycle SA, so it needs read on the db-dumps bucket. Read-only is enough: the
-# actual export WRITE is performed by the Cloud SQL service agent (objectAdmin granted in
-# db-dumps.tf), not this SA. Scoped to the dump bucket, not the project.
+# the lifecycle SA, so it needs read on the db-dumps bucket. Read-only is enough for the
+# verify: the actual export WRITE is performed by the Cloud SQL service agent (objectAdmin
+# granted in db-dumps.tf), not this SA. Scoped to the dump bucket, not the project.
 resource "google_storage_bucket_iam_member" "lifecycle_db_dumps" {
   count  = local.auto_suspend_on ? 1 : 0
   bucket = google_storage_bucket.db_dumps.name
   role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.lifecycle[0].email}"
+}
+
+# The suspend apply also DESTROYS the db-dumps bucket's sql_agent_db_dumps binding — that
+# grant targets the Cloud SQL instance's PER-INSTANCE service agent (p<num>-<hash>@…), which
+# ceases to exist when db_active=false destroys the instance, so the binding cannot be kept
+# stable (unlike the compute-default-SA bindings, which were made static). Removing a
+# bucket IAM member reads then rewrites the bucket policy, so the lifecycle SA needs
+# get/getIamPolicy/setIamPolicy on THIS bucket. No predefined role is that narrow without
+# also granting object/bucket create+delete (roles/storage.admin), so mint a custom role
+# with exactly the three permissions the destroy calls, bound to the db-dumps bucket ONLY.
+# This is NOT project-level setIamPolicy — same one-bucket, custom-role least-privilege
+# posture as lifecycle_ar_deleter / lifecycle_self_updater.
+resource "google_project_iam_custom_role" "lifecycle_db_dumps_iam" {
+  count       = local.auto_suspend_on ? 1 : 0
+  role_id     = "${replace(local.name_prefix, "-", "_")}_db_dumps_iam_admin"
+  title       = "DevStash ${var.environment} db-dumps IAM admin (idle auto-suspend)"
+  description = "Read+write the db-dumps bucket IAM policy so the suspend apply can remove the per-instance Cloud SQL agent's objectAdmin binding when the instance is destroyed."
+  permissions = [
+    "storage.buckets.get",
+    "storage.buckets.getIamPolicy",
+    "storage.buckets.setIamPolicy",
+  ]
+}
+
+resource "google_storage_bucket_iam_member" "lifecycle_db_dumps_iam" {
+  count  = local.auto_suspend_on ? 1 : 0
+  bucket = google_storage_bucket.db_dumps.name
+  role   = google_project_iam_custom_role.lifecycle_db_dumps_iam[0].id
   member = "serviceAccount:${google_service_account.lifecycle[0].email}"
 }
 
@@ -495,6 +525,86 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     google_project_iam_member.lifecycle,
     google_service_account_iam_member.lifecycle_actas,
     google_storage_bucket_iam_member.lifecycle_db_dumps,
+    google_storage_bucket_iam_member.lifecycle_db_dumps_iam,
     google_artifact_registry_repository_iam_member.lifecycle_ar_delete,
   ]
+}
+
+# --- Suspend-build FAILURE alerting ----------------------------------------
+# The suspend build failing is INVISIBLE by default: it fails on the scheduler's cadence, the
+# env silently stays up (bleeding ~$0.13/hr), and nothing pages anyone — exactly how the
+# disabled-secret + IAM-replace bugs ran unnoticed for hours. Cloud Build publishes NO native
+# monitoring metric, so the recommended pattern is a LOG-BASED metric over the build's own audit
+# log + a threshold alert. The build already logs to Cloud Logging (CLOUD_LOGGING_ONLY), and a
+# failed build of this trigger emits one terminal audit entry (operation.last=true, severity
+# ERROR) tagged with the trigger id — a clean one-count-per-failed-build signal.
+
+# Bare address for the email channel: var.email_from is display-name formatted
+# ("DevStash <noreply@host>"); extract just the address. Falls back to the whole string if it
+# is already bare (no angle brackets).
+locals {
+  auto_suspend_alert_email = try(regex("<([^>]+)>", var.email_from)[0], var.email_from)
+}
+
+# Log-based counter: one increment per FAILED build of the auto-suspend trigger. operation.last
+# = the terminal completion entry (not the per-step noise); severity=ERROR = the build failed.
+resource "google_logging_metric" "auto_suspend_build_failures" {
+  count  = local.auto_suspend_on ? 1 : 0
+  name   = "${local.name_prefix}-auto-suspend-build-failures"
+  filter = <<-EOT
+    resource.type="build"
+    resource.labels.build_trigger_id="${google_cloudbuild_trigger.auto_suspend[0].trigger_id}"
+    severity=ERROR
+    operation.last=true
+  EOT
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+  }
+}
+
+# Email channel — reuses the transactional-email address (var.email_from). No new var/secret;
+# the address is non-secret config already in the module.
+resource "google_monitoring_notification_channel" "auto_suspend_ops_email" {
+  count        = local.auto_suspend_on ? 1 : 0
+  display_name = "DevStash ${var.environment} auto-suspend ops"
+  type         = "email"
+  labels = {
+    email_address = local.auto_suspend_alert_email
+  }
+}
+
+# Alert: fire once the suspend build has failed repeatedly — a persistent problem, not a
+# one-off raced apply. The scheduler fires every 15 min, so ≥3 failures across a rolling hour
+# (threshold 2 = "more than 2") means suspend has been wedged for ~45 min and the env is still
+# up. Sends to the ops email so a broken teardown is caught same-hour instead of silently
+# billing for days.
+resource "google_monitoring_alert_policy" "auto_suspend_build_failures" {
+  count        = local.auto_suspend_on ? 1 : 0
+  display_name = "DevStash ${var.environment} auto-suspend build failing"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Suspend build failed 3+ times in an hour"
+    condition_threshold {
+      filter          = "resource.type=\"build\" AND metric.type=\"logging.googleapis.com/user/${google_logging_metric.auto_suspend_build_failures[0].name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 2
+      duration        = "0s"
+      aggregations {
+        alignment_period   = "3600s"
+        per_series_aligner = "ALIGN_SUM"
+      }
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.auto_suspend_ops_email[0].id]
+
+  documentation {
+    content   = "The idle auto-suspend Cloud Build has failed repeatedly, so the ${var.environment} environment is NOT tearing down and is still billing. Check the latest build: gcloud builds list --region=${var.region} --filter=\"tags:auto-suspend\" (or the trigger's build history), fix the failing step, then re-trigger by publishing to the ${local.name_prefix}-auto-suspend topic. See infra/terraform/envs/dev/auto-suspend.tf."
+    mime_type = "text/markdown"
+  }
 }

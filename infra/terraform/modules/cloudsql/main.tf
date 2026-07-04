@@ -153,6 +153,29 @@ resource "google_sql_database_instance" "postgres" {
       value = "25"
     }
 
+    # pgAudit — resolves the "Auditing not enabled" instance health issue. The
+    # cloudsql.enable_pgaudit flag turns on the pgAudit engine; the extension itself
+    # must still be created in-database (CREATE EXTENSION pgaudit) to emit logs. Session
+    # logging is left at Postgres defaults (pgaudit.log unset) so the flag stays cheap —
+    # flip pgaudit.log to 'ddl'/'write' in-database when you actually need the audit trail.
+    database_flags {
+      name  = "cloudsql.enable_pgaudit"
+      value = "on"
+    }
+
+    # Password strength policy — resolves the "No password policy" / "No user password
+    # policy" instance health issues. Cloud SQL enforces these rules on built-in
+    # (password) users at creation/change time. The app user's password is a 32-char
+    # random_password (root module) that already satisfies them; this makes the policy
+    # explicit and blocks weak passwords on any future built-in user.
+    password_validation_policy {
+      enable_password_policy      = true
+      min_length                  = 12
+      complexity                  = "COMPLEXITY_DEFAULT" # require upper+lower+numeric+special
+      reuse_interval              = 5                    # cannot reuse the last 5 passwords
+      disallow_username_substring = true                 # password must not contain the username
+    }
+
     user_labels = var.labels
   }
 }
@@ -183,6 +206,15 @@ resource "google_sql_user" "app" {
   name     = "devstash_app"
   instance = google_sql_database_instance.postgres[0].name
   password = var.app_user_password
+
+  # Per-user password policy — resolves the "No user password policy" instance health
+  # issue (the instance-level password_validation_policy above covers strength; this
+  # covers the per-user lockout controls GCP flags separately). Locks the account after
+  # repeated failed logins to blunt brute-force attempts against the public IP.
+  password_policy {
+    enable_failed_attempts_check = true
+    allowed_failed_attempts      = 5
+  }
 
   # ABANDON on destroy — same reasoning as the database above, but here the individual drop
   # fails STRUCTURALLY every time, not just on a stray connection: devstash_app OWNS the

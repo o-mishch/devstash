@@ -1,4 +1,12 @@
 variable "project_id" { type = string }
+# Numeric project number. Passed in statically (not read via data.google_project inside this
+# module) so the compute-default-SA member string below stays PLAN-TIME KNOWN. Under the
+# auto-suspend's `-refresh=false` apply, a data.google_project read is deferred to apply time,
+# which makes any member derived from it "unknown" and forces a REPLACE of the IAM binding —
+# and the destroy half of that replace needs resourcemanager.projects.setIamPolicy / bucket
+# getIamPolicy the least-privilege lifecycle SA deliberately lacks, 403-ing the suspend after
+# the cheap resources are already gone. Same static-derivation fix as gke_node_sa_email.
+variable "project_number" { type = string }
 variable "region" { type = string }
 # GKE cluster name — used to scope container.developer to this cluster only.
 variable "gke_cluster_name" { type = string }

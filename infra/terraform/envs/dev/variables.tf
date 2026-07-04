@@ -3,6 +3,17 @@ variable "project_id" {
   description = "GCP project ID to deploy into."
 }
 
+# Numeric project number (immutable, distinct from project_id). Supplied as a static input
+# rather than read via a google_project data source so IAM members derived from it stay
+# plan-time known — the auto-suspend's `-refresh=false` apply would otherwise defer the read to
+# apply time and REPLACE the compute-default-SA bindings, whose destroy the least-privilege
+# lifecycle SA can't perform (403). Find it: gcloud projects describe <project_id>
+# --format='value(projectNumber)'.
+variable "project_number" {
+  type        = string
+  description = "Numeric GCP project number (gcloud projects describe <id> --format='value(projectNumber)')."
+}
+
 variable "region" {
   type        = string
   description = "GCP region for GKE, Memorystore, and GCS. Must match deploy-gke.yml. GCS Always Free applies only in us-west1, us-central1, or us-east1."

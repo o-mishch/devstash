@@ -1,10 +1,14 @@
 # Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored — never
 # commit real project IDs / values for a real environment.
-project_id  = "my-devstash-project"
+project_id = "my-devstash-project"
+# Numeric project number (immutable, != project_id). Static input so IAM members derived from
+# it stay plan-time known under the auto-suspend's -refresh=false apply.
+# Get it: gcloud projects describe my-devstash-project --format='value(projectNumber)'
+project_number = "123456789012"
 # GCS Always Free applies specifically to us-central1/us-east1/us-west1 (aggregate
 # 5 GB-months), not every US region or the "US" multi-region. Must match the
 # hard-coded REGION in deploy-gke.yml.
-region      = "us-central1"
+region = "us-central1"
 environment = "dev"
 
 # Keyless CI: GitHub repo allowed to federate (Workload Identity), "owner/repo".
