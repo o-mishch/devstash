@@ -382,6 +382,47 @@ kind delete cluster --name devstash
 > [`infra/run/gcp/run.sh deploy`](../run/gcp/run.sh) (Рівень 4). Детальний розбір
 > kind-стека — у [07-local-run.md](07-local-run.md).
 
+## Який кластер бачить `kubectl`? (local vs GCP)
+
+`kubectl` не знає про «local» чи «GCP» — він завжди звертається до того кластера,
+на який вказує **поточний контекст** (`current-context`) у `~/.kube/config`. Обидва
+контексти можуть існувати одночасно:
+
+```bash
+kubectl config get-contexts
+# CURRENT   NAME                                     CLUSTER
+#           gke_<project>_us-central1_devstash-dev-gke   ...
+# *         kind-devstash                                ...   ← активний зараз
+```
+
+Перемкнути вручну:
+
+```bash
+kubectl config use-context kind-devstash                                # local
+kubectl config use-context gke_<project>_us-central1_devstash-dev-gke   # GCP
+```
+
+**Небезпека:** `gcloud container clusters get-credentials` (яку викликає
+`gcp/run.sh` через `use_cluster()`) перемикає `current-context` на GKE і
+**залишає його там**. Якщо після цього запустити `local/run.sh up` без жодних
+перевірок, `kubectl apply` мовчки накотить локальний-лише стек (Postgres/Redis/MinIO)
+на справжній GKE dev-кластер — `kubectl` не має уявлення про «тип» кластера і
+ніколи не питає підтвердження.
+
+Тому обидва `run.sh` **не покладаються на пам'ять розробника** — вони самі
+перевіряють контекст на вході кожної команди, що змінює кластер:
+
+- [`infra/lib/common.sh`](../lib/common.sh) — `require_kube_context(<glob>, <hint>)`,
+  спільний хелпер: помирає (`die`), якщо поточний контекст не збігається з очікуваним
+  glob-патерном. `local/run.sh` викликає його з `"kind-devstash"` на початку `up`/`deploy`.
+- [`infra/run/gcp/run.sh`](../run/gcp/run.sh) — `use_cluster()` / `use_cluster_soft()`
+  виконують `get-credentials`, а потім `_kube_context_is_gke()` підтверджує, що
+  контекст справді має вигляд `gke_*`, перш ніж продовжити.
+
+Практичний висновок: перед будь-яким «сирим» `kubectl` перевіряйте
+`kubectl config current-context`; а для команд із цього репозиторію користуйтеся
+`local/run.sh` / `gcp/run.sh` — вони самі гарантують правильний контекст.
+
 ## Шпаргалка з налагодження (вас про це запитають)
 
 ```bash

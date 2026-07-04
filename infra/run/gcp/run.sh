@@ -127,23 +127,37 @@ app_config_blob() {
   gcloud secrets versions access "$ver" --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true
 }
 
+# _kube_context_is_gke: true iff the CURRENT kubectl context looks like a GKE context
+# (gcloud always names them "gke_<project>_<location>_<cluster>"). Belt-and-suspenders check
+# after use_cluster/use_cluster_soft's `eval "$c"`: that eval already targets the exact
+# project/cluster from tofu output, so in the normal case this can't fail — but `eval` inside
+# `use_cluster_soft`'s `... || warn` swallows a failed get-credentials silently, which would
+# otherwise leave kubectl pointed at whatever context (e.g. local kind) was active before the
+# call, and every kubectl command downstream would then silently run against the wrong cluster.
+_kube_context_is_gke() {
+  local ctx; ctx="$(kubectl config current-context 2>/dev/null || true)"
+  [[ "$ctx" == gke_* ]]
+}
+
 # use_cluster / use_cluster_soft: point kubeconfig at the GKE cluster via the tofu-emitted
 # get_credentials_command. `use_cluster` aborts if no cluster exists; the _soft variant only
 # warns and continues (for read-only status/log commands that still work partially offline).
 # Optional $1 overrides the default message. Guard on the `gcloud*` prefix before eval-ing:
 # when the env is suspended, get_credentials_command is a human-readable sentinel (NOT a gcloud
 # command), so eval-ing it is meaningless — bail with the same message as a missing cluster.
-# This is the guard apply() applies inline (line ~493); centralising it here makes every caller
-# (eso/status/rotate-secret/verify-secrets/upgrade-helm) sentinel-safe, not just apply().
+# Centralising this one guard makes every caller (apply/eso/status/rotate-secret/
+# verify-secrets/upgrade-helm/logs) sentinel-safe and GKE-context-safe consistently.
 use_cluster() {
   local c; c="$(tofu_ output -raw get_credentials_command 2>/dev/null || true)"
   [[ "$c" == gcloud* ]] || die "${1:-no cluster yet — run 'apply' first}"
   eval "$c"
+  _kube_context_is_gke || die "get-credentials ran but kubectl context is not a GKE context ('$(kubectl config current-context 2>/dev/null)') — refusing to proceed against a possibly-wrong cluster"
 }
 use_cluster_soft() {
   local c; c="$(tofu_ output -raw get_credentials_command 2>/dev/null || true)"
   [[ "$c" == gcloud* ]] || { warn "${1:-no cluster yet}"; return 0; }
-  eval "$c" 2>/dev/null || warn "${1:-no cluster yet}"
+  eval "$c" 2>/dev/null || { warn "${1:-no cluster yet}"; return 0; }
+  _kube_context_is_gke || warn "get-credentials ran but kubectl context is not a GKE context ('$(kubectl config current-context 2>/dev/null)') — subsequent kubectl calls may target the wrong cluster"
 }
 
 # helm_repo <name> <url>: register (idempotent — ignore "already exists") + refresh a single
@@ -510,18 +524,12 @@ apply() {
     rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
     die "aborted before apply"
   fi
-  # Only fetch kubectl creds when a cluster exists. When suspended, the
-  # get_credentials_command output is a human-readable sentinel (not a gcloud command),
-  # so guard against eval-ing it.
-  local getcreds
-  getcreds="$(tofu_ output -raw get_credentials_command)"
-  if [[ "$getcreds" == gcloud* ]]; then
-    log "Fetching kubectl credentials"
-    eval "$getcreds"
-    ok "kubeconfig points at the new cluster"
-  else
-    warn "no cluster (environment suspended) — skipping kubectl credential fetch"
-  fi
+  # Only fetch kubectl creds when a cluster exists. use_cluster_soft handles the missing-
+  # cluster sentinel (suspended env) AND the post-fetch GKE-context check consistently with
+  # every other credential-fetching entry point (eso/reloader/verify-secrets/upgrade-helm/
+  # status/logs) — apply() used to duplicate this inline and skip that guard.
+  log "Fetching kubectl credentials"
+  use_cluster_soft "no cluster (environment suspended) — skipping kubectl credential fetch"
 }
 
 # External Secrets Operator — required ONCE per cluster before any `kubectl apply -k`,

@@ -78,7 +78,9 @@ ensure_valkey_tls() {
   dir="$(mktemp -d)"
   # The dir holds the throwaway CA private key (ca.key). Clean it on function RETURN so a
   # set -e abort in any openssl/kubectl step below can't leak private-key material on disk.
-  trap 'rm -rf "$dir"' RETURN
+  # RETURN traps aren't function-scoped — they fire on every later function return too — so
+  # clear it explicitly before returning instead of just letting the function end.
+  trap 'rm -rf "$dir"; trap - RETURN' RETURN
   cnf="$HERE/valkey-openssl.cnf"
   log "generating local Valkey TLS certs (self-signed, dev-only)"
   # CA — the root of trust the app verifies the server cert against (REDIS_CA_CERT).

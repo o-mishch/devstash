@@ -56,8 +56,16 @@ spec:
     metadata:
       labels: { app: pgadmin }
     spec:
-      # libpq requires the pgpass to be 0600 and owned by the runtime uid (5050), and
-      # the configMap mount is read-only — so copy it into a writable emptyDir first.
+      # restricted PodSecurity: run as non-root, no extra capabilities/privilege
+      # escalation. fsGroup=5050 (pgAdmin's runtime gid) makes Kubernetes own the
+      # pgpass emptyDir by that group, so seed-pgpass can write a group-readable
+      # pgpass without chown (which would require root).
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 5050
+        seccompProfile: { type: RuntimeDefault }
+      # libpq requires the pgpass to be group-readable, and the configMap mount is
+      # read-only — so copy it into a writable emptyDir first (see fsGroup above).
       initContainers:
         - name: seed-pgpass
           image: busybox:latest
@@ -65,6 +73,10 @@ spec:
           # scripts/pgadmin-seed-pgpass.sh via --from-file). Kept out of this manifest per
           # infra/.agents/rules/infra.md (no inline scripts in YAML).
           command: ['sh', '/scripts/pgadmin-seed-pgpass.sh']
+          securityContext:
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           volumeMounts:
             - { name: config, mountPath: /seed }
             - { name: pgpass, mountPath: /pgpass-dir }
@@ -72,6 +84,10 @@ spec:
       containers:
         - name: pgadmin
           image: dpage/pgadmin4:latest
+          securityContext:
+            runAsUser: 5050
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           env:
             # Throwaway login for the pgAdmin UI itself (local only). pgAdmin validates
             # this as a real email; .local is rejected, so use a normal domain (the
@@ -82,14 +98,17 @@ spec:
             - { name: PGADMIN_SERVER_JSON_FILE, value: /pgadmin4/servers.json }
             # Skip the master-password prompt (local throwaway instance only).
             - { name: PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED, value: 'False' }
+            # Non-root (uid 5050, capabilities dropped) can't bind port 80 — pgAdmin's
+            # own docs recommend 8080 for restricted/OpenShift-style deployments.
+            - { name: PGADMIN_LISTEN_PORT, value: '8080' }
           ports:
-            - containerPort: 80
+            - containerPort: 8080
           volumeMounts:
             # servers.json is read-only — pgAdmin only reads it at boot.
             - { name: config, mountPath: /pgadmin4/servers.json, subPath: servers.json }
             - { name: pgpass, mountPath: /pgpass-dir }
           readinessProbe:
-            httpGet: { path: /misc/ping, port: 80 }
+            httpGet: { path: /misc/ping, port: 8080 }
             initialDelaySeconds: 10
             periodSeconds: 5
       volumes:
@@ -111,4 +130,4 @@ spec:
   type: NodePort
   selector: { app: pgadmin }
   ports:
-    - { port: 80, targetPort: 80, nodePort: 30978 }
+    - { port: 80, targetPort: 8080, nodePort: 30978 }
