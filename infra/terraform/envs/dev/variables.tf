@@ -194,8 +194,8 @@ variable "db_active" {
 # day cap OR beyond the version cap), whichever hits first.
 variable "db_dump_keep_versions" {
   type        = number
-  default     = 5
-  description = "How many superseded (noncurrent) DB dumps to retain for rollback. The live dump is always kept on top of this and never expires. ~free for a small DB; raise freely. See db-dumps.tf."
+  default     = 2
+  description = "How many superseded (noncurrent) DB dumps to retain for rollback. The live dump is always kept on top of this and never expires, so the total stored is this + 1 (default 2 → 3 total). ~free for a small DB; raise freely. See db-dumps.tf."
 
   validation {
     condition     = var.db_dump_keep_versions >= 1

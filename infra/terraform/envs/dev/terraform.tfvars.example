@@ -94,7 +94,7 @@ third_party_secrets = {
 # only bound the superseded (rollback) history. A dump is small and GCS us-central1 gives
 # 5 GB-month free (shared with the uploads bucket), so raising these is ~$0. A version is
 # pruned when EITHER cap is hit.
-# db_dump_keep_versions = 5     # superseded dumps to retain for rollback (default 5)
+# db_dump_keep_versions = 2     # superseded dumps to retain for rollback (default 2 → 3 total incl. live)
 # db_dump_keep_days     = 90    # also expire superseded dumps older than this (default 90)
 
 # Cloud Billing budget (cost visibility). Account-scoped — find it with

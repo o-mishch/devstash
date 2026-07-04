@@ -294,11 +294,11 @@ bootstrap() {
 
   # Lifecycle: versioning above keeps every superseded state generation forever. State
   # objects are tiny, but over the env's life the noncurrent versions accumulate unbounded.
-  # The rule (in $STATE_LIFECYCLE) keeps the 5 most recent generations for rollback and drops
-  # older ones regardless of age — ARCHIVED-only (isLive=false), so the LIVE state object is
-  # never touched — keeping the bucket a $0 residual.
+  # The rule (in $STATE_LIFECYCLE) keeps the 2 most recent noncurrent generations for rollback
+  # (3 total incl. the live state) and drops older ones regardless of age — ARCHIVED-only
+  # (isLive=false), so the LIVE state object is never touched — keeping the bucket a $0 residual.
   gcloud storage buckets update "gs://$STATE_BUCKET" --lifecycle-file="$STATE_LIFECYCLE"
-  ok "state bucket lifecycle: keep 5 noncurrent state versions, drop older regardless of age"
+  ok "state bucket lifecycle: keep 2 noncurrent state versions (3 total), drop older regardless of age"
 
   # Enable APIs up front (Terraform also does this via google_project_service, but
   # pre-enabling here speeds up the first `tofu apply` by avoiding Terraform's
@@ -341,14 +341,23 @@ reconcile_state() {
   # unrelated line. The import is idempotent: a stale/locked state read right after `init`
   # could miss an address that import then reports as already-managed, so treat that outcome
   # as success and only fail if the address is genuinely still absent afterwards.
+  #
+  # ONLY when db_active=true (resume/apply-up). The devstash database resource is count-gated
+  # on instance_active (= db_active); during a suspend (db_active=false) its config is count→0,
+  # so an import target has no configuration and `tofu import` fails with "Configuration for
+  # import target does not exist" — blocking the very suspend that is meant to destroy the DB.
+  # A suspend WANTS the physical database gone, so there is nothing to adopt: skip the import.
+  local db_active
+  db_active="$(sed -nE 's/^[[:space:]]*db_active[[:space:]]*=[[:space:]]*(true|false).*/\1/p' \
+    "$TF_DIR/active.auto.tfvars" 2>/dev/null | head -1)"
   _db_in_state() { tofu_ state list "$db_addr" 2>/dev/null | grep -qxF "$db_addr"; }
-  if ! _db_in_state; then
+  if [[ "$db_active" != "false" ]] && ! _db_in_state; then
     local inst
     inst="$(tf_out db_instance_name)"
     if [[ -n "$inst" ]] && gcloud sql databases describe "$DB_NAME" \
          --instance="$inst" --project="$PROJECT_ID" >/dev/null 2>&1; then
       log "Reconcile: importing existing Cloud SQL database '$DB_NAME' into state (abandoned by a prior db-active toggle)"
-      if tofu_ import "$db_addr" \
+      if tofu_ import -lock-timeout=120s "$db_addr" \
            "projects/$PROJECT_ID/instances/$inst/databases/$DB_NAME"; then
         ok "database '$DB_NAME' adopted into state"
       elif _db_in_state; then
@@ -369,6 +378,38 @@ reconcile_state() {
   fi
 }
 
+# wait_for_no_autosuspend_build: serialise against the scheduled idle auto-suspend Cloud
+# Build. That build and any human `run.sh apply/suspend/resume` share ONE OpenTofu state
+# lock; if both run at once the second dies with "Error acquiring the state lock" mid-flight
+# (and cancelling the build to break the collision can orphan the lock AND leave a half-torn-
+# down environment). The remote lock alone can't prevent this — it only rejects the loser
+# AFTER it starts. So pre-check the CI side the way CI concurrency-groups serialise applies:
+# if an auto-suspend build for THIS env is QUEUED/WORKING, wait for it to finish before we
+# touch state. Bounded so a genuinely stuck build can't hang the human command forever —
+# on timeout we bail with an actionable message rather than racing the lock. The reverse
+# direction (build starts while a human holds the lock) is handled by the guard step in
+# auto-suspend-guard.sh, and the residual window where a build starts in the split second
+# after this check clears is caught by -lock-timeout on the tofu commands below.
+wait_for_no_autosuspend_build() {
+  # Match by the trigger's NAME (Cloud Build's built-in TRIGGER_NAME substitution), which is
+  # stable across trigger replaces — unlike buildTriggerId, which is regenerated whenever the
+  # trigger is recreated. One server-side --filter, no per-build describe.
+  local trigger="devstash-${ENVIRONMENT}-auto-suspend"
+  local deadline=$(( SECONDS + 900 ))  # cap the wait so a stuck build can't hang us forever
+  local id
+  while :; do
+    id="$(gcloud builds list --region="$REGION" --project="$PROJECT_ID" --ongoing \
+            --filter="substitutions.TRIGGER_NAME=$trigger" \
+            --format='value(id)' 2>/dev/null | head -1)"
+    [[ -z "$id" ]] && return 0
+    if (( SECONDS >= deadline )); then
+      die "auto-suspend build $id ($trigger) still running after 900s — it holds the state lock. Wait for it to finish (gcloud builds log $id --region=$REGION) or cancel it, then re-run."
+    fi
+    warn "auto-suspend build $id ($trigger) is running and holds the state lock — waiting for it to finish before applying…"
+    sleep 20
+  done
+}
+
 # apply: initialise the Terraform remote backend and run plan → apply.
 # Requires the state bucket to exist (bootstrap must have run first).
 # Always plans to a file and applies that exact plan so there is no drift between
@@ -384,6 +425,9 @@ apply() {
   if ! gcloud storage buckets describe "gs://$STATE_BUCKET" >/dev/null 2>&1; then
     die "State bucket gs://$STATE_BUCKET not found — run 'bootstrap' first to create it."
   fi
+  # Serialise against the scheduled idle auto-suspend build BEFORE touching state — they share
+  # one lock and would otherwise collide mid-apply (see wait_for_no_autosuspend_build).
+  wait_for_no_autosuspend_build
   log "OpenTofu init + plan ($TF_DIR)"
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
   # Heal state↔cloud drift a plain plan can't (untracked DB → import; legacy-purpose PSC
@@ -393,9 +437,11 @@ apply() {
   # second plan after confirmation, allowing infrastructure drift between review and
   # mutation. The plan file is local, short-lived, and gitignored. Any reconcile -replace
   # targets are folded into THIS plan so the replacement is reviewed before it mutates GCP.
-  tofu_ plan ${RECONCILE_REPLACE[@]+"${RECONCILE_REPLACE[@]}"} -out="$PLAN_FILE"
+  # -lock-timeout: wait (don't instantly fail) if the lock is briefly held — covers the
+  # residual window where an auto-suspend build starts just after the pre-check above cleared.
+  tofu_ plan -lock-timeout=120s ${RECONCILE_REPLACE[@]+"${RECONCILE_REPLACE[@]}"} -out="$PLAN_FILE"
   if confirm "Apply this plan? (review the resource changes above)"; then
-    if tofu_ apply "$PLAN_FILE"; then
+    if tofu_ apply -lock-timeout=120s "$PLAN_FILE"; then
       rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
     else
       # Saved plans contain sensitive values; remove it on failure as well as success.

@@ -20,6 +20,17 @@ if [ -z "$CREATED" ]; then
   echo "no cluster found (already suspended) — nothing to do"
   exit 0
 fi
+# A human `run.sh apply/suspend/resume` in progress holds the OpenTofu state lock. The
+# auto-suspend build and that human command share one lock, so proceeding here would collide
+# mid-apply (the loser dies with "Error acquiring the state lock", and breaking the collision
+# risks an orphaned lock + a half-torn-down env). run.sh serialises the OTHER direction by
+# waiting for this build; this closes the loop — if the lock is already held, the human is
+# mid-flight, so no-op and let the next scheduled tick re-evaluate. The lock object lives at
+# the fixed backend prefix (gke/dev, see backend.tf) in the state bucket.
+if gcloud storage objects describe "gs://$_STATE_BUCKET/gke/dev/default.tflock" >/dev/null 2>&1; then
+  echo "state lock held (a run.sh apply/suspend/resume is in progress) — skipping to avoid a mid-apply collision"
+  exit 0
+fi
 AGE=$(( $(date -u +%s) - $(date -u -d "$CREATED" +%s) ))
 # (a) Hard uptime cap — suspend regardless of traffic. Checked first: _MAX_UPTIME >=
 # _IDLE_WINDOW (enforced by variable validation), so this never conflicts with the grace below.
