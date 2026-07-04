@@ -46,7 +46,7 @@ export function CopyButton({
       flash()
       return
     }
-    copy(value)
+    void copy(value)
   }
 
   return (

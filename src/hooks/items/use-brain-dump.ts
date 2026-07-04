@@ -346,7 +346,7 @@ export function useBrainDumpStream(jobId: string, initialSnapshot?: BrainDumpStr
     // stream with the spinner up. Returns null so the handler skips that frame instead of crashing.
     const parseFrame = <T,>(event: Event): T | null => {
       try {
-        return JSON.parse((event as MessageEvent).data) as T
+        return JSON.parse((event as MessageEvent<string>).data) as T
       } catch {
         return null
       }

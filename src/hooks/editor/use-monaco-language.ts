@@ -1,16 +1,21 @@
 import { useEffect } from 'react'
 import { useMonaco, loader } from '@monaco-editor/react'
-import type { Monaco } from '@monaco-editor/react'
 import type { languages as MonacoLanguages } from 'monaco-editor'
 
-function resolveLanguageSync(monaco: Monaco, language: string) {
+// `@monaco-editor/react`'s `Monaco` type degrades to `any` when monaco-editor's
+// ambient types aren't linked; narrow to the exact surface we touch.
+export interface MonacoLanguagesApi {
+  languages: { getLanguages(): MonacoLanguages.ILanguageExtensionPoint[] }
+}
+
+function resolveLanguageSync(monaco: MonacoLanguagesApi, language: string): string | null {
   const langs = monaco.languages.getLanguages()
   const target = language.toLowerCase().trim()
-  
-  const match = langs.find((l: MonacoLanguages.ILanguageExtensionPoint) => {
+
+  const match = langs.find((l) => {
     if (l.id === target) return true
-    if (l.aliases && l.aliases.some(a => a.toLowerCase() === target)) return true
-    if (l.extensions && l.extensions.some(e => e.toLowerCase() === `.${target}`)) return true
+    if (l.aliases && l.aliases.some((a) => a.toLowerCase() === target)) return true
+    if (l.extensions && l.extensions.some((e) => e.toLowerCase() === `.${target}`)) return true
     return false
   })
 
@@ -36,8 +41,8 @@ export function useMonacoLanguage(language?: string | null) {
     return { resolvedLang: null, isLoading: true }
   }
 
-  return { 
-    resolvedLang: resolveLanguageSync(monaco, language), 
-    isLoading: false 
+  return {
+    resolvedLang: resolveLanguageSync(monaco, language),
+    isLoading: false,
   }
 }

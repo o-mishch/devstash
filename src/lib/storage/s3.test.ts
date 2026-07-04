@@ -149,7 +149,11 @@ describe('s3 utility', () => {
 
       await getPresignedPutCredential('test/key.png', 'image/png', 1234)
 
-      const [, , options] = mockGetSignedUrl.mock.calls[0]
+      const [, , options] = mockGetSignedUrl.mock.calls[0] as [
+        unknown,
+        unknown,
+        { expiresIn: number; signableHeaders: Iterable<string> },
+      ]
       expect(options.expiresIn).toBe(900)
       expect([...options.signableHeaders]).toEqual(
         expect.arrayContaining(['content-type', 'content-length']),

@@ -91,7 +91,7 @@ export function FileRow({ item }: FileRowProps) {
         size="icon"
         variant="ghost"
         className="size-8 shrink-0"
-        onClick={handleDownload}
+        onClick={(e) => void handleDownload(e)}
         title="Download"
       >
         {showError ? <XCircle className="size-4 text-destructive" /> : <Download className="size-4" />}

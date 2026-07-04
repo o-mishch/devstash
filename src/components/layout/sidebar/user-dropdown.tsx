@@ -71,7 +71,7 @@ export function UserDropdownMenuContent({
         // Drop the /profile cache so the next account on this device never sees the prior user's
         // emails (PII).
         resetProfile()
-        signOut({ redirectTo: '/' })
+        void signOut({ redirectTo: '/' })
         onClose?.()
       }} className="text-red-500 focus:text-red-500">
         <LogOut className="size-4" />

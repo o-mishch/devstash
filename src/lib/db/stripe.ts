@@ -193,7 +193,10 @@ export async function updateUserStripeSubscription(userId: string, params: Updat
     return { result, userIds: [...new Set([userId, ...conflictClearedUserIds])] }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const target = Array.isArray(error.meta?.target) ? error.meta.target.join(',') : String(error.meta?.target ?? 'unknown')
+      const rawTarget = error.meta?.target
+      let target = 'unknown'
+      if (Array.isArray(rawTarget)) target = rawTarget.join(',')
+      else if (typeof rawTarget === 'string') target = rawTarget
       log.error({
         userId,
         stripeCustomerId,

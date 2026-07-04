@@ -177,7 +177,7 @@ describe('validateCheckoutEligibility', () => {
         id: 'cus_existing',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      } as unknown as Stripe.Customer,
+      },
     ])
     mockIterateCustomerSubscriptions.mockReturnValue(emptySubscriptionIterator())
 
@@ -194,9 +194,10 @@ describe('validateCheckoutEligibility', () => {
         id: 'cus_existing',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      } as unknown as Stripe.Customer,
+      },
     ])
     mockIterateCustomerSubscriptions.mockImplementation(async function* () {
+      await Promise.resolve()
       yield blockingSubscription
     })
 
@@ -215,6 +216,7 @@ describe('validateCheckoutEligibility', () => {
     const blockingSubscription = makeBlockingSubscription()
     mockGetUserStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_123', email: 'user@example.com' })
     mockIterateCustomerSubscriptions.mockImplementation(async function* () {
+      await Promise.resolve()
       yield blockingSubscription
     })
 
@@ -260,9 +262,10 @@ describe('syncSubscriptionStateForUser', () => {
         id: 'cus_123',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      } as unknown as Stripe.Customer,
+      },
     ])
     mockIterateCustomerSubscriptions.mockImplementation(async function* () {
+      await Promise.resolve()
       yield blockingSubscription
     })
     mockFetchLiveSubscriptionState.mockResolvedValue({

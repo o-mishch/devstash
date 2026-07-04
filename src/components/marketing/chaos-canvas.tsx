@@ -174,7 +174,7 @@ export function ChaosCanvas() {
     canvas.addEventListener('touchend', onTouchEnd);
     canvas.addEventListener('touchcancel', onTouchEnd);
 
-    loadCanvasIcons().then(images => {
+    void loadCanvasIcons().then(images => {
       if (cancelled) return;
       resize();
       spawn(images);

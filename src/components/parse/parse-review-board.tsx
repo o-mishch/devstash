@@ -603,7 +603,7 @@ export function ParseReviewBoard({
           <Button variant="outline" size="sm" onClick={() => setDeleteAllConfirmOpen(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" size="sm" onClick={onEmptyTrash}>
+          <Button variant="destructive" size="sm" onClick={() => void onEmptyTrash()}>
             Delete all
           </Button>
         </DialogFooter>
@@ -708,7 +708,7 @@ export function ParseReviewBoard({
               <Button variant="outline" size="sm" onClick={() => setDeleteJobPrompt(false)}>
                 Keep
               </Button>
-              <Button variant="destructive" size="sm" onClick={deleteClosedJob}>
+              <Button variant="destructive" size="sm" onClick={() => void deleteClosedJob()}>
                 Delete record
               </Button>
             </DialogFooter>
@@ -742,7 +742,7 @@ export function ParseReviewBoard({
                   sourceItemId={sourceItemId}
                   suggestedName={suggestedCollectionName}
                   selectedIds={targetCollectionIds}
-                  onChange={persistTargetCollections}
+                  onChange={(ids) => void persistTargetCollections(ids)}
                 />
               }
             />
@@ -757,9 +757,9 @@ export function ParseReviewBoard({
               discarding={discarding}
               reparsing={reparsing}
               onResume={stream.resume}
-              onCommitAll={commitAll}
-              onDiscard={discard}
-              onReparse={reparse}
+              onCommitAll={() => void commitAll()}
+              onDiscard={() => void discard()}
+              onReparse={() => void reparse()}
               chrome={false}
             />
           </div>
@@ -783,8 +783,8 @@ export function ParseReviewBoard({
                   count={columns[group].length}
                   isActive={activeGroup === group}
                   onEmptyTrash={group === TRASH ? () => setDeleteAllConfirmOpen(true) : undefined}
-                  onRestoreAll={group === TRASH ? restoreAllTrash : undefined}
-                  onSaveAll={group !== TRASH && columns[group].length > 0 ? () => saveBucket(group) : undefined}
+                  onRestoreAll={group === TRASH ? () => void restoreAllTrash() : undefined}
+                  onSaveAll={group !== TRASH && columns[group].length > 0 ? () => void saveBucket(group) : undefined}
                   saveAllBusy={bulkBusy}
                 >
                   {/* mode="sync" (not popLayout): when a card's id moves from this bucket's list into

@@ -13,7 +13,7 @@ interface UseAiFieldGenerateParams<T> {
 
 interface UseAiFieldGenerateResult {
   isLoading: boolean
-  run: () => Promise<void>
+  run: () => void
 }
 
 export function useAiFieldGenerate<T>({
@@ -25,20 +25,25 @@ export function useAiFieldGenerate<T>({
 }: UseAiFieldGenerateParams<T>): UseAiFieldGenerateResult {
   const [isLoading, setIsLoading] = useState(false)
 
-  const run = useCallback(async () => {
-    if (!canGenerate) return
+  // Fire-and-forget: consumers wire this to an onClick, so expose a void-returning runner.
+  // Guard against double-tap: callers disable the button via `isLoading`, but this hook-level
+  // check is defense-in-depth so two concurrent generations can never fire.
+  const run = useCallback(() => {
+    if (!canGenerate || isLoading) return
 
     onStart?.()
     setIsLoading(true)
 
-    try {
-      onSuccess(await onGenerate())
-    } catch (error) {
-      toastError(error, failureMessage)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [canGenerate, onGenerate, onSuccess, onStart, failureMessage])
+    void (async () => {
+      try {
+        onSuccess(await onGenerate())
+      } catch (error) {
+        toastError(error, failureMessage)
+      } finally {
+        setIsLoading(false)
+      }
+    })()
+  }, [canGenerate, isLoading, onGenerate, onSuccess, onStart, failureMessage])
 
   return { isLoading, run }
 }

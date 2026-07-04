@@ -246,7 +246,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
               <RateLimitTooltip active={rateLimited} resetAt={renewResetAt}>
                 <Button
                   size="sm"
-                  onClick={startPaste}
+                  onClick={() => void startPaste()}
                   disabled={busy || tooShort || overPasteCap || rateLimited}
                 >
                   {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
@@ -273,7 +273,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
           </TabsContent>
 
           <TabsContent value="upload" className="mt-3">
-            <input ref={fileInputRef} type="file" accept=".txt,.md" onChange={onFile} className="hidden" />
+            <input ref={fileInputRef} type="file" accept=".txt,.md" onChange={(e) => void onFile(e)} className="hidden" />
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border p-6 text-center">
               <Upload className="size-5 text-muted-foreground" />
               <p className="text-xs text-muted-foreground">
@@ -310,7 +310,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
                 rateLimited={rateLimited}
                 resetAt={renewResetAt}
                 onSelect={setSelectedSourceId}
-                onStart={() => selectedSourceId && startFromSource(selectedSourceId)}
+                onStart={() => { if (selectedSourceId) void startFromSource(selectedSourceId) }}
                 emptyMessage={`No .txt or .md files tagged “${BRAIN_DUMP_SOURCE_TAG}” yet. Upload one here, or tag an existing text file with “${BRAIN_DUMP_SOURCE_TAG}”.`}
               />
             )}
@@ -329,7 +329,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
                 rateLimited={rateLimited}
                 resetAt={renewResetAt}
                 onSelect={setSelectedContentId}
-                onStart={() => selectedContentId && startFromSource(selectedContentId)}
+                onStart={() => { if (selectedContentId) void startFromSource(selectedContentId) }}
                 emptyMessage={`No snippets, commands, prompts, or notes tagged “${BRAIN_DUMP_SOURCE_TAG}” yet. Tag one with “${BRAIN_DUMP_SOURCE_TAG}” and it shows up here.`}
               />
             )}
@@ -423,7 +423,7 @@ function SourcePicker({ sources, selectedId, busy, rateLimited, resetAt, onSelec
                 render={
                   <button
                     type="button"
-                    onClick={() => handlePreview(source.itemId)}
+                    onClick={() => void handlePreview(source.itemId)}
                     disabled={previewingId === source.itemId}
                     aria-label="Preview content"
                     className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"

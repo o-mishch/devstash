@@ -14,10 +14,10 @@ let _client: S3Client | null = null
 function getClient(): S3Client {
   if (!_client) {
     _client = new S3Client({
-      region: process.env.AWS_REGION!,
+      region: process.env.AWS_REGION,
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
       },
       // Endpoint comes from AWS_ENDPOINT_URL_S3 (read natively by the SDK).
       // localS3Overrides() adds only forcePathStyle for MinIO; {} in production.
@@ -28,7 +28,7 @@ function getClient(): S3Client {
 }
 
 function getBucket(): string {
-  return process.env.AWS_S3_BUCKET!
+  return process.env.AWS_S3_BUCKET
 }
 
 export async function uploadToS3(

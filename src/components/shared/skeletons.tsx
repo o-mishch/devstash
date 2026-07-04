@@ -29,7 +29,7 @@ export function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
     // rem utilities like h-20/h-24, which scale with the 125%/110% root font and would
     // diverge from the loaded cards at one breakpoint.
     <div className="grid w-full min-w-0 grid-cols-1 gap-x-4 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3">
-      {[...Array(count)].map((_, i) => (
+      {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="h-[100px] w-full touch:h-[96px]">
           <Card className="relative h-full min-h-[96px] w-full min-w-0 gap-0 overflow-visible py-0 border-l-2 border-l-border">
             <CardContent className="flex h-full items-center p-4">
@@ -111,7 +111,7 @@ export function ImageGridSkeleton({ count = 6, itemHeight = 240 }: ImageGridSkel
   return (
     // Columns mirror the loaded image grid (getImageGridColumns): 2/3 at <1024/>=1024px.
     <div className="grid w-full min-w-0 grid-cols-2 gap-3 lg:grid-cols-3">
-      {[...Array(count)].map((_, i) => (
+      {Array.from({ length: count }).map((_, i) => (
         <div key={i} style={{ height: `${itemHeight}px`, width: '100%', minWidth: 0 }}>
           <ImageCardSkeleton />
         </div>
@@ -146,7 +146,7 @@ interface FileListSkeletonProps {
 export function FileListSkeleton({ count = 6, rowGap = 10 }: FileListSkeletonProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: `${rowGap}px`, width: '100%', minWidth: 0 }}>
-      {[...Array(count)].map((_, i) => (
+      {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="h-[48px] w-full touch:h-[64px]">
           <FileRowSkeleton />
         </div>

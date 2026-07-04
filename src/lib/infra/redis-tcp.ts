@@ -140,7 +140,7 @@ async function createAndConnect(): Promise<TcpClient> {
   client.on('error', (err: Error) => log.warn({ err }, 'redis-tcp connection error'))
 
   await client.connect()
-  _client = client as TcpClient
+  _client = client
   return _client
 }
 

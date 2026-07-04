@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { anything } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 
 // Exercises the single-item GET that powers the source deep-link drawer: auth (401), 404 for a
@@ -137,6 +138,6 @@ describe('PATCH /items/{id} — live type change (v3)', () => {
     mockUpdate.mockResolvedValue({ id: 'item-1', updatedAt: new Date().toISOString(), tags: [], collections: [] })
     const res = await PATCH(patchReq({ title: 'T', tags: [], collectionIds: [] }), ctx)
     expect(res.status).toBe(200)
-    expect(mockUpdate).toHaveBeenCalledWith('user-1', 'item-1', expect.not.objectContaining({ itemTypeName: expect.anything() }))
+    expect(mockUpdate).toHaveBeenCalledWith('user-1', 'item-1', expect.not.objectContaining({ itemTypeName: anything() }))
   })
 })

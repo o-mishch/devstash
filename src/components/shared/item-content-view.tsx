@@ -215,7 +215,7 @@ function MarkdownContentView({ content, optimize }: MarkdownContentViewProps) {
               isLoading={optimize.isLoading}
               isSaving={optimize.isSaving}
               isDone={optimize.isDone}
-              onGenerate={optimize.generate}
+              onGenerate={() => void optimize.generate()}
               onApply={optimize.requestSave}
               tab={tab}
               onTabChange={setTab}
@@ -302,7 +302,7 @@ function CodeEditorView({ content, language, explain }: CodeEditorViewProps) {
         isLoading={explain.isLoading}
         isSaving={explain.isSaving}
         isDone={explain.isDone}
-        onGenerate={explain.generate}
+        onGenerate={() => void explain.generate()}
         onApply={explain.requestSave}
         tab={tab}
         onTabChange={setTab}

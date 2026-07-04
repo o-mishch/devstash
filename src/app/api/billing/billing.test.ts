@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
@@ -117,7 +118,7 @@ describe('POST /billing/checkout', () => {
     mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_1' })
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(200)
-    expect((await res.json()).url).toBe('https://stripe/checkout')
+    expect((await readJson(res)).url).toBe('https://stripe/checkout')
   })
 
   it('returns 500 when Stripe session creation throws', async () => {
@@ -169,7 +170,7 @@ describe('POST /billing/portal', () => {
     mockCreatePortal.mockResolvedValue({ url: 'https://stripe/portal' })
     const res = await PORTAL(post('portal'))
     expect(res.status).toBe(200)
-    expect((await res.json()).url).toBe('https://stripe/portal')
+    expect((await readJson(res)).url).toBe('https://stripe/portal')
   })
 })
 
@@ -211,7 +212,7 @@ describe('GET /billing/context', () => {
     expect(res.status).toBe(200)
     expect(mockLoadBillingPage.mock.calls[0][0]).toBe('user-1')
     expect(mockUsageStats).toHaveBeenCalledWith('user-1')
-    const body = await res.json()
+    const body = await readJson<{ billing: { stripeSubscriptionStart: string; stripeCurrentPeriodEnd: string } }>(res)
     expect(body).toMatchObject({ isPro: true, usage: { itemsCount: 2, collectionsCount: 1 } })
     // Real serializer: Date → ISO string, server-only config fields stripped.
     expect(body.billing.stripeSubscriptionStart).toBe('2026-06-01T00:00:00.000Z')

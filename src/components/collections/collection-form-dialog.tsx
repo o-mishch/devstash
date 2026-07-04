@@ -162,7 +162,7 @@ export function CollectionFormDialog({
       >
         {(isDesktop) =>
           isDesktop ? (
-            <form onSubmit={form.handleSubmit(onSubmit)}>
+            <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}>
               <div className="grid gap-4 py-4">{fields}</div>
               <FormDialogFooter
                 submitText={submitText}
@@ -173,7 +173,7 @@ export function CollectionFormDialog({
           ) : (
             // flex-1 so the form fills the resizable sheet; the Description field inside flex-grows,
             // so dragging the handle up enlarges it. Name + footer stay fixed (shrink-0).
-            <form onSubmit={form.handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col gap-4 pt-4">
+            <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="flex min-h-0 flex-1 flex-col gap-4 pt-4">
               {mobileFields}
               <FormDialogFooter
                 mobile

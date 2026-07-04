@@ -60,7 +60,8 @@ export function useGlobalSearch(
 
   useEffect(() => {
     const unsub = queryClient.getQueryCache().subscribe((event) => {
-      if (event?.query.queryKey[0] === 'items') {
+      const queryKey = event?.query.queryKey as readonly unknown[] | undefined
+      if (queryKey?.[0] === 'items') {
         // TanStack Query can fire cache events synchronously during another component's render
         // (e.g. when useInfiniteQuery receives initialData). Defer to avoid setState-in-render.
         queueMicrotask(() => setLocalItems(readItemsFromCache(queryClient)))

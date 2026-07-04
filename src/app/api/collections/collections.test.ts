@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 
 // Route handlers are tested by invoking the exported handler with a mocked NextRequest and asserting
@@ -87,7 +88,7 @@ describe('GET /collections', () => {
     const res = await GET(req('GET'))
     expect(res.status).toBe(200)
     expect(mockGetAll).toHaveBeenCalledWith('user-1')
-    const body = await res.json()
+    const body = await readJson<{ id: string }[]>(res)
     expect(body).toHaveLength(1)
     expect(body[0].id).toBe('col-1')
   })
@@ -115,7 +116,7 @@ describe('POST /collections', () => {
     mockCanCreate.mockResolvedValue(false)
     const res = await POST(req('POST', { name: 'My Collection' }))
     expect(res.status).toBe(403)
-    expect((await res.json()).message).toMatch(/free tier limit/i)
+    expect((await readJson(res)).message).toMatch(/free tier limit/i)
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
@@ -123,7 +124,7 @@ describe('POST /collections', () => {
     mockCreate.mockResolvedValue(mockCollection)
     const res = await POST(req('POST', { name: 'My Collection' }))
     expect(res.status).toBe(201)
-    expect((await res.json()).id).toBe('col-1')
+    expect((await readJson(res)).id).toBe('col-1')
   })
 
   it('uses the session userId and trims input (IDOR-safe — ignores a userId in the body)', async () => {
@@ -160,7 +161,7 @@ describe('GET /collections/{id}', () => {
     const res = await GET_BY_ID(req('GET'), params('col-1'))
     expect(res.status).toBe(200)
     expect(mockGetById).toHaveBeenCalledWith('user-1', 'col-1')
-    expect((await res.json()).id).toBe('col-1')
+    expect((await readJson(res)).id).toBe('col-1')
   })
 })
 

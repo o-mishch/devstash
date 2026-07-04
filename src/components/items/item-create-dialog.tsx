@@ -142,7 +142,7 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
       }
     },
     onClose: () => {
-      if (uploadedFile && !savedRef.current) deleteOrphanedFile(uploadedFile)
+      if (uploadedFile && !savedRef.current) void deleteOrphanedFile(uploadedFile)
       savedRef.current = false
       setUploadedFile(null)
       setFileError(null)
@@ -201,7 +201,7 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
 
   const handleFormSubmit = (e: SyntheticEvent) => {
     e.preventDefault()
-    void form.handleSubmit(async (data: ItemFormBaseValues) => {
+    void form.handleSubmit((data: ItemFormBaseValues) => {
       // URL shape is enforced by the zodResolver (itemFormBaseSchema.url); only the per-type
       // presence gate remains — link items require a non-empty URL.
       if (ITEM_TYPES_WITH_URL.has(itemType) && !data.url) {
@@ -219,7 +219,7 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
       savedRef.current = true
       handleOpenChange(false, true)
 
-      await createItem(
+      createItem(
         {
           title: data.title,
           description: data.description || null,
@@ -234,7 +234,7 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
           collectionIds: data.collectionIds,
         },
         {
-          onRollback: capturedFile ? () => deleteOrphanedFile(capturedFile) : undefined,
+          onRollback: capturedFile ? () => void deleteOrphanedFile(capturedFile) : undefined,
           localPreviewUrl: capturedFile?.localPreviewUrl,
           optimisticFileName: capturedFile?.fileName ?? null,
           optimisticFileSize: capturedFile?.fileSize ?? null,
@@ -335,12 +335,12 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
         itemType={itemType as FileItemType}
         value={uploadedFile}
         onUpload={(file) => {
-          if (uploadedFile) deleteOrphanedFile(uploadedFile)
+          if (uploadedFile) void deleteOrphanedFile(uploadedFile)
           setUploadedFile(file)
           setFileError(null)
         }}
         onClear={() => {
-          if (uploadedFile) deleteOrphanedFile(uploadedFile)
+          if (uploadedFile) void deleteOrphanedFile(uploadedFile)
           setUploadedFile(null)
         }}
       />

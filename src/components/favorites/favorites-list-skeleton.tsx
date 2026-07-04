@@ -9,7 +9,7 @@ interface FavoritesListSkeletonProps {
 export function FavoritesListSkeleton({ count = 6 }: FavoritesListSkeletonProps) {
   return (
     <div className="flex flex-col gap-1.5">
-      {[...Array(count)].map((_, i) => (
+      {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="app-row gap-3 rounded-xl border-l-2 border-l-border bg-card px-3 py-2 ring-1 ring-border touch:py-3">
           <Skeleton className="size-3.5 shrink-0 rounded touch:size-5" />
           <Skeleton className="h-4 min-w-0 flex-1 touch:h-5" />
@@ -31,7 +31,7 @@ interface FavoriteItemsSkeletonProps {
 export function FavoriteItemsSkeleton({ groups = 3, rowsPerGroup = 3 }: FavoriteItemsSkeletonProps) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      {[...Array(groups)].map((_, g) => (
+      {Array.from({ length: groups }).map((_, g) => (
         <div key={g}>
           <div className="flex items-center gap-2 px-3 py-1 touch:py-2">
             <Skeleton className="size-3 shrink-0 rounded touch:size-4" />
@@ -40,7 +40,7 @@ export function FavoriteItemsSkeleton({ groups = 3, rowsPerGroup = 3 }: Favorite
             <Skeleton className="h-3 w-6 rounded" />
           </div>
           <div className="mt-1 flex flex-col gap-1.5 pl-4">
-            {[...Array(rowsPerGroup)].map((_, r) => (
+            {Array.from({ length: rowsPerGroup }).map((_, r) => (
               <div key={r} className="app-row gap-3 rounded-xl border-l-2 border-l-border bg-card px-3 py-2 ring-1 ring-border touch:py-3">
                 <Skeleton className="size-3.5 shrink-0 rounded touch:size-5" />
                 <Skeleton className="h-4 min-w-0 flex-1 touch:h-5" />

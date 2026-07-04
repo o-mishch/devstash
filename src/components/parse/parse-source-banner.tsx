@@ -53,7 +53,7 @@ export function ParseSourceBanner({ sourceItemId, sourceName, truncated, footer,
             {sourceItemId ? (
               <button
                 type="button"
-                onClick={() => openSource(sourceItemId)}
+                onClick={() => void openSource(sourceItemId)}
                 disabled={opening}
                 className="inline-flex max-w-full items-center gap-1 align-bottom font-medium text-foreground underline-offset-2 hover:underline disabled:opacity-70"
               >

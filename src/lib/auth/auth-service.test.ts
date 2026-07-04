@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { anyOf } from '@/test/matchers'
 import bcrypt from 'bcryptjs'
 import { Prisma } from '@/generated/prisma'
 
@@ -333,10 +334,10 @@ describe('auth-service', () => {
       const result = await registerUser('Test', 'test@example.com', 'pass')
 
       expect(mockCreateCredentialUser).toHaveBeenCalledWith(expect.objectContaining({
-        emailVerified: expect.any(Date),
+        emailVerified: anyOf(Date),
         // Verification disabled → credential email mirrored and verified at the same instant.
         credentialEmail: 'test@example.com',
-        credentialEmailVerified: expect.any(Date),
+        credentialEmailVerified: anyOf(Date),
       }))
       expect(result.result).toBe('skipped')
     })

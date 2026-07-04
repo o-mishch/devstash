@@ -161,6 +161,7 @@ describe('consumeBrainDumpStream', () => {
   }
 
   async function* eventStream(events: ResponseEvent[]): AsyncIterable<ResponseEvent> {
+    await Promise.resolve()
     for (const e of events) {
       yield e
     }
@@ -191,8 +192,9 @@ describe('consumeBrainDumpStream', () => {
       {
         startOrder: 5,
         onResponseId: async () => {},
-        onFlush: async (drafts, startOrder, cursor) => {
+        onFlush: (drafts, startOrder, cursor) => {
           flushes.push({ drafts, startOrder, cursor })
+          return Promise.resolve()
         },
       },
       fakeLog,
@@ -216,8 +218,9 @@ describe('consumeBrainDumpStream', () => {
       {
         startOrder: 0,
         onResponseId: async () => {},
-        onFlush: async (drafts) => {
+        onFlush: (drafts) => {
           flushes.push(drafts)
+          return Promise.resolve()
         },
       },
       fakeLog,
@@ -245,8 +248,9 @@ describe('consumeBrainDumpStream', () => {
       {
         startOrder: 0,
         onResponseId: async () => {},
-        onFlush: async (drafts, startOrder, cursor) => {
+        onFlush: (drafts, startOrder, cursor) => {
           flushes.push({ drafts, cursor })
+          return Promise.resolve()
         },
       },
       fakeLog,
@@ -274,8 +278,9 @@ describe('consumeBrainDumpStream', () => {
       {
         startOrder: 0,
         onResponseId: async () => {},
-        onFlush: async (drafts) => {
+        onFlush: (drafts) => {
           items.push(...drafts)
+          return Promise.resolve()
         },
       },
       fakeLog,
@@ -340,8 +345,9 @@ describe('consumeBrainDumpStream', () => {
       {
         startOrder: 0,
         onResponseId: async () => {},
-        onFlush: async (drafts) => {
+        onFlush: (drafts) => {
           flushes.push(drafts)
+          return Promise.resolve()
         },
       },
       fakeLog,

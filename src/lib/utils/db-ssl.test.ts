@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { anyOf } from '@/test/matchers'
 import { resolveDbSsl, stripSslModeParam } from './db-ssl'
 
 // resolveDbSsl builds the node-postgres TLS config shared by the app's runtime adapter
@@ -17,7 +18,7 @@ describe('resolveDbSsl', () => {
     expect(ssl).toEqual({
       ca: pem,
       rejectUnauthorized: true,
-      checkServerIdentity: expect.any(Function),
+      checkServerIdentity: anyOf(Function),
     })
     // Hostname identity is intentionally skipped (private-IP cert CN never matches),
     // so checkServerIdentity reports no error while the chain is still verified.

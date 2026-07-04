@@ -54,7 +54,7 @@ export function GlowBorder({
       WebkitMaskImage: 'linear-gradient(#000 0 0), linear-gradient(#000 0 0)',
       WebkitMaskClip: 'content-box, border-box',
       WebkitMaskComposite: 'xor',
-    }) as CSSProperties
+    })
 
   return (
     <div

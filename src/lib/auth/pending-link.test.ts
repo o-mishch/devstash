@@ -2,12 +2,12 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 const store = new Map<string, unknown>()
 const fakeRedis = {
-  set: vi.fn(async (key: string, value: unknown) => {
+  set: vi.fn((key: string, value: unknown) => {
     store.set(key, value)
     return 'OK'
   }),
-  get: vi.fn(async (key: string) => store.get(key) ?? null),
-  getdel: vi.fn(async (key: string) => {
+  get: vi.fn((key: string) => store.get(key) ?? null),
+  getdel: vi.fn((key: string) => {
     const value = store.get(key) ?? null
     store.delete(key)
     return value

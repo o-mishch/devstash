@@ -1,5 +1,15 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
+// Prisma mocks are plain vi.fn(), so `mock.calls[0][0]` is `any`; this shapes the
+// args we assert on without pulling in Prisma's deep input unions.
+interface PrismaCallArg {
+  skip?: unknown
+  cursor?: unknown
+  where?: unknown
+  select?: Record<string, unknown>
+  data: Record<string, unknown>
+}
+
 vi.mock('@/lib/infra/prisma', () => ({
   prisma: {
     item: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -194,7 +204,7 @@ describe('getRecentItemsPage', () => {
   it('queries with skip+cursor when cursor provided (bypasses cache)', async () => {
     mockItemFindMany.mockResolvedValue(makeRows(3))
     const result = await getRecentItemsPage('user-1', 'cursor-id')
-    const call = mockItemFindMany.mock.calls[0][0]
+    const call = mockItemFindMany.mock.calls[0][0] as PrismaCallArg
     expect(call.skip).toBe(1)
     expect(call.cursor).toEqual({ id: 'cursor-id' })
     expect(result.hasMore).toBe(false)
@@ -218,7 +228,7 @@ describe('getItemsByTypePage', () => {
   it('filters by type name and returns first page via cache', async () => {
     mockItemFindMany.mockResolvedValue(makeRows(2))
     const result = await getItemsByTypePage('user-1', 'snippet')
-    const call = mockItemFindMany.mock.calls[0][0]
+    const call = mockItemFindMany.mock.calls[0][0] as PrismaCallArg
     expect(call.where).toMatchObject({ userId: 'user-1', itemType: { name: 'snippet' } })
     expect(result.items).toHaveLength(2)
   })
@@ -235,7 +245,7 @@ describe('getItemsByCollectionPage', () => {
   it('filters by collectionId and returns first page via cache', async () => {
     mockItemFindMany.mockResolvedValue(makeRows(4))
     const result = await getItemsByCollectionPage('user-1', 'col-1')
-    const call = mockItemFindMany.mock.calls[0][0]
+    const call = mockItemFindMany.mock.calls[0][0] as PrismaCallArg
     expect(call.where).toMatchObject({ userId: 'user-1', collections: { some: { collectionId: 'col-1' } } })
     expect(result.items).toHaveLength(4)
   })
@@ -243,7 +253,7 @@ describe('getItemsByCollectionPage', () => {
   it('uses skip+cursor on page 2', async () => {
     mockItemFindMany.mockResolvedValue(makeRows(1))
     await getItemsByCollectionPage('user-1', 'col-1', 'cursor-id')
-    const call = mockItemFindMany.mock.calls[0][0]
+    const call = mockItemFindMany.mock.calls[0][0] as PrismaCallArg
     expect(call.skip).toBe(1)
     expect(call.cursor).toEqual({ id: 'cursor-id' })
   })
@@ -280,7 +290,10 @@ describe('createItem', () => {
       imageHeight: 720,
     })
 
-    const call = mockItemCreate.mock.calls[0][0]
+    const call = mockItemCreate.mock.calls[0][0] as {
+      data: { tags: { connectOrCreate: unknown } }
+      select: { tags: unknown }
+    }
     expect(call.data.tags.connectOrCreate).toEqual([
       { where: { name: 'ui' }, create: { name: 'ui' } },
       { where: { name: 'screenshot' }, create: { name: 'screenshot' } },
@@ -388,7 +401,7 @@ describe('updateItem — live type change', () => {
 
     await updateItem('user-1', 'item-1', { ...baseInput, language: 'zsh', itemTypeName: 'command' })
 
-    const call = mockItemUpdate.mock.calls[0][0]
+    const call = mockItemUpdate.mock.calls[0][0] as PrismaCallArg
     expect(call.where).toEqual({ id: 'item-1', userId: 'user-1' })
     expect(call.data.itemType).toEqual({ connect: { id: 'type-command' } })
     // shell synonym normalizes to bash for a command
@@ -401,7 +414,7 @@ describe('updateItem — live type change', () => {
 
     await updateItem('user-1', 'item-1', { ...baseInput, language: 'python', itemTypeName: 'note' })
 
-    const call = mockItemUpdate.mock.calls[0][0]
+    const call = mockItemUpdate.mock.calls[0][0] as PrismaCallArg
     expect(call.data.itemType).toEqual({ connect: { id: 'type-note' } })
     expect(call.data.language).toBeNull()
   })
@@ -416,7 +429,7 @@ describe('updateItem — live type change', () => {
   it('leaves itemType untouched and passes the raw language when itemTypeName is omitted', async () => {
     mockItemUpdate.mockResolvedValue(updatedRow)
     await updateItem('user-1', 'item-1', { ...baseInput, language: 'python' })
-    const call = mockItemUpdate.mock.calls[0][0]
+    const call = mockItemUpdate.mock.calls[0][0] as PrismaCallArg
     expect(call.data.itemType).toBeUndefined()
     expect(call.data.language).toBe('python')
   })

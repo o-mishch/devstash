@@ -113,7 +113,7 @@ function HistoryRow({ jobId, sourceName, committedCount, leftoverTrash }: Histor
             <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
               Keep
             </Button>
-            <Button variant="destructive" size="sm" onClick={onConfirmDelete} disabled={deleting}>
+            <Button variant="destructive" size="sm" onClick={() => void onConfirmDelete()} disabled={deleting}>
               {deleting ? <Loader2 className="size-4 animate-spin" /> : 'Delete'}
             </Button>
           </DialogFooter>

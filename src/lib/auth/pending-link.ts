@@ -65,7 +65,7 @@ export async function consumePendingLink(token: string): Promise<PendingLinkData
 export async function createLinkIntent(userId: string): Promise<string | null> {
   const token = generateSecureToken()
   const stored = await redisOp('Failed to create link intent in Redis', (r) =>
-    r.set(linkIntentKey(token), { userId } as LinkIntentData, { ex: 60 * 5 })
+    r.set(linkIntentKey(token), { userId }, { ex: 60 * 5 })
   )
   return stored !== null ? token : null
 }

@@ -82,7 +82,7 @@ export async function TokenGatedPage<TPayload>(props: TokenGatedPageProps<TPaylo
     )
   }
 
-  const { peek, title, description, children } = props as TokenGatedPageWithPeekProps
+  const { peek, title, description, children } = props
 
   // Redis-backed token: an absent key can't distinguish expired from already-used from never-valid,
   // so both non-valid outcomes collapse into one state offering a fresh request.

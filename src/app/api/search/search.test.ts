@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
@@ -46,7 +47,7 @@ describe('GET /search', () => {
     const res = await GET(get('?q=react'))
     expect(res.status).toBe(200)
     expect(mockSearch).toHaveBeenCalledWith('react', 'user-1')
-    const body = await res.json()
+    const body = await readJson<{ items: { id: string }[]; collections: { id: string }[] }>(res)
     expect(body.items[0].id).toBe('i1')
     expect(body.collections[0].id).toBe('c1')
   })

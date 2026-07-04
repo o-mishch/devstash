@@ -128,7 +128,7 @@ export function useUpdateItem() {
       const membershipChanged =
         payload.collectionIds !== undefined &&
         (payload.collectionIds.length !== oldCollectionIds.length ||
-          oldCollectionIds.some((id) => !payload.collectionIds!.includes(id)))
+          oldCollectionIds.some((id) => !payload.collectionIds.includes(id)))
       if (typeChanged || membershipChanged) {
         invalidate('collections')
       }

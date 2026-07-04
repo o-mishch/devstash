@@ -5,7 +5,7 @@ import type { CollectionPickerItem } from '@/types/collection'
 
 const ITEM = { id: 'draft-1', title: 'Draft one' } as BrainDumpDraftItem
 const OTHER_ITEM = { id: 'draft-2', title: 'Draft two' } as BrainDumpDraftItem
-const COLLECTIONS: CollectionPickerItem[] = [{ id: 'col-1', name: 'Inbox' } as CollectionPickerItem]
+const COLLECTIONS: CollectionPickerItem[] = [{ id: 'col-1', name: 'Inbox' }]
 
 function makeOpts(overrides: Partial<Parameters<ReturnType<typeof useDraftDrawerStore.getState>['openDrawer']>[1]> = {}) {
   return {

@@ -14,15 +14,18 @@ function Tabs({
   onValueChange,
   ...props
 }: TabsPrimitive.Root.Props) {
-  const [tabValue, setTabValue] = useState(defaultValue || value)
+  // base-ui types the tab value as `any`; launder it through `unknown` so the
+  // `any` never propagates into our wrapper's state or JSX.
+  const [tabValue, setTabValue] = useState<unknown>(defaultValue || value)
+  const resolvedValue: unknown = value !== undefined ? value : tabValue
 
   return (
     <TabsPrimitive.Root
       orientation={orientation}
       data-slot="tabs"
       data-orientation={orientation}
-      value={value !== undefined ? value : tabValue}
-      onValueChange={(v, e) => {
+      value={resolvedValue}
+      onValueChange={(v: unknown, e) => {
         setTabValue(v)
         if (onValueChange) onValueChange(v, e)
       }}

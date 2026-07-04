@@ -48,7 +48,7 @@ const mockGetBrainDumpUsage = getBrainDumpUsage as ReturnType<typeof vi.fn>
 type ExecuteFn = (client: unknown, data: { itemId: string }) => Promise<unknown>
 async function runExplainExecute(payload: unknown): Promise<ExecuteFn> {
   let captured: ExecuteFn | null = null
-  mockRun.mockImplementation(async ({ execute }: { execute: ExecuteFn }) => {
+  mockRun.mockImplementation(({ execute }: { execute: ExecuteFn }) => {
     captured = execute
     return { ok: true, value: { explanation: 'unused' } }
   })
@@ -61,7 +61,7 @@ async function runExplainExecute(payload: unknown): Promise<ExecuteFn> {
 // null-content guard, and input truncation directly.
 async function runOptimizeExecute(payload: unknown): Promise<ExecuteFn> {
   let captured: ExecuteFn | null = null
-  mockRun.mockImplementation(async ({ execute }: { execute: ExecuteFn }) => {
+  mockRun.mockImplementation(({ execute }: { execute: ExecuteFn }) => {
     captured = execute
     return { ok: true, value: { prompt: 'unused' } }
   })
@@ -190,7 +190,7 @@ describe('POST /ai/explain', () => {
     const execute = await runExplainExecute({ itemId: 'item-1' })
 
     await expect(execute({}, { itemId: 'item-1' })).resolves.toEqual({ explanation: 'done' })
-    const userMessage = mockCompletion.mock.calls[0][1].input as string
+    const userMessage = (mockCompletion.mock.calls[0][1] as { input: string }).input
     expect(userMessage).toContain('a'.repeat(EXPLAIN_MAX_INPUT_CHARS))
     expect(userMessage).not.toContain('a'.repeat(EXPLAIN_MAX_INPUT_CHARS + 1))
   })
@@ -255,7 +255,7 @@ describe('POST /ai/optimize', () => {
     const execute = await runOptimizeExecute({ itemId: 'item-1' })
 
     await expect(execute({}, { itemId: 'item-1' })).resolves.toEqual({ prompt: 'done' })
-    const userMessage = mockCompletion.mock.calls[0][1].input as string
+    const userMessage = (mockCompletion.mock.calls[0][1] as { input: string }).input
     expect(userMessage).toContain('a'.repeat(OPTIMIZE_MAX_INPUT_CHARS))
     expect(userMessage).not.toContain('a'.repeat(OPTIMIZE_MAX_INPUT_CHARS + 1))
   })

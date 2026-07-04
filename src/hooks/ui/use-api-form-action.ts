@@ -29,7 +29,10 @@ export function useApiFormAction<T>(submit: SubmitFn<T>, options: Options<T> = {
   const formAction = useCallback(
     async (formData: FormData) => {
       const body = Object.fromEntries(
-        Array.from(formData.entries(), ([key, value]) => [key, String(value)]),
+        Array.from(formData.entries(), ([key, value]) => [
+          key,
+          typeof value === 'string' ? value : '',
+        ]),
       )
       // onError already toasted — swallow the rejection so the form action itself never rejects.
       try {

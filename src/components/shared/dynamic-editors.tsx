@@ -79,9 +79,9 @@ export function EditorPreloader() {
       // Call the exact same factory functions passed to dynamic() — same import() call site
       // means Turbopack resolves the same chunk, so the module cache is populated before
       // any drawer or dialog triggers a render of these components.
-      loadMarkdownViewer()
-      loadMarkdownEditor()
-      loadCodeEditor()
+      void loadMarkdownViewer()
+      void loadMarkdownEditor()
+      void loadCodeEditor()
       // Kick the Monaco core fetch; the hidden mount below then spawns the worker.
       loader.init().catch(() => { })
       // Mounting the hidden Monaco editor is a low-priority, interruptible render so it

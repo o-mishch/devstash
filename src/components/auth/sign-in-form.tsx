@@ -46,10 +46,12 @@ export function SignInForm({ successMessage }: SignInFormProps) {
   // form action resolves cleanly either way.
   const loginMutation = useMutation({
     mutationFn: async (formData: FormData) => {
+      const email = formData.get('email')
+      const password = formData.get('password')
       const { error } = await api.POST('/auth/login', {
         body: {
-          email: String(formData.get('email') ?? ''),
-          password: String(formData.get('password') ?? ''),
+          email: typeof email === 'string' ? email : '',
+          password: typeof password === 'string' ? password : '',
         },
       })
 

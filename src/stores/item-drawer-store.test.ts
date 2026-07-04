@@ -66,7 +66,7 @@ describe('useItemDrawerStore.openDrawer', () => {
   it('overwrites openScrollY with the current scroll on every open', () => {
     // The slider's close-time restore relies on openScrollY being RE-captured on each open, not just the
     // first. Open at one position, then again at another, and assert the latest position wins.
-    const win = { scrollY: 100 } as { scrollY: number }
+    const win = { scrollY: 100 }
     ;(globalThis as { window?: { scrollY: number } }).window = win
 
     useItemDrawerStore.getState().openDrawer(ITEM)
@@ -142,7 +142,7 @@ describe('useItemDrawerStore — open → close → reopen scroll restore', () =
   })
 
   it('overwrites openScrollY with the new position after a close–reopen cycle', () => {
-    const win = { scrollY: 100 } as { scrollY: number }
+    const win = { scrollY: 100 }
     ;(globalThis as { window?: { scrollY: number } }).window = win
 
     useItemDrawerStore.getState().openDrawer(ITEM)

@@ -5,7 +5,8 @@ import type { OAuthProvider } from '@/lib/utils/constants'
 import { Globe } from 'lucide-react'
 
 interface ProviderIconProps {
-  provider: OAuthProvider | string
+  // `string & {}` keeps OAuthProvider autocomplete while still accepting any provider id.
+  provider: OAuthProvider | (string & {})
   className?: string
 }
 

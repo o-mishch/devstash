@@ -57,6 +57,7 @@ function makeSubscription(overrides: Partial<Stripe.Subscription> = {}): Stripe.
 }
 
 async function* subscriptionIterator(subscriptions: Stripe.Subscription[]) {
+  await Promise.resolve()
   for (const subscription of subscriptions) {
     yield subscription
   }
@@ -115,13 +116,13 @@ describe('findCheckoutCustomerByEmail', () => {
 
   it('prefers the customer matching preferredCustomerId when ranking', async () => {
     mockCustomersList.mockResolvedValue([
-      { id: 'cus_other', email: 'user@example.com', deleted: false } as unknown as Stripe.Customer,
+      { id: 'cus_other', email: 'user@example.com', deleted: false },
       {
         id: 'cus_preferred',
         email: 'user@example.com',
         deleted: false,
         metadata: { userId: 'user-1' },
-      } as unknown as Stripe.Customer,
+      },
     ])
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
 
@@ -135,7 +136,7 @@ describe('findCheckoutCustomerByEmail', () => {
 
   it('skips blocking subscriptions owned by another user', async () => {
     mockCustomersList.mockResolvedValue([
-      { id: 'cus_1', email: 'user@example.com', deleted: false } as unknown as Stripe.Customer,
+      { id: 'cus_1', email: 'user@example.com', deleted: false },
     ])
     mockIterateCustomerSubscriptions.mockReturnValue(
       subscriptionIterator([makeSubscription({ metadata: { userId: 'other-user' } })]),
@@ -154,7 +155,7 @@ describe('findCheckoutCustomerByEmail', () => {
         email: 'user@example.com',
         deleted: false,
         metadata: { userId: 'user-1' },
-      } as unknown as Stripe.Customer,
+      },
     ])
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([blocking]))
 

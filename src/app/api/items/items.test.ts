@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import { readJson } from '@/test/matchers'
 
 // Route handlers are tested by invoking the exported handler with a mocked NextRequest and asserting
 // res.status + await res.json(). Session/Pro/db/storage are mocked as the oRPC items suite did.
@@ -138,7 +139,7 @@ describe('GET /items', () => {
     const res = await GET(get('/items?type=recent'))
     expect(res.status).toBe(200)
     expect(mockRecent).toHaveBeenCalledWith('user-1', undefined)
-    expect((await res.json()).items[0].id).toBe('item-1')
+    expect((await readJson<{ items: { id: string }[] }>(res)).items[0].id).toBe('item-1')
   })
 
   it('routes type=type with cursor to getItemsByTypePage', async () => {
@@ -186,14 +187,14 @@ describe('POST /items', () => {
   it('returns 403 when a non-Pro user creates a Pro-only type', async () => {
     const res = await POST(body('POST', { title: 'pic', itemTypeName: 'image', fileUrl: 'k' }))
     expect(res.status).toBe(403)
-    expect((await res.json()).message).toMatch(/upgrade to pro/i)
+    expect((await readJson(res)).message).toMatch(/upgrade to pro/i)
   })
 
   it('returns 403 when the free-tier item limit is reached', async () => {
     mockCanCreate.mockResolvedValue(false)
     const res = await POST(body('POST', { title: 'x', itemTypeName: 'snippet' }))
     expect(res.status).toBe(403)
-    expect((await res.json()).message).toMatch(/free tier limit/i)
+    expect((await readJson(res)).message).toMatch(/free tier limit/i)
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
@@ -202,7 +203,7 @@ describe('POST /items', () => {
     const res = await POST(body('POST', { title: 'My Snippet', itemTypeName: 'snippet', userId: 'attacker' }))
     expect(res.status).toBe(201)
     expect(mockCreate).toHaveBeenCalledWith('user-1', expect.objectContaining({ title: 'My Snippet' }))
-    expect((await res.json()).id).toBe('item-1')
+    expect((await readJson(res)).id).toBe('item-1')
   })
 
   it('consumes the pending upload for file types when Pro', async () => {

@@ -34,7 +34,7 @@ function packTiles(
   gap: number,
 ): { positions: Map<string, TilePosition>; containerHeight: number } {
   const colWidth = columns > 0 ? (containerWidth - gap * (columns - 1)) / columns : containerWidth
-  const colHeights = new Array(columns).fill(0)
+  const colHeights = Array.from({ length: columns }, () => 0)
   const positions = new Map<string, TilePosition>()
 
   tiles.forEach((tile) => {

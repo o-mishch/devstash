@@ -110,7 +110,7 @@ export function ParseJobList() {
         title="Discard and delete this parse job?"
         description="This permanently deletes the parse job and its drafts, and stops parsing. Your saved source stays in your stash (tagged brain-dump) so you can re-parse it later."
         confirmLabel="Discard and delete"
-        onConfirm={handleDiscard}
+        onConfirm={() => void handleDiscard()}
         isPending={isDiscarding}
         cancelLabel="Cancel"
       />

@@ -9,20 +9,24 @@ export function SwaggerUI() {
 
   useEffect(() => {
     if (bundleLoaded && presetLoaded) {
-      // @ts-expect-error: SwaggerUIBundle is loaded dynamically via CDN
-      const SwaggerUIBundle = window.SwaggerUIBundle
-      // @ts-expect-error: SwaggerUIStandalonePreset is loaded dynamically via CDN
-      const SwaggerUIStandalonePreset = window.SwaggerUIStandalonePreset
+      // SwaggerUIBundle / SwaggerUIStandalonePreset are injected onto window by the CDN scripts below;
+      // type just the surface we call rather than augmenting the global Window interface.
+      type SwaggerUIBundleFn = ((config: Record<string, unknown>) => unknown) & {
+        presets: { apis: unknown }
+      }
+      const cdn = window as unknown as {
+        SwaggerUIBundle?: SwaggerUIBundleFn
+        SwaggerUIStandalonePreset?: unknown
+        ui?: unknown
+      }
+      const SwaggerUIBundle = cdn.SwaggerUIBundle
+      const SwaggerUIStandalonePreset = cdn.SwaggerUIStandalonePreset
 
       if (SwaggerUIBundle && SwaggerUIStandalonePreset) {
-        // @ts-expect-error: window.ui is not declared on Window interface
-        window.ui = SwaggerUIBundle({
+        cdn.ui = SwaggerUIBundle({
           url: '/api/openapi.json',
           dom_id: '#swagger-ui',
-          presets: [
-            SwaggerUIBundle.presets.apis,
-            SwaggerUIStandalonePreset,
-          ],
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
           layout: 'StandaloneLayout',
         })
       }

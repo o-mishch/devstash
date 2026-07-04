@@ -39,7 +39,7 @@ export function CollectionsGridSkeleton() {
       />
       <CardContent className="overflow-visible pt-0">
         <div className="app-grid card-grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {[...Array(6)].map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <CollectionCardSkeleton key={i} />
           ))}
         </div>
@@ -51,7 +51,7 @@ export function CollectionsGridSkeleton() {
 function DashboardListSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="flex flex-col gap-3">
-      {[...Array(count)].map((_, i) => (
+      {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="app-row h-[56px] gap-3 rounded-xl border-l-2 border-l-muted/20 bg-card px-2 ring-1 ring-border">
           <Skeleton className="size-7 shrink-0 rounded-md" />
           <div className="min-w-0 flex-1 space-y-1.5">
@@ -107,7 +107,7 @@ export function StatsCardsSkeleton({ isPro }: StatsCardsSkeletonProps) {
 
   return (
     <div className={statsCardsGridClass(isPro)}>
-      {[...Array(chipCount)].map((_, i) => (
+      {Array.from({ length: chipCount }).map((_, i) => (
         // Index 2 is the Favorite Items chip — hidden on mobile to mirror StatsCards.
         <div key={i} className={cn(STAT_CHIP_BASE, i === 2 && 'max-sm:hidden')}>
           <Skeleton className="size-8 shrink-0 rounded-lg" />

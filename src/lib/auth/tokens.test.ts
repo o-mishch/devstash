@@ -7,31 +7,31 @@ import { createHash } from 'crypto'
 const store = new Map<string, unknown>()
 const ttls = new Map<string, number | undefined>()
 const fakeRedis = {
-  set: vi.fn(async (key: string, value: unknown, options?: { ex?: number }) => {
+  set: vi.fn((key: string, value: unknown, options?: { ex?: number }) => {
     store.set(key, value)
     ttls.set(key, options?.ex)
     return 'OK'
   }),
-  get: vi.fn(async (key: string) => store.get(key) ?? null),
-  del: vi.fn(async (key: string) => {
+  get: vi.fn((key: string) => store.get(key) ?? null),
+  del: vi.fn((key: string) => {
     store.delete(key)
     return 1
   }),
-  incr: vi.fn(async (key: string) => {
+  incr: vi.fn((key: string) => {
     const next = (Number(store.get(key) ?? 0) + 1)
     store.set(key, next)
     return next
   }),
-  expire: vi.fn(async (key: string, seconds: number) => {
+  expire: vi.fn((key: string, seconds: number) => {
     ttls.set(key, seconds)
     return 1
   }),
-  getdel: vi.fn(async (key: string) => {
+  getdel: vi.fn((key: string) => {
     const v = store.get(key) ?? null
     store.delete(key)
     return v
   }),
-  eval: vi.fn(async (_script: string, keys: string[], args: (string | number)[]) => {
+  eval: vi.fn((_script: string, keys: string[], args: (string | number)[]) => {
     const genKey = keys[0]
     const tokenKey = keys[1]
     const expectedGen = Number(args[0])

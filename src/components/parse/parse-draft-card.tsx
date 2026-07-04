@@ -242,7 +242,7 @@ export function ParseDraftCard({
       <div
         ref={(el) => {
           rootRef(el)
-          cardRef.current = el as HTMLDivElement | null
+          cardRef.current = el
         }}
         role="button"
         tabIndex={0}
@@ -311,7 +311,7 @@ export function ParseDraftCard({
                   <IconAction
                     label="Save now"
                     tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
-                    onClick={saveNow}
+                    onClick={() => void saveNow()}
                     disabled={busy}
                   >
                     {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
@@ -330,7 +330,7 @@ export function ParseDraftCard({
               <IconAction
                 label="Save now"
                 tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
-                onClick={saveNow}
+                onClick={() => void saveNow()}
                 disabled={busy}
               >
                 {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
@@ -363,11 +363,13 @@ export function ParseDraftCard({
             setEditOpen(false)
           }}
           onDeleteForever={() => setDeleteConfirmOpen(true)}
-          onCommit={async () => {
-            await saveNow()
-            // saveNow drops the card on success (onRemoved) and may open the collection-confirm dialog;
-            // close the drawer either way so the confirm dialog (rendered on the card) isn't behind it.
-            setEditOpen(false)
+          onCommit={() => {
+            void (async () => {
+              await saveNow()
+              // saveNow drops the card on success (onRemoved) and may open the collection-confirm dialog;
+              // close the drawer either way so the confirm dialog (rendered on the card) isn't behind it.
+              setEditOpen(false)
+            })()
           }}
         />
         {/* Both confirm dialogs portal to <body> in the DOM, but in the REACT tree they sit under the card's
@@ -386,10 +388,10 @@ export function ParseDraftCard({
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
-                <Button variant="outline" size="sm" onClick={() => confirmSaveNow(false)} disabled={busy}>
+                <Button variant="outline" size="sm" onClick={() => void confirmSaveNow(false)} disabled={busy}>
                   Save without collection
                 </Button>
-                <Button size="sm" onClick={() => confirmSaveNow(true)} disabled={busy}>
+                <Button size="sm" onClick={() => void confirmSaveNow(true)} disabled={busy}>
                   Create and save
                 </Button>
               </DialogFooter>
@@ -407,7 +409,7 @@ export function ParseDraftCard({
                 <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(false)} disabled={busy}>
                   Cancel
                 </Button>
-                <Button variant="destructive" size="sm" onClick={deleteForever} disabled={busy}>
+                <Button variant="destructive" size="sm" onClick={() => void deleteForever()} disabled={busy}>
                   Delete forever
                 </Button>
               </DialogFooter>
@@ -555,7 +557,7 @@ function DuplicateBadge({ match }: DuplicateBadgeProps) {
           <button
             type="button"
             data-no-drag
-            onClick={openReferenced}
+            onClick={(e) => void openReferenced(e)}
             disabled={opening}
             className="inline-flex w-fit underline-offset-2 hover:underline disabled:opacity-70"
           />

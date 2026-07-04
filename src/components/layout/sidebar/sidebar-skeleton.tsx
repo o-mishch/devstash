@@ -18,7 +18,7 @@ export function SidebarSkeleton({ collapsible = false }: SidebarSkeletonProps) {
           {/* Types Section */}
           <div className="space-y-2.5">
             <div className="h-3 w-16 bg-foreground/10 rounded animate-pulse mb-4" />
-            {[...Array(7)].map((_, i) => (
+            {Array.from({ length: 7 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3">
                 <div className="size-4 rounded-md bg-foreground/5 animate-pulse shrink-0" />
                 <div className="h-3.5 w-24 bg-foreground/5 rounded animate-pulse" />
@@ -32,7 +32,7 @@ export function SidebarSkeleton({ collapsible = false }: SidebarSkeletonProps) {
           {/* Collections Section */}
           <div className="space-y-2.5">
             <div className="h-3 w-24 bg-foreground/10 rounded animate-pulse mb-4" />
-            {[...Array(4)].map((_, i) => (
+            {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3">
                 <div className="size-2 rounded-full bg-foreground/5 animate-pulse shrink-0" />
                 <div className="h-3.5 w-28 bg-foreground/5 rounded animate-pulse" />
@@ -64,7 +64,7 @@ export function SidebarSkeleton({ collapsible = false }: SidebarSkeletonProps) {
 
         {/* Item type icons */}
         <div className="flex flex-1 min-h-0 flex-col items-center gap-1 px-2">
-          {[...Array(7)].map((_, i) => (
+          {Array.from({ length: 7 }).map((_, i) => (
             <div key={i} className="flex size-11 items-center justify-center shrink-0">
               <div className="size-5 rounded-md bg-foreground/5 animate-pulse" />
             </div>

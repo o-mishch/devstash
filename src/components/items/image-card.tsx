@@ -100,7 +100,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
         {(error || isReloading) && (
           <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
             <button
-              onClick={handleReload}
+              onClick={(e) => void handleReload(e)}
               disabled={isReloading}
               className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed"
               title="Reload image"

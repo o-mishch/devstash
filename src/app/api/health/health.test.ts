@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 
 // Mock the route wrapper to a faithful pass-through so importing ./route doesn't
@@ -98,6 +99,6 @@ describe('GET /api/health?deep=1 (readiness)', () => {
     mockS3.mockRejectedValue(new Error('boom'))
     const res = await GET(req('?deep=1'))
     expect(res.status).toBe(200)
-    expect((await res.json()).s3).toBe('down')
+    expect((await readJson(res)).s3).toBe('down')
   })
 })

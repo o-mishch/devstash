@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 
 const { MockAuthError, mockAssertCredentialLoginAllowed } = vi.hoisted(() => {
@@ -143,7 +144,7 @@ describe('POST /auth/login', () => {
     mockValidateUserPassword.mockResolvedValue({ id: 'u1', email: 'user@example.com', emailVerified: null, matchedVerified: null })
     const res = await LOGIN(post('login', { email: 'user@example.com', password: 'password123' }))
     expect(res.status).toBe(403)
-    expect((await res.json()).data.email).toBe('user@example.com')
+    expect((await readJson<{ data: { email: string } }>(res)).data.email).toBe('user@example.com')
     expect(mockSignIn).not.toHaveBeenCalled()
     // Only the IP guard fires — the per-IP+email budget is not consumed for a correct password
     expect(mockRateLimit).toHaveBeenCalledTimes(1)
@@ -193,13 +194,13 @@ describe('POST /auth/register', () => {
     mockRegisterUser.mockResolvedValue({ result: 'skipped' })
     const res = await REGISTER(post('register', { name: 'Jo', email: 'jo@example.com', password: 'password1', confirmPassword: 'password1' }))
     expect(res.status).toBe(200)
-    expect((await res.json()).redirectTo).toBe('/sign-in')
+    expect((await readJson(res)).redirectTo).toBe('/sign-in')
   })
 
   it('returns 200 redirecting to pending register with sent=1 when the email is sent', async () => {
     mockRegisterUser.mockResolvedValue({ result: 'sent' })
     const res = await REGISTER(post('register', { name: 'Jo', email: 'jo@example.com', password: 'password1', confirmPassword: 'password1' }))
-    const body = await res.json()
+    const body = await readJson(res)
     expect(body.redirectTo).toContain('pending=1')
     expect(body.redirectTo).toContain('sent=1')
     expect(mockRegisterUser).toHaveBeenCalledWith('Jo', 'jo@example.com', 'password1')
@@ -209,7 +210,7 @@ describe('POST /auth/register', () => {
     mockRegisterUser.mockResolvedValue({ result: 'email-in-use' })
     const res = await REGISTER(post('register', { name: 'Jo', email: 'foo@example.com', password: 'password1', confirmPassword: 'password1' }))
     expect(res.status).toBe(409)
-    expect((await res.json()).message).toContain('already in use')
+    expect((await readJson(res)).message).toContain('already in use')
   })
 })
 
@@ -230,7 +231,7 @@ describe('POST /auth/forgot-password', () => {
   it('triggers reset and returns 200 with sent=1 (no account enumeration)', async () => {
     const res = await FORGOT(post('forgot-password', { email: 'jo@example.com' }))
     expect(res.status).toBe(200)
-    expect((await res.json()).redirectTo).toContain('sent=1')
+    expect((await readJson(res)).redirectTo).toContain('sent=1')
     expect(mockTriggerPasswordReset).toHaveBeenCalledWith('jo@example.com')
   })
 })

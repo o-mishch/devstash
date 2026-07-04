@@ -49,7 +49,7 @@ export function ParseBoardSkeleton() {
             "Save all" button sibling: h-6 px-2 text-xs (absent on trash/empty, shown here for non-empty buckets).
           On cold load drafts are already populated (no flash), so show placeholder cards. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {[...Array(6)].map((_, i) => (
+        {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="flex flex-col gap-2 rounded-xl border border-border/70 bg-muted/20 p-2.5">
             <div className="flex items-center gap-2 px-1 pb-1">
               {/* CollapsibleTrigger: flex-1 with icon + label + chevron + count */}

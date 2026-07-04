@@ -118,7 +118,7 @@ export function useAiMutation(): <P extends AiMutationPath>(
       // `api.POST` is overloaded per concrete path; the union-typed `path` here can't collapse to one
       // overload. Both are derived from the same `paths` type, so the cast is sound — the runtime path +
       // body are exactly what the route contract expects.
-      return (await api.POST(path, { body, params } as never)) as AiMutationResult<AiMutationPath>
+      return (await api.POST(path, { body, params } as never))
     },
     onSettled: () => invalidate('aiUsage'),
   })

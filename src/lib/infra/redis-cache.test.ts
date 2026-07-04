@@ -22,6 +22,7 @@ function makeCache<T = string>(overrides?: Partial<Parameters<typeof makeRedisCa
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- mock reference, not a detached call
   vi.mocked(logger.child).mockReturnValue(mockLog as never)
   vi.mocked(getRedis).mockReturnValue(mockRedis as never)
 })

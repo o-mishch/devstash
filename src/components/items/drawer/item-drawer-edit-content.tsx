@@ -300,7 +300,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
   // only Cancel · Save, which always fits both labels — so Save reveals at the SAME low threshold as
   // Cancel (index 0) instead of staying icon-only while Cancel shows its text.
   const saveButton = (
-    <Button size="sm" onClick={handleSubmit} disabled={saving || !isDirty} className={saveButtonClass} aria-label={saveLabel}>
+    <Button size="sm" onClick={() => void handleSubmit()} disabled={saving || !isDirty} className={saveButtonClass} aria-label={saveLabel}>
       <Check className="size-4" />
       <span className={actionbarLabelClass(hasExtras ? 1 : 0)}>{saving ? 'Saving…' : saveLabel}</span>
     </Button>

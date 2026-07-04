@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 import { Prisma } from '@/generated/prisma'
 
@@ -503,7 +504,7 @@ describe('GET /profile', () => {
   it('returns 200 with the profile context on success', async () => {
     const res = await GET_PROFILE(req('GET'))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await readJson(res)
     expect(body.email).toBe('me@example.com')
   })
 })
@@ -518,7 +519,7 @@ describe('GET /profile/me', () => {
   it('returns 200 with profile flags', async () => {
     const res = await GET_PROFILE_ME(req('GET'))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await readJson(res)
     expect(body.name).toBe('me')
     expect(body.email).toBe('me@example.com')
     expect(body.image).toBe('img')
@@ -538,7 +539,7 @@ describe('GET /profile/editor-preferences', () => {
   it('returns 200 with normalized editor preferences', async () => {
     const res = await GET_EDITOR_PREFS(req('GET'))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await readJson(res)
     expect(body.appTheme).toBeDefined()
   })
 })

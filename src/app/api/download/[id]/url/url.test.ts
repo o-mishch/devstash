@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 
 vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
@@ -79,7 +80,7 @@ describe('GET /download/{id}/url', () => {
     mockGetDownloadItem.mockResolvedValue(fileItem)
     const res = await get('item-1')
     expect(res.status).toBe(200)
-    expect((await res.json()).url).toBe('https://s3/signed')
+    expect((await readJson(res)).url).toBe('https://s3/signed')
     expect(mockSignedUrl).toHaveBeenCalledWith('user-1/file.pdf', undefined, 'doc.pdf')
   })
 

@@ -27,7 +27,7 @@ vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
 }))
 
 vi.mock('@/lib/db/sidebar', () => ({
-  fetchSidebarData: vi.fn(async (user) => ({
+  fetchSidebarData: vi.fn((user: unknown) => ({
     collections: [],
     itemTypes: [],
     user,
@@ -45,32 +45,32 @@ describe('resolveLayoutBillingSidebarOptions', () => {
     vi.clearAllMocks()
   })
 
-  it('returns default options when userId is missing', async () => {
-    expect(await resolveLayoutBillingSidebarOptions(undefined)).toBe(SIDEBAR_DEFAULT_OPTIONS)
+  it('returns default options when userId is missing', () => {
+    expect(resolveLayoutBillingSidebarOptions(undefined)).toBe(SIDEBAR_DEFAULT_OPTIONS)
     expect(mockMaybeReconcileBilling).not.toHaveBeenCalled()
   })
 
-  it('always returns default options immediately (billing sync deferred to background)', async () => {
+  it('always returns default options immediately (billing sync deferred to background)', () => {
     mockMaybeReconcileBilling.mockResolvedValue({ status: 'updated' })
     mockMaybeReconcileOrphan.mockResolvedValue(false)
 
     // Function returns immediately with default options; sync happens in background
-    expect(await resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
+    expect(resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
   })
 
-  it('defers billing sync to background when reconcile would mutate state', async () => {
+  it('defers billing sync to background when reconcile would mutate state', () => {
     mockMaybeReconcileBilling.mockResolvedValue(null)
     mockMaybeReconcileOrphan.mockResolvedValue(true)
 
     // Function returns immediately with default options; sync queued in background
-    expect(await resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
+    expect(resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
   })
 
-  it('handles errors in background billing sync gracefully', async () => {
+  it('handles errors in background billing sync gracefully', () => {
     mockMaybeReconcileBilling.mockRejectedValue(new Error('Stripe API unavailable'))
 
     // Function still returns default options even if sync would fail
-    expect(await resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
+    expect(resolveLayoutBillingSidebarOptions('user-1')).toBe(SIDEBAR_DEFAULT_OPTIONS)
   })
 })
 

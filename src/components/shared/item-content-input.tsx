@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR, languagesForItemType } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
-import type { languages as MonacoLanguages } from 'monaco-editor'
-import { useMonacoLanguage } from '@/hooks/editor/use-monaco-language'
+import { useMonacoLanguage, type MonacoLanguagesApi } from '@/hooks/editor/use-monaco-language'
 
 import { CodeEditor, MarkdownEditor } from './dynamic-editors'
 
@@ -36,12 +35,12 @@ function useMonacoLanguageList() {
     let isMounted = true
     loader.init().then((monaco) => {
       if (!isMounted) return
-      const langs = monaco.languages.getLanguages()
+      const langs = (monaco as unknown as MonacoLanguagesApi).languages.getLanguages()
       const list = new Set<string>()
-      langs.forEach((l: MonacoLanguages.ILanguageExtensionPoint) => {
+      langs.forEach((l) => {
         list.add(l.id)
         if (l.aliases) {
-          l.aliases.forEach(a => list.add(a.replace(/^\./, '')))
+          l.aliases.forEach((a) => list.add(a.replace(/^\./, '')))
         }
       })
       setLanguages(Array.from(list).sort())

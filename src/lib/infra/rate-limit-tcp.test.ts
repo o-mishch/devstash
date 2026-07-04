@@ -16,7 +16,7 @@ vi.mock('rate-limiter-flexible', () => ({
     return { consume: mockConsume, get: mockGet, delete: mockDelete }
   }),
 }))
-vi.mock('@/lib/infra/redis-tcp', () => ({ getTcpRedisClient: vi.fn(async () => ({})) }))
+vi.mock('@/lib/infra/redis-tcp', () => ({ getTcpRedisClient: vi.fn(() => ({})) }))
 
 import { RateLimiterRedis } from 'rate-limiter-flexible'
 import { tcpRateLimit, resetTcpLimitersForTests } from '@/lib/infra/rate-limit-tcp'

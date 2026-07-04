@@ -208,7 +208,7 @@ describe('toBillingContextResponse', () => {
     expect(result.billing?.stripeSubscriptionStart).toBeNull()
     expect(result.billing?.stripeCurrentPeriodEnd).toBeNull()
 
-    const noBilling = toBillingContextResponse({ ...page, billing: null } as never, { itemsCount: 0, collectionsCount: 0 })
+    const noBilling = toBillingContextResponse({ ...page, billing: null }, { itemsCount: 0, collectionsCount: 0 })
     expect(noBilling.billing).toBeNull()
   })
 })

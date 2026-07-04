@@ -84,7 +84,7 @@ export function useCreateItem() {
 
   // Preserve the original contract: resolve once the optimistic prepend is on screen while the POST runs
   // in the background. `mutate` (not `mutateAsync`) is fire-and-forget — onSuccess/onError settle later.
-  return async (payload: CreateItemPayload, options?: CreateItemOptions): Promise<void> => {
+  return (payload: CreateItemPayload, options?: CreateItemOptions): void => {
     mutation.mutate({ payload, options })
   }
 }

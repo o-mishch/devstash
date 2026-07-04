@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { anyOf } from '@/test/matchers'
 
 const {
   mockConstructStripeWebhookEvent,
@@ -112,7 +113,7 @@ vi.mock('@/lib/db/stripe', () => ({
 }))
 
 vi.mock('@/lib/db/users', () => ({
-  getUserById: vi.fn(async (userId: string) => ({ id: userId })),
+  getUserById: vi.fn((userId: string) => ({ id: userId })),
 }))
 
 vi.mock('@/lib/billing/webhook/stripe-webhook-idempotency', async (importOriginal) => {
@@ -206,7 +207,7 @@ beforeEach(() => {
   ))
   mockGetUserIdByStripeCustomerId.mockResolvedValue(null)
   mockGetUserIdsByStripeSubscriptionId.mockResolvedValue(['user-1'])
-  mockResolveAppUserIdForSubscription.mockImplementation(async (input: {
+  mockResolveAppUserIdForSubscription.mockImplementation((input: {
     subscriptionUserId?: string | null
   }) => input.subscriptionUserId?.trim() ?? null)
 })
@@ -1004,7 +1005,7 @@ describe('Stripe webhook route', () => {
     expect(mockUpdateSubscriptionState).toHaveBeenCalledWith(
       'sub_renewed',
       expect.not.objectContaining({
-        stripeCurrentPeriodEnd: expect.any(Date),
+        stripeCurrentPeriodEnd: anyOf(Date),
       }),
     )
   })

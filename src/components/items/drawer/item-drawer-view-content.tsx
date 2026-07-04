@@ -116,7 +116,7 @@ function FileSectionContent({ item }: FileSectionProps) {
           {(imageError || previewKnownFailed || isImageReloading) && (
             <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
               <button
-                onClick={handleImageReload}
+                onClick={(e) => void handleImageReload(e)}
                 disabled={isImageReloading}
                 className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed"
                 title="Reload image"
@@ -126,7 +126,7 @@ function FileSectionContent({ item }: FileSectionProps) {
             </div>
           )}
           <button
-            onClick={handleDownload}
+            onClick={(e) => void handleDownload(e)}
             className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100 touch:opacity-100"
             title={isRestricted ? "Pro required" : "Download image"}
           >
@@ -146,7 +146,7 @@ function FileSectionContent({ item }: FileSectionProps) {
           <p className="text-xs text-muted-foreground">{formatBytes(item.fileSize)}</p>
         )}
       </div>
-      <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" onClick={handleDownload} title={isRestricted ? "Pro required" : "Download"}>
+      <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" onClick={(e) => void handleDownload(e)} title={isRestricted ? "Pro required" : "Download"}>
         {showError ? <XCircle className="size-3.5 text-destructive" /> : <Download className="size-3.5" />}
       </Button>
     </div>
@@ -335,7 +335,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
       {ITEM_TYPES_WITH_URL.has(itemType.name) && (
         <DrawerSection label="URL">
           {item.url ? (
-            <a href={/^https?:\/\//i.test(item.url ?? '') ? item.url! : '#'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all">
+            <a href={/^https?:\/\//i.test(item.url ?? '') ? item.url : '#'} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-4 hover:underline break-all">
               {item.url}
               <ExternalLink className="size-3 shrink-0" />
             </a>
@@ -381,7 +381,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
             ? 'This code explanation hasn’t been saved. Save it as the item’s description (replacing the current one) or it will be lost.'
             : 'This code explanation hasn’t been saved. Save it as the item’s description or it will be lost.'}
           confirmLabel="Save as description"
-          onConfirm={handleGuardSave}
+          onConfirm={() => void handleGuardSave()}
           onDiscard={handleGuardDiscard}
           cancelLabel="Keep open"
           isPending={explain.isSaving}
@@ -405,7 +405,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
           title="Unsaved optimized prompt"
           description="This optimized prompt hasn’t been applied. Apply it as the item’s content (replacing the current prompt) or it will be lost."
           confirmLabel="Apply"
-          onConfirm={handleGuardSave}
+          onConfirm={() => void handleGuardSave()}
           onDiscard={handleGuardDiscard}
           cancelLabel="Keep open"
           isPending={optimize.isSaving}

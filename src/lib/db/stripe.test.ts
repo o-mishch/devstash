@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { objectContaining } from '@/test/matchers'
 
 const { mockUpdate, mockFindUnique, mockUpdateMany, mockFindMany } = vi.hoisted(() => ({
   mockUpdate: vi.fn(),
@@ -44,7 +45,7 @@ describe('updateUserStripeSubscription', () => {
 
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: 'user-previous' },
-      data: expect.objectContaining({
+      data: objectContaining({
         isPro: false,
         stripeCustomerId: null,
         stripeSubscriptionId: null,
@@ -63,7 +64,7 @@ describe('updateUserStripeSubscription', () => {
 
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: 'user-target' },
-      data: expect.objectContaining({
+      data: objectContaining({
         isPro: true,
         proExpiredAt: null,
       }),

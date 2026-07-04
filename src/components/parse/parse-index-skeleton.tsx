@@ -54,7 +54,7 @@ export function ParseIndexSkeleton() {
         {/* "History" section: collapsible trigger text + 2 history rows */}
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-16" />
-          {[...Array(2)].map((_, i) => (
+          {Array.from({ length: 2 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 p-3">
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <Skeleton className="h-3.5 w-20" />

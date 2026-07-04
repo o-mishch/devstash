@@ -183,7 +183,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             // Sign-in: snapshot the current fingerprint
             token.pwHash = pwFingerprint
           } else {
-            const transition = classifyPasswordFingerprint(token.pwHash as string | undefined, pwFingerprint)
+            const transition = classifyPasswordFingerprint(token.pwHash, pwFingerprint)
             if (transition === 'invalidate') {
               // Password was rotated — force re-login so the old session can't be reused
               return null

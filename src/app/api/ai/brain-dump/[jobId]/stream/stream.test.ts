@@ -70,7 +70,7 @@ async function readSse(res: Response): Promise<SseEvent[]> {
     .filter((block) => block.trim())
     .map((block) => {
       const data = block.match(/^data: (.+)$/m)?.[1]
-      return { event: block.match(/^event: (.+)$/m)?.[1] ?? '', data: data ? JSON.parse(data) : undefined }
+      return { event: block.match(/^event: (.+)$/m)?.[1] ?? '', data: data ? (JSON.parse(data) as unknown) : undefined }
     })
 }
 

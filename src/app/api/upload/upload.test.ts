@@ -1,5 +1,6 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest'
 import { NextRequest } from 'next/server'
+import { readJson } from '@/test/matchers'
 
 vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
 vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
@@ -36,7 +37,9 @@ import { DELETE } from './route'
 const mockSession = getCachedSession as ReturnType<typeof vi.fn>
 const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
 const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockPresigned = getPresignedPutCredential as ReturnType<typeof vi.fn>
+const mockPresigned = getPresignedPutCredential as unknown as Mock<
+  (key: string, contentType: string, size: number) => Promise<{ url: string; key: string; contentType: string }>
+>
 const mockWritePending = writePendingUpload as ReturnType<typeof vi.fn>
 const mockDeleteStored = deleteStoredFile as ReturnType<typeof vi.fn>
 const mockDeletePending = deletePendingUpload as ReturnType<typeof vi.fn>
@@ -90,22 +93,22 @@ describe('POST /upload/url', () => {
   it('returns 400 for a disallowed extension', async () => {
     const res = await POST(postBody({ fileName: 'malware.exe', fileSize: 100 }))
     expect(res.status).toBe(400)
-    expect((await res.json()).message).toMatch(/not allowed/i)
+    expect((await readJson(res)).message).toMatch(/not allowed/i)
   })
 
   it('returns 400 when the file exceeds the size limit', async () => {
     const res = await POST(postBody({ fileName: 'a.png', fileSize: 10 * 1024 * 1024 * 1024 }))
     expect(res.status).toBe(400)
-    expect((await res.json()).message).toMatch(/limit/i)
+    expect((await readJson(res)).message).toMatch(/limit/i)
   })
 
   it('returns 200 with presigned credentials and writes the pending upload (key scoped to userId)', async () => {
     const res = await POST(postBody({ fileName: 'photo.png', fileSize: 1000 }))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await readJson<{ expiresAt: string; original: { key: string } }>(res)
     expect(body.expiresAt).toBe('2026-01-01T00:00:00.000Z')
     // The S3 key is namespaced under the session userId (IDOR-safe).
-    const [keyArg, , sizeArg] = mockPresigned.mock.calls[0] as [string, string, number]
+    const [keyArg, , sizeArg] = mockPresigned.mock.calls[0]
     expect(keyArg.startsWith('user-1/')).toBe(true)
     // The server-authoritative key is returned verbatim — the client uses it directly rather
     // than parsing it out of the URL (which would drop the userId prefix on virtual-host S3).
@@ -118,11 +121,11 @@ describe('POST /upload/url', () => {
   it('signs a thumb credential with its exact size only when thumbSize is supplied', async () => {
     const res = await POST(postBody({ fileName: 'photo.png', fileSize: 1000, thumbSize: 4096 }))
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await readJson(res)
     expect(body.thumb).not.toBeNull()
     // Two presigns: original (fileSize) + thumb (image/webp, thumbSize).
     expect(mockPresigned).toHaveBeenCalledTimes(2)
-    const [, thumbType, thumbSizeArg] = mockPresigned.mock.calls[1] as [string, string, number]
+    const [, thumbType, thumbSizeArg] = mockPresigned.mock.calls[1]
     expect(thumbType).toBe('image/webp')
     expect(thumbSizeArg).toBe(4096)
   })
@@ -130,14 +133,14 @@ describe('POST /upload/url', () => {
   it('does not issue a thumb credential when thumbSize is omitted', async () => {
     const res = await POST(postBody({ fileName: 'photo.png', fileSize: 1000 }))
     expect(res.status).toBe(200)
-    expect((await res.json()).thumb).toBeNull()
+    expect((await readJson(res)).thumb).toBeNull()
     expect(mockPresigned).toHaveBeenCalledTimes(1)
   })
 
   it('returns 400 when the declared thumbSize exceeds the thumbnail cap', async () => {
     const res = await POST(postBody({ fileName: 'photo.png', fileSize: 1000, thumbSize: 200 * 1024 }))
     expect(res.status).toBe(400)
-    expect((await res.json()).message).toMatch(/thumbnail/i)
+    expect((await readJson(res)).message).toMatch(/thumbnail/i)
   })
 
   it('returns 500 when writing the pending upload fails', async () => {

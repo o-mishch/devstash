@@ -35,6 +35,7 @@ beforeEach(() => {
   mockGetRemaining.mockReset()
   mockResetUsedTokens.mockReset()
   vi.mocked(Ratelimit).mockClear()
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- mock reference, not a detached call
   vi.mocked(Ratelimit.slidingWindow).mockClear()
 })
 
@@ -48,6 +49,7 @@ describe('upstashRateLimit.check', () => {
     expect(result.success).toBe(true)
     expect(result.remaining).toBe(4)
     expect(result.retryAfter).toBeGreaterThanOrEqual(0)
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- mock assertion, not a detached call
     expect(Ratelimit.slidingWindow).toHaveBeenCalledWith(5, '15 m')
     expect(vi.mocked(Ratelimit)).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'rl:login' }))
     expect(mockLimit).toHaveBeenCalledWith('u1')

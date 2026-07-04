@@ -32,8 +32,11 @@ function getStripeClient(): Stripe {
 export const stripe: Stripe = new Proxy({} as Stripe, {
   get(_target, prop, receiver) {
     const client = getStripeClient()
-    const value = Reflect.get(client, prop, receiver)
-    return typeof value === 'function' ? value.bind(client) : value
+    const value: unknown = Reflect.get(client, prop, receiver)
+    if (typeof value === 'function') {
+      return (value as (...args: unknown[]) => unknown).bind(client)
+    }
+    return value
   },
 })
 

@@ -29,7 +29,7 @@ import { RootProviderShell } from '@/components/shared/root-provider-shell'
 import { ThemeInitializer } from '@/components/shared/theme-initializer'
 import { normalizeEditorPreferences } from '@/lib/utils/editor-preferences'
 
-export default async function DashboardLayout({ children }: WithChildren) {
+export default function DashboardLayout({ children }: WithChildren) {
   const { appTheme, colorMode } = normalizeEditorPreferences(null)
 
   return (

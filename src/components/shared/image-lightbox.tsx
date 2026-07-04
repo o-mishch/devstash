@@ -48,7 +48,7 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isS
     let active = true
 
     // ensure() resolves to the cached signed URL or fetches it once, and never rejects (null on failure).
-    ensure(itemId, false).then((url) => {
+    void ensure(itemId, false).then((url) => {
       if (!active) return
       setIsFetchingUrl(false)
       if (url) {

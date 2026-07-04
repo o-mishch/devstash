@@ -46,9 +46,9 @@ function toSidebarSessionSnapshot(session: AppSessionLike | null): SidebarSessio
 }
 
 /** Passive sync, throttled orphan reconcile, and sidebar cache options for the app layout. */
-export async function resolveLayoutBillingSidebarOptions(
+export function resolveLayoutBillingSidebarOptions(
   userId: string | undefined,
-): Promise<FreshBillingContextOptions> {
+): FreshBillingContextOptions {
   if (!userId) return SIDEBAR_DEFAULT_OPTIONS
 
   // Defer passive billing sync to background (non-blocking).
@@ -94,7 +94,7 @@ export const loadAppSidebarData = cache(async (session: AppSessionLike | null) =
   const snapshot = toSidebarSessionSnapshot(session)
   try {
     return await getCachedSidebarData(
-      await resolveLayoutBillingSidebarOptions(snapshot.userId),
+      resolveLayoutBillingSidebarOptions(snapshot.userId),
       snapshot,
     )
   } catch (error) {

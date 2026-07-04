@@ -389,7 +389,7 @@ async function sendBillingRecoveryEmail(
     successMessage,
     failureMessage,
     sendEmail: ({ portalUrl, to }) => sendBillingPaymentFailedEmail({
-      invoiceId: invoice.id!,
+      invoiceId: invoice.id,
       portalUrl,
       to,
     }),
@@ -649,36 +649,36 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
 
   switch (event.type) {
     case 'checkout.session.completed':
-      await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session, false)
+      await handleCheckoutSessionCompleted(event.data.object, false)
       return
     case 'checkout.session.async_payment_failed':
-      await handleAbandonedCheckoutSession(event.data.object as Stripe.Checkout.Session, event.type, description)
+      await handleAbandonedCheckoutSession(event.data.object, event.type, description)
       return
     case 'checkout.session.async_payment_succeeded':
-      await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session, true)
+      await handleCheckoutSessionCompleted(event.data.object, true)
       return
     case 'checkout.session.expired':
-      await handleAbandonedCheckoutSession(event.data.object as Stripe.Checkout.Session, event.type, description)
+      await handleAbandonedCheckoutSession(event.data.object, event.type, description)
       return
     case 'customer.subscription.deleted':
-      await handleSubscriptionDeleted(event.data.object as Stripe.Subscription)
+      await handleSubscriptionDeleted(event.data.object)
       return
     case 'invoice.paid':
-      await handleInvoicePaid(event.data.object as Stripe.Invoice)
+      await handleInvoicePaid(event.data.object)
       return
     case 'invoice.payment_failed':
     case 'invoice.payment_action_required':
     case 'invoice.payment_attempt_required':
-      await handleInvoiceBillingRecovery(event.data.object as Stripe.Invoice, event.type)
+      await handleInvoiceBillingRecovery(event.data.object, event.type)
       return
     case 'customer.subscription.trial_will_end':
-      await handleSubscriptionTrialWillEnd(event.data.object as Stripe.Subscription)
+      await handleSubscriptionTrialWillEnd(event.data.object)
       return
     case 'customer.deleted':
-      await handleCustomerDeleted(event.data.object as Stripe.Customer | Stripe.DeletedCustomer)
+      await handleCustomerDeleted(event.data.object)
       return
     case 'customer.updated': {
-      const customer = event.data.object as Stripe.Customer
+      const customer = event.data.object
       logCustomer.info(
         {
           customerId: customer.id,
@@ -690,13 +690,13 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
       return
     }
     case 'charge.refunded':
-      await handleChargeRefunded(event.data.object as Stripe.Charge)
+      await handleChargeRefunded(event.data.object)
       return
     case 'charge.dispute.created':
-      await handleChargeDisputeCreated(event.data.object as Stripe.Dispute)
+      await handleChargeDisputeCreated(event.data.object)
       return
     case 'charge.dispute.closed':
-      await handleChargeDisputeClosed(event.data.object as Stripe.Dispute)
+      await handleChargeDisputeClosed(event.data.object)
       return
     default:
       logCustomer.warn(

@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { stringContaining } from '@/test/matchers'
 
 vi.mock('./link-email.html', () => ({ default: '{{HEADING}}{{INTRO}}{{URL}}{{CTA}}{{DISCLAIMER}}' }))
 vi.mock('./template-builder', () => ({ buildEmailTemplate: (_subject: string, body: string) => body }))
@@ -31,7 +32,7 @@ describe('sendTokenLinkEmail', () => {
     expect(mockSendEmail).toHaveBeenCalledWith({
       to: 'user@example.com',
       subject: 'Verify your email',
-      html: expect.stringContaining('https://app.example.com/verify-email?token=abc123'),
+      html: stringContaining('https://app.example.com/verify-email?token=abc123'),
       idempotencyKey: 'verify-email/abc123',
       operation: 'verification',
     })

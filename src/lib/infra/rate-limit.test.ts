@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { objectContaining } from '@/test/matchers'
 
 // Dispatcher tests: rate-limit.ts selects a backend by isTcpRedis() and owns the fail-open/closed
 // policy + AI-usage mapping. Both backends are mocked here; their real behavior is covered in
@@ -138,8 +139,8 @@ describe('getAiUsage', () => {
       expect(entry.resetAt).toBe(resetAt)
     }
     // Requests are built per key with the identifier + that key's config.
-    const requests = upstash.getRemainingMany.mock.calls[0][0]
-    expect(requests.map((r: { key: string }) => r.key)).toEqual([...AI_RATE_LIMIT_KEYS])
+    const requests = upstash.getRemainingMany.mock.calls[0][0] as { key: string; identifier: string }[]
+    expect(requests.map((r) => r.key)).toEqual([...AI_RATE_LIMIT_KEYS])
     expect(requests[0].identifier).toBe('u1')
   })
 
@@ -165,7 +166,7 @@ describe('getBrainDumpUsage', () => {
     const usage = await getBrainDumpUsage('u1')
     expect(usage).toEqual({ key: 'aiBrainDump', limit: 1, remaining: 0, resetAt })
     expect(upstash.getRemainingMany).toHaveBeenCalledWith([
-      { key: 'aiBrainDump', identifier: 'u1', config: expect.objectContaining({ attempts: 1 }) },
+      { key: 'aiBrainDump', identifier: 'u1', config: objectContaining({ attempts: 1 }) },
     ])
   })
 

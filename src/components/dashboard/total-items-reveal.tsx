@@ -1,6 +1,6 @@
 'use client'
 
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
@@ -228,7 +228,7 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
                   animate="show"
                   exit="hidden"
                   variants={container}
-                  style={{ position: 'fixed', top: coords.top, left: coords.left, width: cfg.width } as CSSProperties}
+                  style={{ position: 'fixed', top: coords.top, left: coords.left, width: cfg.width }}
                   className={cn('z-50 max-w-[calc(100vw-16px)]', cfg.panel)}
                 >
                   {TYPES.map((t) => (

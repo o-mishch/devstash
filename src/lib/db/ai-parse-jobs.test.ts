@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Prisma } from '@/generated/prisma/client'
+import type { Mock } from 'vitest'
+import { objectContaining, arrayContaining, anything } from '@/test/matchers'
 
 vi.mock('@/lib/infra/prisma', () => {
   const prisma = {
@@ -56,7 +58,8 @@ const mockJob = prisma.aiParseJob as unknown as {
   deleteMany: ReturnType<typeof vi.fn>
 }
 const mockJobItem = prisma.aiParseJobItem as unknown as {
-  create: ReturnType<typeof vi.fn>
+  // Typed to return a Promise so mockImplementation accepts an async draft factory.
+  create: Mock<(args: { data: { order: number } }) => Promise<unknown>>
   deleteMany: ReturnType<typeof vi.fn>
   updateMany: ReturnType<typeof vi.fn>
   findFirst: ReturnType<typeof vi.fn>
@@ -100,18 +103,18 @@ describe('commitJob', () => {
 
     // v2.5: full commit demotes the job to the `closed` history stub (not a delete) — `closed: true`.
     expect(result).toEqual({ kind: 'done', created: 2, total: 2, closed: true })
-    expect(mockJob.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'job-1', userId: 'user-1' } }))
-    expect(mockCreateItem).toHaveBeenCalledWith('user-1', expect.objectContaining({
+    expect(mockJob.findFirst).toHaveBeenCalledWith(objectContaining({ where: { id: 'job-1', userId: 'user-1' } }))
+    expect(mockCreateItem).toHaveBeenCalledWith('user-1', objectContaining({
       itemTypeName: 'snippet', content: 'code', language: 'ts', url: null, fileUrl: null, collectionIds: [],
-    }), expect.anything())
-    expect(mockCreateItem).toHaveBeenCalledWith('user-1', expect.objectContaining({
+    }), anything())
+    expect(mockCreateItem).toHaveBeenCalledWith('user-1', objectContaining({
       itemTypeName: 'link', url: 'https://x.dev', content: null,
-    }), expect.anything())
+    }), anything())
     // Closed, not deleted: status set to 'closed' + sourceText cleared + per-type stats stamped.
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
+      objectContaining({
         where: { id: 'job-1', userId: 'user-1', status: { not: 'closed' } },
-        data: expect.objectContaining({ status: 'closed', sourceText: '', committedCount: { increment: 2 }, committedByType: { snippet: 1, link: 1 } }),
+        data: objectContaining({ status: 'closed', sourceText: '', committedCount: { increment: 2 }, committedByType: { snippet: 1, link: 1 } }),
       }),
     )
     expect(mockJob.deleteMany).not.toHaveBeenCalled()
@@ -128,9 +131,9 @@ describe('commitJob', () => {
     await commitJob('user-1', 'job-1')
 
     expect(mockJob.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        select: expect.objectContaining({
-          items: expect.objectContaining({ where: { trashed: false } }),
+      objectContaining({
+        select: objectContaining({
+          items: objectContaining({ where: { trashed: false } }),
         }),
       }),
     )
@@ -164,8 +167,8 @@ describe('commitJob', () => {
     })
     expect(mockCreateItem).toHaveBeenCalledWith(
       'user-1',
-      expect.objectContaining({ collectionIds: ['col-existing', 'col-new'] }),
-      expect.anything(),
+      objectContaining({ collectionIds: ['col-existing', 'col-new'] }),
+      anything(),
     )
   })
 
@@ -186,7 +189,7 @@ describe('commitJob', () => {
     await commitJob('user-1', 'job-1')
 
     expect(mockCollection.create).not.toHaveBeenCalled()
-    expect(mockCreateItem).toHaveBeenCalledWith('user-1', expect.objectContaining({ collectionIds: ['col-a'] }), expect.anything())
+    expect(mockCreateItem).toHaveBeenCalledWith('user-1', objectContaining({ collectionIds: ['col-a'] }), anything())
   })
 
   it('counts only successful creates and does NOT close on partial failure', async () => {
@@ -210,14 +213,14 @@ describe('commitJob', () => {
     expect(result).toEqual({ kind: 'done', created: 1, total: 2, closed: false })
     // Not closed on a partial commit (the un-saved draft must survive for retry).
     expect(mockJobUpdate.updateMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'closed' }) }),
+      objectContaining({ data: objectContaining({ status: 'closed' }) }),
     )
     // The draft that DID commit must still land on the in-review running tally (status != 'closed'),
     // so the final history stats don't undercount when the survivor is later committed.
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
+      objectContaining({
         where: { id: 'job-1', userId: 'user-1', status: { not: 'closed' } },
-        data: expect.objectContaining({ committedCount: { increment: 1 }, committedByType: { snippet: 1 } }),
+        data: objectContaining({ committedCount: { increment: 1 }, committedByType: { snippet: 1 } }),
       }),
     )
   })
@@ -242,12 +245,12 @@ describe('commitJob', () => {
     // The urlless link is kept committable; only the note commits → not all drafts saved, no close.
     expect(result).toEqual({ kind: 'done', created: 1, total: 2, closed: false })
     expect(mockCreateItem).toHaveBeenCalledTimes(1)
-    expect(mockCreateItem).toHaveBeenCalledWith('user-1', expect.objectContaining({ itemTypeName: 'note' }), expect.anything())
-    expect(mockCreateItem).not.toHaveBeenCalledWith('user-1', expect.objectContaining({ itemTypeName: 'link' }), expect.anything())
+    expect(mockCreateItem).toHaveBeenCalledWith('user-1', objectContaining({ itemTypeName: 'note' }), anything())
+    expect(mockCreateItem).not.toHaveBeenCalledWith('user-1', objectContaining({ itemTypeName: 'link' }), anything())
     // The link draft is never deleted (it survives for the user to add a url or reclassify).
     expect(mockJobItem.deleteMany).not.toHaveBeenCalledWith({ where: { id: 'd1', jobId: 'job-1', userId: 'user-1' } })
     expect(mockJobUpdate.updateMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'closed' }) }),
+      objectContaining({ data: objectContaining({ status: 'closed' }) }),
     )
   })
 
@@ -285,7 +288,7 @@ describe('commitDraftItem', () => {
     expect(await commitDraftItem('user-1', 'job-1', 'item-x')).toBeNull()
     // In-review job → require trashed:false (a trashed draft must not commit from the board).
     expect(mockJobItem.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'item-x', jobId: 'job-1', userId: 'user-1', trashed: false } }),
+      objectContaining({ where: { id: 'item-x', jobId: 'job-1', userId: 'user-1', trashed: false } }),
     )
     expect(mockCreateItem).not.toHaveBeenCalled()
   })
@@ -303,21 +306,21 @@ describe('commitDraftItem', () => {
 
     expect(await commitDraftItem('user-1', 'job-1', 'd1')).toEqual({ created: 1, autoClosed: true, needsCollectionConfirm: false })
     expect(mockCollection.create).not.toHaveBeenCalled()
-    expect(mockCreateItem).toHaveBeenCalledWith('user-1', expect.objectContaining({ itemTypeName: 'note', collectionIds: ['col-a'] }), expect.anything())
+    expect(mockCreateItem).toHaveBeenCalledWith('user-1', objectContaining({ itemTypeName: 'note', collectionIds: ['col-a'] }), anything())
     expect(mockJobItem.deleteMany).toHaveBeenCalledWith({ where: { id: 'd1', jobId: 'job-1', userId: 'user-1' } })
     // The per-item commit records its type on the running tally as it lands (so an incremental commit run
     // carries an accurate total, not just the final draft)…
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ committedCount: { increment: 1 }, committedByType: { note: 1 } }) }),
+      objectContaining({ data: objectContaining({ committedCount: { increment: 1 }, committedByType: { note: 1 } }) }),
     )
     // …then the close demotes the job, passing no new types (already counted above). With nothing to merge,
     // the close write touches only status + sourceText — it does NOT rewrite the per-type map or do an
     // increment:0, which would only widen the write set against a concurrent late increment.
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'closed', sourceText: '' }) }),
+      objectContaining({ data: objectContaining({ status: 'closed', sourceText: '' }) }),
     )
     expect(mockJobUpdate.updateMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'closed', committedByType: expect.anything() }) }),
+      objectContaining({ data: objectContaining({ status: 'closed', committedByType: anything() }) }),
     )
   })
 
@@ -333,12 +336,12 @@ describe('commitDraftItem', () => {
 
     expect(await commitDraftItem('user-1', 'job-1', 'd1')).toEqual({ created: 1, autoClosed: false, needsCollectionConfirm: false })
     expect(mockJobUpdate.updateMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'closed' }) }),
+      objectContaining({ data: objectContaining({ status: 'closed' }) }),
     )
     // The running tally is bumped even though the job stays in review (this is what fixes the undercount
     // when the user saves drafts one at a time before the final auto-close).
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ committedCount: { increment: 1 }, committedByType: { note: 1 } }) }),
+      objectContaining({ data: objectContaining({ committedCount: { increment: 1 }, committedByType: { note: 1 } }) }),
     )
   })
 
@@ -369,7 +372,7 @@ describe('commitDraftItem', () => {
     expect(res).toEqual({ created: 1, autoClosed: true, needsCollectionConfirm: false })
     // The new collection is NOT created; only existing ids attach.
     expect(mockCollection.create).not.toHaveBeenCalled()
-    expect(mockCreateItem).toHaveBeenCalledWith('user-1', expect.objectContaining({ collectionIds: ['col-a'] }), expect.anything())
+    expect(mockCreateItem).toHaveBeenCalledWith('user-1', objectContaining({ collectionIds: ['col-a'] }), anything())
   })
 
   it('confirm=true creates the new collection once and persists its id (no duplicate)', async () => {
@@ -393,7 +396,7 @@ describe('commitDraftItem', () => {
       data: { collectionName: null },
     })
     expect(mockCollection.create).toHaveBeenCalledWith({ data: { userId: 'user-1', name: 'Project X' }, select: { id: true } })
-    expect(mockCreateItem).toHaveBeenCalledWith('user-1', expect.objectContaining({ collectionIds: ['col-a', 'col-new'] }), expect.anything())
+    expect(mockCreateItem).toHaveBeenCalledWith('user-1', objectContaining({ collectionIds: ['col-a', 'col-new'] }), anything())
   })
 
   it('keeps the draft when createItem fails (0)', async () => {
@@ -440,11 +443,11 @@ describe('commitDraftItem', () => {
     expect(res).toEqual({ created: 1, autoClosed: false, needsCollectionConfirm: false })
     // Closed job → no trashed:false constraint on the draft lookup (trash is committable).
     expect(mockJobItem.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'd1', jobId: 'job-1', userId: 'user-1' } }),
+      objectContaining({ where: { id: 'd1', jobId: 'job-1', userId: 'user-1' } }),
     )
     // Stats merged additively onto the existing closed stub, status stays closed.
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
+      objectContaining({
         where: { id: 'job-1', userId: 'user-1', status: 'closed' },
         data: { committedCount: { increment: 1 }, committedByType: { note: 6 } },
       }),
@@ -465,7 +468,7 @@ describe('commitDraftItem', () => {
     // The stray array is discarded (asCommittedByType → {}) rather than corrupting the tally, so the map is
     // rebuilt from just this commit. The scalar count still increments atomically.
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
+      objectContaining({
         where: { id: 'job-1', userId: 'user-1', status: 'closed' },
         data: { committedCount: { increment: 1 }, committedByType: { note: 1 } },
       }),
@@ -501,7 +504,7 @@ describe('commitDraftItem', () => {
     expect(conflicted).toBe(true) // the conflict path was actually hit
     // After the retry the merge still lands exactly once with the atomic increment (no lost update).
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
+      objectContaining({
         where: { id: 'job-1', userId: 'user-1', status: 'closed' },
         data: { committedCount: { increment: 1 }, committedByType: { note: 6 } },
       }),
@@ -610,7 +613,7 @@ describe('appendDraftsAndAdvance', () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1)
     expect(saved.map((row) => row.order)).toEqual([5, 6])
     expect(mockJobItem.create).toHaveBeenCalledTimes(2)
-    expect(mockJobItem.create).toHaveBeenNthCalledWith(1, expect.objectContaining({ data: expect.objectContaining({ jobId: 'job-1', userId: 'user-1', order: 5 }) }))
+    expect(mockJobItem.create).toHaveBeenNthCalledWith(1, objectContaining({ data: objectContaining({ jobId: 'job-1', userId: 'user-1', order: 5 }) }))
     // Progress + cursor advance together with the draft writes.
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith({
       where: { id: 'job-1', userId: 'user-1' },
@@ -655,7 +658,7 @@ describe('getParseJobRunState', () => {
   it('is IDOR-scoped and returns null when the job is not the user\'s', async () => {
     mockJob.findFirst.mockResolvedValue(null)
     expect(await getParseJobRunState('user-1', 'job-x')).toBeNull()
-    expect(mockJob.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'job-x', userId: 'user-1' } }))
+    expect(mockJob.findFirst).toHaveBeenCalledWith(objectContaining({ where: { id: 'job-x', userId: 'user-1' } }))
   })
 
   it('maps the run state including the persisted item count', async () => {
@@ -743,10 +746,10 @@ describe('listActiveParseJobs', () => {
     expect(jobs).toHaveLength(3)
     // The active query includes failed jobs (so a failed job stays reachable) and excludes closed.
     expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
+      objectContaining({
+        where: objectContaining({
           userId: 'user-1',
-          OR: expect.arrayContaining([
+          OR: arrayContaining([
             { status: 'processing' },
             { status: 'failed' },
             { status: 'completed', items: { some: { trashed: false } } },
@@ -768,10 +771,10 @@ describe('listActiveParseJobs', () => {
     await listActiveParseJobs('user-1')
 
     expect(mockJob.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ id: 'pending-1', status: { not: 'closed' } }) }),
+      objectContaining({ where: objectContaining({ id: 'pending-1', status: { not: 'closed' } }) }),
     )
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'closed' }) }),
+      objectContaining({ data: objectContaining({ status: 'closed' }) }),
     )
   })
 
@@ -787,11 +790,11 @@ describe('listActiveParseJobs', () => {
     const jobs = await listActiveParseJobs('user-1')
 
     expect(mockJobUpdate.updateMany).not.toHaveBeenCalled()
-    expect(jobs).toEqual([expect.objectContaining({ id: 'failed-1', status: 'failed' })])
+    expect(jobs).toEqual([objectContaining({ id: 'failed-1', status: 'failed' })])
     // The self-heal pass query is completed-only (failed jobs are never closed by it).
     expect(mockFindMany).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ where: expect.objectContaining({ status: 'completed' }) }),
+      objectContaining({ where: objectContaining({ status: 'completed' }) }),
     )
   })
 })
@@ -809,10 +812,10 @@ describe('listClosedParseJobs', () => {
     const jobs = await listClosedParseJobs('user-1')
 
     expect(jobs).toEqual([
-      expect.objectContaining({ id: 'c1', status: 'closed', itemCount: 1, committedCount: 5, committedByType: { snippet: 3, note: 2 } }),
+      objectContaining({ id: 'c1', status: 'closed', itemCount: 1, committedCount: 5, committedByType: { snippet: 3, note: 2 } }),
     ])
     expect(mockFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
+      objectContaining({
         where: { userId: 'user-1', status: 'closed' },
         orderBy: { createdAt: 'desc' },
       }),
@@ -832,7 +835,7 @@ describe('getParseJobSnapshot', () => {
   it('is IDOR-scoped and returns null when the job is not the user\'s', async () => {
     mockJob.findFirst.mockResolvedValue(null)
     expect(await getParseJobSnapshot('user-1', 'job-x')).toBeNull()
-    expect(mockJob.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'job-x', userId: 'user-1' } }))
+    expect(mockJob.findFirst).toHaveBeenCalledWith(objectContaining({ where: { id: 'job-x', userId: 'user-1' } }))
   })
 
   it('returns the typed snapshot for an owned job (incl. source fields)', async () => {
@@ -945,7 +948,7 @@ describe('getParseJobSnapshot', () => {
 
     // The heal wrote status=closed.
     expect(mockJobUpdate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'closed' }) }),
+      objectContaining({ data: objectContaining({ status: 'closed' }) }),
     )
     expect(snap?.status).toBe('closed')
   })
@@ -973,7 +976,7 @@ describe('getReparseEligibility', () => {
     mockJob.findFirst.mockResolvedValue({ status: 'completed', sourceItemId: 'note-1' })
     expect(await getReparseEligibility('user-1', 'job-1')).toEqual({ status: 'completed', sourceItemId: 'note-1' })
     expect(mockJob.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'job-1', userId: 'user-1' } }),
+      objectContaining({ where: { id: 'job-1', userId: 'user-1' } }),
     )
   })
 
@@ -995,8 +998,8 @@ describe('createParseJob', () => {
     })
     expect(id).toBe('job-1')
     expect(mockJobUpdate.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
+      objectContaining({
+        data: objectContaining({
           userId: 'user-1',
           sourceItemId: 'note-1',
           sourceName: 'notes.md',
@@ -1127,8 +1130,8 @@ describe('listParseSourceCandidates', () => {
 
     expect(result).toEqual([{ itemId: 'f1', name: 'notes.md', itemTypeName: 'file', sizeBytes: 123 }])
     expect(mockItem.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
+      objectContaining({
+        where: objectContaining({
           userId: 'user-1',
           itemType: { name: 'file' },
           tags: { some: { name: 'brain-dump' } },
@@ -1150,8 +1153,8 @@ describe('listParseSourceCandidates', () => {
     // 'héllo' is 6 UTF-8 bytes (é = 2 bytes) — sizeBytes is the content byte length, not char count.
     expect(result).toEqual([{ itemId: 'n1', name: 'Project ideas', itemTypeName: 'prompt', sizeBytes: 6 }])
     expect(mockItem.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
+      objectContaining({
+        where: objectContaining({
           userId: 'user-1',
           itemType: { name: { in: ['snippet', 'command', 'prompt', 'note'] } },
           tags: { some: { name: 'brain-dump' } },
@@ -1194,7 +1197,7 @@ describe('sweepAbandonedParseJobs', () => {
 
     // Selects stale jobs before the cutoff AND excludes closed (history is never auto-purged).
     const stalePredicate = { updatedAt: { lt: parseJobAbandonCutoff(now) }, status: { not: 'closed' } }
-    expect(mockJob.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: stalePredicate }))
+    expect(mockJob.findMany).toHaveBeenCalledWith(objectContaining({ where: stalePredicate }))
     // TOCTOU guard: deleteMany re-asserts the staleness predicate (not just id IN […]), so a job revived
     // in the findMany→deleteMany window is skipped. Source item untouched (no item.delete).
     expect(mockJob.deleteMany).toHaveBeenCalledWith({
@@ -1255,7 +1258,7 @@ describe('sweepAbandonedParseJobs', () => {
 
     expect(set).toHaveBeenCalledWith('parse-job-sweep:cooldown', '1', { nx: true, ex: 300 })
     expect(mockJob.deleteMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { AND: expect.arrayContaining([{ id: { in: ['job-c'] } }]) } }),
+      objectContaining({ where: { AND: arrayContaining([{ id: { in: ['job-c'] } }]) } }),
     )
     expect(result).toEqual({ swept: 1 })
   })

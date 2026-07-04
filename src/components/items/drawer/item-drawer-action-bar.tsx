@@ -251,7 +251,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         title="Start Brain Dump?"
         description={`AI will split this ${item.itemType.name} into ready-to-save items. This uses one of your hourly Brain Dump runs.`}
         confirmLabel="Start Brain Dump"
-        onConfirm={confirmParse}
+        onConfirm={() => void confirmParse()}
         isPending={isParsing}
         cancelLabel="Cancel"
       />

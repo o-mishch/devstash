@@ -55,10 +55,10 @@ let _s3ProbeClient: S3Client | null = null
 function getS3ProbeClient(): S3Client {
   if (!_s3ProbeClient) {
     _s3ProbeClient = new S3Client({
-      region: process.env.AWS_REGION!,
+      region: process.env.AWS_REGION,
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
       },
       ...localS3Overrides(),
     })
