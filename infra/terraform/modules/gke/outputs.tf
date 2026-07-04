@@ -46,6 +46,12 @@ output "binauthz_kms_key" {
 
 output "node_service_account_email" {
   # Always-on (not count-gated) — stable across suspend/resume. See the resource comment in main.tf.
-  value = google_service_account.gke_nodes.email
+  #
+  # Construct the email from known inputs rather than reading google_service_account.gke_nodes.email.
+  # The .email attribute is unknown-at-plan-time until the SA is created (or while it's pending the
+  # moved rename), which propagates into module.iam's count = var.gke_node_sa_email != "" ? 1 : 0 and
+  # breaks the plan with "Invalid count argument". The email is fully deterministic — account_id +
+  # project_id — so build it as a static string to keep every downstream count/for_each plan-time-known.
+  value = "${var.name_prefix}-gke-node-sa@${var.project_id}.iam.gserviceaccount.com"
 }
 
