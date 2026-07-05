@@ -85,6 +85,24 @@ describe('rateLimitAction', () => {
     const result = await rateLimitAction('stripeSync', 'u1')
     expect(result?.success).toBe(false)
   })
+
+  it('fails closed in production when the backend HANGS past the timeout (never 502s the request)', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.useFakeTimers()
+    // A stuck node-redis command that never settles — the exact wrong-identity Valkey-AUTH
+    // reconnect loop. Without the timeout race this would hang until the LB's ~30s backend
+    // timeout (502); with it, the check must resolve to a fail-closed decision.
+    tcp.check.mockReturnValue(new Promise(() => {}))
+    mockIsTcp.mockReturnValue(true)
+    try {
+      const pending = rateLimitAction('stripeCheckout', 'u1')
+      await vi.advanceTimersByTimeAsync(3000)
+      const result = await pending
+      expect(result?.success).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('checkRateLimit', () => {

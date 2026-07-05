@@ -80,12 +80,23 @@ export function resetRateLimitersForTests(): void {
   resetUpstashLimitersForTests()
 }
 
+// Hard ceiling on a single rate-limit check. The TCP backend (node-redis) has a 5s
+// connectTimeout but no per-command deadline, so a command issued while the client is stuck
+// reconnecting to an unreachable store (e.g. a wrong-identity Valkey AUTH that never
+// succeeds) never rejects — it blocks until the ingress LB's ~30s backend timeout fires and
+// returns a 502. Racing the check against this deadline converts that hang into a fast
+// fail-closed decision, so a Redis outage degrades to a 429, never a black-holed request.
+const RATE_LIMIT_CHECK_TIMEOUT_MS = 3000
+
 async function check(key: RateLimitKey, identifier: string): Promise<RateLimitCheckResult> {
   try {
-    return await backend().check(key, identifier, LIMIT_CONFIG[key])
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('rate-limit check timed out')), RATE_LIMIT_CHECK_TIMEOUT_MS).unref(),
+    )
+    return await Promise.race([backend().check(key, identifier, LIMIT_CONFIG[key]), timeout])
   } catch {
-    // The store is unreachable (either backend rejects on failure) — fail closed in production,
-    // open in dev so local work isn't blocked by a missing Redis.
+    // The store is unreachable or too slow (backend rejected, or the race above timed out) —
+    // fail closed in production, open in dev so local work isn't blocked by a missing Redis.
     return process.env.NODE_ENV === 'production'
       ? { success: false, remaining: 0, retryAfter: 60 }
       : { success: true, remaining: 1, retryAfter: 0 }
