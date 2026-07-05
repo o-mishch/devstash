@@ -141,6 +141,34 @@ suspend() {
   ok "Suspended to ~\$0 (data safe in the GCS dump). Run 'resume' to bring it back."
 }
 
+# _restore_and_wait_cluster: overlap the DB restore with the control-plane readiness poll.
+# The two are independent — `restore_db` imports the GCS dump straight into the freshly-created
+# Cloud SQL instance (already RUNNABLE after apply), while `wait_for_cluster` polls the GKE
+# control plane; neither reads the other's result, and nothing between here and `eso` needs the
+# cluster before the restore or vice versa. Run serially they cost restore(~1-3 min) +
+# cluster-wait(up to several min) back to back; overlapped they cost max() of the two, saving
+# min() — typically 1-3 min per resume. Mirrors infra/ci/ensure-operators.sh's &/wait join.
+#
+# restore_db runs in the BACKGROUND: it may `die` (exit) on import failure, which in a
+# backgrounded subshell only kills that subshell — the parent `wait` below captures its
+# non-zero status and we re-raise it via `die`, so a failed restore still aborts resume (the
+# instance would be up but empty). wait_for_cluster runs in the FOREGROUND: it is the shared-
+# scope poll that must NOT be subshelled (it relies on run.sh helpers + prints progress), and
+# keeping it in the parent means its own `die`-on-timeout still aborts directly. restore output
+# is prefixed [restore] so it stays attributable while it interleaves with the poll's dots.
+_restore_and_wait_cluster() {
+  local restore_status=0
+  # Prefix the backgrounded restore's merged output so it stays readable alongside the poll.
+  { restore_db 2>&1 | sed -e 's/^/[restore] /'; exit "${PIPESTATUS[0]}"; } &
+  local restore_pid=$!
+  wait_for_cluster
+  # Join on the restore regardless of order; capture its status without letting the `wait`
+  # itself trip `set -e`, then re-raise a real failure (a backgrounded `die` cannot propagate
+  # on its own). A best-effort skip (no dump / fresh env) exits 0, so this is a no-op then.
+  wait "$restore_pid" || restore_status=$?
+  [[ "$restore_status" -eq 0 ]] || die "DB restore failed (exit $restore_status) — instance is up but empty; re-run 'run.sh resume' (restore is retry-safe)"
+}
+
 # resume: bring the environment back from a deep-suspended state. Recreates compute AND
 # the Cloud SQL instance, RESTORES the DB from the latest GCS dump, reinstalls the
 # in-cluster operators (ESO + Reloader, gone with the old cluster), redeploys the app, and
@@ -174,8 +202,9 @@ resume() {
     _predispatch_ci_build          # sets DEPLOY_RUN_ID; runs secrets (outputs readable now) + deploy provision
     _arm_ci_cancel_trap resume     # cancel the run if anything below dies before the handoff
     apply        # Cloud SQL (~10 min) + control plane build here, in parallel with CI's build-push
-    restore_db   # import the GCS dump into the fresh instance BEFORE the app deploys
-    wait_for_cluster
+    # Overlap the DB restore with the control-plane readiness poll (both independent — see
+    # _restore_and_wait_cluster). Both must complete before eso/deploy touch the cluster + DB.
+    _restore_and_wait_cluster
     eso
     log "CI build+push has been running in parallel with apply; its cluster-gated deploy job proceeds now that the cluster + secrets are live"
   else
@@ -184,9 +213,11 @@ resume() {
     # is no cancel trap to arm — apply's own `die` aborts cleanly on failure with nothing orphaned).
     warn "No tofu outputs (downed / first-ever env) — applying FIRST, then secrets + deploy (no pre-dispatch overlap)"
     apply        # recreate the infra + repopulate outputs
-    restore_db   # import the GCS dump into the fresh instance BEFORE the app deploys
     secrets      # outputs now exist — push CI auth secrets + public config (would have pushed a warning box pre-apply)
-    wait_for_cluster
+    # Overlap the DB restore with the control-plane readiness poll (both independent — see
+    # _restore_and_wait_cluster). `secrets` stays ahead of it: it must land before `deploy
+    # provision` below, and it is a fast GitHub push not worth folding into the overlap.
+    _restore_and_wait_cluster
     eso
     deploy provision   # dispatch the deploy now that the cluster + secrets are live; sets DEPLOY_RUN_ID
   fi
