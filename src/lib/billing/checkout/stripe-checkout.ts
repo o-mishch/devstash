@@ -164,11 +164,20 @@ export async function resolveStripeCustomerForUser(
 
 /** Cancels stale incomplete subscriptions so a new checkout does not accumulate orphans. */
 export async function cancelIncompleteSubscriptionsForCustomer(customerId: string): Promise<void> {
+  const incompleteIds: string[] = []
   for await (const subscription of iterateCustomerSubscriptions(customerId)) {
     if (subscription.status === 'incomplete') {
-      await cancelAbandonedSubscription(subscription.id)
+      incompleteIds.push(subscription.id)
     }
   }
+  // allSettled (not all): one failed cancel must not abandon the rest — leaving orphans is the exact
+  // state this cleanup exists to prevent. Log failures so a persistent orphan is still visible.
+  const results = await Promise.allSettled(incompleteIds.map((id) => cancelAbandonedSubscription(id)))
+  results.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      log.error({ customerId, subscriptionId: incompleteIds[index], err: result.reason }, 'Failed to cancel incomplete subscription')
+    }
+  })
 }
 
 export async function validateCheckoutEligibility(userId: string, priceId: string): Promise<CheckoutEligibilityResult> {

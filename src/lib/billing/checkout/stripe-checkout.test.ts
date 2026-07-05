@@ -8,6 +8,7 @@ const {
   mockGetCachedUserStripeInfo,
   mockCustomersList,
   mockIterateCustomerSubscriptions,
+  mockCancelAbandonedSubscription,
 } = vi.hoisted(() => ({
   mockFetchCheckoutSessionDetails: vi.fn(),
   mockIsAllowedCheckoutPriceId: vi.fn(),
@@ -15,12 +16,17 @@ const {
   mockGetCachedUserStripeInfo: vi.fn(),
   mockCustomersList: vi.fn(),
   mockIterateCustomerSubscriptions: vi.fn(),
+  mockCancelAbandonedSubscription: vi.fn(),
 }))
 
 vi.mock('@/lib/billing/stripe-api', () => ({
   fetchCheckoutSessionDetails: mockFetchCheckoutSessionDetails,
   listStripeCustomersByEmail: mockCustomersList,
   iterateCustomerSubscriptions: mockIterateCustomerSubscriptions,
+}))
+
+vi.mock('@/lib/infra/stripe', () => ({
+  cancelAbandonedSubscription: mockCancelAbandonedSubscription,
 }))
 
 vi.mock('@/lib/billing/config/billing-pricing', () => ({
@@ -40,6 +46,7 @@ vi.mock('@/lib/infra/pino', () => ({
 }))
 
 import {
+  cancelIncompleteSubscriptionsForCustomer,
   finalizeCheckoutSessionForUser,
   findCheckoutBlockingSubscription,
   findCheckoutCustomerByEmail,
@@ -87,6 +94,57 @@ describe('findCheckoutBlockingSubscription', () => {
     )
 
     expect(await findCheckoutBlockingSubscription('cus_1')).toBeNull()
+  })
+})
+
+describe('cancelIncompleteSubscriptionsForCustomer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockCancelAbandonedSubscription.mockResolvedValue(undefined)
+  })
+
+  it('cancels only incomplete subscriptions, skipping other statuses', async () => {
+    mockIterateCustomerSubscriptions.mockReturnValue(
+      subscriptionIterator([
+        makeSubscription({ id: 'sub_incomplete', status: 'incomplete' }),
+        makeSubscription({ id: 'sub_active', status: 'active' }),
+        makeSubscription({ id: 'sub_canceled', status: 'canceled' }),
+      ]),
+    )
+
+    await cancelIncompleteSubscriptionsForCustomer('cus_1')
+
+    expect(mockCancelAbandonedSubscription).toHaveBeenCalledTimes(1)
+    expect(mockCancelAbandonedSubscription).toHaveBeenCalledWith('sub_incomplete')
+  })
+
+  it('is a no-op when there are no incomplete subscriptions', async () => {
+    mockIterateCustomerSubscriptions.mockReturnValue(
+      subscriptionIterator([makeSubscription({ status: 'active' })]),
+    )
+
+    await cancelIncompleteSubscriptionsForCustomer('cus_1')
+
+    expect(mockCancelAbandonedSubscription).not.toHaveBeenCalled()
+  })
+
+  it('cancels every incomplete subscription even when one cancel fails', async () => {
+    mockIterateCustomerSubscriptions.mockReturnValue(
+      subscriptionIterator([
+        makeSubscription({ id: 'sub_a', status: 'incomplete' }),
+        makeSubscription({ id: 'sub_b', status: 'incomplete' }),
+        makeSubscription({ id: 'sub_c', status: 'incomplete' }),
+      ]),
+    )
+    mockCancelAbandonedSubscription.mockImplementation((id: string) =>
+      id === 'sub_b' ? Promise.reject(new Error('Stripe unavailable')) : Promise.resolve(),
+    )
+
+    await expect(cancelIncompleteSubscriptionsForCustomer('cus_1')).resolves.toBeUndefined()
+
+    expect(mockCancelAbandonedSubscription).toHaveBeenCalledTimes(3)
+    expect(mockCancelAbandonedSubscription).toHaveBeenCalledWith('sub_a')
+    expect(mockCancelAbandonedSubscription).toHaveBeenCalledWith('sub_c')
   })
 })
 

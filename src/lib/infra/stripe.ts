@@ -23,6 +23,8 @@ function getStripeClient(): Stripe {
         version: '0.1.0',
       },
       typescript: true,
+      timeout: 8000,
+      maxNetworkRetries: 1,
     })
   }
   return stripeClient

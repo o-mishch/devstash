@@ -72,12 +72,14 @@ export const POST = authedRoute({ rateLimit: 'stripeCheckout' }, async ({ userId
       } else {
         // Self-heal any Stripe customer email drift left by a previously failed (swallowed) sync — the
         // update is idempotent, so this keeps invoices/portal/recovery email on the current address.
-        if (userEmail) {
-          await updateStripeCustomerEmail(customerId, userEmail).catch((err) => {
-            checkoutLog.error({ userId, customerId, err }, 'Failed to refresh Stripe customer email at checkout')
-          })
-        }
-        await cancelIncompleteSubscriptionsForCustomer(customerId)
+        // Runs concurrently with incomplete-subscription cleanup — the two are independent Stripe calls.
+        await Promise.all([
+          userEmail &&
+            updateStripeCustomerEmail(customerId, userEmail).catch((err) => {
+              checkoutLog.error({ userId, customerId, err }, 'Failed to refresh Stripe customer email at checkout')
+            }),
+          cancelIncompleteSubscriptionsForCustomer(customerId),
+        ])
       }
     }
     const stripeSession = await createCheckoutSession({
