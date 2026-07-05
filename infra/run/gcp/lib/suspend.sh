@@ -152,56 +152,49 @@ resume() {
   log "Resuming environment (recreate compute + Cloud SQL, restore the dump). Takes several minutes."
   set_active_state true true
 
-  # PARALLELIZE: the app image build depends on NONE of the GCP infra (it is pure
-  # source→container), yet Cloud SQL alone takes ~10 min to create and the GKE control plane
-  # another ~5-7 min. Dispatching CI NOW lets deploy-gke's `build-push` job (which needs only
-  # `verify`, not the cluster — see .github/workflows/deploy-gke.yml) build + push to Artifact
-  # Registry WHILE `apply` provisions the infra below. CI's cluster-gated `deploy` job then
-  # waits for the cluster+secrets on its own. This overlaps the two slowest, independent phases
-  # instead of running them back-to-back (~5-8 min off a resume).
+  # Two entry states reach `resume`, distinguished by whether the tofu outputs `secrets` reads
+  # already exist (_tf_outputs_present):
   #
-  # Pre-dispatch CI (secrets refresh → deploy provision) so build-push overlaps apply, then arm
-  # the cancel trap so an early exit reaps the orphaned run. Both are single-sourced in run.sh
-  # (_predispatch_ci_build / _arm_ci_cancel_trap), shared verbatim with up()'s CI-present branch —
-  # `secrets` refreshes the WIF/DEPLOYER_SA GitHub secrets CI authenticates with (tofu outputs
-  # persist across a suspend, so they are readable now), `deploy provision` tells CI's gate to build
-  # despite no cluster yet, and the trap cancels the run on any non-zero exit before the handoff
-  # below (apply's internal `die` means a plain `if ! apply` could never catch a failure). The watch
-  # block below CLEARS the trap the instant it takes ownership (a successful resume must NOT cancel
-  # the very run it is about to watch).
-  _predispatch_ci_build          # sets DEPLOY_RUN_ID
-  _arm_ci_cancel_trap resume     # cancel the run if anything below dies before the handoff
-
-  apply        # Cloud SQL (~10 min) + control plane build here, in parallel with CI's build-push
-  restore_db   # import the GCS dump into the fresh instance BEFORE the app deploys
-  wait_for_cluster
-  eso
-  log "CI build+push has been running in parallel with apply; its cluster-gated deploy job proceeds now that the cluster + secrets are live"
+  #   • post-SUSPEND (outputs PRESENT): suspend keeps the SAs/WIF/static vars, so every output is
+  #     readable NOW, before apply. Take the FAST path — PRE-DISPATCH CI so the image build overlaps
+  #     the ~10-min Cloud SQL + ~5-7-min control-plane provision (see the pre-dispatch rationale in
+  #     run.sh:_predispatch_ci_build). This is the common on-demand-showcase case.
+  #
+  #   • post-DOWN / first-ever (outputs ABSENT): a full `down` destroyed everything → 0 outputs, so
+  #     `secrets` CANNOT run yet (it would read an empty state and — before this gate — pushed the
+  #     #26991 warning box to GitHub). Take the SERIAL path: apply FIRST to recreate the infra +
+  #     repopulate outputs, THEN secrets, THEN dispatch the deploy. This loses only the pre-dispatch
+  #     overlap on a path that is already a from-scratch multi-minute rebuild. `resume` thus handles
+  #     both a suspended and a downed env instead of corrupting GitHub on the latter.
+  if _tf_outputs_present; then
+    # FAST path — outputs present (post-suspend). Pre-dispatch CI (secrets refresh → deploy
+    # provision) so build-push overlaps apply, arm the cancel trap so an early exit reaps the
+    # orphaned run. Both single-sourced in run.sh, shared with up()'s outputs-present branch.
+    log "Tofu outputs present (suspended env) — pre-dispatching CI so its build overlaps apply"
+    _predispatch_ci_build          # sets DEPLOY_RUN_ID; runs secrets (outputs readable now) + deploy provision
+    _arm_ci_cancel_trap resume     # cancel the run if anything below dies before the handoff
+    apply        # Cloud SQL (~10 min) + control plane build here, in parallel with CI's build-push
+    restore_db   # import the GCS dump into the fresh instance BEFORE the app deploys
+    wait_for_cluster
+    eso
+    log "CI build+push has been running in parallel with apply; its cluster-gated deploy job proceeds now that the cluster + secrets are live"
+  else
+    # SERIAL path — no outputs (post-down / first-ever). apply must run BEFORE secrets so the
+    # outputs exist to push; only THEN can CI be dispatched (nothing is pre-dispatched, so there
+    # is no cancel trap to arm — apply's own `die` aborts cleanly on failure with nothing orphaned).
+    warn "No tofu outputs (downed / first-ever env) — applying FIRST, then secrets + deploy (no pre-dispatch overlap)"
+    apply        # recreate the infra + repopulate outputs
+    restore_db   # import the GCS dump into the fresh instance BEFORE the app deploys
+    secrets      # outputs now exist — push CI auth secrets + public config (would have pushed a warning box pre-apply)
+    wait_for_cluster
+    eso
+    deploy provision   # dispatch the deploy now that the cluster + secrets are live; sets DEPLOY_RUN_ID
+  fi
   update_dns
 
-  # Block on the dispatched run instead of firing-and-forgetting it: a resume that
-  # merely kicks off CI and returns "done" hides a hung/failed build behind a
-  # healthy-looking cluster (GKE shows ESO/Reloader up, but no devstash-web
-  # Deployment until this run's rollout step completes). Surfacing pass/fail here,
-  # in the same terminal invocation, replaces having to separately notice the gap
-  # in the GCP console or run 'status'/'smoke' by hand.
-  # Take ownership of the run: from here on a CI failure is surfaced by the watch below (not the
-  # cancel trap). Clear the EXIT trap so a `return 1` on CI failure does NOT also cancel the run
-  # we just watched fail — the watch already reported it, and cancelling a finished run is noise.
-  trap - EXIT
-  if [[ -n "${DEPLOY_RUN_ID:-}" ]]; then
-    log "Watching deploy-gke run $DEPLOY_RUN_ID (build+push has its own retry/timeout — see deploy-gke.yml)"
-    if gh run watch "$DEPLOY_RUN_ID" --exit-status; then
-      ok "CI run $DEPLOY_RUN_ID completed successfully — devstash-web is rolled out"
-      log "Next: bash infra/run/gcp/run.sh smoke   # health-check the live app"
-    else
-      warn "CI run $DEPLOY_RUN_ID FAILED — devstash-web is not deployed. Check: gh run view $DEPLOY_RUN_ID --log-failed"
-      warn "Re-run the deploy once fixed:  bash infra/run/gcp/run.sh deploy"
-      return 1
-    fi
-  else
-    warn "could not confirm the dispatched run — follow it manually:  gh run watch"
-  fi
+  # Take ownership of the dispatched run and block on it (clears the cancel trap first, returns 1
+  # on CI failure). Shared by both branches — see run.sh:_watch_ci_run.
+  _watch_ci_run || return 1
 
   # TLS is served from the project-scoped Certificate Manager cert (envs/dev/certmanager.tf),
   # which is NOT destroyed on suspend — so on resume the Gateway serves a valid cert immediately,

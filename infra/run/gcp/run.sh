@@ -164,6 +164,48 @@ tf_out() {
     || printf '%s' "${2:-}"
 }
 
+# require_outputs <output-name>...: die unless EVERY named tofu output is present and non-empty.
+# MUST be called as a bare statement in the caller's shell (not inside `$(…)`) — that is the whole
+# point: a `die` (exit 1) inside a command substitution only kills the subshell, so bash then runs
+# the outer command (`gh secret set … --body ""`) with an EMPTY body and `gh` drops into an
+# interactive "Paste your secret:" prompt — the failure never propagates. Gating up front, in the
+# parent shell, means one missing output aborts `secrets` before any `gh` call runs.
+#
+# Guards the same class of outputs that must exist (unconditional passthroughs like app_domain /
+# email_from / gcp_project_id): on an empty-output state (fresh / not-yet-applied / suspended) the
+# old `tofu_ output -raw X` printed the #26991 "No outputs found" WARNING BOX to STDOUT and exited
+# 0, so the box was written verbatim into the GitHub secret/variable (see the tf_out comment above).
+# Reading through the -json path (via tf_out) can't emit that box; this gate then rejects emptiness.
+require_outputs() {
+  local name missing=()
+  for name in "$@"; do
+    [[ -n "$(tf_out "$name")" ]] || missing+=("$name")
+  done
+  [[ ${#missing[@]} -eq 0 ]] || die "tofu output(s) empty: ${missing[*]} — run 'apply' first (state has no outputs; refusing to push a warning box to GitHub)"
+}
+
+# The tofu outputs `secrets` reads to push CI's auth secrets + public config. Single-sourced so
+# the require_outputs gate in secrets() and the _tf_outputs_present predicate below can never
+# disagree on "which outputs must exist before we may push to GitHub / pre-dispatch CI".
+SECRETS_REQUIRED_OUTPUTS=(gcp_project_id deployer_service_account_email wif_provider app_domain email_from)
+
+# _tf_outputs_present: true iff EVERY output `secrets` needs is present + non-empty — i.e. the
+# state has been applied and holds live outputs. This is the real precondition for pre-dispatching
+# CI (secrets refresh → deploy provision) BEFORE apply: that overlap only works when the outputs
+# `secrets` reads already exist. They DO after a `suspend` (which keeps the SAs/WIF/static vars),
+# but do NOT after a `down` (full destroy → 0 outputs) or a first-ever bring-up. up()/resume() gate
+# on THIS rather than on a GitHub-side "do the CI secrets exist?" check: stale GitHub secrets can
+# outlive a `down` that erased the outputs to refresh them from, so a GitHub-side check would
+# green-light a pre-dispatch that then reads an empty state and pushes garbage. Checking the outputs
+# directly is the only correct gate. Best-effort read: any tofu hiccup yields empty → "not present"
+# → the safe serial fallback (apply first, then secrets).
+_tf_outputs_present() {
+  local name
+  for name in "${SECRETS_REQUIRED_OUTPUTS[@]}"; do
+    [[ -n "$(tf_out "$name")" ]] || return 1
+  done
+}
+
 # app_config_blob: print the devstash-app-config JSON from its newest ENABLED version, or
 # nothing (empty output, non-fatal) if the secret is absent/has no enabled version. The
 # newest-ENABLED-version resolution (and the reason we avoid `access latest`) lives in
@@ -194,20 +236,6 @@ gh_var_set_or_clear() {
   else
     gh variable delete "$name" >/dev/null 2>&1 || true
   fi
-}
-
-# _ci_secrets_present: true iff the GitHub secrets CI needs to authenticate to GCP
-# (WORKLOAD_IDENTITY_PROVIDER + DEPLOYER_SA) already exist. Gates whether `up` may PRE-dispatch
-# the deploy-gke workflow (so its cluster-independent build-push job overlaps `apply`) or must
-# fall back to the serial order. On a FIRST-EVER `up` there are no tofu outputs yet, so `secrets`
-# cannot push these and CI would fail at its auth step — so we only pre-dispatch once a prior
-# cycle has populated them. `gh secret list` exits 0 even when a secret is absent, so match by
-# name in the JSON. Best-effort: any gh/auth hiccup returns "not present" → safe serial fallback.
-_ci_secrets_present() {
-  local names
-  names="$(gh secret list --json name -q '.[].name' 2>/dev/null || true)"
-  printf '%s\n' "$names" | grep -qxF WORKLOAD_IDENTITY_PROVIDER \
-    && printf '%s\n' "$names" | grep -qxF DEPLOYER_SA
 }
 
 # wait_for_cluster: poll `kubectl cluster-info` until the GKE Autopilot control plane responds
@@ -442,15 +470,18 @@ _apply_and_wire() {
 secrets() {
   log "Pushing GitHub Actions secrets from tofu output"
   gh auth status >/dev/null 2>&1 || die "gh CLI not authenticated — run: gh auth login"
-  gh secret set GCP_PROJECT_ID            --body "$(tofu_ output -raw gcp_project_id)"
-  gh secret set DEPLOYER_SA               --body "$(tofu_ output -raw deployer_service_account_email)"
-  gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu_ output -raw wif_provider)"
+  # Gate FIRST, in this shell, so a missing output aborts before any `gh` call — a `die` inside the
+  # `$(…)` bodies below would only kill the subshell and let `gh … --body ""` prompt interactively.
+  require_outputs "${SECRETS_REQUIRED_OUTPUTS[@]}"
+  gh secret set GCP_PROJECT_ID            --body "$(tf_out gcp_project_id)"
+  gh secret set DEPLOYER_SA               --body "$(tf_out deployer_service_account_email)"
+  gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tf_out wif_provider)"
   # APP_DOMAIN is a GitHub *variable* (non-secret public config), not a secret.
   # It is read by the CI workflow as ${{ vars.APP_DOMAIN }} and injected into
   # settings.yaml as the public host for the HTTPRoute + NEXTAUTH_URL (TLS is served by
   # the Certificate Manager cert map, referenced separately via data.certMapName).
-  gh variable set APP_DOMAIN              --body "$(tofu_ output -raw app_domain)"
-  gh variable set EMAIL_FROM              --body "$(tofu_ output -raw email_from)"
+  gh variable set APP_DOMAIN              --body "$(tf_out app_domain)"
+  gh variable set EMAIL_FROM              --body "$(tf_out email_from)"
   gh variable set ENABLE_GITHUB_ATTESTATIONS --body "false"
   # Cloud Armor toggle — inject-settings.sh keys the GCPBackendPolicy securityPolicy on this.
   # true → CI attaches devstash-dev-armor; cleared (dev $0 default) → var deleted (no WAF).
@@ -464,8 +495,9 @@ secrets() {
   local attestor keyring="" key=""
   attestor="$(tf_out binauthz_attestor_name)"
   if [[ -n "$attestor" ]]; then
-    keyring="$(tofu_ output -raw binauthz_kms_keyring)"
-    key="$(tofu_ output -raw binauthz_kms_key)"
+    require_outputs binauthz_kms_keyring binauthz_kms_key
+    keyring="$(tf_out binauthz_kms_keyring)"
+    key="$(tf_out binauthz_kms_key)"
   fi
   gh_var_set_or_clear BINAUTHZ_ATTESTOR    "$attestor"
   gh_var_set_or_clear BINAUTHZ_KMS_KEYRING "$keyring"
@@ -512,6 +544,12 @@ _verify_pushed_secrets() {
     gh_val="$(gh_var_value "$gh_var")"
     [[ -n "$gh_val" ]] && ok "$gh_var variable = $gh_val"
   done
+  # Explicit success: the loop above ends on a possibly-false test (all optional toggles absent in
+  # the dev $0 posture), which — via the trailing `&&` — would otherwise make this function, and
+  # `run.sh secrets` under set -e, and the resume/up flows that call it mid-sequence, return that
+  # non-zero. Every real failure above already `die`d; reaching here means success. This one
+  # explicit return is the sole guard, so the loop body stays a terse one-liner.
+  return 0
 }
 
 # dns_hint / update_dns / spaceship_api / set_dns_creds live in lib/dns.sh (sourced above).
@@ -554,9 +592,10 @@ deploy() {
 }
 
 # _predispatch_ci_build: the shared "pre-dispatch the deploy so its cluster-independent build-push
-# job overlaps apply" step used identically by up()'s CI-secrets-present branch and resume(). CI
+# job overlaps apply" step used identically by up()'s and resume()'s outputs-present branch. CI
 # authenticates to GCP with the WIF/DEPLOYER_SA GitHub secrets, so `secrets` MUST run first to
 # refresh them against the current tofu outputs before the just-dispatched run tries to authenticate.
+# ONLY call this when _tf_outputs_present (the outputs `secrets` reads exist) — the callers gate on it.
 # `deploy provision` then tells CI's gate job to build even though the cluster does not exist yet
 # (we are mid-provision). Sets DEPLOY_RUN_ID (via deploy) for the watch + the cancel trap below.
 _predispatch_ci_build() {
@@ -580,6 +619,62 @@ _arm_ci_cancel_trap() {
   # shellcheck disable=SC2064,SC2154  # expand DEPLOY_RUN_ID + phase NOW (fixed values); rc IS
   # assigned (rc=$?) and read within the trap string — shellcheck can't see across the trap boundary.
   trap "rc=\$?; [[ \$rc -ne 0 ]] && { gh run cancel '$DEPLOY_RUN_ID' >/dev/null 2>&1 || true; warn '$phase failed — cancelled pre-dispatched CI run $DEPLOY_RUN_ID'; }" EXIT
+}
+
+# _watch_ci_run: take ownership of the dispatched deploy-gke run (DEPLOY_RUN_ID) and BLOCK on it,
+# surfacing pass/fail in this same terminal invocation instead of firing-and-forgetting — a resume
+# that merely kicks CI off and returns "done" hides a hung/failed build behind a healthy-looking
+# cluster (ESO/Reloader up, but no devstash-web Deployment until the run's rollout step lands).
+# Clears the EXIT cancel-trap FIRST so a `return 1` on CI failure does not also cancel the run we
+# just watched fail (the watch already reported it; cancelling a finished run is noise). Shared by
+# both resume() branches (pre-dispatched overlap AND the post-down serial dispatch). Returns 1 on
+# CI failure so the caller propagates it. No confirmed run id → warn + manual hint, success (0).
+_watch_ci_run() {
+  trap - EXIT
+  if [[ -z "${DEPLOY_RUN_ID:-}" ]]; then
+    warn "could not confirm the dispatched run — follow it manually:  gh run watch"
+    return 0
+  fi
+  log "Watching deploy-gke run $DEPLOY_RUN_ID (build+push has its own retry/timeout — see deploy-gke.yml)"
+  if gh run watch "$DEPLOY_RUN_ID" --exit-status; then
+    ok "CI run $DEPLOY_RUN_ID completed successfully — devstash-web is rolled out"
+    log "Next: bash infra/run/gcp/run.sh smoke   # health-check the live app"
+    return 0
+  fi
+  warn "CI run $DEPLOY_RUN_ID FAILED — devstash-web is not deployed. Check: gh run view $DEPLOY_RUN_ID --log-failed"
+  warn "Re-run the deploy once fixed:  bash infra/run/gcp/run.sh deploy"
+  return 1
+}
+
+# _apply_with_overlap: the `apply` dispatch command's tail. When the tofu outputs `secrets` reads
+# already exist (_tf_outputs_present — an apply against an already-provisioned env, e.g. a plain
+# re-apply or a config tweak), pre-dispatch the deploy-gke build so its cluster-INDEPENDENT
+# build-push job (AR repo already exists; buildx cache is type=gha; auth is WIF) runs WHILE apply
+# reprovisions — the same overlap up()/resume() already do, so image build stops sitting serialized
+# behind the ~11-min Cloud SQL create. Unlike resume(), this does NOT block on the run: apply is an
+# infra command, so it returns as soon as infra is wired and prints `gh run watch <id>` for the
+# background build (per-case decision — a bare `apply` should not turn into a long deploy-and-wait).
+# The cancel trap still reaps the orphaned run if apply itself dies before the handoff. When the
+# outputs are ABSENT (a first-ever apply before any provision), there is nothing to authenticate a
+# CI build against, so fall back to the plain serial _apply_and_wire with the deploy left manual —
+# mirroring up()'s two branches. Gating on OUTPUTS (not stale GitHub secrets) matches up()/resume().
+_apply_with_overlap() {
+  if _tf_outputs_present; then
+    log "Tofu outputs present — pre-dispatching deploy so its build overlaps apply"
+    _predispatch_ci_build          # secrets refresh → deploy provision; sets DEPLOY_RUN_ID
+    _arm_ci_cancel_trap apply      # cancel the run if apply dies before the handoff below
+    _apply_and_wire
+    trap - EXIT   # infra is wired; the run now owns its own success/failure — stop cancelling it
+    log "Infra applied and the app deploy is building/rolling out in parallel. Follow it:"
+    [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
+    echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
+    return 0
+  fi
+  # First-ever apply (no tofu outputs yet): serial order, app deploy stays a manual next step.
+  _apply_and_wire
+  log "Infra applied. Next:"
+  echo "  bash infra/run/gcp/run.sh deploy   # build + migrate + roll out the app"
+  echo "  bash infra/run/gcp/run.sh smoke    # wait for CI + verify health endpoint"
 }
 
 # verify-secrets: list expected Secret Manager secrets and flag any that are missing.
@@ -821,8 +916,19 @@ down() {
     # makes destroy operate on state alone — an already-gone resource just 404s on its own
     # delete call, which the provider tolerates, and the teardown proceeds. (Force-delete,
     # catch-if-absent, move on.) State-only destroy is safe here precisely because down()
-    # removes EVERYTHING; there is no partial-state risk to guard against.
-    tofu_ destroy -auto-approve -refresh=false
+    # removes EVERYTHING (bar the excluded secrets); there is no partial-state risk to guard against.
+    #
+    # -exclude the two Secret Manager secret CONTAINERS so a full `down` PRESERVES them (and,
+    # by dependency, their versions + IAM grants — `-exclude` spares anything depending on the
+    # excluded address). Both carry lifecycle.prevent_destroy = true, so WITHOUT these excludes
+    # `tofu destroy` would ERROR ("Instance cannot be destroyed") and abort the whole teardown.
+    # Rationale for keeping them: Secret Manager is ~$0 (inside the free version tier) and
+    # re-entering the app + Spaceship-DNS creds by hand after every teardown is the real cost.
+    # These are the ONLY prevent_destroy resources in the env — keep this list in sync if that
+    # changes. Addresses: app_config lives in module.iam; ops_config is top-level in envs/dev.
+    tofu_ destroy -auto-approve -refresh=false \
+      -exclude=module.iam.google_secret_manager_secret.app_config \
+      -exclude=google_secret_manager_secret.ops_config
     # Reclaim the PSA peering + range GCP holds past the ABANDONed connection (best-effort).
     force_release_psa
     ok "destroyed. (State bucket gs://$STATE_BUCKET and the project are left intact.)"
@@ -839,16 +945,18 @@ down() {
 
 # up: full bring-up — bootstrap → apply → cluster-side wiring → DNS. Like `resume`, it PRE-
 # DISPATCHES the deploy-gke workflow (whose cluster-independent build-push job then builds +
-# pushes WHILE `apply` provisions Cloud SQL ~10 min + the control plane) — but ONLY when CI's
-# auth secrets already exist (a prior cycle). On a first-ever `up` there are no tofu outputs yet,
-# so `secrets` cannot push WIF/DEPLOYER_SA and a pre-dispatched CI run would fail at auth; there
-# we keep the original serial order and leave `deploy` as a printed manual next step. Unlike
-# `resume`, `up` also runs `bootstrap` (project/billing/state/APIs) and does NOT restore a DB.
+# pushes WHILE `apply` provisions Cloud SQL ~10 min + the control plane) — but ONLY when the tofu
+# outputs `secrets` reads already exist (_tf_outputs_present). On a first-ever `up`, or an `up`
+# after a `down` erased the outputs, they do NOT, so `secrets` cannot push WIF/DEPLOYER_SA and a
+# pre-dispatched CI run would fail at auth (worse: pre-2026-07 it pushed the #26991 warning box);
+# there we keep the serial order and leave `deploy` as a printed manual next step. Gating on the
+# OUTPUTS (not stale GitHub secrets, which can outlive the `down` that erased the outputs) mirrors
+# resume(). Unlike `resume`, `up` also runs `bootstrap` (project/billing/state/APIs), no DB restore.
 up() {
   preflight
   bootstrap
-  if _ci_secrets_present; then
-    log "CI auth secrets already present — pre-dispatching deploy so its build overlaps apply"
+  if _tf_outputs_present; then
+    log "Tofu outputs present — pre-dispatching deploy so its build overlaps apply"
     # Same overlap + cancel-on-early-exit pattern as resume(): pre-dispatch CI (secrets refresh →
     # deploy provision) so build-push runs WHILE apply provisions, arm the cancel trap so an early
     # exit reaps the orphaned run, then apply in parallel. Both steps single-sourced above.
@@ -864,8 +972,8 @@ up() {
     echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
     return 0
   fi
-  # First-ever bring-up (no CI secrets yet): original serial order, app deploy stays manual.
-  # _apply_and_wire runs the apply→wait→eso→secrets→dns tail (shared with the `apply` command).
+  # First-ever bring-up, or an `up` after a `down` (no tofu outputs yet): serial order, app deploy
+  # stays manual. _apply_and_wire runs the apply→wait→eso→secrets→dns tail (shared with `apply`).
   _apply_and_wire
   log "Bootstrap + infra done. Next:"
   echo "  1. If the DNS A-record above was not set automatically (creds missing),"
@@ -887,7 +995,7 @@ case "$CMD" in
   # self-guarding: it warns-and-prints a manual hint if creds/IP are missing, and it
   # only ever touches the gke A-record (prod Vercel/email records are never affected),
   # so it strictly supersedes the print-only dns_hint here.
-  apply)           preflight; _apply_and_wire ;;
+  apply)           preflight; _apply_with_overlap ;;
   eso)             eso ;;
   reloader)        reloader ;;
   secrets)         secrets ;;

@@ -45,6 +45,13 @@ resource "google_secret_manager_secret" "ops_config" {
   }
 
   labels = local.common_labels
+
+  # Outlive a full `run.sh down` — same rationale as app_config (see modules/iam/main.tf):
+  # ~$0 to keep, painful to re-enter the Spaceship DNS creds by hand. `down` excludes this
+  # address from `tofu destroy`; prevent_destroy backstops any unfiltered destroy.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_secret_manager_secret_version" "ops_config" {

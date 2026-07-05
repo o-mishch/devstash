@@ -73,6 +73,16 @@ resource "google_secret_manager_secret" "app_config" {
   }
 
   labels = var.labels
+
+  # Outlive a full `run.sh down`. Secret Manager is effectively free (2 secrets, single
+  # version each — well inside the 6-free-version tier, ~$0/mo), and re-populating the app
+  # creds blob by hand after every teardown is the real cost. `down` runs `tofu destroy`
+  # with `-exclude` for this address so a normal teardown skips it cleanly; prevent_destroy
+  # is the belt-and-suspenders backstop that makes ANY unfiltered destroy ERROR rather than
+  # silently take the secrets with it. To intentionally remove it, drop this block first.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # The version holding the JSON blob. WRITE-ONLY + hash-versioned + disable-not-destroy —
