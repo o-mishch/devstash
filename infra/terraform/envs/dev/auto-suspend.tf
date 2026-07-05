@@ -62,6 +62,26 @@ locals {
   #   browser                data.google_project (resourcemanager.projects.get)
   #   cloudkms.viewer        data.google_kms_crypto_key_version (binauthz signer — ungated)
   #   logging.logWriter      Cloud Build custom-SA builds must write their own logs
+  #   serviceusage.serviceUsageConsumer
+  #                          the provider runs with user_project_override + billing_project
+  #                          (providers.tf, mandatory for the Billing Budgets API), so every
+  #                          API call sends an X-Goog-User-Project header attributed to this
+  #                          project — which requires serviceusage.services.use on it. Without
+  #                          it the db-dumps bucket-IAM destroy 403s ("does not have
+  #                          serviceusage.services.use access") AFTER Valkey/NAT/IP are gone
+  #                          but BEFORE the Cloud SQL destroy, stranding a billing instance.
+  #                          This predefined role is the minimal grant (its only meaningful
+  #                          permission is services.use); it lets the SA attribute calls to
+  #                          the project it already operates on — not an escalation. Must be
+  #                          PROJECT-scoped (a bucket-level binding can't carry it).
+  #
+  # NOTE: there is deliberately NO self-updater role for the auto-suspend's own alert policy +
+  # Cloud Build trigger. Those always-on resources used to plan an in-place update on every
+  # suspend apply because auto_suspend_* vars were omitted from auto_suspend_nonsecret_tfvars
+  # and fell back to their defaults (idle_window 1800 -> 300), forcing a self-diff the SA had
+  # to be able to write. Feeding the real auto_suspend_* values into that tfvars blob makes
+  # the suspend apply render byte-identical config → zero self-diff → no self-update
+  # permission needed. Removing the cause is safer than permitting the symptom.
   lifecycle_roles = local.auto_suspend_on ? [
     "roles/container.admin",
     "roles/memorystore.admin",
@@ -73,47 +93,45 @@ locals {
     "roles/browser",
     "roles/cloudkms.viewer",
     "roles/logging.logWriter",
-    # In-place UPDATE of the auto-suspend's OWN alert policy + Cloud Build trigger. The
-    # suspend apply runs with -refresh=false, so if config drifts from the last-written
-    # state on these two always-on resources (e.g. a computed notification-channel id or a
-    # substitutions reorder) it plans a self-update the SA must be able to write — otherwise
-    # the whole apply 403s AFTER the cheap resources (Valkey, NAT, IP, SQL) are already gone,
-    # leaving the env half-torn and re-firing every cycle. This is NOT an escalation: the SA
-    # only gains update on the two resources this automation itself owns (custom role below,
-    # same repo-scoped least-privilege posture as lifecycle_ar_deleter). It deliberately does
-    # NOT get resourcemanager.projects.setIamPolicy — the node-SA/AR-reader bindings are kept
-    # stable across suspend instead (deterministic gke_node_sa_email in main.tf), so the apply
-    # never needs to delete a project-IAM member.
-    #
-    # Built as a STATIC string, not google_project_iam_custom_role.lifecycle_self_updater.id:
-    # for_each keys must be known at plan time, and a not-yet-created resource's .id reads as
-    # unknown, which errors with "Invalid for_each argument". The custom role's canonical id
-    # is projects/<project>/roles/<role_id> — every part is a plan-time-known input — so
-    # reconstruct it here (the role resource below uses the same role_id expression).
-    "projects/${var.project_id}/roles/${replace(local.name_prefix, "-", "_")}_lifecycle_self_updater",
+    "roles/serviceusage.serviceUsageConsumer",
   ] : []
 
   # Non-secret tfvars for the headless apply — built from THIS module so the values match a
   # local apply exactly. environment_active is absent (forced to false on the command line);
   # secrets are reconstructed at runtime.
+  #
+  # The auto_suspend_* knobs MUST be included: the suspend build's apply runs -refresh=false,
+  # comparing config against last-written state. If any auto_suspend_* var here fell back to
+  # its variables.tf default (because it was omitted) while the operator's apply used a
+  # terraform.tfvars override, the plan would "correct" the ALWAYS-ON trigger + Cloud
+  # Scheduler + alert policy back to the default on every suspend — a self-inflicted in-place
+  # update mid-teardown. That is exactly what stranded a prior run: idle_window drifted
+  # 1800 (operator) -> 300 (default), the trigger update 403'd, tofu exited non-zero BEFORE
+  # the Cloud SQL destroy AND before the delete-registry step, leaving both billing. Feeding
+  # the real values in makes the suspend apply render byte-identical config → zero self-diff.
   auto_suspend_nonsecret_tfvars = base64encode(jsonencode({
-    project_id                = var.project_id
-    project_number            = var.project_number
-    region                    = var.region
-    environment               = var.environment
-    github_repository         = var.github_repository
-    github_owner_id           = var.github_owner_id
-    app_domain                = var.app_domain
-    email_from                = var.email_from
-    billing_account           = var.billing_account
-    monthly_budget_amount     = var.monthly_budget_amount
-    db_tier                   = var.db_tier
-    db_authorized_networks    = var.db_authorized_networks
-    db_point_in_time_recovery = var.db_point_in_time_recovery
-    db_highly_available       = var.db_highly_available
-    memory_highly_available   = var.memory_highly_available
-    armor_waf_preview         = var.armor_waf_preview
-    deletion_protection       = var.deletion_protection
+    project_id                       = var.project_id
+    project_number                   = var.project_number
+    region                           = var.region
+    environment                      = var.environment
+    github_repository                = var.github_repository
+    github_owner_id                  = var.github_owner_id
+    app_domain                       = var.app_domain
+    email_from                       = var.email_from
+    billing_account                  = var.billing_account
+    monthly_budget_amount            = var.monthly_budget_amount
+    db_tier                          = var.db_tier
+    db_authorized_networks           = var.db_authorized_networks
+    db_point_in_time_recovery        = var.db_point_in_time_recovery
+    db_highly_available              = var.db_highly_available
+    memory_highly_available          = var.memory_highly_available
+    armor_waf_preview                = var.armor_waf_preview
+    deletion_protection              = var.deletion_protection
+    auto_suspend_enabled             = var.auto_suspend_enabled
+    auto_suspend_idle_window_seconds = var.auto_suspend_idle_window_seconds
+    auto_suspend_max_uptime_seconds  = var.auto_suspend_max_uptime_seconds
+    auto_suspend_schedule_cron       = var.auto_suspend_schedule_cron
+    auto_suspend_repo_branch         = var.auto_suspend_repo_branch
   }))
 
   # Secret KEYS are not sensitive (just names like "stripe-secret-key"); nonsensitive() lets
@@ -194,11 +212,6 @@ resource "google_project_iam_member" "lifecycle" {
   project  = var.project_id
   role     = each.value
   member   = "serviceAccount:${google_service_account.lifecycle[0].email}"
-
-  # lifecycle_roles now includes the self-updater custom role by its static id, so the role
-  # must exist before this binding references it (a static for_each key can't imply the
-  # ordering the way a resource reference would).
-  depends_on = [google_project_iam_custom_role.lifecycle_self_updater]
 }
 
 # Read/write the Terraform state object (+ lock) — scoped to the state bucket, not project.
@@ -229,7 +242,9 @@ resource "google_storage_bucket_iam_member" "lifecycle_db_dumps" {
 # also granting object/bucket create+delete (roles/storage.admin), so mint a custom role
 # with exactly the three permissions the destroy calls, bound to the db-dumps bucket ONLY.
 # This is NOT project-level setIamPolicy — same one-bucket, custom-role least-privilege
-# posture as lifecycle_ar_deleter / lifecycle_self_updater.
+# posture as lifecycle_ar_deleter. (The separate project-level serviceusage.services.use the
+# bucket-IAM rewrite ALSO needs is granted via roles/serviceusage.serviceUsageConsumer in
+# lifecycle_roles above — a bucket-scoped binding can't carry that project-resource perm.)
 resource "google_project_iam_custom_role" "lifecycle_db_dumps_iam" {
   count       = local.auto_suspend_on ? 1 : 0
   role_id     = "${replace(local.name_prefix, "-", "_")}_db_dumps_iam_admin"
@@ -272,28 +287,6 @@ resource "google_artifact_registry_repository_iam_member" "lifecycle_ar_delete" 
   repository = module.artifact_registry.repository_id
   role       = google_project_iam_custom_role.lifecycle_ar_deleter[0].id
   member     = "serviceAccount:${google_service_account.lifecycle[0].email}"
-}
-
-# Exactly the permissions to UPDATE-IN-PLACE the auto-suspend's own alert policy + Cloud
-# Build trigger (see the lifecycle_roles comment). No predefined role is this narrow —
-# roles/monitoring.editor and roles/cloudbuild.builds.editor each pull in create/delete
-# across every monitoring + build resource — so mint a custom role with only the four get +
-# update permissions the -refresh=false self-diff can require. Bound project-wide via
-# lifecycle_roles (the trigger + alert policy are project-scoped resources), NOT granting
-# resourcemanager.projects.setIamPolicy: the node IAM bindings are kept stable across
-# suspend so the apply never deletes a project-IAM member. Same custom-role least-privilege
-# posture as lifecycle_ar_deleter above.
-resource "google_project_iam_custom_role" "lifecycle_self_updater" {
-  count       = local.auto_suspend_on ? 1 : 0
-  role_id     = "${replace(local.name_prefix, "-", "_")}_lifecycle_self_updater"
-  title       = "DevStash ${var.environment} lifecycle self-updater (idle auto-suspend)"
-  description = "Update the auto-suspend's own alert policy + Cloud Build trigger so a -refresh=false self-diff never 403s the suspend apply."
-  permissions = [
-    "monitoring.alertPolicies.get",
-    "monitoring.alertPolicies.update",
-    "cloudbuild.builds.get",
-    "cloudbuild.builds.update",
-  ]
 }
 
 # Pub/Sub-triggered builds run as the trigger's service_account via the Cloud Build service
