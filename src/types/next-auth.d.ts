@@ -18,5 +18,11 @@ declare module 'next-auth/jwt' {
     pwHash?: string
     lastActiveAt?: number
     email?: string
+    /**
+     * Pro access carried into the edge so `proxy.ts` can redirect Pro-only routes before any render.
+     * Re-derived from the user row on every `jwt` callback run (as fresh as `email`). UX-only — the
+     * real gate is `getCachedVerifiedProAccess` in the API/route layer; never trust this for access.
+     */
+    isPro?: boolean
   }
 }

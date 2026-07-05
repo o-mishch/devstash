@@ -16,7 +16,7 @@ import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { useIsPro } from '@/hooks/profile/use-user-profile'
 import { useCollections } from '@/hooks/items/use-collections'
 import { UserDropdownMenuContent } from './user-dropdown'
-import { getTypeHref, handleProGatedTypeClick } from './utils'
+import { getTypeHref, handleProGatedTypeClick, handleBrainDumpClick } from './utils'
 
 interface CollapsedSidebarProps {
   sidebarData: SidebarData
@@ -45,7 +45,10 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
               <TooltipTrigger render={<span />}>
                 <Link
                   href="/parse"
-                  prefetch={true}
+                  // Non-Pro users can't open Brain Dump — block the nav and show the Pro gate; skip
+                  // prefetch for them, matching the file/image type links below.
+                  prefetch={isPro}
+                  onClick={(e) => handleBrainDumpClick(e, { isPro, showUpgradePrompt: openPrompt })}
                   className={cn(
                     'group flex size-11 items-center justify-center rounded-lg transition-colors',
                     pathname === '/parse' || pathname.startsWith('/parse/')
@@ -76,7 +79,6 @@ export function CollapsedSidebar({ sidebarData, onToggle }: CollapsedSidebarProp
                     prefetch={!isProGated || isPro}
                     onClick={(e) => handleProGatedTypeClick(e, {
                       isPro: isPro,
-                      count: t.count,
                       typeName: t.name,
                       showUpgradePrompt: openPrompt,
                     })}

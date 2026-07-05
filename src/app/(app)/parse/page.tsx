@@ -12,8 +12,9 @@ interface ParseIndexPageProps {
 }
 
 // Brain Dump hub: the upload/paste entry card plus the user's in-progress splits. Auth is inherited
-// from the (app) layout; the Pro gate is soft here (the card prompts to upgrade) so a free user can
-// still see the feature.
+// from the (app) layout. Brain Dump is Pro-only: the edge proxy (auth.config.ts) redirects non-Pro
+// users to /upgrade before this renders (removing the pre-redirect flash), and the server guard below
+// is the durable belt-and-suspenders — a direct URL visit is denied even if the edge check is bypassed.
 export default async function ParseIndexPage({ searchParams }: ParseIndexPageProps) {
   const session = await getCachedSession()
   const userId = session?.user?.id
@@ -24,6 +25,7 @@ export default async function ParseIndexPage({ searchParams }: ParseIndexPagePro
   if (skeleton === 'true') return <ParseIndexSkeleton />
 
   const isPro = await getCachedVerifiedProAccess(userId)
+  if (!isPro) redirect('/upgrade?gate=brain-dump')
 
   return (
     <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6">

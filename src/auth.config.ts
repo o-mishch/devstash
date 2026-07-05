@@ -1,11 +1,12 @@
 import type { NextAuthConfig, Session, User } from 'next-auth'
 import type { AdapterUser } from 'next-auth/adapters'
 import type { JWT } from 'next-auth/jwt'
-import type { NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import GitHub from 'next-auth/providers/github'
 import Google from 'next-auth/providers/google'
 import Credentials from 'next-auth/providers/credentials'
 import { applySessionActivity } from '@/lib/auth/session-idle'
+import { proGateFeatureForPath } from '@/lib/utils/pro-gate'
 
 export const BCRYPT_ROUNDS = 12
 
@@ -63,6 +64,21 @@ export const authConfig: NextAuthConfig = {
         nextUrl.pathname.startsWith('/favorites') ||
         nextUrl.pathname.startsWith('/items')
 
+      if (isProtected && !isLoggedIn) return false
+
+      // Redirect non-Pro users away from Pro-only pages at the edge — before any render or
+      // loading.tsx — so a direct URL visit lands on /upgrade with no flash of the gated page.
+      // `auth.user.isPro` comes from the decoded JWT (stamped in auth.ts). Only gates a signed-in
+      // user; a signed-out one on a protected Pro path was already denied above.
+      if (isLoggedIn) {
+        const gate = proGateFeatureForPath(nextUrl.pathname)
+        if (gate && !auth?.user?.isPro) {
+          const url = new URL('/upgrade', nextUrl)
+          url.searchParams.set('gate', gate)
+          return NextResponse.redirect(url)
+        }
+      }
+
       if (isProtected) return isLoggedIn
       // Auth pages handle "already signed in" via server-side session (DB-validated).
       // Middleware only decodes the JWT and cannot detect deleted users — redirecting
@@ -75,6 +91,10 @@ export const authConfig: NextAuthConfig = {
     session({ session, token }: { session: Session; token: JWT }): Session {
       const userId = (token.id ?? token.sub) as string | undefined
       if (userId) session.user.id = userId
+      // Surface the JWT's Pro flag on the edge session so `authorized` can gate Pro-only routes
+      // without a DB call. The Node session callback (auth.ts) overrides this with a fresh
+      // Redis-backed read for server components; here we only have the token.
+      session.user.isPro = token.isPro ?? false
       return session
     },
   },

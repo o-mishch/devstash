@@ -35,16 +35,24 @@ export function markFreshProAccessResolved(userId: string, isPro: boolean): void
  * Trusts DB `isPro` which is kept current by Stripe webhooks — no live Stripe API call.
  */
 
-type UserStripeRow = NonNullable<Awaited<ReturnType<typeof getCachedUserStripeInfo>>>
+interface ProAccessRow {
+  isPro: boolean
+  stripeSubscriptionId: string | null
+}
 
-function resolveProAccessFromRow(userId: string, user: UserStripeRow): boolean {
+/**
+ * Pure Pro-access decision from an already-fetched user row (no DB call) — the shared rule behind
+ * every resolver here, and stamped directly onto `token.isPro` by the auth `jwt` callback (which
+ * fetches `isPro` + `stripeSubscriptionId` for session validation anyway). Pro requires a linked
+ * Stripe subscription; DB `isPro` is trusted because Stripe webhooks keep it current.
+ */
+export function resolveProAccessFromRow(userId: string, user: ProAccessRow): boolean {
   if (!user.stripeSubscriptionId) {
     if (user.isPro) {
       log.warn({ userId }, 'User has isPro without a linked Stripe subscription — denying Pro access')
     }
     return false
   }
-  // Trust DB isPro — kept current by Stripe webhooks (Stripe's recommended pattern)
   return user.isPro
 }
 

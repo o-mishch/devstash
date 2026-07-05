@@ -21,7 +21,7 @@ import {
   getUserById,
   getProviderAccount,
 } from '@/lib/db/users'
-import { resolveSessionUserIsPro } from '@/lib/billing/access/pro-access-resolution'
+import { resolveSessionUserIsPro, resolveProAccessFromRow } from '@/lib/billing/access/pro-access-resolution'
 import { SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils/constants'
 import { validateUserPassword, assertCredentialLoginAllowed } from '@/lib/auth/auth-service'
 import { applySessionActivity } from '@/lib/auth/session-idle'
@@ -177,6 +177,11 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             return null
           }
           token.email = dbUser.email
+          // Stamp Pro access into the token so the edge proxy can redirect Pro-only routes before any
+          // render. Derived from the same row we already fetch for session validation — so it's as
+          // fresh as token.email, with no extra DB read. UX-only; the API/route gates are the real
+          // Pro boundary (a stale token can never grant access, only cause one extra /upgrade redirect).
+          token.isPro = resolveProAccessFromRow(token.id as string, dbUser)
           // Last 8 chars of the bcrypt hash — changes on every password rotation
           const pwFingerprint = dbUser.password?.slice(-8) ?? ''
           if (user) {

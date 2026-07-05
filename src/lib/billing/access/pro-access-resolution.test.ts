@@ -41,6 +41,7 @@ import {
   markFreshProAccessResolved,
   resolveProAccessBypassingCache,
   resolveProAccessForBillingContext,
+  resolveProAccessFromRow,
 } from './pro-access-resolution'
 
 const baseStripeRow = {
@@ -123,6 +124,24 @@ describe('resolveProAccessForBillingContext', () => {
   it('reads fresh Pro access when billing context requires it and layout has not resolved yet', async () => {
     await expect(resolveProAccessForBillingContext('user-1', { freshBillingContext: true })).resolves.toBe(true)
     expect(mockGetFreshUserStripeInfo).toHaveBeenCalledWith('user-1')
+  })
+})
+
+describe('resolveProAccessFromRow', () => {
+  it('grants Pro when isPro is true and a subscription is linked', () => {
+    expect(resolveProAccessFromRow('user-1', { isPro: true, stripeSubscriptionId: 'sub_1' })).toBe(true)
+  })
+
+  it('denies Pro when isPro is false', () => {
+    expect(resolveProAccessFromRow('user-1', { isPro: false, stripeSubscriptionId: 'sub_1' })).toBe(false)
+  })
+
+  it('denies Pro (fail closed) when isPro is true but no subscription is linked', () => {
+    expect(resolveProAccessFromRow('user-1', { isPro: true, stripeSubscriptionId: null })).toBe(false)
+  })
+
+  it('denies Pro when neither isPro nor a subscription is present', () => {
+    expect(resolveProAccessFromRow('user-1', { isPro: false, stripeSubscriptionId: null })).toBe(false)
   })
 })
 

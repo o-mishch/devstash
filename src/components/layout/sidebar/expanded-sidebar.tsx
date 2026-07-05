@@ -27,7 +27,7 @@ import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { useUserProfile, useIsPro } from '@/hooks/profile/use-user-profile'
 import { useCollections } from '@/hooks/items/use-collections'
 import { UserDropdownMenuContent } from './user-dropdown'
-import { getTypeHref, sidebarLinkClass, handleProGatedTypeClick } from './utils'
+import { getTypeHref, sidebarLinkClass, handleProGatedTypeClick, handleBrainDumpClick } from './utils'
 
 interface ExpandedSidebarProps {
   sidebarData: SidebarData
@@ -67,11 +67,17 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
         <div className="space-y-0.5 px-2 pb-1">
           <Link
             href="/parse"
-            onClick={onClose}
-            prefetch={true}
+            // Non-Pro users can't open Brain Dump — block the nav and show the Pro gate instead,
+            // matching the file/image type links; skip prefetch for them (they can't open it anyway).
+            prefetch={isPro}
+            onClick={(e) => {
+              const blocked = handleBrainDumpClick(e, { isPro, showUpgradePrompt: openPrompt })
+              if (!blocked) onClose?.()
+            }}
             className={sidebarLinkClass(pathname === '/parse' || pathname.startsWith('/parse/'))}
           >
             <Sparkles className="size-4 shrink-0 card-icon" />
+            <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60 mr-1.5">PRO</Badge>
             <span>Brain Dump</span>
           </Link>
         </div>
@@ -123,7 +129,6 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                 onClick={(e) => {
                   const blocked = handleProGatedTypeClick(e, {
                     isPro: isPro,
-                    count: t.count,
                     typeName: t.name,
                     showUpgradePrompt: openPrompt,
                   })
