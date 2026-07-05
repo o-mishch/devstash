@@ -23,6 +23,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 set -euo pipefail
 
+# Fail fast if a required env var is missing; also silences shellcheck SC2153 for
+# these workflow-provided uppercase vars (their lowercase lookalikes appear only in comments).
+: "${CLUSTER:?CLUSTER is required}" "${REGION:?REGION is required}"
+
 if [ "${DISPATCH_REASON:-}" = "provision" ]; then
   echo "Dispatch reason is 'provision' — run.sh is bringing the environment up/back. Building (cluster will exist shortly)."
   echo "build=true" >> "$GITHUB_OUTPUT"

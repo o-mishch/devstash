@@ -12,6 +12,10 @@
 #   CLUSTER, REGION
 set -euo pipefail
 
+# Fail fast if a required env var is missing; also silences shellcheck SC2153 for
+# these workflow-provided uppercase vars (their lowercase lookalikes appear only in comments).
+: "${CLUSTER:?CLUSTER is required}" "${REGION:?REGION is required}"
+
 if out="$(kubectl get --raw='/readyz' 2>&1)"; then
   echo "Control plane reachable via DNS endpoint: ${out}"
   exit 0

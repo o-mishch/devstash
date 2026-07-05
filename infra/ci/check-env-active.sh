@@ -30,6 +30,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 set -euo pipefail
 
+# Fail fast if a required env var is missing; also silences shellcheck SC2153 for
+# these workflow-provided uppercase vars (their lowercase lookalikes appear only in comments).
+: "${CLUSTER:?CLUSTER is required}" "${REGION:?REGION is required}"
+
 attempts="${CLUSTER_WAIT_ATTEMPTS:-40}"
 gap="${CLUSTER_WAIT_GAP:-15}"
 

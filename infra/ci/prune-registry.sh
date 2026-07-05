@@ -34,6 +34,10 @@
 #                                                    registry digests build-push.sh emitted.
 set -euo pipefail
 
+# Fail fast if a required env var is missing; also silences shellcheck SC2153 for
+# these workflow-provided uppercase vars (their lowercase lookalikes appear only in comments).
+: "${REGION:?REGION is required}"
+
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
