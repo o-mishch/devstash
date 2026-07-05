@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type Stripe from 'stripe'
+import { Prisma } from '@/generated/prisma'
 
 const {
   mockFetchCheckoutSessionDetails,
@@ -9,6 +10,12 @@ const {
   mockCustomersList,
   mockIterateCustomerSubscriptions,
   mockCancelAbandonedSubscription,
+  mockIsStripeResourceMissing,
+  mockCreateStripeCustomer,
+  mockEnsureStripeCustomerUserId,
+  mockClearStripeCustomerByCustomerId,
+  mockLinkStripeCustomerToUser,
+  mockInvalidateBillingCache,
 } = vi.hoisted(() => ({
   mockFetchCheckoutSessionDetails: vi.fn(),
   mockIsAllowedCheckoutPriceId: vi.fn(),
@@ -17,16 +24,34 @@ const {
   mockCustomersList: vi.fn(),
   mockIterateCustomerSubscriptions: vi.fn(),
   mockCancelAbandonedSubscription: vi.fn(),
+  mockIsStripeResourceMissing: vi.fn(),
+  mockCreateStripeCustomer: vi.fn(),
+  mockEnsureStripeCustomerUserId: vi.fn(),
+  mockClearStripeCustomerByCustomerId: vi.fn(),
+  mockLinkStripeCustomerToUser: vi.fn(),
+  mockInvalidateBillingCache: vi.fn(),
 }))
 
 vi.mock('@/lib/billing/stripe-api', () => ({
   fetchCheckoutSessionDetails: mockFetchCheckoutSessionDetails,
   listStripeCustomersByEmail: mockCustomersList,
   iterateCustomerSubscriptions: mockIterateCustomerSubscriptions,
+  isStripeResourceMissing: mockIsStripeResourceMissing,
 }))
 
 vi.mock('@/lib/infra/stripe', () => ({
   cancelAbandonedSubscription: mockCancelAbandonedSubscription,
+  createStripeCustomer: mockCreateStripeCustomer,
+  ensureStripeCustomerUserId: mockEnsureStripeCustomerUserId,
+}))
+
+vi.mock('@/lib/db/stripe', () => ({
+  clearStripeCustomerByCustomerId: mockClearStripeCustomerByCustomerId,
+  linkStripeCustomerToUser: mockLinkStripeCustomerToUser,
+}))
+
+vi.mock('@/lib/infra/cache', () => ({
+  invalidateBillingCache: mockInvalidateBillingCache,
 }))
 
 vi.mock('@/lib/billing/config/billing-pricing', () => ({
@@ -50,6 +75,7 @@ import {
   finalizeCheckoutSessionForUser,
   findCheckoutBlockingSubscription,
   findCheckoutCustomerByEmail,
+  resolveOrCreateStripeCustomer,
   resolveStripeCustomerForUser,
   validateCheckoutEligibility,
 } from './stripe-checkout'
@@ -151,6 +177,8 @@ describe('cancelIncompleteSubscriptionsForCustomer', () => {
 describe('resolveStripeCustomerForUser', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockIsStripeResourceMissing.mockReturnValue(false)
+    mockClearStripeCustomerByCustomerId.mockResolvedValue({ count: 0, userIds: [] })
   })
 
   it('uses the linked stripeCustomerId when present', async () => {
@@ -164,6 +192,159 @@ describe('resolveStripeCustomerForUser', () => {
 
     expect(result).toEqual({ customerId: 'cus_linked', blockingSubscription: null })
     expect(mockIterateCustomerSubscriptions).toHaveBeenCalledWith('cus_linked')
+  })
+
+  it('self-heals a stale customer id: clears it and recovers by email on resource_missing', async () => {
+    const missingError = new Error("No such customer: 'cus_dead'")
+    // First call (stored id) throws resource_missing; the email-recovery lookup then returns a live customer.
+    mockIterateCustomerSubscriptions
+      .mockImplementationOnce(() => {
+        throw missingError
+      })
+      .mockReturnValue(subscriptionIterator([]))
+    mockIsStripeResourceMissing.mockReturnValue(true)
+    mockClearStripeCustomerByCustomerId.mockResolvedValue({ count: 1, userIds: ['user-1'] })
+    mockCustomersList.mockResolvedValue([
+      { id: 'cus_live', email: 'user@example.com', deleted: false, metadata: { userId: 'user-1' } },
+    ])
+
+    const result = await resolveStripeCustomerForUser({
+      userId: 'user-1',
+      email: 'user@example.com',
+      stripeCustomerId: 'cus_dead',
+    })
+
+    expect(mockClearStripeCustomerByCustomerId).toHaveBeenCalledWith('cus_dead')
+    expect(mockInvalidateBillingCache).toHaveBeenCalledWith('user-1')
+    expect(result.customerId).toBe('cus_live')
+  })
+
+  it('rethrows non-resource_missing Stripe errors instead of clearing the id', async () => {
+    const rateLimited = new Error('rate limited')
+    mockIterateCustomerSubscriptions.mockImplementationOnce(() => {
+      throw rateLimited
+    })
+    mockIsStripeResourceMissing.mockReturnValue(false)
+
+    await expect(
+      resolveStripeCustomerForUser({
+        userId: 'user-1',
+        email: 'user@example.com',
+        stripeCustomerId: 'cus_x',
+      }),
+    ).rejects.toThrow('rate limited')
+    expect(mockClearStripeCustomerByCustomerId).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveOrCreateStripeCustomer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsStripeResourceMissing.mockReturnValue(false)
+    mockClearStripeCustomerByCustomerId.mockResolvedValue({ count: 0, userIds: [] })
+    mockEnsureStripeCustomerUserId.mockResolvedValue('linked')
+    mockLinkStripeCustomerToUser.mockResolvedValue(undefined)
+  })
+
+  it('returns the stored customer id without creating a new customer', async () => {
+    mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
+
+    const result = await resolveOrCreateStripeCustomer({
+      userId: 'user-1',
+      email: 'user@example.com',
+      stripeCustomerId: 'cus_stored',
+    })
+
+    expect(result).toEqual({ status: 'ok', customerId: 'cus_stored' })
+    expect(mockCreateStripeCustomer).not.toHaveBeenCalled()
+    // Same id as stored → no re-link write.
+    expect(mockLinkStripeCustomerToUser).not.toHaveBeenCalled()
+  })
+
+  it('adopts a customer recovered by email and persists the link', async () => {
+    mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
+    mockCustomersList.mockResolvedValue([
+      { id: 'cus_email', email: 'user@example.com', deleted: false, metadata: { userId: 'user-1' } },
+    ])
+
+    const result = await resolveOrCreateStripeCustomer({
+      userId: 'user-1',
+      email: 'user@example.com',
+      stripeCustomerId: null,
+    })
+
+    expect(result).toEqual({ status: 'ok', customerId: 'cus_email' })
+    expect(mockLinkStripeCustomerToUser).toHaveBeenCalledWith('user-1', 'cus_email')
+    expect(mockCreateStripeCustomer).not.toHaveBeenCalled()
+  })
+
+  it('creates a new customer when none exists by id or email', async () => {
+    mockCustomersList.mockResolvedValue([])
+    mockCreateStripeCustomer.mockResolvedValue({ id: 'cus_new' })
+
+    const result = await resolveOrCreateStripeCustomer({
+      userId: 'user-1',
+      email: 'user@example.com',
+      stripeCustomerId: null,
+    })
+
+    expect(mockCreateStripeCustomer).toHaveBeenCalledWith({ email: 'user@example.com', userId: 'user-1' })
+    expect(mockLinkStripeCustomerToUser).toHaveBeenCalledWith('user-1', 'cus_new')
+    expect(result).toEqual({ status: 'ok', customerId: 'cus_new' })
+  })
+
+  it('returns foreign when the resolved customer is already linked to another user in the DB (P2002)', async () => {
+    mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
+    mockCustomersList.mockResolvedValue([
+      { id: 'cus_email', email: 'user@example.com', deleted: false, metadata: { userId: 'user-1' } },
+    ])
+    // Stripe metadata check passes (ensureStripeCustomerUserId → 'linked'), but the id is already
+    // stored on another user's row → the unique constraint fires P2002; treat it as foreign.
+    const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+    })
+    mockLinkStripeCustomerToUser.mockRejectedValue(p2002)
+
+    const result = await resolveOrCreateStripeCustomer({
+      userId: 'user-1',
+      email: 'user@example.com',
+      stripeCustomerId: null,
+    })
+
+    expect(result).toEqual({ status: 'foreign' })
+    expect(mockCreateStripeCustomer).not.toHaveBeenCalled()
+  })
+
+  it('rethrows a non-P2002 DB error from linkStripeCustomerToUser', async () => {
+    mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
+    mockCustomersList.mockResolvedValue([
+      { id: 'cus_email', email: 'user@example.com', deleted: false, metadata: { userId: 'user-1' } },
+    ])
+    mockLinkStripeCustomerToUser.mockRejectedValue(new Error('db down'))
+
+    await expect(
+      resolveOrCreateStripeCustomer({
+        userId: 'user-1',
+        email: 'user@example.com',
+        stripeCustomerId: null,
+      }),
+    ).rejects.toThrow('db down')
+  })
+
+  it('returns foreign when the resolved customer belongs to another app user', async () => {
+    mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
+    mockEnsureStripeCustomerUserId.mockResolvedValue('foreign')
+
+    const result = await resolveOrCreateStripeCustomer({
+      userId: 'user-1',
+      email: 'user@example.com',
+      stripeCustomerId: 'cus_foreign',
+    })
+
+    expect(result).toEqual({ status: 'foreign' })
+    expect(mockCreateStripeCustomer).not.toHaveBeenCalled()
+    expect(mockLinkStripeCustomerToUser).not.toHaveBeenCalled()
   })
 })
 

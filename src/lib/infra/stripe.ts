@@ -66,6 +66,31 @@ export interface CheckoutSessionParams {
 //                caller falls back to `customer_email` so checkout recreates a fresh customer).
 export type StripeCustomerLink = 'linked' | 'foreign' | 'deleted'
 
+export interface CreateStripeCustomerParams {
+  email: string
+  userId: string
+}
+
+/**
+ * Creates a Stripe customer tagged with the app user id.
+ *
+ * The idempotency key is DETERMINISTIC (`customer-create:<userId>`) so two independent app
+ * environments that share one Stripe account and race to create a customer for the same user
+ * collapse to a SINGLE Stripe customer — the loser's retry returns the same object instead of
+ * minting a duplicate. Stripe retains idempotency keys for ~24h, so this only closes the
+ * seconds-wide simultaneous-signup race; the durable dedup is the caller's DB-id → list-by-email
+ * lookup that runs first.
+ */
+export async function createStripeCustomer(params: CreateStripeCustomerParams): Promise<Stripe.Customer> {
+  return stripe.customers.create(
+    {
+      email: params.email,
+      metadata: { userId: params.userId },
+    },
+    { idempotencyKey: `customer-create:${params.userId}` },
+  )
+}
+
 /** Tags a Stripe customer with the app user ID so email-based recovery prefers the right record. */
 export async function ensureStripeCustomerUserId(customerId: string, userId: string): Promise<StripeCustomerLink> {
   const customer = await stripe.customers.retrieve(customerId)

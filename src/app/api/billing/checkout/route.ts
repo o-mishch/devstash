@@ -3,8 +3,8 @@ import { json, problem, parseOr422 } from '@/lib/api/http'
 import { createCheckoutInput } from '@/lib/api/schemas/billing'
 import { ErrorMessage } from '@/lib/api/error-messages'
 import { getCachedSession } from '@/lib/session'
-import { createCheckoutSession, ensureStripeCustomerUserId, updateStripeCustomerEmail } from '@/lib/infra/stripe'
-import { cancelIncompleteSubscriptionsForCustomer, validateCheckoutEligibility } from '@/lib/billing/checkout/stripe-checkout'
+import { createCheckoutSession, updateStripeCustomerEmail } from '@/lib/infra/stripe'
+import { cancelIncompleteSubscriptionsForCustomer, resolveOrCreateStripeCustomer, validateCheckoutEligibility } from '@/lib/billing/checkout/stripe-checkout'
 import { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 import { resolveProAccessBypassingCache } from '@/lib/billing/access/pro-access-resolution'
 import { getExistingSubscriptionMessage } from '@/lib/billing/messages/billing-messages'
@@ -56,32 +56,37 @@ export const POST = authedRoute({ rateLimit: 'stripeCheckout' }, async ({ userId
   const session = await getCachedSession()
   const userEmail = session?.user?.email ?? undefined
 
+  if (!userEmail) {
+    // A customer must be defined before checkout so both environments converge on one Stripe
+    // customer per email; without an email we can neither look one up nor create one.
+    checkoutLog.error({ userId }, 'Checkout blocked — session has no email to resolve a Stripe customer')
+    return problem(500, ErrorMessage.CHECKOUT_START_FAILED)
+  }
+
   try {
     const existingStripeInfo = await getCachedUserStripeInfo(userId)
-    let customerId = eligibility.customerId ?? existingStripeInfo?.stripeCustomerId ?? undefined
-    if (customerId) {
-      const link = await ensureStripeCustomerUserId(customerId, userId)
-      if (link === 'foreign') {
-        return problem(409, 'This billing account is linked to another user. Please contact support.')
-      }
-      if (link === 'deleted') {
-        // The stored customer was deleted in Stripe — drop the dead id and let checkout recreate one
-        // from the email rather than failing with an opaque Stripe error.
-        checkoutLog.warn({ userId, customerId }, 'Stored Stripe customer deleted — falling back to customer_email')
-        customerId = undefined
-      } else {
-        // Self-heal any Stripe customer email drift left by a previously failed (swallowed) sync — the
-        // update is idempotent, so this keeps invoices/portal/recovery email on the current address.
-        // Runs concurrently with incomplete-subscription cleanup — the two are independent Stripe calls.
-        await Promise.all([
-          userEmail &&
-            updateStripeCustomerEmail(customerId, userEmail).catch((err) => {
-              checkoutLog.error({ userId, customerId, err }, 'Failed to refresh Stripe customer email at checkout')
-            }),
-          cancelIncompleteSubscriptionsForCustomer(customerId),
-        ])
-      }
+    // Resolve (or create) the single Stripe customer for this user BEFORE creating the session, so a
+    // customer bought on the other environment is reused instead of duplicated. Self-heals a stale id.
+    const customerResult = await resolveOrCreateStripeCustomer({
+      userId,
+      email: userEmail,
+      stripeCustomerId: eligibility.customerId ?? existingStripeInfo?.stripeCustomerId ?? null,
+    })
+    if (customerResult.status === 'foreign' || !customerResult.customerId) {
+      return problem(409, 'This billing account is linked to another user. Please contact support.')
     }
+    const customerId = customerResult.customerId
+
+    // Self-heal any Stripe customer email drift left by a previously failed (swallowed) sync — the
+    // update is idempotent, so this keeps invoices/portal/recovery email on the current address.
+    // Runs concurrently with incomplete-subscription cleanup — the two are independent Stripe calls.
+    await Promise.all([
+      updateStripeCustomerEmail(customerId, userEmail).catch((err) => {
+        checkoutLog.error({ userId, customerId, err }, 'Failed to refresh Stripe customer email at checkout')
+      }),
+      cancelIncompleteSubscriptionsForCustomer(customerId),
+    ])
+
     const stripeSession = await createCheckoutSession({
       priceId,
       userId,

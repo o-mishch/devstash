@@ -14,11 +14,11 @@ vi.mock('@/lib/infra/rate-limit', () => ({
 vi.mock('@/lib/infra/stripe', () => ({
   createCheckoutSession: vi.fn(),
   createPortalSession: vi.fn(),
-  ensureStripeCustomerUserId: vi.fn(),
   updateStripeCustomerEmail: vi.fn(),
 }))
 vi.mock('@/lib/billing/checkout/stripe-checkout', () => ({
   cancelIncompleteSubscriptionsForCustomer: vi.fn(),
+  resolveOrCreateStripeCustomer: vi.fn(),
   validateCheckoutEligibility: vi.fn(),
 }))
 vi.mock('@/lib/billing/sync/user-billing-state', async (importOriginal) => {
@@ -43,8 +43,8 @@ vi.mock('@/lib/billing/subscription/toggle-cancellation', () => ({ toggleSubscri
 import { getCachedSession } from '@/lib/session'
 import { resolveProAccessBypassingCache } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit } from '@/lib/infra/rate-limit'
-import { createCheckoutSession, createPortalSession, ensureStripeCustomerUserId, updateStripeCustomerEmail } from '@/lib/infra/stripe'
-import { validateCheckoutEligibility, cancelIncompleteSubscriptionsForCustomer } from '@/lib/billing/checkout/stripe-checkout'
+import { createCheckoutSession, createPortalSession, updateStripeCustomerEmail } from '@/lib/infra/stripe'
+import { validateCheckoutEligibility, cancelIncompleteSubscriptionsForCustomer, resolveOrCreateStripeCustomer } from '@/lib/billing/checkout/stripe-checkout'
 import { getCachedUserStripeInfo, loadBillingPageContext } from '@/lib/billing/sync/user-billing-state'
 import { getUserUsageStats } from '@/lib/db/usage'
 import { isAllowedCheckoutPriceId, isStripeCheckoutConfigured } from '@/lib/billing/config/billing-pricing'
@@ -66,7 +66,7 @@ const mockStripeInfo = getCachedUserStripeInfo as ReturnType<typeof vi.fn>
 const mockAllowedPrice = isAllowedCheckoutPriceId as ReturnType<typeof vi.fn>
 const mockConfigured = isStripeCheckoutConfigured as ReturnType<typeof vi.fn>
 const mockToggle = toggleSubscriptionCancellation as ReturnType<typeof vi.fn>
-const mockEnsureCustomer = ensureStripeCustomerUserId as ReturnType<typeof vi.fn>
+const mockResolveOrCreateCustomer = resolveOrCreateStripeCustomer as ReturnType<typeof vi.fn>
 const mockUpdateCustomerEmail = updateStripeCustomerEmail as ReturnType<typeof vi.fn>
 const mockCancelIncomplete = cancelIncompleteSubscriptionsForCustomer as ReturnType<typeof vi.fn>
 const mockLoadBillingPage = loadBillingPageContext as ReturnType<typeof vi.fn>
@@ -88,6 +88,8 @@ beforeEach(() => {
   mockConfigured.mockReturnValue(true)
   mockEligibility.mockResolvedValue({ status: 'ok', customerId: undefined })
   mockStripeInfo.mockResolvedValue(null)
+  mockResolveOrCreateCustomer.mockResolvedValue({ status: 'ok', customerId: 'cus_resolved' })
+  mockUpdateCustomerEmail.mockResolvedValue(undefined)
 })
 
 describe('POST /billing/checkout', () => {
@@ -127,29 +129,34 @@ describe('POST /billing/checkout', () => {
     expect(res.status).toBe(500)
   })
 
-  it('returns 409 when the stored Stripe customer belongs to another user', async () => {
-    mockStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_foreign' })
-    mockEnsureCustomer.mockResolvedValue('foreign')
+  it('returns 500 when the session has no email to resolve a customer', async () => {
+    mockSession.mockResolvedValue({ user: { id: 'user-1', email: null } })
+    const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
+    expect(res.status).toBe(500)
+    expect(mockResolveOrCreateCustomer).not.toHaveBeenCalled()
+    expect(mockCreateCheckout).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 when the resolved Stripe customer belongs to another user', async () => {
+    mockResolveOrCreateCustomer.mockResolvedValue({ status: 'foreign' })
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(409)
     expect(mockCreateCheckout).not.toHaveBeenCalled()
   })
 
-  it('drops a deleted Stripe customer and recreates checkout from the email', async () => {
-    mockStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_dead' })
-    mockEnsureCustomer.mockResolvedValue('deleted')
+  it('passes the resolved/created customer id through to the Stripe session', async () => {
+    mockResolveOrCreateCustomer.mockResolvedValue({ status: 'ok', customerId: 'cus_new' })
     mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_2' })
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(200)
-    // Falls back to customer_email: the dead customerId is not passed through.
-    expect(mockCreateCheckout).toHaveBeenCalledWith(expect.objectContaining({ customerId: undefined }))
-    expect(mockCancelIncomplete).not.toHaveBeenCalled()
+    expect(mockResolveOrCreateCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', email: 'me@example.com' }),
+    )
+    expect(mockCreateCheckout).toHaveBeenCalledWith(expect.objectContaining({ customerId: 'cus_new' }))
   })
 
-  it('refreshes the Stripe customer email when reusing a linked customer', async () => {
-    mockStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_linked' })
-    mockEnsureCustomer.mockResolvedValue('linked')
-    mockUpdateCustomerEmail.mockResolvedValue(undefined)
+  it('refreshes the Stripe customer email and cancels incomplete subs for the resolved customer', async () => {
+    mockResolveOrCreateCustomer.mockResolvedValue({ status: 'ok', customerId: 'cus_linked' })
     mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_3' })
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(200)

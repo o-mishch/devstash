@@ -1,9 +1,12 @@
 import 'server-only'
 
 import type Stripe from 'stripe'
-import { cancelAbandonedSubscription } from '@/lib/infra/stripe'
+import { Prisma } from '@/generated/prisma'
+import { cancelAbandonedSubscription, createStripeCustomer, ensureStripeCustomerUserId } from '@/lib/infra/stripe'
 import { checkoutSubscriptionBlocksNewCheckout } from '@/lib/billing/subscription/subscription-access'
-import { fetchCheckoutSessionDetails, iterateCustomerSubscriptions, listStripeCustomersByEmail } from '@/lib/billing/stripe-api'
+import { fetchCheckoutSessionDetails, isStripeResourceMissing, iterateCustomerSubscriptions, listStripeCustomersByEmail } from '@/lib/billing/stripe-api'
+import { clearStripeCustomerByCustomerId, linkStripeCustomerToUser } from '@/lib/db/stripe'
+import { invalidateBillingCache } from '@/lib/infra/cache'
 import { isAllowedCheckoutPriceId } from '@/lib/billing/config/billing-pricing'
 import { persistSubscriptionFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'
 import { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
@@ -139,10 +142,25 @@ export async function resolveStripeCustomerForUser(
   input: ResolveStripeCustomerInput,
 ): Promise<ResolvedStripeCustomer> {
   if (input.stripeCustomerId) {
-    const blockingSubscription = await findCheckoutBlockingSubscription(input.stripeCustomerId)
-    return {
-      customerId: input.stripeCustomerId,
-      blockingSubscription,
+    try {
+      const blockingSubscription = await findCheckoutBlockingSubscription(input.stripeCustomerId)
+      return {
+        customerId: input.stripeCustomerId,
+        blockingSubscription,
+      }
+    } catch (error) {
+      // A stored customer id that no longer exists in this Stripe account (deleted, or minted
+      // against different credentials after a test↔live switch / data reset) throws
+      // resource_missing. Drop the dead id and fall through to email-based recovery instead of
+      // hard-failing checkout — the two independent environments then re-converge on the live
+      // customer for this email. Any other Stripe error still propagates.
+      if (!isStripeResourceMissing(error)) throw error
+      log.warn(
+        { userId: input.userId, customerId: input.stripeCustomerId },
+        'Stored Stripe customer missing — clearing stale id and recovering by email',
+      )
+      const { userIds } = await clearStripeCustomerByCustomerId(input.stripeCustomerId)
+      userIds.forEach((clearedUserId) => invalidateBillingCache(clearedUserId))
     }
   }
 
@@ -160,6 +178,75 @@ export async function resolveStripeCustomerForUser(
     customerId: recovered.customerId,
     blockingSubscription: recovered.blockingSubscription,
   }
+}
+
+export interface ResolveOrCreateStripeCustomerInput {
+  userId: string
+  email: string
+  stripeCustomerId: string | null
+}
+
+export interface ResolveOrCreateStripeCustomerResult {
+  /** 'ok' → customerId is set; 'foreign' → the customer is linked to a different app user. */
+  status: 'ok' | 'foreign'
+  customerId?: string
+}
+
+/**
+ * Returns the ONE Stripe customer id for this user, creating it only if none exists yet — the
+ * single entry point checkout uses so a customer is always defined before a Checkout Session.
+ *
+ * Dedup order (durable → last-resort), so two independent environments sharing one Stripe account
+ * converge on the same customer per email instead of duplicating:
+ *   1. Stored DB id (self-healed against resource_missing by resolveStripeCustomerForUser — a wrong
+ *      or dead id is cleared and recovery continues rather than failing checkout).
+ *   2. Existing Stripe customer found by email (customers.list — strongly consistent, unlike
+ *      customers.search which lags and would let a racing env miss a just-created customer).
+ *   3. Create a new customer with a deterministic idempotency key (collapses the simultaneous race).
+ * The resolved id is persisted locally so subsequent checkouts take the fast path.
+ */
+export async function resolveOrCreateStripeCustomer(
+  input: ResolveOrCreateStripeCustomerInput,
+): Promise<ResolveOrCreateStripeCustomerResult> {
+  const resolved = await resolveStripeCustomerForUser({
+    userId: input.userId,
+    email: input.email,
+    stripeCustomerId: input.stripeCustomerId,
+  })
+
+  if (resolved.customerId) {
+    // Recovered by email or via the stored id. Tag it with this userId and persist so later
+    // checkouts take the fast path. A 'foreign' link (customer owned by another app user) is a
+    // genuine conflict the user can't self-resolve — surface it rather than reusing the customer.
+    const link = await ensureStripeCustomerUserId(resolved.customerId, input.userId)
+    if (link === 'foreign') return { status: 'foreign' }
+    if (resolved.customerId !== input.stripeCustomerId) {
+      try {
+        await linkStripeCustomerToUser(input.userId, resolved.customerId)
+      } catch (error) {
+        // The Stripe metadata check above passed, but the customer id is already stored on a
+        // DIFFERENT app user's row (empty/mismatched metadata + an existing DB link — e.g. a
+        // half-finished earlier flow). The unique constraint fires P2002; treat it as the same
+        // unresolvable conflict as a foreign metadata link rather than a generic checkout error.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          log.warn(
+            { userId: input.userId, customerId: resolved.customerId },
+            'Stripe customer already linked to another app user in DB — surfacing as foreign',
+          )
+          return { status: 'foreign' }
+        }
+        throw error
+      }
+      invalidateBillingCache(input.userId)
+    }
+    return { status: 'ok', customerId: resolved.customerId }
+  }
+
+  const customer = await createStripeCustomer({ email: input.email, userId: input.userId })
+  await linkStripeCustomerToUser(input.userId, customer.id)
+  invalidateBillingCache(input.userId)
+  log.info({ userId: input.userId, customerId: customer.id }, 'Created new Stripe customer for checkout')
+  return { status: 'ok', customerId: customer.id }
 }
 
 /** Cancels stale incomplete subscriptions so a new checkout does not accumulate orphans. */

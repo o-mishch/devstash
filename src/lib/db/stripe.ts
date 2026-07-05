@@ -30,6 +30,21 @@ function buildClearedStripeFields(options: ClearedStripeFieldsOptions = {}): Pri
   }
 }
 
+/**
+ * Persists the Stripe customer id on a user without touching subscription columns — used by the
+ * checkout get-or-create path once a customer is resolved/created for the user. The unique
+ * constraint on `stripeCustomerId` is the real dedup guarantee: if two environments race and both
+ * try to link the same customer to the same user, the second write is a harmless no-op; a
+ * P2002 here means the id is already linked to a DIFFERENT user, which the caller must resolve.
+ */
+export async function linkStripeCustomerToUser(userId: string, stripeCustomerId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { stripeCustomerId, stripeLastSyncAt: new Date() },
+  })
+  log.info({ userId, stripeCustomerId }, 'DB: stripe_customer_linked — Linked Stripe customer to user')
+}
+
 export async function getUserIdByStripeCustomerId(stripeCustomerId: string): Promise<string | null> {
   const user = await prisma.user.findUnique({
     where: { stripeCustomerId },

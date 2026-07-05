@@ -19,6 +19,16 @@ export function getStripeCustomerId(
   return typeof customer === 'string' ? customer : customer.id
 }
 
+/**
+ * True when a Stripe error means the referenced resource no longer exists (HTTP 400,
+ * `code: resource_missing`) — e.g. a stored customer/subscription id that was deleted, or
+ * minted against a different Stripe account (test↔live switch, data reset). Callers use this
+ * to self-heal by clearing the stale id and re-resolving, rather than hard-failing.
+ */
+export function isStripeResourceMissing(error: unknown): boolean {
+  return error instanceof Stripe.errors.StripeInvalidRequestError && error.code === 'resource_missing'
+}
+
 export interface StripeSubscriptionDetails {
   customerId: string | null
   startDate: Date
