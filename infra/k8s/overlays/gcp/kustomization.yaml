@@ -101,6 +101,26 @@ patches:
               cidr: 130.211.0.0/22
           - ipBlock:
               cidr: 35.191.0.0/16
+      # Egress to the GKE metadata server for Workload-Identity token minting. Memorystore
+      # for Valkey runs in IAM_AUTH mode, so redis-tcp.ts fetches an OAuth2 token from the
+      # metadata server (169.254.169.254) on every (re)connect. Under Dataplane V2 (this
+      # cluster's ADVANCED_DATAPATH) NetworkPolicy is enforced against this link-local IP too,
+      # so a default-deny egress list MUST allow it explicitly on TCP 80 + 8080 — otherwise the
+      # token fetch times out, Valkey AUTH fails, and every Redis command hangs (502 on
+      # rate-limited routes). GKE-only: the link-local IP is meaningless on the local kind
+      # overlay, which talks to a no-auth Valkey and never mints a token.
+      # Ref: https://cloud.google.com/kubernetes-engine/docs/how-to/network-policy
+      - op: add
+        path: /spec/egress/-
+        value:
+          to:
+            - ipBlock:
+                cidr: 169.254.169.254/32
+          ports:
+            - protocol: TCP
+              port: 80
+            - protocol: TCP
+              port: 8080
   # minReplicas is NOT overridden here — dev inherits the base minReplicas: 2 so a Spot
   # reclaim (see the Spot patch below) never drops the service to zero serving pods: the
   # surviving replica carries traffic while the reclaimed one reschedules. maxReplicas: 4
@@ -125,6 +145,22 @@ patches:
       kind: Deployment
       name: devstash-web
     patch: |
+      # Workload-Identity for Valkey IAM AUTH. Memorystore for Valkey runs in IAM_AUTH
+      # mode (REDIS_IAM_AUTH=true above), so the app's redis-tcp.ts mints a per-connect
+      # OAuth2 token from the pod's ambient Google identity (GoogleAuth → metadata server).
+      # That requires BOTH: (1) the pod runs as the WI-annotated `devstash` SA, and (2) its
+      # projected SA token is mounted so the GKE metadata server can exchange it. The base
+      # deliberately runs as `default` with automountServiceAccountToken:false (correct for
+      # the local kind overlay's no-auth Valkey, which needs no Google identity) — so this
+      # GCP-only patch grants the identity the IAM handshake needs. Without it every Redis
+      # command fails AUTH and hangs until the LB's backend timeout (502 on rate-limited
+      # routes). devstash-app already holds roles/memorystore.dbConnectionUser (modules/iam).
+      - op: add
+        path: /spec/template/spec/serviceAccountName
+        value: devstash
+      - op: replace
+        path: /spec/template/spec/automountServiceAccountToken
+        value: true
       - op: remove
         path: /spec/template/spec/topologySpreadConstraints
       - op: add
