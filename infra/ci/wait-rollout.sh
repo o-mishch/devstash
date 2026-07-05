@@ -7,10 +7,10 @@
 # a newer schema — likely causing crashes or data corruption. If the rollout fails: fix
 # forward with a new commit that fixes the pod startup issue. The old pods are still running
 # (maxUnavailable: 0), so traffic is uninterrupted while you fix and re-deploy.
+set -euo pipefail
+
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
-
-set -euo pipefail
 
 NS="$DEVSTASH_NS"
 if kubectl -n "$NS" rollout status deployment/devstash-web --timeout=300s; then

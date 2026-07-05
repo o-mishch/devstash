@@ -18,10 +18,10 @@
 #   CLUSTER, REGION   — from the workflow-level env block
 #   GCP_PROJECT_ID    — from secrets
 #   DISPATCH_REASON   — github.event.inputs.reason ('' on a push event)
+set -euo pipefail
+
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
-
-set -euo pipefail
 
 # Fail fast if a required env var is missing; also silences shellcheck SC2153 for
 # these workflow-provided uppercase vars (their lowercase lookalikes appear only in comments).

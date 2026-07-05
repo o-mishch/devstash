@@ -1,0 +1,46 @@
+# PR-level infra shell gate. Runs the SAME static analysis + tests the maintainer runs by hand
+# (shellcheck over the infra shell scripts, plus the self-contained secrets-guard test), but on
+# PULL REQUESTS so a regression in the run.sh/suspend.sh orchestration — a reintroduced empty-body
+# `gh secret set` hang, a lost outputs-present gate, or any new shellcheck error — is caught BEFORE
+# it reaches main. Mirrors migration-safety.yml: same paths-scoped, fork-safe, no-cloud-auth shape.
+# Make this a REQUIRED status check in branch protection for main.
+#
+# SECURITY: PRs from forks run untrusted code, so this job is minimal — contents: read only, NO
+# id-token / cloud auth (nothing here needs GCP; the secrets-guard test stubs `tofu`/`gh` on PATH),
+# and persist-credentials: false. shellcheck runs at ERROR severity: the infra scripts carry a few
+# long-standing warning-level false positives (SC2034 sourced vars, SC2178 local-var reuse), so
+# gating on errors keeps the check meaningful without pinning the whole tree to a clean-warning bar.
+name: infra-checks
+
+on:
+  pull_request:
+    branches: [main]
+    # Only gate PRs that touch infra shell — run.sh/suspend.sh orchestration, the CI scripts, or
+    # the secrets-guard test itself. Other PRs skip this workflow entirely.
+    paths:
+      - "infra/**/*.sh"
+      - ".github/workflows/infra-checks.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell-checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      # shellcheck + jq are preinstalled on ubuntu-latest runners; no setup step needed.
+      - name: Shellcheck infra scripts (error severity)
+        run: infra/ci/shellcheck-infra.sh
+      # Black-box drives `run.sh secrets` with tofu/gh stubbed on PATH — reproduces the empty-state
+      # bug and asserts the guard + the pre-dispatch gate. Self-contained: no cloud auth.
+      - name: Secrets-guard test
+        run: bash infra/run/gcp/lib/secrets-guard.test.sh

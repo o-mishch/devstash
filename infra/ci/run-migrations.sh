@@ -12,10 +12,10 @@
 # Required env:
 #   MIGRATE_IMAGE  — job-level env in the `deploy` job, reconstructed from the
 #                    `build-push` job's outputs (repo@sha256:… digest-pinned reference)
+set -euo pipefail
+
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
-
-set -euo pipefail
 
 NS="$DEVSTASH_NS"
 

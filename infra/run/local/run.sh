@@ -135,8 +135,7 @@ run_migrate() {
   kubectl apply -f "$OVERLAY/migrate-job-local.yaml"
   if ! kubectl -n "$NS" wait --for=condition=complete \
       job/devstash-migrate --timeout=300s; then
-    kubectl -n "$NS" logs job/devstash-migrate --tail=100 || true
-    kubectl -n "$NS" describe job/devstash-migrate || true
+    ds_dump_job_diagnostics "$NS" devstash-migrate
     die "migrate job did not complete"
   fi
   kubectl -n "$NS" logs job/devstash-migrate --tail=30 || true

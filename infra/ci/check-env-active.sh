@@ -25,10 +25,10 @@
 #   GCP_PROJECT_ID    — from secrets
 # Optional env:
 #   CLUSTER_WAIT_ATTEMPTS (default 40) × CLUSTER_WAIT_GAP secs (default 15) = ~10 min max wait.
+set -euo pipefail
+
 # shellcheck source=infra/lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
-
-set -euo pipefail
 
 # Fail fast if a required env var is missing; also silences shellcheck SC2153 for
 # these workflow-provided uppercase vars (their lowercase lookalikes appear only in comments).
