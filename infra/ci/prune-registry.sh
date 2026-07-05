@@ -5,6 +5,18 @@
 # happen the moment a deploy is proven healthy. Runs AFTER wait-rollout.sh, so no previous
 # version is still being served.
 #
+# EXHAUSTIVE — sweeps EVERY package in the repo, not just the known runtime images. Packages are
+# DISCOVERED live (gcloud artifacts packages list) so the sweep also collapses anything the
+# static DEVSTASH_IMAGES list misses — a renamed/added build target, a stray tag, an orphaned
+# package left behind by an aborted build — down to a single version. Each discovered package is
+# routed to one of two policies:
+#   - KNOWN images (web/migrate, in DEVSTASH_IMAGES): keep the SPECIFIC just-deployed digest
+#     (WEB_DIGEST/MIGRATE_DIGEST) + its children. If that digest env var is absent (script run
+#     outside the normal CI flow), the package is SKIPPED — never prune a known image without
+#     knowing which digest is live, or we could delete the image the cluster is serving.
+#   - EXTRA packages (everything else): keep the NEWEST version + its children, delete the rest.
+#     These are not the running app's deployed images, so "newest" is a safe keep target.
+#
 # SAFETY — multi-manifest images. buildx pushes, per image, a TAGGED index plus UNTAGGED child
 # platform + SLSA-attestation manifests. We must never delete an untagged manifest directly:
 # it may be a child of the CURRENT index. So we only ever delete TAGGED indexes whose digest is
@@ -66,24 +78,19 @@ prune_pass() {
              --project="$GCP_PROJECT_ID" 2>/dev/null || true)
 }
 
-for img in "${DEVSTASH_IMAGES[@]}"; do
-  image_path="${BASE}/${img}"
-  # Resolve the keep digest from the per-image env var: web -> WEB_DIGEST, migrate -> MIGRATE_DIGEST.
-  keep_var="$(printf '%s' "$img" | tr '[:lower:]-' '[:upper:]_')_DIGEST"
-  keep_digest="${!keep_var:-}"
-  if [[ -z "$keep_digest" ]]; then
-    # Never prune without a keep digest — that would delete the image we just shipped.
-    echo "::warning::prune-registry: no keep digest (\$$keep_var) for '${img}'; skipping"
-    continue
-  fi
-
+# prune_package <image_path> <keep_digest>: collapse one package to the single <keep_digest> +
+# its children, deleting every other tagged index. Sets image_path/keep_list (the globals
+# prune_pass closes over) then runs the two ordered passes. Protects the parent index digest AND
+# every child digest it references (platform manifests, SBOM, provenance) so orphaning is left to
+# Artifact Registry's own GC — we never delete a child directly.
+prune_package() {
+  image_path="$1"
+  local keep_digest="$2" child
   echo "prune-registry: ${image_path} — keeping ${keep_digest} and its children"
 
-  # Protect both the parent index digest and all child digests referenced by the index
-  # (e.g. platform manifests, SBOM, provenance). Read the children into an array (mapfile)
-  # rather than a whitespace-joined string, so membership is an exact-match test and there is
-  # no unquoted word-split. `|| true` keeps a childless single-arch image (jq → empty) from
-  # tripping set -e; the -t drops the trailing newline mapfile would otherwise keep.
+  # Read children into an array (mapfile) rather than a whitespace-joined string, so membership is
+  # an exact-match test with no unquoted word-split. `|| true` keeps a childless single-arch image
+  # (jq → empty) from tripping set -e; -t drops the trailing newline mapfile would otherwise keep.
   keep_list=("$keep_digest")
   mapfile -t children < <(docker manifest inspect "${image_path}@${keep_digest}" \
     | jq -r 'if .manifests then .manifests[].digest else empty end' 2>/dev/null || true)
@@ -97,4 +104,59 @@ for img in "${DEVSTASH_IMAGES[@]}"; do
   prune_pass index index
   # Pass 2: delete any remaining child/attestation manifests that are not kept.
   prune_pass manifest manifest
+}
+
+# newest_index_digest <image_path>: echo the digest of the most-recently-created TAGGED OCI index
+# for a package, or nothing. Used for EXTRA (unknown) packages that have no just-deployed digest to
+# protect — "keep only 1" there means keep the newest. We deliberately keep a TAGGED index (not any
+# newest manifest) so the kept digest is a real image whose children we can enumerate, mirroring the
+# known-image path; its untagged children are protected via prune_package, not kept blindly.
+newest_index_digest() {
+  gcloud artifacts docker images list "$1" --include-tags --sort-by=~createTime \
+    --filter='metadata.mediaType~index AND tags:*' \
+    --format='value(version)' --limit=1 --project="$GCP_PROJECT_ID" 2>/dev/null | head -1
+}
+
+# is_known_image <pkg>: exit 0 iff <pkg> is one of the build's runtime images (DEVSTASH_IMAGES).
+is_known_image() {
+  printf '%s\n' "${DEVSTASH_IMAGES[@]}" | grep -qxF "$1"
+}
+
+# Discover EVERY package in the repo live, so the sweep also collapses packages the static
+# DEVSTASH_IMAGES list doesn't name. `value(name)` returns the full resource path
+# (projects/…/packages/<pkg>); the package segment is the last '/'-delimited field and may be
+# URL-encoded (a nested path like foo%2Fbar) — leave it encoded since the docker image path uses
+# the same encoding. Fall back to the static list if discovery returns nothing (repo empty or the
+# packages API momentarily unavailable) so a listing hiccup can't silently skip the known images.
+mapfile -t packages < <(gcloud artifacts packages list \
+  --repository="$REPO" --location="$REGION" --project="$GCP_PROJECT_ID" \
+  --format='value(name)' 2>/dev/null | sed 's#.*/##' | grep . || true)
+if [[ ${#packages[@]} -eq 0 ]]; then
+  echo "prune-registry: package discovery returned nothing — falling back to static image list"
+  packages=("${DEVSTASH_IMAGES[@]}")
+fi
+
+for pkg in "${packages[@]}"; do
+  image_path="${BASE}/${pkg}"
+  if is_known_image "$pkg"; then
+    # KNOWN runtime image: keep the SPECIFIC just-deployed digest. web -> WEB_DIGEST, etc.
+    keep_var="$(printf '%s' "$pkg" | tr '[:lower:]-' '[:upper:]_')_DIGEST"
+    keep_digest="${!keep_var:-}"
+    if [[ -z "$keep_digest" ]]; then
+      # Never prune a live image without knowing its deployed digest — that could delete the
+      # image the cluster is currently serving. Skip (unchanged safety behaviour).
+      echo "::warning::prune-registry: no keep digest (\$$keep_var) for known image '${pkg}'; skipping"
+      continue
+    fi
+    prune_package "$image_path" "$keep_digest"
+  else
+    # EXTRA package (not a build target): keep the newest tagged index, delete the rest.
+    keep_digest="$(newest_index_digest "$image_path")"
+    if [[ -z "$keep_digest" ]]; then
+      echo "prune-registry: no tagged index in extra package '${pkg}' — nothing to keep, skipping"
+      continue
+    fi
+    echo "prune-registry: extra package '${pkg}' — keeping newest ${keep_digest}"
+    prune_package "$image_path" "$keep_digest"
+  fi
 done

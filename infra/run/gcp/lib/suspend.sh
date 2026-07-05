@@ -54,6 +54,31 @@ delete_registry() {
     || warn "repository delete returned non-zero (likely already gone) — continuing"
 }
 
+# cleanup_builds: cancel any in-flight Cloud Builds and delete the ${project}_cloudbuild
+# source-staging bucket so a deep-suspended env holds no lingering Cloud Build state/storage.
+# Cloud Build has NO delete API for build RECORDS (Google expires them by retention), so the
+# history list can't be emptied — cancelling in-flight work + reclaiming the staging bucket is
+# the actionable cleanup. Build logs are left alone (whole-log delete only, which would wipe
+# the auto-suspend failure-alert's ERROR counts). Mirrors the unattended auto-suspend step 6
+# (scripts/auto-suspend-cleanup-builds.sh); keep the two in sync. Best-effort — the env is
+# already at ~$0, so a miss must not abort the suspend. By this point apply()'s
+# wait_for_no_autosuspend_build already drained any running auto-suspend build, so nothing this
+# cancels is our own teardown.
+cleanup_builds() {
+  local ids
+  ids="$(gcloud builds list --region="$REGION" --project="$PROJECT_ID" --ongoing \
+           --format='value(id)' 2>/dev/null || true)"
+  if [[ -n "$ids" ]]; then
+    log "Cancelling in-flight Cloud Builds: ${ids//$'\n'/ }"
+    # shellcheck disable=SC2086 # word-splitting is intended: one arg per build id.
+    gcloud builds cancel $ids --region="$REGION" --project="$PROJECT_ID" --quiet \
+      || warn "build cancel returned non-zero (some may have finished mid-cancel) — continuing"
+  fi
+  log "Deleting Cloud Build staging bucket gs://${PROJECT_ID}_cloudbuild"
+  gcloud storage rm -r "gs://${PROJECT_ID}_cloudbuild" --quiet --project="$PROJECT_ID" \
+    || warn "staging bucket delete returned non-zero (likely never created / already gone) — continuing"
+}
+
 # suspend: drive the environment to true ~$0. DUMPS Cloud SQL to GCS and verifies the
 # dump FIRST, then sets environment_active=false + db_active=false and applies — this
 # destroys the GKE cluster, Memorystore, Cloud NAT, Cloud Armor, the ingress IP AND the
@@ -69,6 +94,7 @@ suspend() {
   set_active_state false false  # compute off + Cloud SQL instance destroyed
   apply                         # plan → review → apply; the plan shows the destroys
   delete_registry               # delete the AR repo (resume recreates it, CI rebuilds) — after apply, off the destroy path
+  cleanup_builds                # cancel in-flight builds + delete the _cloudbuild staging bucket — best-effort, off the destroy path
   ok "Suspended to ~\$0 (data safe in the GCS dump). Run 'resume' to bring it back."
 }
 

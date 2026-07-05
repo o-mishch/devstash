@@ -59,6 +59,12 @@ STATE_BUCKET="${STATE_BUCKET:-}"
 # GCS lifecycle config for the out-of-band state bucket. Kept as a standalone JSON file
 # (not an inline heredoc) so it is diffable, jq-validatable, and reviewable as JSON.
 STATE_LIFECYCLE=infra/run/gcp/tfstate-lifecycle.json
+# Synchronous version cap enforced after every state write (see gcs_prune_versions in
+# infra/lib/common.sh). "3 total" = the live state + 2 noncurrent, matching the lifecycle
+# rule in $STATE_LIFECYCLE (numNewerVersions=2) — the two mechanisms deliberately agree, one
+# immediate, one async-backstop. State keys live under the backend prefix "gke/dev".
+STATE_KEEP_VERSIONS=3
+STATE_PREFIX="gke/dev/"
 PLAN_FILE=devstash.tfplan
 NS=devstash
 DB_NAME=devstash   # logical DB inside the Cloud SQL instance (dump/restore --database target)
@@ -515,6 +521,10 @@ apply() {
   if confirm "Apply this plan? (review the resource changes above)"; then
     if tofu_ apply -lock-timeout=120s "$PLAN_FILE"; then
       rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
+      # Force the state history down to STATE_KEEP_VERSIONS the instant the write lands, rather
+      # than waiting for the bucket's ~daily lifecycle sweep. Best-effort (never aborts apply):
+      # the state is already durably written and the lifecycle rule backstops anything missed.
+      gcs_prune_versions "gs://$STATE_BUCKET/$STATE_PREFIX" "$STATE_KEEP_VERSIONS"
     else
       # Saved plans contain sensitive values; remove it on failure as well as success.
       rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"

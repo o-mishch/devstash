@@ -67,6 +67,17 @@ dump_db() {
   size="$(gcloud storage objects describe "$DUMP_URI" --format='value(size)' 2>/dev/null || true)"
   [[ "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]] || die "dump $DUMP_URI missing or empty (size='${size:-none}') — NOT suspending"
   ok "DB exported and verified ($((size / 1024)) KiB) — safe to destroy the instance"
+
+  # Force the dump history down NOW rather than waiting for the bucket's ~daily lifecycle sweep.
+  # db_dump_keep_versions counts NONCURRENT dumps (matching the lifecycle rule in db-dumps.tf),
+  # so total generations to keep is that + 1 (the live dump just written). Read from tofu output
+  # so the count stays single-sourced; fall back to the variable's own default (2) if the output
+  # is unavailable. Best-effort: never fail the suspend over prune (the verified dump is safe and
+  # the lifecycle rule backstops anything left). CRITICAL: keep >= 1 always retains the live dump.
+  local keep_noncurrent
+  keep_noncurrent="$(tf_out db_dump_keep_versions)"
+  [[ "$keep_noncurrent" =~ ^[0-9]+$ ]] || keep_noncurrent=2
+  gcs_prune_versions "$DUMP_URI" "$((keep_noncurrent + 1))"
 }
 
 # restore_db: import the latest GCS dump into the freshly-recreated Cloud SQL instance on

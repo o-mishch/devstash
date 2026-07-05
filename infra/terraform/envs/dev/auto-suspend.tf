@@ -62,6 +62,11 @@ locals {
   #   browser                data.google_project (resourcemanager.projects.get)
   #   cloudkms.viewer        data.google_kms_crypto_key_version (binauthz signer — ungated)
   #   logging.logWriter      Cloud Build custom-SA builds must write their own logs
+  #   cloudbuild.builds.editor
+  #                          step 6 lists + cancels in-flight builds (cloudbuild.builds.list /
+  #                          .update). No narrower predefined role exists (viewer can't cancel);
+  #                          this role's write surface is only over Cloud Build builds — it
+  #                          cannot start/mutate anything else — so it is the minimal grant.
   #   serviceusage.serviceUsageConsumer
   #                          the provider runs with user_project_override + billing_project
   #                          (providers.tf, mandatory for the Billing Budgets API), so every
@@ -93,6 +98,7 @@ locals {
     "roles/browser",
     "roles/cloudkms.viewer",
     "roles/logging.logWriter",
+    "roles/cloudbuild.builds.editor",
     "roles/serviceusage.serviceUsageConsumer",
   ] : []
 
@@ -158,7 +164,11 @@ locals {
     "_DB_INSTANCE=$_DB_INSTANCE",
     "_DB_DUMPS_BUCKET=$_DB_DUMPS_BUCKET",
     "_DB_DUMP_OBJECT=$_DB_DUMP_OBJECT",
+    "_DB_DUMP_KEEP=$_DB_DUMP_KEEP",
     "_AR_REPO=$_AR_REPO",
+    # Cloud Build's own build id (built-in $BUILD_ID substitution) — step 6 excludes it when
+    # cancelling in-flight builds so the suspend build never cancels itself.
+    "_BUILD_ID=$_BUILD_ID",
   ]
 
   # Pub/Sub + Cloud Build + Cloud Scheduler service agents (data.google_project is declared
@@ -287,6 +297,34 @@ resource "google_artifact_registry_repository_iam_member" "lifecycle_ar_delete" 
   repository = module.artifact_registry.repository_id
   role       = google_project_iam_custom_role.lifecycle_ar_deleter[0].id
   member     = "serviceAccount:${google_service_account.lifecycle[0].email}"
+}
+
+# Step 6 (cleanup) deletes the ${project}_cloudbuild source-staging bucket. That bucket is
+# auto-created by GCP on first build use — it is NOT Terraform-managed, and it may not exist at
+# apply time — so a bucket-scoped IAM binding can't reference it (no resource to attach to, and
+# a literal-name binding 404s when the bucket is absent). Grant the delete permissions with a
+# PROJECT-scoped custom role instead: exactly the four perms `gcloud storage rm -r` on a bucket
+# calls (list + delete objects, then delete the bucket), nothing wider than storage.admin would
+# add. project-scoped so it doesn't depend on the bucket existing; the SA can only ever act on
+# buckets it already has resource access to, and these perms are storage-delete only.
+resource "google_project_iam_custom_role" "lifecycle_staging_deleter" {
+  count       = local.auto_suspend_on ? 1 : 0
+  role_id     = "${replace(local.name_prefix, "-", "_")}_cloudbuild_staging_deleter"
+  title       = "DevStash ${var.environment} Cloud Build staging deleter (idle auto-suspend)"
+  description = "Delete the ${var.project_id}_cloudbuild source-staging bucket on deep-suspend so idle Cloud Build storage is $0."
+  permissions = [
+    "storage.objects.list",
+    "storage.objects.delete",
+    "storage.buckets.get",
+    "storage.buckets.delete",
+  ]
+}
+
+resource "google_project_iam_member" "lifecycle_staging_deleter" {
+  count   = local.auto_suspend_on ? 1 : 0
+  project = var.project_id
+  role    = google_project_iam_custom_role.lifecycle_staging_deleter[0].id
+  member  = "serviceAccount:${google_service_account.lifecycle[0].email}"
 }
 
 # Pub/Sub-triggered builds run as the trigger's service_account via the Cloud Build service
@@ -447,10 +485,19 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     _DB_INSTANCE     = local.db_instance_name
     _DB_DUMPS_BUCKET = google_storage_bucket.db_dumps.name
     _DB_DUMP_OBJECT  = local.db_dump_object
+    # Noncurrent-dump retention count (same var the lifecycle rule + run.sh dump_db use). The
+    # dump step force-prunes the history to this + 1 total generations right after writing, so
+    # the event-driven idle suspend caps dump history immediately instead of waiting for the
+    # bucket's ~daily lifecycle sweep — same "on each touch" behaviour as the laptop path.
+    _DB_DUMP_KEEP = var.db_dump_keep_versions
     # Artifact Registry repo — the delete-registry step removes the whole repo for $0 idle
     # storage (resume's full-refresh apply recreates it; CI rebuilds + repushes). Same repo
     # id run.sh delete_registry uses.
     _AR_REPO = module.artifact_registry.repository_id
+    # This build's own id — step 6 excludes it so cancelling in-flight builds never cancels
+    # the suspend build itself. $BUILD_ID is a Cloud Build built-in substitution; ALLOW_LOOSE
+    # (options below) lets a user substitution reference it.
+    _BUILD_ID = "$BUILD_ID"
   }
 
   build {
@@ -511,6 +558,18 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
       env    = local.auto_suspend_build_env
       script = file("${path.module}/scripts/auto-suspend-delete-repo.sh")
     }
+
+    # 6 — CLEANUP BUILDS (only if idle). Cancel any OTHER in-flight build and delete the
+    #     ${project}_cloudbuild source-staging bucket so a suspended env holds no lingering
+    #     Cloud Build state/storage. Runs last, off the critical path, best-effort (a failure
+    #     never fails the build). Build RECORDS can't be deleted (no Cloud Build delete API);
+    #     build logs are left alone so the failure-alert log-metric keeps its ERROR counts.
+    step {
+      id     = "cleanup-builds"
+      name   = local.cloud_sdk_image
+      env    = local.auto_suspend_build_env
+      script = file("${path.module}/scripts/auto-suspend-cleanup-builds.sh")
+    }
   }
 
   depends_on = [
@@ -520,6 +579,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     google_storage_bucket_iam_member.lifecycle_db_dumps,
     google_storage_bucket_iam_member.lifecycle_db_dumps_iam,
     google_artifact_registry_repository_iam_member.lifecycle_ar_delete,
+    google_project_iam_member.lifecycle_staging_deleter,
   ]
 }
 

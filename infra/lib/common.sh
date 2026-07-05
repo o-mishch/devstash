@@ -104,3 +104,49 @@ helm_skip_if_current() {
     exit 0
   fi
 }
+
+# gcs_prune_versions <gs-uri-prefix> <keep>: SYNCHRONOUSLY force the object-version history at
+# <gs-uri-prefix> down to the <keep> most-recent generations, hard-deleting every older
+# noncurrent version immediately. This is the "on every touch, cap the history NOW" mechanism
+# that complements — never replaces — the bucket's async GCS lifecycle rule: lifecycle runs on
+# Google's own ~daily schedule, so between writes the noncurrent count can transiently exceed
+# <keep>; this call collapses it back the instant the write completes. The lifecycle rule stays
+# as the backstop for any generation this misses (e.g. a write that bypasses run.sh).
+#
+# Mechanics: `gcloud storage ls -a "<prefix>**"` lists one line per generation as
+# `gs://bucket/object#<generation>`. GCS generation numbers are monotonically increasing (a
+# microsecond-epoch stamp), so a plain reverse lexicographic sort on the `#<generation>` suffix
+# is newest-first WITHOUT parsing timestamps — the live object always sorts first because its
+# generation is the largest. We keep the first <keep> URLs and delete the rest by explicit
+# `#<generation>` URL, which targets that exact version and can never touch the live object as
+# long as <keep> >= 1. Best-effort and non-fatal: a prune failure must never abort the apply or
+# suspend that triggered it (the data is already safely written); the lifecycle backstop will
+# reclaim anything left behind. Requires the caller's shell to have gcloud authenticated.
+gcs_prune_versions() {
+  local prefix="$1" keep="$2" urls stale
+  [[ "$keep" =~ ^[0-9]+$ && "$keep" -ge 1 ]] || { warn "gcs_prune_versions: invalid keep='$keep' (need >=1) — skipping"; return 0; }
+
+  # -a includes noncurrent generations; the trailing ** matches every object under the prefix
+  # (a single object like devstash-latest.sql, or every key under gke/dev/). Reverse-sort by the
+  # whole URL: identical object paths group together and their #<generation> suffixes order
+  # newest-first. Failures (empty bucket, transient API error) yield no lines → nothing to do.
+  urls="$(gcloud storage ls -a "${prefix}**" 2>/dev/null | grep '#[0-9]' | sort -r || true)"
+  [[ -n "$urls" ]] || return 0
+
+  # Group by object path (strip the #generation) so the keep-newest-N is applied PER object, not
+  # across a mixed listing — matters for the multi-object tfstate prefix (gke/dev/default.tfstate,
+  # default.tflock, …). awk keeps a per-path counter; anything past <keep> for its path is stale.
+  stale="$(printf '%s\n' "$urls" | awk -F'#' -v keep="$keep" '{ if (++seen[$1] > keep) print }')"
+  [[ -n "$stale" ]] || return 0
+
+  local count
+  count="$(printf '%s\n' "$stale" | grep -c . || true)"
+  log "Pruning $count superseded version(s) at ${prefix} (keeping newest $keep per object)"
+  # Delete each stale generation by its explicit #<generation> URL. --quiet suppresses the
+  # interactive confirm; per-URL failures are tolerated (best-effort — lifecycle is the backstop).
+  printf '%s\n' "$stale" | while IFS= read -r url; do
+    [[ -n "$url" ]] || continue
+    gcloud storage rm "$url" --quiet 2>/dev/null || warn "could not delete $url (leaving for lifecycle backstop)"
+  done
+  ok "history pruned to newest $keep at ${prefix}"
+}

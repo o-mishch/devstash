@@ -49,6 +49,15 @@ output "db_dump_object" {
   value = local.db_dump_object
 }
 
+# Noncurrent-dump retention count, surfaced so run.sh's dump_db can SYNCHRONOUSLY prune the
+# dump history to the same size the async lifecycle rule (db-dumps.tf) targets — one variable,
+# two enforcement mechanisms, guaranteed not to drift. The sync prune keeps this + 1 total
+# generations (the live dump plus this many noncurrent), matching the lifecycle rule which
+# counts noncurrent-only.
+output "db_dump_keep_versions" {
+  value = var.db_dump_keep_versions
+}
+
 output "app_service_account_email" {
   value = module.iam.app_service_account_email
 }
