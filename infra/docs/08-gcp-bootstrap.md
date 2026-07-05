@@ -521,8 +521,12 @@ helm upgrade --install reloader stakater/reloader \
   --set reloader.deployment.resources.requests.cpu=50m \
   --set reloader.deployment.resources.requests.memory=128Mi
 
-# 7.1 GitHub Actions — 3 секрети + 4 змінні (значення з tofu output)
-gh secret set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
+# 7.1 GitHub Actions — 2 секрети + 5 змінних (значення з tofu output)
+# GCP_PROJECT_ID — ЗМІННА, не секрет: project ID не є чутливим, і GitHub ВИКИДАЄ
+# job output, що містить секрет — image_uri/migrate_image (у них registry-шлях із
+# project ID) приходили б у deploy job ПОРОЖНІМИ → migrate Job з `@sha256:…` без repo
+# → InvalidImageName і web-под не піднімався. Як змінна outputs проходять цілими.
+gh variable set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
 gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_email)"
 gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 gh variable set APP_DOMAIN --body "$(tofu output -raw app_domain)"
@@ -543,7 +547,8 @@ tofu output -raw ingress_ip_address
 **Перевірка після §7.1** — переконайся, що секрети записані коректно:
 
 ```bash
-gh secret list | grep -E 'GCP_PROJECT_ID|DEPLOYER_SA|WORKLOAD_IDENTITY_PROVIDER'
+gh secret list | grep -E 'DEPLOYER_SA|WORKLOAD_IDENTITY_PROVIDER'
+gh variable get GCP_PROJECT_ID
 gh variable get APP_DOMAIN
 gh variable get BINAUTHZ_ATTESTOR
 # Очікувано: статус "set" і значення для кожного
@@ -854,7 +859,8 @@ helm upgrade --install reloader stakater/reloader \
   --set reloader.deployment.resources.requests.memory=128Mi
 
 # ── GitHub secrets + DNS (крок 7.1–7.2) ─────────────────────────────────
-gh secret set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
+# GCP_PROJECT_ID — ЗМІННА (див. коментар у кроці 7.1): секрет-output викидається GitHub.
+gh variable set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
 gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_email)"
 gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 gh variable set APP_DOMAIN --body "$(tofu output -raw app_domain)"
@@ -1012,7 +1018,7 @@ bash infra/run/gcp/run.sh down           # tofu destroy (з підтвердже
 | 9   | **tofu init + plan + apply** | Піднімає всю інфру: VPC, GKE Autopilot, Memorystore, IAM+WIF, Artifact Registry, GCS, статичну Ingress-IP, Secret Manager. Питає підтвердження перед платним apply.                                                                                                                                                             | 6              |
 | 10  | **get-credentials**          | Прописує kubeconfig на новий кластер.                                                                                                                                                                                                                                                                                           | —              |
 | 10a | **eso**                      | `helm upgrade --install` External Secrets Operator (`-n external-secrets`, `--wait`) + чекає webhook — ставить CRD SecretStore/ExternalSecret ще ДО першого `kubectl apply -k`. Також встановлює **Stakater Reloader** (`-n reloader`) — автоматичний rolling restart при зміні Secret/ConfigMap. Раз на кластер, ідемпотентно. | 7.0            |
-| 11  | **gh secrets**               | Заливає `GCP_PROJECT_ID`, `DEPLOYER_SA`, `WORKLOAD_IDENTITY_PROVIDER` + `APP_DOMAIN`/`EMAIL_FROM`/`ENABLE_GITHUB_ATTESTATIONS`/`BINAUTHZ_*` з `tofu output`.                                                                                                                                                                    | 7              |
+| 11  | **gh secrets**               | Заливає секрети `DEPLOYER_SA`, `WORKLOAD_IDENTITY_PROVIDER` + змінні `GCP_PROJECT_ID`/`APP_DOMAIN`/`EMAIL_FROM`/`ENABLE_GITHUB_ATTESTATIONS`/`BINAUTHZ_*` з `tofu output`.                                                                                                                                                                    | 7              |
 | 12  | **dns_hint**                 | Друкує IP Ingress + готовий рядок A-запису й нагадує про Stripe/OAuth.                                                                                                                                                                                                                                                          | 7a             |
 | 13  | **deploy**                   | `gh workflow run deploy-gke.yml` → CI збирає web+migrate, проганяє migrate Job (`migrate deploy` + seed item_types) і викочує застосунок.                                                                                                                                                                                       | «Deploy»       |
 | 13a | **smoke**                    | `gh run watch --exit-status` (чекає CI) + `curl /api/health?deep=1` (перевіряє live health). Підтверджує успішний end-to-end деплой.                                                                                                                                                                                            | —              |
@@ -1409,8 +1415,9 @@ dig +short "$(tofu -chdir=infra/terraform/envs/dev output -raw dns_authorization
 WIF або kubeconfig не налаштований:
 
 ```bash
-# Перевір, що секрети є в GitHub:
-gh secret list | grep -E 'GCP_PROJECT_ID|DEPLOYER_SA|WORKLOAD_IDENTITY_PROVIDER'
+# Перевір, що секрети + GCP_PROJECT_ID (змінна) є в GitHub:
+gh secret list | grep -E 'DEPLOYER_SA|WORKLOAD_IDENTITY_PROVIDER'
+gh variable get GCP_PROJECT_ID
 # Перевір, що кластер існує:
 gcloud container clusters list --project=project-39965ce5-4c4b-495e-8d4
 ```

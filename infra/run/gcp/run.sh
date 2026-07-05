@@ -464,8 +464,8 @@ _apply_and_wire() {
 # eso / reloader / upgrade_helm / status / logs live in lib/gke.sh (sourced above).
 
 # secrets: read Terraform outputs and write them as GitHub Actions secrets/variables.
-# Sets GCP_PROJECT_ID, DEPLOYER_SA, WORKLOAD_IDENTITY_PROVIDER (secrets) and
-# APP_DOMAIN (variable, non-secret). Verifies every value was accepted before returning.
+# Sets DEPLOYER_SA, WORKLOAD_IDENTITY_PROVIDER (secrets), GCP_PROJECT_ID and
+# APP_DOMAIN (variables, non-secret). Verifies every value was accepted before returning.
 # Must run after a successful `apply` so the tofu outputs exist.
 secrets() {
   log "Pushing GitHub Actions secrets from tofu output"
@@ -473,9 +473,22 @@ secrets() {
   # Gate FIRST, in this shell, so a missing output aborts before any `gh` call — a `die` inside the
   # `$(…)` bodies below would only kill the subshell and let `gh … --body ""` prompt interactively.
   require_outputs "${SECRETS_REQUIRED_OUTPUTS[@]}"
-  gh secret set GCP_PROJECT_ID            --body "$(tf_out gcp_project_id)"
   gh secret set DEPLOYER_SA               --body "$(tf_out deployer_service_account_email)"
   gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tf_out wif_provider)"
+  # GCP_PROJECT_ID is a GitHub *variable*, not a secret. A project ID is not sensitive (it
+  # appears in every image ref, IAM binding, and URL), and — critically — GitHub DROPS any
+  # job output whose value contains a secret. The build-push job's image_uri/migrate_image
+  # outputs embed the project ID in the registry path; as a secret they crossed the job
+  # boundary EMPTY, so the deploy job applied `@sha256:…` with no repo base → the migrate
+  # Job hit InvalidImageName and the web rollout never started. As a variable the outputs
+  # survive intact. (Read in CI as ${{ vars.GCP_PROJECT_ID }}.)
+  gh variable set GCP_PROJECT_ID          --body "$(tf_out gcp_project_id)"
+  # Delete any stale GCP_PROJECT_ID *secret* left from before this became a variable. GitHub
+  # masks a value if it is defined as a secret ANYWHERE — regardless of whether the workflow
+  # reads secrets.* or vars.* — so a lingering secret would keep redacting the image-URI job
+  # outputs and re-break the migrate/rollout gate even though CI now reads vars.*. Idempotent:
+  # `|| true` swallows the not-found exit once the secret is gone.
+  gh secret delete GCP_PROJECT_ID >/dev/null 2>&1 || true
   # APP_DOMAIN is a GitHub *variable* (non-secret public config), not a secret.
   # It is read by the CI workflow as ${{ vars.APP_DOMAIN }} and injected into
   # settings.yaml as the public host for the HTTPRoute + NEXTAUTH_URL (TLS is served by
@@ -503,9 +516,9 @@ secrets() {
   gh_var_set_or_clear BINAUTHZ_KMS_KEYRING "$keyring"
   gh_var_set_or_clear BINAUTHZ_KMS_KEY     "$key"
   if [[ -n "$attestor" ]]; then
-    ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS / BINAUTHZ_* set as variables"
+    ok "DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; GCP_PROJECT_ID / APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS / BINAUTHZ_* set as variables"
   else
-    ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS set as variables (Binary Authorization disabled — BINAUTHZ_* cleared)"
+    ok "DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; GCP_PROJECT_ID / APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS set as variables (Binary Authorization disabled — BINAUTHZ_* cleared)"
   fi
 
   _verify_pushed_secrets
@@ -524,13 +537,13 @@ _verify_pushed_secrets() {
   # `gh secret list` only lists secrets. Verify it with: gh variable list
   local names missing=0
   names="$(gh secret list --json name -q '.[].name')"
-  count_missing "$names" GCP_PROJECT_ID DEPLOYER_SA WORKLOAD_IDENTITY_PROVIDER || missing=$?
+  count_missing "$names" DEPLOYER_SA WORKLOAD_IDENTITY_PROVIDER || missing=$?
   [[ $missing -eq 0 ]] || die "$missing secret(s) not confirmed in GitHub — re-run 'secrets'"
   # Separately verify the variables — gh variable list exits 0 even if empty, so a
   # per-variable value fetch is the only reliable presence check.
   local gh_var gh_val
   # Always-present variables — a missing one is a real setup failure.
-  for gh_var in APP_DOMAIN EMAIL_FROM ENABLE_GITHUB_ATTESTATIONS; do
+  for gh_var in GCP_PROJECT_ID APP_DOMAIN EMAIL_FROM ENABLE_GITHUB_ATTESTATIONS; do
     gh_val="$(gh_var_value "$gh_var")"
     if [[ -z "$gh_val" ]]; then
       warn "$gh_var variable not found in GitHub — gh variable set may have failed; re-run 'secrets'"

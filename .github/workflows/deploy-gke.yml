@@ -140,7 +140,7 @@ jobs:
         id: decide-active
         if: steps.auth.outcome == 'success'
         env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           # github.event.inputs.reason is '' on a push event (only set via workflow_dispatch).
           DISPATCH_REASON: ${{ github.event.inputs.reason }}
         run: infra/ci/decide-build.sh
@@ -182,7 +182,7 @@ jobs:
       - name: Detect suspended environment
         id: env-state
         env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         run: infra/ci/check-env-active.sh
 
   # ---- Build the images + push to Artifact Registry (NO cluster dependency) ---
@@ -213,7 +213,7 @@ jobs:
     # job, which runs untrusted test code — the same trust boundary that keeps id-token off
     # `verify`.
     env:
-      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
     # The image build's own budget (docker buildx bake ~90-105s warm, 278s cold GHA cache;
     # the step wraps its own 8m retry). 15m caps setup + auth + build + sign with headroom,
     # well under the runner's six-hour default. The cluster-side work (Helm/migrate/rollout)
@@ -352,7 +352,7 @@ jobs:
     # SAME env var names they always did — no per-script change. MIGRATE_IMAGE is the
     # digest-pinned reference (repo@sha256:…) those scripts consume directly.
     env:
-      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       IMAGE_URI:      ${{ needs.build-push.outputs.image_uri }}
       WEB_DIGEST:     ${{ needs.build-push.outputs.web_digest }}
       MIGRATE_DIGEST: ${{ needs.build-push.outputs.migrate_digest }}
