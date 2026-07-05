@@ -38,9 +38,12 @@
 #
 # Required env:
 #   GCP_PROJECT_ID — from secrets (the project holding devstash-app-config)
+# shellcheck source=infra/lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
 set -euo pipefail
 
-NS=devstash
+NS="$DEVSTASH_NS"
 ES=devstash-secrets
 SM_SECRET=devstash-app-config
 

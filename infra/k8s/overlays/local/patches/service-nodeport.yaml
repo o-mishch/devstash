@@ -1,7 +1,7 @@
 # Local-only delta on the base web Service: switch ClusterIP → NodePort so kind's
 # port mapping (containerPort 30080 → host 8080, see local/kind-config.yaml)
 # reaches the app without a port-forward. The GCP overlay keeps the base ClusterIP
-# (traffic arrives via the GCE Ingress / NEG).
+# (traffic arrives via the Gateway → auto-provisioned NEG).
 # Ports merge by `port`, so 80 is matched and nodePort is added; targetPort `http`
 # is inherited from the base.
 apiVersion: v1

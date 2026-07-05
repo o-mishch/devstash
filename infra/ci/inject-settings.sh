@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Inject the real per-environment values into the overlay's single source of truth
 # (settings.yaml). Kustomize `replacements` fan these out into the Workload-Identity SA
-# annotation, ManagedCertificate domain, NEXTAUTH_URL, Ingress static-IP name, etc. The
+# annotation, the HTTPRoute host, the Gateway cert-map annotation + static-IP address,
+# NEXTAUTH_URL, etc. The
 # image is separate because its digest is build output, not environment config: pin
 # `images` directly to THIS build's repo + immutable registry digest (not :latest), so the
 # rendered Deployment is reproducible and the migrate→rollout gate is real. `yq` is
@@ -9,7 +10,8 @@
 #
 # Required env:
 #   GCP_PROJECT_ID, APP_DOMAIN, EMAIL_FROM       — always set by the caller
-#   IMAGE_URI, WEB_DIGEST                        — from build-push.sh via $GITHUB_ENV
+#   IMAGE_URI, WEB_DIGEST                        — job-level env in the `deploy` job,
+#                                                  reconstructed from the `build-push` job's outputs
 # Optional env (non-secret app config; empty/unset falls back to the committed value):
 #   AUTH_GITHUB_ID, AUTH_GOOGLE_ID, STRIPE_PUBLISHABLE_KEY,
 #   STRIPE_PRICE_ID_MONTHLY, STRIPE_PRICE_ID_YEARLY
@@ -24,6 +26,7 @@ cd infra/k8s/overlays/gcp
 # The resource names are:
 #   google_compute_global_address: "${name_prefix}-ip"     → "devstash-dev-ip"
 #   google_compute_security_policy: "${name_prefix}-armor" → "devstash-dev-armor"
+#   google_certificate_manager_certificate_map: "${name_prefix}-certmap" → "devstash-dev-certmap"
 #
 # WHY NOT `tofu output`: reading these from Terraform output at deploy time would require
 # the OpenTofu state to be accessible in CI (remote state bucket auth, extra tofu init
@@ -31,8 +34,8 @@ cd infra/k8s/overlays/gcp
 # Terraform name_prefix template changes, both of which require an intentional infra
 # change. Hardcoding them here is an accepted tradeoff. WHEN TO UPDATE: if you rename
 # `var.environment` in terraform.tfvars (e.g. "dev" → "prod"), update BOTH literals below
-# AND the CLUSTER env var at the top of deploy-gke.yml to match. Mismatch = Ingress loses
-# its static IP + BackendConfig gets no WAF policy — silent kubectl apply success.
+# AND the CLUSTER env var at the top of deploy-gke.yml to match. Mismatch = the Gateway loses
+# its static IP + the GCPBackendPolicy gets no WAF policy — silent kubectl apply success.
 # s3Bucket follows the same "derive, don't read Terraform state" approach: module.gcs
 # .bucket_name's naming formula is "${project_id}-${name_prefix}-uploads"
 # (modules/gcs/main.tf) — deterministic from GCP_PROJECT_ID, so no Secret Manager round-trip is
@@ -52,6 +55,7 @@ yq -i '
   .data.emailFrom            = strenv(EMAIL_FROM) |
   .data.nextAuthUrl          = "https://" + strenv(APP_DOMAIN) |
   .data.ingressIpName        = "devstash-dev-ip" |
+  .data.certMapName          = "devstash-dev-certmap" |
   .data.armorPolicyName      = ({"true": "devstash-dev-armor"} | .[strenv(ARMOR_ENABLED)] // "") |
   .data.s3Bucket             = strenv(GCP_PROJECT_ID) + "-devstash-dev-uploads" |
   .data.authGithubId         = ((strenv(AUTH_GITHUB_ID) | select(. != "")) // .data.authGithubId) |

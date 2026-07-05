@@ -10,37 +10,30 @@
 # for the web Deployment.
 #
 # Required env:
-#   MIGRATE_IMAGE  — from build-push.sh via $GITHUB_ENV
+#   MIGRATE_IMAGE  — job-level env in the `deploy` job, reconstructed from the
+#                    `build-push` job's outputs (repo@sha256:… digest-pinned reference)
+# shellcheck source=infra/lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+
 set -euo pipefail
 
-NS=devstash   # target namespace (base kustomize; matches settings.yaml)
+NS="$DEVSTASH_NS"
 
-# Navigate to the repository root directory for Git commands
+# Navigate to the repository root directory.
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-# Check if we can skip migrations based on git diff against the running deployment version
-PREV_SHA=$(kubectl -n "$NS" get deployment devstash-web -o jsonpath='{.metadata.annotations.devstash-commit-sha}' 2>/dev/null || true)
-
-if [ -n "$PREV_SHA" ]; then
-  echo "Found running deployment version: $PREV_SHA"
-  # Fetch the previous commit to allow diffing.
-  # We use a shallow fetch to minimize time/network overhead.
-  if git fetch --depth=1 origin "$PREV_SHA" 2>/dev/null; then
-    # Compare files under the prisma directory (migrations, schema, seed)
-    if git diff --quiet "$PREV_SHA" HEAD -- prisma; then
-      echo "No database schema, migrations, or seeding changes detected in prisma/ directory since $PREV_SHA."
-      echo "Skipping db-run-migration job execution."
-      exit 0
-    else
-      echo "Database changes detected in prisma/ directory. Running migration job."
-    fi
-  else
-    echo "Could not fetch commit $PREV_SHA from remote. Running migration job to be safe."
-  fi
-else
-  echo "No devstash-commit-sha annotation found on devstash-web deployment. Running migration job."
-fi
+# ALWAYS run the migrate Job — never skip on a heuristic. `prisma migrate deploy` (step 1 of
+# the migrate image CMD) is idempotent by design: it applies only pending migrations and is a
+# fast no-op when the schema is already current, and the seed (SEED_ITEM_TYPES_ONLY) is
+# idempotent upserts. The old skip compared a `git diff -- prisma` against the SHA annotation
+# on the running Deployment, but a clean file-diff does NOT prove the DB schema is current: a
+# `run.sh resume` restores the DB from a possibly-older GCS dump (or the schema drifts
+# out-of-band) with the prisma/ files unchanged, so the skip would ship new code against an
+# un-migrated schema. Running the idempotent Job unconditionally is both correct and cheap —
+# the one-shot pod (250m/512Mi) finishes in seconds when nothing is pending, and only ever
+# runs during an active deploy, never at idle, so it does not affect the ~$0 suspended cost.
+echo "Running the migrate Job unconditionally (prisma migrate deploy is idempotent)."
 
 cd infra/k8s/overlays/gcp
 
@@ -57,8 +50,10 @@ fi
 
 # A Job's pod template is immutable — delete any prior run before re-applying with this
 # build's migrate image. Write the patched manifest to a temp file to avoid mutating the
-# tracked source.
-kubectl -n "$NS" delete job devstash-migrate --ignore-not-found
+# tracked source. --wait (default) + --cascade=foreground blocks until the old Job AND its
+# pod are fully gone, so the immediate apply below can't race a still-terminating pod and
+# fail with "object is being deleted".
+kubectl -n "$NS" delete job devstash-migrate --ignore-not-found --cascade=foreground
 MIGRATE_IMAGE="${MIGRATE_IMAGE}" yq '.spec.template.spec.containers[0].image = strenv(MIGRATE_IMAGE)' \
   migrate-job.yaml > /tmp/migrate-job-patched.yaml
 kubectl apply -f /tmp/migrate-job-patched.yaml
@@ -78,16 +73,14 @@ while (( SECONDS < deadline )); do
   fi
   if [[ "$failed" == "True" ]]; then
     echo "::error::migration job reached Failed condition"
-    kubectl -n "$NS" logs job/devstash-migrate --tail=200 || true
-    kubectl -n "$NS" describe job/devstash-migrate || true
+    ds_dump_job_diagnostics "$NS" devstash-migrate
     exit 1
   fi
   sleep 5
 done
 if [[ "${complete:-}" != "True" ]]; then
   echo "::error::migration job did not complete within 600s"
-  kubectl -n "$NS" logs job/devstash-migrate --tail=200 || true
-  kubectl -n "$NS" describe job/devstash-migrate || true
+  ds_dump_job_diagnostics "$NS" devstash-migrate
   exit 1
 fi
 kubectl -n "$NS" logs job/devstash-migrate --tail=50 || true

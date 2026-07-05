@@ -12,7 +12,7 @@ data:
   # PORT + HOSTNAME duplicate the Dockerfile ENV defaults (3000 / 0.0.0.0).
   # Explicit here so a kubectl edit of the Deployment or a base override can't
   # accidentally drop to loopback-only. These values must match containerPort
-  # in deployment.yaml and the BackendConfig healthCheck.port in the GCP overlay.
+  # in deployment.yaml and the HealthCheckPolicy httpHealthCheck.port in the GCP overlay.
   PORT: "3000"
   HOSTNAME: "0.0.0.0"
   LOG_LEVEL: "info"

@@ -84,6 +84,15 @@ dump_db() {
 # resume. Best-effort: on a first-ever bring-up there is no dump, so it skips and lets the
 # CI Prisma migrations create the schema. The dump includes the _prisma_migrations table,
 # so when a dump IS restored the CI migrate step is a no-op.
+#
+# CLEAN TARGET before every import: drop and recreate the logical database first, so the import
+# always lands in an empty schema. `gcloud sql import` (pg_restore/psql) is NOT idempotent — a
+# retry after a partially-completed import (network blip, timeout) hits "relation already
+# exists" and can never re-import cleanly. Terraform recreates the instance with an EMPTY
+# devstash database on resume, so the first try is clean anyway; the drop+recreate makes a
+# SECOND try equally clean with no manual `gcloud sql databases delete` dance. Ordering is safe:
+# restore_db runs after apply (instance RUNNABLE) and before deploy, and the drop+recreate
+# happens before any app/migrate pod can connect, so nothing is holding a connection.
 restore_db() {
   ensure_tfvars
   resolve_dump_target || { warn "no instance / dump bucket / object resolved — skipping restore"; return 0; }
@@ -91,8 +100,17 @@ restore_db() {
     warn "no dump at $DUMP_URI — fresh database; CI migrations will create the schema"
     return 0
   fi
+  # Drop + recreate the target database so the import lands in a clean schema even on a retry
+  # after a partial import. Deleting a Cloud SQL database drops it and all its objects; the
+  # recreate leaves an empty database owned by the instance for the import to populate. Both
+  # are idempotent for our purposes (--quiet; the recreate is a fresh empty DB every resume).
+  log "Resetting database '$DB_NAME' on '$DUMP_INSTANCE' to a clean schema before import"
+  gcloud sql databases delete "$DB_NAME" --instance="$DUMP_INSTANCE" --project="$PROJECT_ID" --quiet \
+    || warn "database '$DB_NAME' did not exist (fresh instance) — creating it"
+  gcloud sql databases create "$DB_NAME" --instance="$DUMP_INSTANCE" --project="$PROJECT_ID" --quiet \
+    || die "could not (re)create database '$DB_NAME' — investigate before the app deploys"
   log "Importing $DUMP_URI → Cloud SQL '$DUMP_INSTANCE' (database $DB_NAME)"
   gcloud sql import sql "$DUMP_INSTANCE" "$DUMP_URI" --database="$DB_NAME" --project="$PROJECT_ID" --quiet \
-    || die "gcloud sql import failed — the instance is up but empty; investigate before the app deploys"
+    || die "gcloud sql import failed — the instance is up but empty; re-run 'run.sh resume' (restore is now retry-safe: the DB is reset to empty before each import)"
   ok "DB restored from $DUMP_URI"
 }

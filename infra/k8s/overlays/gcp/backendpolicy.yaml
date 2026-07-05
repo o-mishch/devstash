@@ -1,0 +1,65 @@
+# GCPBackendPolicy + HealthCheckPolicy — the Gateway-API replacement for the GCE BackendConfig
+# (backendconfig.yaml, deleted in this overlay). Both are Service-targeted policies
+# (targetRef.kind: Service) and require the Service to also be referenced by an HTTPRoute
+# (httproute.yaml) or the controller will not reconcile them.
+#
+# WHAT MOVED FROM BackendConfig:
+#   securityPolicy (Cloud Armor)      → GCPBackendPolicy.spec.default.securityPolicy
+#   connectionDraining.drainingTimeoutSec → GCPBackendPolicy.spec.default.connectionDraining
+#   logging (enable + sampleRate)     → GCPBackendPolicy.spec.default.logging
+#   healthCheck (HTTP path/port/…)    → HealthCheckPolicy.spec.default
+# No IAP: the app backend never had IAP (Armor only), unchanged here.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+spec:
+  default:
+    # Cloud Armor WAF + rate limiting. Whole value injected from settings.yaml.data.armorPolicyName
+    # by the kustomize replacement — EMPTY in the dev $0 posture (armor_enabled=false → no policy),
+    # set to devstash-dev-armor when ARMOR_ENABLED=true (prod). An empty string attaches no policy.
+    securityPolicy: ARMOR_POLICY_NAME
+    # GKE NEG scale-down: 60s backend drain, paired with the 120s preStop + 210s pod grace in
+    # base/deployment.yaml (TREAT AS ONE UNIT — keep the three in sync).
+    connectionDraining:
+      drainingTimeoutSec: 60
+    # LB access logging → Cloud Logging (resource type http_load_balancer). sampleRate is a
+    # 0–1,000,000 integer under Gateway (÷1e6 = fraction); 1000000 = log all requests (the
+    # BackendConfig used sampleRate: 1.0, the same 100%). Reduce for cost if traffic grows.
+    logging:
+      enabled: true
+      sampleRate: 1000000
+  targetRef:
+    group: ""
+    kind: Service
+    name: devstash-web
+---
+# Custom health check. The LB probes the shallow liveness path (no DB) so a slow DB never
+# removes a serving pod — the K8s readiness probe handles DB-aware traffic gating. Must return
+# 200 (not a 3xx) or the LB marks backends down. Mirrors the old BackendConfig healthCheck.
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+spec:
+  default:
+    checkIntervalSec: 10
+    timeoutSec: 5 # must be < checkIntervalSec
+    healthyThreshold: 1 # readiness probe already gates NEG membership; re-admit fast
+    unhealthyThreshold: 3
+    config:
+      type: HTTP
+      httpHealthCheck:
+        portSpecification: USE_FIXED_PORT
+        port: 3000 # matches containerPort in base/deployment.yaml
+        requestPath: /api/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: devstash-web

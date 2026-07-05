@@ -60,6 +60,18 @@ resource "google_container_cluster" "primary" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
 
+  # Gateway API — the modern replacement for the GKE (GCE) Ingress controller. CHANNEL_STANDARD
+  # installs the GA Gateway CRDs + the gke-l7-* GatewayClasses so the overlay's Gateway /
+  # HTTPRoute / GCPBackendPolicy / HealthCheckPolicy resources reconcile into a Google Cloud
+  # external Application Load Balancer. The app serves through gke-l7-global-external-managed
+  # (overlays/gcp), with TLS from a project-scoped Certificate Manager cert (envs/dev/
+  # certmanager.tf) that survives suspend — eliminating the legacy Ingress + ManagedCertificate
+  # CRD + pre-shared-cert reprovision gap. This block is required for the CRDs to exist; without
+  # it `kubectl apply` of the Gateway resources fails with "no matches for kind Gateway".
+  gateway_api_config {
+    channel = "CHANNEL_STANDARD"
+  }
+
   cluster_autoscaling {
     auto_provisioning_defaults {
       service_account = google_service_account.gke_nodes.email

@@ -14,7 +14,7 @@ variable "point_in_time_recovery" {
 variable "activation_policy" {
   type        = string
   default     = "ALWAYS"
-  description = "ALWAYS = instance running. NEVER = stopped (no vCPU/RAM charge, disk + data retained). The event-driven auto-suspend flips this to stop the DB without destroying it (instance_active stays true)."
+  description = "ALWAYS = instance running. NEVER = stopped (no vCPU/RAM charge, disk + data retained). This is the compute-off-DB-kept lever (instance_active stays true); the deep suspend paths destroy the instance via instance_active instead, so today NEVER is only reached transiently (e.g. dump_db starting a stopped instance)."
   validation {
     condition     = contains(["ALWAYS", "NEVER"], var.activation_policy)
     error_message = "activation_policy must be ALWAYS or NEVER."

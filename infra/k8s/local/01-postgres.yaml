@@ -2,8 +2,8 @@
 # standard node-postgres adapter (DB_DRIVER=pg, see src/lib/infra/db-local.ts) — no
 # proxy needed, and interactive transactions work.
 #
-# PostgreSQL 16 self-hosted in-cluster: the local analog of GKE's managed Cloud SQL
-# (modules/cloudsql, database_version = "POSTGRES_16"). Both are plain PostgreSQL
+# PostgreSQL 18 self-hosted in-cluster: the local analog of GKE's managed Cloud SQL
+# (modules/cloudsql, database_version = "POSTGRES_18"). Both are plain PostgreSQL
 # reached over TCP by the same node-postgres adapter (DB_DRIVER=pg) running the same
 # migrations — so the local run stays "fully local, no cloud, no cost" while matching
 # GCP exactly on PostgreSQL major version, sslmode handling, and the pg_trgm extension
@@ -49,14 +49,15 @@ spec:
     spec:
       containers:
         - name: postgres
-          # Pinned to postgres:16-alpine to EXACTLY match Cloud SQL POSTGRES_16
-          # (modules/cloudsql/main.tf: database_version = "POSTGRES_16").
+          # Pinned to postgres:18-alpine to EXACTLY match Cloud SQL POSTGRES_18
+          # (modules/cloudsql/main.tf: database_version = "POSTGRES_18") and the
+          # production app DB on Neon (server_version 18.x).
           # Major version MUST stay in sync — query planner, pg_trgm function
           # signatures, and migration behavior can differ across major versions.
-          # When Cloud SQL is upgraded to POSTGRES_17, change BOTH:
-          #   1. modules/cloudsql/main.tf  database_version = "POSTGRES_17"
-          #   2. This image tag → postgres:17-alpine
-          image: postgres:16-alpine
+          # When Cloud SQL is upgraded to a newer major, change BOTH:
+          #   1. modules/cloudsql/main.tf  database_version = "POSTGRES_<N>"
+          #   2. This image tag → postgres:<N>-alpine
+          image: postgres:18-alpine
           env:
             - { name: POSTGRES_USER, value: devstash }
             - { name: POSTGRES_PASSWORD, value: devstash }

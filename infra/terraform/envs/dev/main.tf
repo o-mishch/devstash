@@ -12,6 +12,7 @@ resource "google_project_service" "apis" {
     "servicenetworking.googleapis.com", # VPC peering for Cloud SQL + Memorystore private IP
     "secretmanager.googleapis.com",
     "artifactregistry.googleapis.com",
+    "certificatemanager.googleapis.com",  # Certificate Manager — Gateway TLS cert/map/entry (certmanager.tf)
     "containeranalysis.googleapis.com",   # Artifact Registry vulnerability scan results API
     "iam.googleapis.com",                 # Workload Identity Federation pool/provider
     "iamcredentials.googleapis.com",      # SA impersonation via federated tokens
@@ -237,9 +238,6 @@ module "iam" {
   project_id     = var.project_id
   project_number = var.project_number
   region         = var.region
-  # Null when suspended (cluster destroyed); the iam module does not actually consume
-  # this value, so an empty string is a safe placeholder that keeps the type (string).
-  gke_cluster_name = module.gke.cluster_name != null ? module.gke.cluster_name : ""
   # Always non-empty now: the node SA is kept always-on across suspend (modules/gke —
   # SAs are free), so its email is stable and its project-IAM + AR-reader bindings never
   # flip to a DESTROY on suspend. That churn was the root cause of the suspend build's

@@ -1,5 +1,12 @@
 terraform {
-  required_version = ">= 1.6"
+  # >= 1.10: the iam module uses the write-only secret attribute `secret_data_wo` /
+  # `secret_data_wo_version` (modules/iam/main.tf). This requires OpenTofu >= 1.10 OR
+  # Terraform >= 1.11 — write-only arguments landed a minor later in Terraform. A single
+  # required_version string cannot express that per-tool split, so this floor is calibrated for
+  # OpenTofu (our pinned tool: the auto-suspend Cloud Build uses OpenTofu 1.12.3). Terraform
+  # users must be on >= 1.11; Terraform 1.10.x passes this `>= 1.10` gate but then fails at
+  # plan with a confusing "Unsupported argument: secret_data_wo". Prefer OpenTofu here.
+  required_version = ">= 1.10"
 
   required_providers {
     google = {

@@ -26,6 +26,10 @@ set -eu
 # 1 — Cancel every ongoing build EXCEPT this one. $_BUILD_ID is Cloud Build's own build id
 # (passed in from the built-in $BUILD_ID substitution); excluding it stops us cancelling the
 # suspend build out from under itself. One server-side --filter; --ongoing = QUEUED or WORKING.
+# NOTE: unlike run.sh's cleanup_builds (which scopes to the auto-suspend trigger so a laptop
+# suspend never kills a teammate's deploy), this UNATTENDED path deliberately cancels ALL other
+# in-flight builds: once we have committed to driving the env to $0, no build (deploy or
+# otherwise) should keep running against the resources we are tearing down.
 echo "Cancelling in-flight Cloud Builds (excluding this build $_BUILD_ID)"
 IDS="$(gcloud builds list --region="$_REGION" --project="$_PROJECT_ID" --ongoing \
          --filter="id!=$_BUILD_ID" --format='value(id)' 2>/dev/null || true)"

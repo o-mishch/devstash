@@ -610,26 +610,37 @@ tofu -chdir=infra/terraform/envs/dev output -raw ingress_ip_address
 > Spaceship сам додасть `.devstash.one`. Введення повного імені дасть
 > `gke.devstash.one.devstash.one`.
 
-**Крок 3 — перевірити, що резолвиться, перш ніж чекати cert:**
+**Крок 3 — перевірити, що A-запис резолвиться:**
 ```bash
-dig +short gke.devstash.one          # має повернути IP Ingress
+dig +short gke.devstash.one          # має повернути IP Gateway
 # або
 nslookup gke.devstash.one
 ```
 
-**Крок 4 — дочекатися Google-managed cert** (провіжиниться лише ПІСЛЯ того, як DNS
-резолвиться на IP; зазвичай 15–60 хв):
+**Крок 3b — ОДНОРАЗОВО: DNS-authorization CNAME для Certificate Manager.** TLS тепер видає
+**Certificate Manager** (project-scoped, `certmanager.tf`) — Google-managed cert із DNS
+authorization. Він провіжиниться раз, а далі **переживає будь-який suspend/resume** (не
+cluster-CRD), тож resume більше НЕ чекає на cert. Для видачі треба додати один CNAME у зону
+Spaceship (окремо від A-запису вище):
 ```bash
-kubectl -n devstash get managedcertificate devstash-cert -o wide
-# STATUS: Provisioning → Active
+tofu -chdir=infra/terraform/envs/dev output -raw dns_authorization_cname_record   # Host (ліва частина)
+tofu -chdir=infra/terraform/envs/dev output -raw dns_authorization_cname_target   # Value (CNAME target)
+# Додай у Spaceship:  Type=CNAME  Host=<record>  Value=<target>  TTL=5 min
 ```
 
-> Якщо команда повертає `Error from server (NotFound): managedcertificates … "devstash-cert" not found` —
-> GCP overlay ще не застосовано до кластера. Застосуй його (потрібен реальний digest образу та заповнені
-> `settings.yaml` / GitHub-секрети з кроків 6–7.1, інакше поди не підніметься):
-> ```bash
-> kubectl apply -k infra/k8s/overlays/gcp
-> ```
+**Крок 4 — дочекатися Certificate Manager cert** (провіжиниться після того, як CNAME вище
+резолвиться; зазвичай 15–60 хв, ОДИН раз):
+```bash
+gcloud certificate-manager certificates describe devstash-dev-cert \
+  --format='value(managed.state)'   # PROVISIONING → ACTIVE
+# або через run.sh:
+bash infra/run/gcp/run.sh status    # показує Gateway + cert state
+```
+
+> Gateway/overlay ще не застосовано? Certificate Manager cert НЕ залежить від кластера — він
+> провіжиниться від самого CNAME, навіть поки overlay не задеплоєно. Сам застосунок підніметься
+> після деплою (потрібен реальний digest образу + заповнені `settings.yaml`/GitHub-секрети з
+> кроків 6–7.1): `bash infra/run/gcp/run.sh deploy`.
 
 > Якщо cert завис у `Provisioning` довше години — майже завжди DNS ще не резолвиться
 > глобально (перевір `dig`), або A-запис веде не на ту IP. HTTPS-LB і cert на GKE
@@ -884,8 +895,8 @@ Memorystore for **Valkey** **не має публічного IP** — він ж
 VPC-діапазоні (PSC-ендпоінт), до того ж з **IAM AUTH + TLS** (`SERVER_AUTHENTICATION`).
 Статичного пароля більше немає: клієнт автентифікується **короткоживучим IAM-токеном**
 (OAuth2 access token, TTL ~1 год), який видає Workload Identity. Тож із ноутбука напряму
-не під'єднаєшся: треба «місток» **усередині VPC**. Спосіб А під'єднується сам (мінтить
-токен у поді); спосіб В публікує UI за публічним URL через IAP.
+не під'єднаєшся: треба «місток» **усередині VPC**. Обидва способи нижче під'єднуються
+самі (мінтять токен у поді) і коштують $0 у стані спокою — жодного постійного LB.
 
 **Дані для під'єднання (host/port + CA; пароль — це IAM-токен, не з Secret):**
 
@@ -934,7 +945,9 @@ metadata-сервера — з ноутбука валідний токен не
 під'єднання» вище). Overrides для пода —
 [`redis-cli-probe.json`](../k8s/overlays/gcp/redisinsight/redis-cli-probe.json): host з
 живого `REDIS_URL` (secretKeyRef), PSA-restricted securityContext, а токен мінтиться прямо
-в `args` (`wget` до metadata → `redis-cli --user default --pass <token>`).
+в `args` (`wget` до metadata → `redis-cli --user default --pass <token>`). TLS перевіряє CA:
+`REDIS_CA_CERT` (secretKeyRef) пишеться у `/tmp/ca.pem`, а redis-cli викликається з
+`--cacert /tmp/ca.pem` (без `--insecure`) — та сама verify-CA політика, що й у застосунку.
 
 ```bash
 kubectl -n devstash run redis-cli --image=redis:7-alpine \
@@ -944,35 +957,18 @@ kubectl -n devstash logs pod/redis-cli    # → PONG
 kubectl -n devstash delete pod redis-cli
 ```
 
-> `--insecure` у probe пропускає перевірку CA для разової перевірки; для повної —
-> змонтуй `REDIS_CA_CERT` у под і додай `--cacert /certs/ca.pem`.
+> probe перевіряє CA (`REDIS_CA_CERT` → `/tmp/ca.pem`, `--cacert`) — та сама verify-CA
+> політика, що й у застосунку; `--insecure` не використовується.
 >
 > Потрібна **інтерактивна** консоль redis-cli? Візьми вбудований CLI в RedisInsight зі
 > Способу А — він уже під'єднаний до Valkey (свіжий токен + TLS), мінтити нічого не треба.
 
-### Спосіб В — публічний web UI за IAP (без `kubectl`)
-
-Якщо UI має бути доступний за **публічним URL** (наприклад, демо для портфоліо) без
-`port-forward` — публікуємо RedisInsight за Google Cloud HTTPS LB + **Identity-Aware
-Proxy**. Сам Memorystore лишається приватним; пускає лише дозволені Google-акаунти.
-GCP **не має власного data-браузера** для Memorystore, тому UI — це наш RedisInsight.
-
-> Дорожче й «світліше» за Спосіб А: окремий LB (~$18/міс), статичний IP, managed
-> cert, под працює постійно. Для щоденного дебагу бери Спосіб А (port-forward).
-
-Маніфест — [`overlays/gcp/redisinsight-public.yaml`](../k8s/overlays/gcp/redisinsight-public.yaml)
-(теж **поза** kustomization). Хост за замовчуванням `redis-ui.gke.devstash.one`
-(піддомен — не конфліктує ні з застосунком, ні з Vercel-apex). Використовуємо
-**Google-managed OAuth** (`iap.enabled` без `oauthclientCredentials`) — IAP сам
-створює OAuth-клієнт, тож руками не треба ні brand/client, ні Secret з креденшелами.
-Одноразове налаштування (статичний IP, DNS A-record, OAuth-консент, IAM-грант
-`roles/iap.httpsResourceAccessor`) розписане покроково в шапці маніфесту. Далі:
-
-```bash
-kubectl apply -f infra/k8s/overlays/gcp/redisinsight-public.yaml
-kubectl -n devstash describe managedcertificate redisinsight-cert   # дочекайсь Active
-open https://redis-ui.gke.devstash.one
-```
+> **Публічний web UI (портфоліо-демо)?** Раніше був варіант публікувати RedisInsight за
+> Google Cloud HTTPS LB + IAP (`redisinsight-public.yaml`). Його **прибрано**: постійний LB
+> коштував ~$18/міс (порушує $0-running) і давав публічну поверхню атаки на data-браузер
+> Valkey, захищену лише IAP. Для дебагу використовуй Спосіб А (port-forward) — $0, під SA з
+> Workload Identity, TLS з verify-CA. Якщо публічний URL справді потрібен, публікуй
+> throwaway-датасет, а не живий Memorystore.
 
 ---
 
@@ -1053,13 +1049,17 @@ CLI цього репо. Роби їх у такому порядку:
      ConfigMap `devstash-config` (`settings.yaml`), не в Secret Manager (див. **7b**).
    - ⚠️ `database-url`/`direct-url` НЕ вписуй — їх генерує Terraform (Cloud SQL).
 
-**Крок B — DNS A-запис (після `apply`, деталі в 7a).**
+**Крок B — DNS (після `apply`, деталі в 7a).**
 1. Візьми IP: `tofu -chdir=infra/terraform/envs/dev output -raw ingress_ip_address`.
 2. У дашборді реєстратора (Spaceship для `devstash.one`) додай **A-запис**: Host=`gke`,
    Value=IP, TTL=5 хв. **Apex і `www` не чіпай** — вони на Vercel.
-3. Перевір: `dig +short gke.devstash.one` має повернути цю IP.
-4. Дочекайся cert: `kubectl -n devstash get managedcertificate devstash-cert -o wide`
-   (Provisioning → Active, зазвичай 15–60 хв після резолву DNS).
+3. **Одноразово** додай **CNAME** для Certificate Manager DNS-authorization:
+   Host=`tofu output -raw dns_authorization_cname_record`,
+   Value=`tofu output -raw dns_authorization_cname_target`, TTL=5 хв.
+4. Перевір: `dig +short gke.devstash.one` має повернути A-IP.
+5. Дочекайся cert (ОДИН раз; далі переживає suspend/resume):
+   `gcloud certificate-manager certificates describe devstash-dev-cert --format='value(managed.state)'`
+   (PROVISIONING → ACTIVE, зазвичай 15–60 хв після резолву CNAME).
 
 **Крок C — Stripe webhook (після того, як DNS+cert піднялись, деталі в 7c).**
 1. Створи endpoint саме на GKE-хост:
@@ -1387,15 +1387,22 @@ gcloud compute addresses list --filter="name:devstash-dev-ip"
 tofu -chdir=infra/terraform/envs/dev output -raw ingress_ip_address
 ```
 
-### ManagedCertificate застрягла в `Provisioning` більше години
+### Certificate Manager cert застряг у `PROVISIONING` більше години
 
-Майже завжди DNS ще не резолвиться або A-запис веде не на ту IP:
+Майже завжди **DNS-authorization CNAME** ще не резолвиться (це те, що авторизує видачу —
+НЕ A-запис). Certificate Manager cert — project-scoped (не cluster-CRD), тож перевіряй його
+через gcloud, а не kubectl:
 
 ```bash
-dig +short gke.devstash.one          # має повернути Ingress IP
-kubectl -n devstash describe managedcertificate devstash-cert
-# Поле "Domain Status" покаже конкретну причину
+# Стан cert + причина:
+gcloud certificate-manager certificates describe devstash-dev-cert \
+  --format='yaml(managed.state, managed.provisioningIssue, managed.authorizationAttemptInfo)'
+# Чи резолвиться DNS-auth CNAME (Host/Value з `tofu output dns_authorization_cname_*`):
+dig +short "$(tofu -chdir=infra/terraform/envs/dev output -raw dns_authorization_cname_record)" CNAME
 ```
+
+> Провіжинінг — ОДНОРАЗОВИЙ. Щойно cert стає `ACTIVE`, він переживає будь-який
+> suspend/resume (project-scoped ресурс), тож resume більше не чекає на видачу.
 
 ### CI падає на `gcloud container clusters get-credentials`
 

@@ -10,10 +10,18 @@ namespace: devstash
 resources:
   - ../../base
   - serviceaccount.yaml
-  - backendconfig.yaml
-  - frontendconfig.yaml
-  - managed-cert.yaml
-  - settings.yaml  # local-config: per-env values (projectId/domain/IP), not applied
+  # --- Gateway API (replaces the legacy GCE Ingress + BackendConfig + FrontendConfig +
+  # ManagedCertificate stack) -------------------------------------------------
+  # gateway.yaml     — global external ALB (gke-l7-global-external-managed) + TLS via the
+  #                    project-scoped Certificate Manager cert map (survives suspend).
+  # httproute.yaml   — app route (HTTPS→Service) + HTTP→HTTPS 301 redirect route.
+  # backendpolicy.yaml — GCPBackendPolicy (Cloud Armor / draining / logging) + HealthCheckPolicy.
+  # The base Ingress is deleted below (Gateway serves the app instead); the local overlay keeps
+  # the Ingress for kind's ingress-nginx.
+  - gateway.yaml
+  - httproute.yaml
+  - backendpolicy.yaml
+  - settings.yaml  # local-config: per-env values (projectId/domain/IP/certMap), not applied
   # Database = managed Cloud SQL, Redis = managed Memorystore (both Terraform). The
   # app reaches them over the VPC private IP; no in-cluster DB/Redis manifests.
   - external-secrets.yaml  # ESO SecretStore + ExternalSecret → devstash-secrets
@@ -29,56 +37,23 @@ images:
     newTag: latest
 
 patches:
-  # GCE ingress → provisions a Google Cloud HTTP(S) Load Balancer. Attach the
-  # managed cert + the static IP (name injected from settings.yaml below), and
-  # wire the BackendConfig via the Service.
-  #
-  # ── kubernetes.io/ingress.global-static-ip-name placeholder ─────────────────
-  # The literal "devstash-dev-ip" below is a PLACEHOLDER only. It is immediately
-  # overwritten by the `ingressIpName` replacement further down (which sources
-  # the real value from settings.yaml.data.ingressIpName). The replacement is the
-  # single source of truth — do not update this literal to track a renamed IP; update
-  # settings.yaml and the CI yq injection in deploy-gke.yml instead.
-  # ────────────────────────────────────────────────────────────────────────────
+  # Delete the base GCE Ingress — the Gateway (gateway.yaml) serves the app on GCP. The base
+  # keeps the Ingress resource for the local (kind/nginx) overlay; here it is removed entirely
+  # so no classic Application Load Balancer is provisioned alongside the Gateway.
   - target:
       kind: Ingress
       name: devstash-web
     patch: |
-      - op: add
-        path: /metadata/annotations
-        value:
-          networking.gke.io/v1beta1.FrontendConfig: "devstash-frontendconfig"
-          # DO NOT replace with spec.ingressClassName — GKE GCE Ingress requires
-          # the annotation form. `spec.ingressClassName` is NOT supported by the
-          # GCE ingress controller. The deprecation warning from kubectl is a
-          # Kubernetes-generic warning; GKE docs explicitly say to ignore it and
-          # keep the annotation. Removing it breaks Ingress provisioning silently.
-          # Source: https://cloud.google.com/kubernetes-engine/docs/how-to/load-balance-ingress
-          kubernetes.io/ingress.class: "gce"
-          kubernetes.io/ingress.global-static-ip-name: "devstash-dev-ip"
-          networking.gke.io/managed-certificates: "devstash-cert"
-          # Stop-gap for the suspend/resume cycle: every full resume creates a brand-new
-          # ManagedCertificate GCE resource that needs 15-60min to (re)provision, leaving
-          # the domain unreachable over HTTPS in the meantime. pre-shared-cert ADDS this
-          # already-ACTIVE cert (still valid for gke.devstash.one, unaffected by domain
-          # changes) to the proxy alongside the provisioning one, so HTTPS keeps working
-          # immediately after a resume. GKE's ingress controller supports this annotation
-          # natively (unlike direct target-https-proxy edits, it won't get reverted on
-          # reconcile). Remove once this repo has a cert strategy that survives teardown,
-          # or if this specific cert (mcrt-ac492906-606f-426b-868f-49903a04261b) is ever
-          # deleted/expires.
-          ingress.gcp.kubernetes.io/pre-shared-cert: "mcrt-ac492906-606f-426b-868f-49903a04261b"
-  # Associate the Service with the BackendConfig (health check + timeouts) and
-  # make it a NEG-backed Service (container-native load balancing on GKE).
-  - target:
-      kind: Service
-      name: devstash-web
-    patch: |
-      - op: add
-        path: /metadata/annotations
-        value:
-          cloud.google.com/backend-config: '{"default":"devstash-backendconfig"}'
-          cloud.google.com/neg: '{"ingress": true}'
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: devstash-web
+  # Make the web Service NEG-backed is NO LONGER needed: the Gateway controller provisions
+  # standalone NEGs automatically and forbids the cloud.google.com/neg annotation on a
+  # Gateway-backed Service. The Service stays plain ClusterIP (base/service.yaml) — no
+  # backend-config / neg annotations under Gateway API.
+  #
   # Scope the NetworkPolicy ingress on port 3000 to Google's health-checker ranges
   # (130.211.0.0/22 and 35.191.0.0/16). The base leaves `from:` absent to stay
   # compatible with local and non-GCE overlays; here we narrow it to only the LB.
@@ -217,8 +192,8 @@ configMapGenerator:
 # --- Single-source-of-truth fan-out ---------------------------------------
 # Every per-environment value lives once in settings.yaml; these replacements
 # drop each WHOLE value into its target (no delimiter splitting → nothing can be
-# truncated). Keeps the PROJECT_ID / domain / static-IP placeholders out of the
-# committed manifests without literal duplication. CI sets the real values
+# truncated). Keeps the PROJECT_ID / domain / static-IP / certMap placeholders out of
+# the committed manifests without literal duplication. CI sets the real values
 # in settings.yaml at deploy time; committed values stay safe placeholders.
 replacements:
   # saEmail -> ServiceAccount Workload-Identity annotation (whole value)
@@ -232,22 +207,44 @@ replacements:
           name: devstash
         fieldPaths:
           - metadata.annotations.[iam.gke.io/gcp-service-account]
-  # domain -> ManagedCertificate domains[0] + Ingress host rule (whole value)
+  # domain -> HTTPRoute hostnames (app route + redirect route). Both routes match the same host.
   - source:
       kind: ConfigMap
       name: devstash-settings
       fieldPath: data.domain
     targets:
       - select:
-          kind: ManagedCertificate
-          name: devstash-cert
-        fieldPaths:
-          - spec.domains.0
-      - select:
-          kind: Ingress
+          kind: HTTPRoute
           name: devstash-web
         fieldPaths:
-          - spec.rules.0.host
+          - spec.hostnames.0
+      - select:
+          kind: HTTPRoute
+          name: devstash-web-redirect
+        fieldPaths:
+          - spec.hostnames.0
+  # certMapName -> Gateway networking.gke.io/certmap annotation (whole value)
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.certMapName
+    targets:
+      - select:
+          kind: Gateway
+          name: devstash-web
+        fieldPaths:
+          - metadata.annotations.[networking.gke.io/certmap]
+  # ingressIpName -> Gateway static-IP address value (whole value)
+  - source:
+      kind: ConfigMap
+      name: devstash-settings
+      fieldPath: data.ingressIpName
+    targets:
+      - select:
+          kind: Gateway
+          name: devstash-web
+        fieldPaths:
+          - spec.addresses.0.value
   # nextAuthUrl -> NEXTAUTH_URL (whole value)
   - source:
       kind: ConfigMap
@@ -270,17 +267,6 @@ replacements:
           name: devstash-config
         fieldPaths:
           - data.EMAIL_FROM
-  # ingressIpName -> Ingress static-IP annotation (whole value)
-  - source:
-      kind: ConfigMap
-      name: devstash-settings
-      fieldPath: data.ingressIpName
-    targets:
-      - select:
-          kind: Ingress
-          name: devstash-web
-        fieldPaths:
-          - metadata.annotations.[kubernetes.io/ingress.global-static-ip-name]
   # projectId -> ESO SecretStore gcpsm.projectID + workloadIdentity.clusterProjectID
   # (both fields must carry the same project ID; both are whole-value replacements).
   - source:
@@ -294,17 +280,17 @@ replacements:
         fieldPaths:
           - spec.provider.gcpsm.projectID
           - spec.provider.gcpsm.auth.workloadIdentity.clusterProjectID
-  # armorPolicyName -> BackendConfig securityPolicy.name (whole value)
+  # armorPolicyName -> GCPBackendPolicy securityPolicy (whole value)
   - source:
       kind: ConfigMap
       name: devstash-settings
       fieldPath: data.armorPolicyName
     targets:
       - select:
-          kind: BackendConfig
-          name: devstash-backendconfig
+          kind: GCPBackendPolicy
+          name: devstash-web
         fieldPaths:
-          - spec.securityPolicy.name
+          - spec.default.securityPolicy
   # s3Bucket -> AWS_S3_BUCKET (whole value) — deterministic from projectId, not a secret
   - source:
       kind: ConfigMap

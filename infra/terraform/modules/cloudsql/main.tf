@@ -17,7 +17,7 @@ resource "google_sql_database_instance" "postgres" {
   # destroyable in a single apply (see deletion_protection below).
   count            = var.instance_active ? 1 : 0
   name             = "${var.name_prefix}-pg"
-  database_version = "POSTGRES_16"
+  database_version = "POSTGRES_18"
   region           = var.region
 
   # deletion_protection is DELIBERATELY false here (both the Terraform-level and the

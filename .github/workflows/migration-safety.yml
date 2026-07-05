@@ -1,0 +1,46 @@
+# PR-level migration safety gate. Runs the SAME static analysis (infra/ci/check-migrations.sh →
+# pgfence) that the deploy pipeline runs, but on PULL REQUESTS so a dangerous migration
+# (DROP COLUMN, lock-heavy ALTER, non-CONCURRENT index, rename) is BLOCKED BEFORE it reaches
+# main — never after. Without this gate the check only ran post-merge in deploy-gke.yml, where a
+# bad migration is already on main and wedges every subsequent deploy at the verify step until
+# someone force-fixes it. Make this a REQUIRED status check in branch protection for main.
+#
+# SECURITY: PRs from forks run untrusted code, so this job is minimal — contents: read only, NO
+# id-token / cloud auth (nothing here needs GCP), and persist-credentials: false. It only reads
+# files and runs a pinned devDependency (pgfence) with --no-install (no arbitrary package fetch).
+name: migration-safety
+
+on:
+  pull_request:
+    branches: [main]
+    # Only gate PRs that actually touch Prisma — schema, migrations, or seed. Other PRs skip
+    # this workflow entirely (they can't introduce a dangerous migration).
+    paths:
+      - "prisma/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-safety-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-migrations:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          # Single source of truth: same pinned Node version the deploy pipeline uses.
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Same script, same .pgfence.json policy the deploy pipeline runs — one source of truth,
+      # just moved earlier (PR) so dangerous migrations never merge.
+      - name: Check migration safety
+        run: infra/ci/check-migrations.sh

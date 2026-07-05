@@ -1,0 +1,54 @@
+# GKE Gateway — the modern replacement for the GCE Ingress (base/ingress.yaml, deleted in this
+# overlay). Provisions a Google Cloud global external Application Load Balancer.
+#
+# gatewayClassName gke-l7-global-external-managed: the current Google-recommended class for a
+# public global external ALB (the newest managed class, richer traffic features than the classic
+# gke-l7-gxlb). COST NOTE: the auto-suspend tears the whole LB down when idle, so the env still
+# hits ~$0 suspended; while ACTIVE this is billed like the classic Ingress LB (forwarding rules).
+# If a future GCP pricing change puts this class on per-proxy-instance billing (a small standing
+# delta vs the classic ALB), switch this one line to `gke-l7-gxlb` for guaranteed cost parity —
+# nothing else in this overlay changes.
+#
+# TLS: served from a project-scoped Certificate Manager cert map (envs/dev/certmanager.tf),
+# referenced by name via the networking.gke.io/certmap annotation. That map SURVIVES a suspend
+# (it is not a cluster resource), so on resume the Gateway is immediately serving a valid cert —
+# no ManagedCertificate reprovision gap, no pre-shared-cert stopgap. certmap and tls.certificateRefs
+# are mutually exclusive; we use certmap, so the listener carries no certificateRefs.
+#
+# Static IP: attached by NAME (type: NamedAddress) — the global class does not accept a raw
+# IPAddress. The name + certmap value below are PLACEHOLDERS injected by the kustomize
+# replacements in kustomization.yaml from settings.yaml (data.ingressIpName / data.certMapName),
+# the same single-source-of-truth fan-out the old Ingress used.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+  annotations:
+    # Certificate Manager cert map (whole value injected from settings.yaml.data.certMapName).
+    networking.gke.io/certmap: DEVSTASH_CERT_MAP
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  # Reserved global external static IP, referenced by name (injected from
+  # settings.yaml.data.ingressIpName). Released on suspend, reallocated on resume (run.sh),
+  # which is why DNS is re-pointed on resume — unchanged from the Ingress model.
+  addresses:
+    - type: NamedAddress
+      value: devstash-dev-ip
+  listeners:
+    # HTTP :80 — exists ONLY to carry the HTTP→HTTPS redirect HTTPRoute (replaces the
+    # FrontendConfig redirectToHttps). No backend is served on plaintext.
+    - name: http
+      protocol: HTTP
+      port: 80
+    # HTTPS :443 — TLS terminated by the LB using the Certificate Manager cert map (via the
+    # certmap annotation above), so no certificateRefs here. allowedRoutes: Same keeps routes
+    # in this namespace only.
+    - name: https
+      protocol: HTTPS
+      port: 443
+      allowedRoutes:
+        namespaces:
+          from: Same

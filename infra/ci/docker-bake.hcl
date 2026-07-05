@@ -34,8 +34,11 @@
 variable "IMAGE_URI" {}
 # Full migrator image path WITHOUT tag, e.g. .../migrate
 variable "MIGRATE_URI" {}
-# Commit SHA — the immutable per-build tag (alongside :latest). Deploys resolve by
-# the registry digest, not this tag; the tag is a human-readable convenience.
+# Commit SHA — the immutable per-build tag. Deploys resolve by the registry digest, not this
+# tag; the SHA tag is a human-readable convenience. We deliberately DO NOT also push :latest —
+# it is a mutable pointer nothing here consumes (the rendered Deployment is digest-pinned, the
+# pruner keeps by digest), so it only adds tag churn the pruner must reconcile and a
+# non-deterministic ref for any out-of-band `docker pull`. SHA tag + digest are sufficient.
 variable "GITHUB_SHA" {}
 
 group "default" {
@@ -48,7 +51,6 @@ target "web" {
   dockerfile = "Dockerfile"
   tags = [
     "${IMAGE_URI}:${GITHUB_SHA}",
-    "${IMAGE_URI}:latest",
   ]
   cache-from = ["type=gha,scope=web"]
   # mode=max caches all intermediate stages (deps + builder), not just the final layers.
@@ -63,7 +65,6 @@ target "migrate" {
   target     = "migrator"
   tags = [
     "${MIGRATE_URI}:${GITHUB_SHA}",
-    "${MIGRATE_URI}:latest",
   ]
   # Import the web cache too: the migrator no longer copies web's `deps` node_modules
   # (it runs its own lean `npm ci --omit=dev`), but it still shares the base node:alpine

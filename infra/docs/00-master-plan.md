@@ -144,7 +144,7 @@ infra/
 │   ├── base/          # Deployment, Service, Ingress, HPA, ConfigMap, Secret, kustomization
 │   └── overlays/
 │       ├── local/     # kind overlay (NodePort, no cloud Ingress)
-│       └── gcp/       # GKE overlay (GCE Ingress, real hostnames)
+│       └── gcp/       # GKE overlay (Gateway API + Certificate Manager, real hostnames)
 ├── terraform/
 │   ├── modules/       # network, gke, cloudsql, memorystore, gcs, artifact-registry, iam
 │   └── envs/dev/      # root module wiring the modules together

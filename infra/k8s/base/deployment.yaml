@@ -35,10 +35,11 @@ spec:
       # never calls the Kubernetes API. Do not mount a bearer token into the container.
       automountServiceAccountToken: false
       # Graceful shutdown for NEG-backed load balancing. Current GKE guidance allows
-      # for drain-trigger latency plus NEG detach latency: BackendConfig drains for
-      # 60s, preStop keeps the server alive for 120s, and the 210s grace period leaves
-      # up to 90s after SIGTERM. Treat these three values as one unit. The local
-      # overlay shortens them because kind has no Google load-balancer deprogramming.
+      # for drain-trigger latency plus NEG detach latency: the LB drains for 60s
+      # (GCPBackendPolicy connectionDraining in the gcp overlay), preStop keeps the
+      # server alive for 120s, and the 210s grace period leaves up to 90s after SIGTERM.
+      # Treat these three values as one unit. The local overlay shortens them because
+      # kind has no Google load-balancer deprogramming.
       terminationGracePeriodSeconds: 210
       # Prefer spreading replicas across availability zones. ScheduleAnyway is a soft
       # constraint: Autopilot tries to reduce skew but can co-locate pods when capacity

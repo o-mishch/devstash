@@ -13,22 +13,27 @@
 _DEVSTASH_GCP_DNS_SH=1
 
 # dns_hint: print the DNS A-record the user must create after `apply`.
-# The GCP-managed certificate won't provision until the domain resolves to the
-# Ingress static IP; the app stays at 502/404 until the cert reaches Active status
-# (up to 60 min after DNS propagates). Also reminds about Stripe webhook + OAuth URIs.
+# TLS is served by the project-scoped Certificate Manager cert (envs/dev/certmanager.tf), which
+# is pre-provisioned via a one-time DNS-auth CNAME and SURVIVES suspend — so once the A-record
+# resolves to the Gateway IP, HTTPS works immediately (no per-resume cert-provisioning wait; that
+# wait only happened under the old cluster-scoped ManagedCertificate). Also reminds about the
+# Stripe webhook + OAuth URIs.
 dns_hint() {
   local ip dom
   ip="$(tf_out ingress_ip_address)"
   dom="$(tf_out app_domain)"
-  log "DNS — point your subdomain at the Ingress static IP, then the managed cert provisions"
+  log "DNS — point your subdomain at the Gateway static IP; the Certificate Manager cert is already provisioned"
   echo "  Add an A-record:  ${dom:-<app_domain>}  →  ${ip:-<run: tofu output ingress_ip_address>}"
   echo "  Verify:           dig +short ${dom:-<app_domain>}"
-  echo "  Cert status:      kubectl -n $NS get managedcertificate devstash-cert -o wide"
+  echo "  Gateway status:   kubectl -n $NS get gateway devstash-web -o wide"
+  # Cert status is easiest to read via 'run.sh status' (it resolves the cert name + queries
+  # managed.state for you); the raw gcloud form is documented in 08-gcp-bootstrap.md §DNS.
+  echo "  Cert status:      bash infra/run/gcp/run.sh status   # shows the Certificate Manager managed.state"
   warn "Do NOT repoint the apex/www (those serve prod on Vercel) — use the subdomain only."
   warn "Also do §7c (Stripe webhook) + §7d (OAuth redirect URIs) in 08-gcp-bootstrap.md."
-  warn "IMPORTANT: GCP-managed cert provisioning takes up to 60 min after DNS propagates."
-  warn "The site will return 502/404 until the ManagedCertificate status is 'Active'."
-  warn "Poll with: kubectl -n $NS get managedcertificate devstash-cert -o wide"
+  warn "FIRST-TIME ONLY: the Google-managed cert provisions once (~15-60 min) after the one-time"
+  warn "DNS-auth CNAME is added (tofu output dns_authorization_cname_*). After that it persists"
+  warn "across every suspend/resume — resume no longer waits on a cert."
 }
 
 # spaceship_api: single Spaceship DNS API entrypoint — owns the host, auth headers, and the
@@ -58,8 +63,7 @@ spaceship_api() {
 # checker rather than reconciling the zone — so any OTHER A-record for this host survives:
 # a stale IP from a prior resume, or a duplicate created by hand in the "Default Record
 # Group". Two live A-records for one host make resolvers round-robin onto the dead ingress
-# IP (intermittent 502s) AND stall managed-cert provisioning, which needs the name to
-# resolve consistently to the current ingress. So we mirror the Spaceship Terraform
+# IP (intermittent 502s until the stale record is pruned). So we mirror the Spaceship Terraform
 # provider's contract — upsert the desired record, then DELETE every other A-record for the
 # host — instead of blindly adding one.
 update_dns() {
@@ -83,9 +87,13 @@ update_dns() {
   # Ops creds live consolidated in the devstash-ops-config JSON blob (spaceship-api-key /
   # spaceship-api-secret properties). Read the blob ONCE, then pull each property with jq —
   # env vars still win for a one-off override. `|| true` keeps a missing/suspended secret a
-  # warn-and-skip, not a hard failure.
-  local ops_blob
-  ops_blob="$(gcloud secrets versions access latest --secret=devstash-ops-config --project="$PROJECT_ID" 2>/dev/null || true)"
+  # warn-and-skip, not a hard failure. Resolve the newest ENABLED version (not `access latest`)
+  # for the same reason as everywhere else in this tooling (common.sh / auto-suspend-prepare.sh):
+  # a stray DISABLED top version (e.g. an interrupted rotation) makes `access latest` fail with
+  # FAILED_PRECONDITION, which would silently break the DNS re-point after resume.
+  local ops_blob ops_ver
+  ops_ver="$(ds_newest_enabled_secret_version devstash-ops-config "$PROJECT_ID")"
+  ops_blob="$([[ -n "$ops_ver" ]] && gcloud secrets versions access "$ops_ver" --secret=devstash-ops-config --project="$PROJECT_ID" 2>/dev/null || true)"
   key="${SPACESHIP_API_KEY:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-key" // empty' 2>/dev/null || true)}"
   secret="${SPACESHIP_API_SECRET:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-secret" // empty' 2>/dev/null || true)}"
   if [[ -z "$key" || -z "$secret" ]]; then

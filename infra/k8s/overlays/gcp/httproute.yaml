@@ -1,0 +1,54 @@
+# HTTPRoutes for the GKE Gateway (gateway.yaml).
+#
+# Two routes:
+#   1. devstash-web  — the app route: HTTPS listener → devstash-web Service on port 80.
+#   2. devstash-web-redirect — HTTP listener → 301 redirect to https:// (replaces the
+#      FrontendConfig redirectToHttps; there is no FrontendConfig under Gateway API).
+#
+# The hostname (gke.devstash.one) is a PLACEHOLDER injected by the kustomize replacement from
+# settings.yaml.data.domain — the same fan-out the old Ingress host used.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: devstash-web
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+spec:
+  parentRefs:
+    - name: devstash-web
+      sectionName: https # bind to the HTTPS :443 listener
+  hostnames:
+    - gke.devstash.one
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        # The web Service (ClusterIP). The Gateway controller provisions NEGs automatically —
+        # the Service carries NO cloud.google.com/neg annotation under Gateway API.
+        - name: devstash-web
+          port: 80
+---
+# HTTP→HTTPS redirect. Parents the plaintext :80 listener and 301-redirects every request to
+# https. Replaces FrontendConfig.redirectToHttps (enforced at the LB edge, not in the app).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: devstash-web-redirect
+  labels:
+    app.kubernetes.io/name: devstash
+    app.kubernetes.io/component: web
+spec:
+  parentRefs:
+    - name: devstash-web
+      sectionName: http # bind to the HTTP :80 listener
+  hostnames:
+    - gke.devstash.one
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

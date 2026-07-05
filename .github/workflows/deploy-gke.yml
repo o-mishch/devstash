@@ -13,7 +13,18 @@ on:
   # refs/heads/main (iam module attribute_condition) — so a manual dispatch only
   # authenticates to GCP when run from the `main` branch. Dispatching another branch
   # fails at the auth step by design.
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      # Intent signal set by run.sh resume/up when it PRE-DISPATCHES this workflow to
+      # overlap the image build with `apply` (the cluster does not exist yet at dispatch).
+      # The `gate` job below uses it to decide whether to build even though no cluster is
+      # visible: a deliberate provision → build; a plain push while the env is parked at ~$0
+      # (no input, no cluster) → skip the whole build+deploy so no images are wastefully
+      # repushed only to be purged by the next suspend. Default "" = "not a provision".
+      reason:
+        description: 'Set to "provision" when run.sh is bringing the environment up/back (build even before the cluster exists).'
+        required: false
+        default: ''
 
 # Serialize deployments but never cancel one already mutating external state. GitHub
 # cancellation does not stop an in-cluster migration Job; a newer run could then delete
@@ -79,16 +90,61 @@ jobs:
       - run: npm run lint
       - run: npm run test:run
 
-  # ---- Preflight: skip cleanly if the environment is suspended ---------------
-  # A merge to main while the showcase is parked at ~$0 (deep-suspended: no GKE cluster,
-  # Artifact Registry images purged) must NOT rebuild/repush images and must NOT fail — it
-  # should skip with a warning. This job checks whether the cluster exists and publishes
-  # `suspended`; build-deploy self-skips when it is true, so build-push never runs (the
-  # purged images stay purged) and no step errors against a missing cluster. Resume is
-  # unaffected: run.sh resume recreates the cluster BEFORE dispatching this workflow, so by
-  # the time preflight runs the environment is active again.
+  # ---- Gate: decide whether to BUILD at all (avoid wasteful repushes) ---------
+  # The image build must run when the env is active (normal push) OR when run.sh is bringing
+  # it up/back (pre-dispatch, cluster not created yet). It must NOT run on a plain push to
+  # main while the env is parked at ~$0 — that would rebuild + repush images the very next
+  # suspend purges, for nothing. A live cluster check alone can't tell "parked" from
+  # "resume in flight" (cluster absent in both), so combine two cheap signals:
+  #   • reason == 'provision'  — run.sh set this because it IS provisioning (build wanted), or
+  #   • the GKE cluster already exists — the env is active (normal push, build wanted).
+  # Neither → parked env, skip the build. This is a ONE-SHOT check (not the poll preflight
+  # does): it only needs the state at dispatch, and the provision input covers the resume race
+  # so no waiting is required here. Cheap: auth + a single clusters-list, no build tools.
+  gate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # WIF OIDC token for the cluster existence check
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: Decide whether to build
+        id: decide
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          # github.event.inputs.reason is '' on a push event (only set via workflow_dispatch).
+          DISPATCH_REASON: ${{ github.event.inputs.reason }}
+        run: infra/ci/decide-build.sh
+
+  # ---- Preflight: skip the DEPLOY cleanly if the environment is suspended -----
+  # A merge to main while the showcase is parked at ~$0 (deep-suspended: no GKE cluster)
+  # must NOT deploy — the `deploy` job self-skips when this publishes suspended=true, so no
+  # step errors against a missing cluster.
+  #
+  # WHY `needs: [build-push]` + a POLLING check (not a one-shot): run.sh resume/up now
+  # PRE-DISPATCH this workflow so the cluster-independent build-push job overlaps `apply`
+  # (Cloud SQL ~10 min). At dispatch time the cluster does not exist yet, so a one-shot
+  # existence check here would wrongly report suspended=true and permanently skip the deploy
+  # even though apply is actively creating the cluster. Depending on build-push defers this
+  # check until AFTER the build (giving apply a head start), and check-env-active.sh then
+  # POLLS for the cluster for a bounded window: a resume/up in flight resolves to active once
+  # the control plane appears; a genuinely parked env still resolves to suspended after the
+  # timeout and skips cleanly. On a plain push to a parked env the `gate` job already skipped
+  # build-push, so this preflight is skipped too (needs build-push) — no wasted poll there.
   preflight:
     if: github.ref == 'refs/heads/main'
+    needs: [build-push]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -111,32 +167,54 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: infra/ci/check-env-active.sh
 
-  # ---- Build the image, push to Artifact Registry, deploy to GKE -------------
-  build-deploy:
-    needs: [verify, preflight] # runs after verify + the suspended check
-    # Two guards. (1) GCP Workload Identity Federation pins the OIDC token to refs/heads/main
-    # (iam module attribute_condition: assertion.ref == "refs/heads/main"); a workflow_dispatch
-    # on any other branch would reach google-github-actions/auth and fail with a cryptic
+  # ---- Build the images + push to Artifact Registry (NO cluster dependency) ---
+  # Split out of the old single build-deploy job so the image build can run WHILE the
+  # infra (Cloud SQL ~10 min, GKE control plane ~5-7 min) is still provisioning. This job
+  # needs only `verify` — NOT `preflight` — because Artifact Registry exists early and
+  # ungated (it is recreated before anything else on resume), so build+push has no reason
+  # to wait on the cluster. `run.sh resume`/`up` pre-dispatch this workflow so this job
+  # overlaps the Terraform apply; the cluster-gated `deploy` job below then consumes the
+  # digests this job emits. The `gate` job decides whether to build at all — on a plain push
+  # to a PARKED env gate says build=false and this job (plus preflight+deploy) skip cleanly,
+  # so no images are wastefully rebuilt/repushed only to be purged by the next suspend.
+  build-push:
+    # verify = lint/test must pass; gate = the build/skip decision. Deliberately NOT
+    # `preflight` — the whole point is that this runs before the cluster exists (preflight
+    # depends on THIS job). gate.outputs.build=='true' means the env is active or a run.sh
+    # provision is in flight; on a plain push to a parked env gate says 'false' and this whole
+    # job (and its dependents preflight+deploy) skip cleanly — no wasteful build/repush.
+    needs: [verify, gate]
+    # GCP Workload Identity Federation pins the OIDC token to refs/heads/main (iam module
+    # attribute_condition: assertion.ref == "refs/heads/main"); a workflow_dispatch on any
+    # other branch would reach google-github-actions/auth and fail with a cryptic
     # "unauthorized_client" GCP STS error, so gate on main here to surface the real reason.
-    # (2) Skip entirely when preflight found the environment suspended — no rebuild/repush, no
-    # failure against a missing cluster (the job shows as skipped, with preflight's warning).
-    if: github.ref == 'refs/heads/main' && needs.preflight.outputs.suspended != 'true'
+    if: github.ref == 'refs/heads/main' && needs.gate.outputs.build == 'true'
     runs-on: ubuntu-latest
-    # GCP_PROJECT_ID is consumed by four steps (validate, build-push, sign-images,
-    # inject-settings) — declare it once at job scope instead of in each step's env. Scoped
-    # to this job (not workflow-level) so it is never exposed to the `verify` job, which runs
-    # untrusted test code — the same trust boundary that keeps id-token off `verify`.
+    # GCP_PROJECT_ID is consumed by the build-push + sign steps — declare it once at job
+    # scope. Scoped to this job (not workflow-level) so it is never exposed to the `verify`
+    # job, which runs untrusted test code — the same trust boundary that keeps id-token off
+    # `verify`.
     env:
       GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-    # Hard cap beyond per-step timeouts. Worst-case declared budgets are image build
-    # 10m + two Helm upgrades 10m + migration 10m + rollout 5m, before API/setup
-    # overhead. 30m did not cover its own stated path and could cancel a live migration
-    # Job. 45m provides a real buffer while avoiding the runner's six-hour default.
-    timeout-minutes: 45
+    # The image build's own budget (docker buildx bake ~90-105s warm, 278s cold GHA cache;
+    # the step wraps its own 8m retry). 15m caps setup + auth + build + sign with headroom,
+    # well under the runner's six-hour default. The cluster-side work (Helm/migrate/rollout)
+    # has moved to the `deploy` job, which carries its own longer cap.
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write     # Workload Identity Federation: request OIDC token
       attestations: write # SLSA provenance attestation push
+    # Hand the immutable registry digests to the cluster-gated `deploy` job. build-push.sh
+    # already writes these to $GITHUB_OUTPUT (step id: build-push); surface them as JOB
+    # outputs so they cross the job boundary. deploy reconstructs the same env var names from
+    # these so every downstream script (inject-settings/sign/run-migrations/prune/trivy) reads
+    # them unchanged.
+    outputs:
+      image_uri:      ${{ steps.build-push.outputs.web_image_name }}
+      web_digest:     ${{ steps.build-push.outputs.web_digest }}
+      migrate_image:  ${{ steps.build-push.outputs.migrate_image_name }}
+      migrate_digest: ${{ steps.build-push.outputs.migrate_digest }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -235,15 +313,59 @@ jobs:
           subject-digest: ${{ steps.build-push.outputs.migrate_digest }}
           push-to-registry: true
 
-      # Vulnerability scan (warn-only). Trivy scans the freshly built images inside the
-      # runner — no dependency on Google Artifact Analysis, which is billable (~$0.26/image
-      # on first scan) and async (the old gcloud-poll approach wasted ~10 min per deploy and
-      # never actually inspected an image because on-push scanning was never enabled).
-      # containerscanning.googleapis.com is intentionally left DISABLED to keep the dev env
-      # at $0 idle cost. Findings print to the job log for visibility but never block the
-      # deploy (exit-code: '0'); flip exit-code to '1' to make this a hard gate. Time-bound
-      # exceptions live in .github/.trivyignore.yaml. Docker is already authenticated
-      # to Artifact Registry from the build-push step, so Trivy pulls the images by digest.
+  # ---- Deploy to GKE (cluster-gated; consumes build-push's digests) ----------
+  # Split from build-push so the build above can overlap infra provisioning. This job keeps
+  # the original preflight/suspended gate: it does the cluster-side work (get-creds → inject
+  # settings → ESO/Reloader → apply-infra → migrate → rollout → prune → scan), all of which
+  # need a live cluster + synced secrets (which in turn need Cloud SQL). Runs on a FRESH
+  # runner, so it re-checks-out, re-auths to GCP, and reconstructs the image env vars from
+  # build-push's job outputs (build-push wrote them to $GITHUB_ENV, which is same-job only).
+  deploy:
+    needs: [build-push, preflight] # digests from build-push + the suspended check
+    # Two guards. (1) main-only — same WIF ref pin as build-push. (2) Skip entirely when
+    # preflight found the environment suspended — no deploy against a missing cluster (the
+    # job shows as skipped, with preflight's warning). build-push may still have run; its
+    # repushed images are purged by the next suspend/auto-suspend, so that is harmless.
+    if: github.ref == 'refs/heads/main' && needs.preflight.outputs.suspended != 'true'
+    runs-on: ubuntu-latest
+    # Reconstruct the coordinates the six consumer scripts expect (IMAGE_URI/WEB_DIGEST/
+    # MIGRATE_IMAGE/MIGRATE_DIGEST) from build-push's job outputs, plus GCP_PROJECT_ID. Set
+    # once at job scope so inject-settings/sign-images/run-migrations/prune/trivy read the
+    # SAME env var names they always did — no per-script change. MIGRATE_IMAGE is the
+    # digest-pinned reference (repo@sha256:…) those scripts consume directly.
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      IMAGE_URI:      ${{ needs.build-push.outputs.image_uri }}
+      WEB_DIGEST:     ${{ needs.build-push.outputs.web_digest }}
+      MIGRATE_DIGEST: ${{ needs.build-push.outputs.migrate_digest }}
+      MIGRATE_IMAGE:  ${{ needs.build-push.outputs.migrate_image }}@${{ needs.build-push.outputs.migrate_digest }}
+    # Hard cap beyond per-step timeouts. Worst-case declared budgets are two Helm upgrades
+    # 10m + migration 10m + rollout 5m, before API/setup overhead. (The image build's 10m
+    # moved to build-push.) 45m provides a real buffer while avoiding the runner's six-hour
+    # default and never cancelling a live migration Job.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: request OIDC token
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Keyless auth to GCP — same WIF provider/SA as build-push (a fresh runner has no
+      # inherited credentials). Needed by get-gke-credentials + every gcloud/kubectl below.
+      - id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # Trivy (end-of-job) pulls the images by digest from Artifact Registry, so this runner
+      # must be authenticated to it too (build-push's docker-configure did not carry over).
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
       # The control plane has no public IP endpoint (enable_private_endpoint = true);
       # access is via the IAM-gated DNS-based endpoint, so request DNS-based creds.
@@ -277,8 +399,8 @@ jobs:
 
       # Inject the real per-environment values into the overlay's single
       # source of truth (settings.yaml). Kustomize `replacements` fan these
-      # out into the Workload-Identity SA annotation, ManagedCertificate domain,
-      # NEXTAUTH_URL, and Ingress static-IP name. The image is separate because its
+      # out into the Workload-Identity SA annotation, the HTTPRoute host, the Gateway
+      # cert-map annotation + static-IP address, and NEXTAUTH_URL. The image is separate because its
       # digest is build output, not environment config: CI pins `images` directly to
       # THIS build's repo + immutable registry digest (not :latest),
       # so the rendered Deployment is reproducible and the migrate→rollout gate
@@ -321,11 +443,7 @@ jobs:
       # post-migration rollout below both consume that same render (real migrate→rollout
       # gate, not the old :latest race). See infra/ci/render-manifests.sh.
       - name: Render manifests
-        run: |
-          infra/ci/render-manifests.sh
-          # Inject the current commit SHA as an annotation to the web Deployment
-          # so we can track the deployed version for migration diffing.
-          yq -i '(select(.kind == "Deployment") | .metadata.annotations.devstash-commit-sha) = strenv(GITHUB_SHA)' /tmp/rendered.yaml
+        run: infra/ci/render-manifests.sh
 
       # Apply everything EXCEPT the web Deployment (server-side, --force-conflicts) so
       # existing pods keep the previous image until the post-migration rollout. The full
@@ -371,9 +489,8 @@ jobs:
       # continue-on-error so a registry hiccup can never fail an already-successful deploy.
       - name: Prune superseded registry versions
         continue-on-error: true
-        env:
-          WEB_DIGEST: ${{ steps.build-push.outputs.web_digest }}
-          MIGRATE_DIGEST: ${{ steps.build-push.outputs.migrate_digest }}
+        # WEB_DIGEST/MIGRATE_DIGEST come from the job-level env (reconstructed from
+        # build-push's job outputs) — the build-push STEP no longer runs in this job.
         run: infra/ci/prune-registry.sh
 
       # Vulnerability scans (warn-only). Moved to the end of the deployment workflow

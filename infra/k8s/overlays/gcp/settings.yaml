@@ -43,10 +43,18 @@ data:
   nextAuthUrl: https://gke.devstash.one
   # Name of the global static IP reserved in Terraform (network module). Must
   # match `${name_prefix}-ip` = devstash-dev-ip. CI injects the real value via
-  # yq (.data.ingressIpName) so it stays in sync with the Terraform resource name.
+  # yq (.data.ingressIpName). Under Gateway API it is fanned into the Gateway's
+  # spec.addresses[0].value (type NamedAddress); the old GCE Ingress used the
+  # global-static-ip-name annotation. Same Terraform resource, same name.
   ingressIpName: devstash-dev-ip
+  # Certificate Manager cert MAP name (Terraform: certmanager.tf,
+  # "${name_prefix}-certmap" = devstash-dev-certmap). Fanned into the Gateway's
+  # networking.gke.io/certmap annotation so TLS is served from the project-scoped,
+  # suspend-surviving cert. CI injects the real value via `tofu output cert_map_name`
+  # (or the derived literal); committed value is the real dev map name (safe, non-secret).
+  certMapName: devstash-dev-certmap
   # Cloud Armor security policy name (network module: google_compute_security_policy).
-  # Attached to the BackendConfig so the LB enforces WAF + rate limiting at the edge.
+  # Fanned into the GCPBackendPolicy securityPolicy so the LB enforces WAF + rate limiting.
   # EMPTY by default = no policy attached — dev runs with armor_enabled=false ($0 posture).
   # CI (inject-settings.sh) sets this to "devstash-dev-armor" only when the ARMOR_ENABLED
   # repo variable is "true" (prod). Empty securityPolicy.name detaches the policy on the LB.

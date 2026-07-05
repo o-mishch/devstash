@@ -21,6 +21,13 @@
 #   bash infra/run/local/run.sh info      print all service URLs (app, Postgres, MinIO, etc.)
 #   bash infra/run/local/run.sh down      tear down the kind cluster
 set -euo pipefail
+# Fail LOUD, never silently — same ERR trap as the sibling gcp/run.sh (which documents the full
+# rationale). Under `set -e` any un-guarded non-zero command (a kubectl/kind/tofu/openssl call
+# mid-`up`) would otherwise abort with no clue where; this turns each death into an actionable
+# report (failing command + exit code + file:line). Self-contained (raw ANSI, bash builtins) so
+# it works even before common.sh is sourced below.
+# shellcheck disable=SC2154  # rc IS assigned (rc=$?) and used ("$rc") within this trap string; shellcheck can't see across the trap boundary.
+trap 'rc=$?; printf "\n\033[0;31m✖ local/run.sh FAILED\033[0m — %s:%d\n    command: %s\n    exit code: %d\n" "${BASH_SOURCE[0]}" "$LINENO" "$BASH_COMMAND" "$rc" >&2' ERR
 cd "$(dirname "$0")/../../.."   # repo root
 
 # Shared log/ok/warn/die + need() — one logging/preflight vocabulary with run/gcp/run.sh.
@@ -28,7 +35,7 @@ cd "$(dirname "$0")/../../.."   # repo root
 # shellcheck source=../../lib/common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
-NS=devstash
+NS="$DEVSTASH_NS"
 # HERE = this orchestrator's own dir (valkey cnf, tofu state live beside run.sh).
 # LOCAL_K8S = the backing-services kustomize base (Postgres/Redis/MinIO/Mailpit/dashboards +
 # their init-script ConfigMaps + kind-config.yaml). OVERLAY = the app-under-test overlay.
@@ -61,6 +68,24 @@ preflight() {
   need yq      "brew install yq"
   need openssl "brew install openssl"
   need curl    "https://curl.se/download.html"
+  need jq      "brew install jq"
+}
+
+# deep_health_check: print the deep health-check body (for the human to read, unlike gcp/run.sh's
+# silent _app_healthy poll-loop gate) AND warn if it doesn't actually report healthy. WHY the
+# warn: HTTP 200 alone doesn't mean healthy — the same footgun _app_healthy (gcp/run.sh) guards
+# against applies here too: the endpoint can return 200 with {"status":"error","db":"..."} while
+# Postgres/Redis/MinIO is still coming up, and a human skimming the printed JSON could miss that.
+deep_health_check() {
+  local body
+  body="$(curl -s --max-time 10 'http://localhost:8080/api/health?deep=1')" || {
+    warn "app unreachable on :8080"
+    return 0
+  }
+  printf '%s\n' "$body"
+  if ! printf '%s' "$body" | jq -e '.status == "ok"' >/dev/null 2>&1; then
+    warn "deep health check did not report status=ok — inspect the body above"
+  fi
 }
 
 # ── Helper: self-signed TLS for local Valkey (mirrors GCP Memorystore) ────────
@@ -243,7 +268,7 @@ up() {
 
   # 9. Verify
   log "deep health (db + redis + s3 + email)"
-  curl -s -w '\nHTTP %{http_code}\n' 'http://localhost:8080/api/health?deep=1'
+  deep_health_check
   info
 }
 
@@ -268,7 +293,7 @@ deploy() {
   kubectl -n "$NS" rollout status  deploy/devstash-web --timeout=180s
 
   log "deep health"
-  curl -s -w '\nHTTP %{http_code}\n' 'http://localhost:8080/api/health?deep=1'
+  deep_health_check
 }
 
 status() {
@@ -278,7 +303,7 @@ status() {
   log "app pods"
   kubectl -n "$NS" get pods -l app.kubernetes.io/name=devstash -o wide 2>/dev/null || true
   log "deep health (db + redis + s3 + email)"
-  curl -s -w '\nHTTP %{http_code}\n' 'http://localhost:8080/api/health?deep=1' || echo "app unreachable on :8080"
+  deep_health_check
 }
 
 down() { cluster_down; }

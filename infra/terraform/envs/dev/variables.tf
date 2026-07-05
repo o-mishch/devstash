@@ -141,20 +141,24 @@ variable "spaceship_api_secret" {
 #
 #   true  (default) — GKE Autopilot cluster, Memorystore, Cloud NAT, Cloud Armor, and
 #                     the ingress IP all exist.
-#   false           — all of the above are destroyed. Cloud SQL is NOT destroyed by this
-#                     flag alone — it is merely STOPPED (activation_policy = NEVER) while
-#                     the instance is kept (see db_active for the deep, DB-destroying path).
+#   false           — all of the above are destroyed. This flag alone does NOT destroy
+#                     Cloud SQL — set independently by db_active. When only this flips
+#                     (db_active stays true) the instance is merely STOPPED
+#                     (activation_policy = NEVER), disk kept.
 #
 # Driven through to module.network (compute_active), module.gke (cluster_active),
-# module.cloudsql (activation_policy), and module.memorystore (count). The event-driven
-# auto-suspend (auto-suspend.tf) flips ONLY this — never db_active — so it can never
-# destroy the database. Operated via `infra/run/gcp/run.sh suspend|resume`, which persist
-# the value in active.auto.tfvars so a plain `tofu apply` keeps the chosen state. See
+# module.cloudsql (activation_policy), and module.memorystore (count). NOTE: both the manual
+# `run.sh suspend` AND the event-driven auto-suspend (auto-suspend.tf) drive a DEEP suspend —
+# they set environment_active=false AND db_active=false together, so the DB is destroyed (after
+# a verified dump), not just stopped. The two flags stay separate only to make the (false,true)
+# "compute-off, DB-kept" state expressible; nothing sets that state automatically today.
+# Operated via `infra/run/gcp/run.sh suspend|resume`, which persist the value in
+# active.auto.tfvars so a plain `tofu apply` keeps the chosen state. See
 # infra/docs/10-suspend-resume.md.
 variable "environment_active" {
   type        = bool
   default     = true
-  description = "true = full compute running; false = compute suspended (GKE/Memorystore/NAT/Armor/ingress-IP destroyed). Does NOT by itself destroy Cloud SQL — the auto-suspend flips only this and the DB is merely STOPPED. See db_active for the deep, DB-destroying suspend."
+  description = "true = full compute running; false = compute suspended (GKE/Memorystore/NAT/Armor/ingress-IP destroyed). Does NOT by itself destroy Cloud SQL — that is db_active. Both the manual and event-driven suspend flip db_active=false too (deep suspend, DB destroyed after a verified dump)."
 }
 
 # Deep-suspend toggle for the Cloud SQL INSTANCE itself (the run.sh suspend/resume path).
@@ -166,14 +170,16 @@ variable "environment_active" {
 #                     to the GCS dump bucket and verifies it BEFORE setting this false;
 #                     run.sh resume recreates the instance and `gcloud sql import`s it.
 #
-# Kept SEPARATE from environment_active on purpose: the event-driven auto-suspend flips
-# only environment_active, so it can never trigger a DB-destroying apply without a dump —
-# it just stops the instance. Only run.sh (which dumps first) ever sets this false.
+# Kept SEPARATE from environment_active on purpose so the (false,true) "compute-off, DB-kept"
+# state is expressible. BOTH suspend paths set this false after a verified dump: the manual
+# `run.sh suspend` (dump_db → set_active_state false false) AND the event-driven auto-suspend
+# (auto-suspend-suspend.sh applies -var db_active=false, gated by the dump step before it). So
+# the DB IS destroyed unattended — the dump-verify step, not this flag, is the safety gate.
 # Persisted alongside environment_active in active.auto.tfvars.
 variable "db_active" {
   type        = bool
   default     = true
-  description = "true = Cloud SQL instance exists; false = destroyed for ~$0 idle (data kept in the GCS dump). Only run.sh suspend/resume flips this, and only after a verified dump. See infra/docs/10-suspend-resume.md."
+  description = "true = Cloud SQL instance exists; false = destroyed for ~$0 idle (data kept in the GCS dump). Both run.sh suspend/resume AND the event-driven auto-suspend flip this, always after a verified dump. See infra/docs/10-suspend-resume.md."
 
   validation {
     # The app cannot run without its database. environment_active ⇒ db_active. Valid

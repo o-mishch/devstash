@@ -45,12 +45,25 @@
 #
 #   Data safety: the dump is taken and verified BEFORE any destroy, so a failed dump aborts
 #   the suspend with the instance intact. The event-driven auto-suspend (auto-suspend.tf)
-#   flips ONLY environment_active, so it never destroys the DB — it just stops the instance.
+#   does the SAME deep suspend unattended: it too dumps + verifies FIRST, then applies
+#   environment_active=false + db_active=false — so it also DESTROYS the Cloud SQL instance
+#   (not merely stops it), and resume recreates + restores it. The dump-verify gate (a
+#   separate Cloud Build step before the destroy) is what makes that unattended destroy safe.
 #
 # Env overrides (otherwise read from terraform.tfvars / auto-detected):
 #   BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX   billing account to link (else first open one)
 #   AUTO_APPROVE=1                         skip the confirmation before `tofu apply`/`destroy`
 set -euo pipefail
+# Fail LOUD, never silently. Under `set -e` any un-guarded non-zero command aborts the whole
+# script — historically with NO message (e.g. a reconcile gcloud call fed a bad arg would exit
+# 1 right after `tofu init`, leaving "up complete, nothing created" with no clue why). This ERR
+# trap turns every such death into an actionable report: the exact failing command, its exit
+# code, and the file:line — printed to stderr before the shell exits. `die` (explicit, message-
+# bearing exits from common.sh) uses exit code 1 too, but those already print their own message
+# and reason; the trap's extra one line is harmless there and invaluable everywhere else. Self-
+# contained (raw ANSI, bash builtins only) so it works even before common.sh is sourced below.
+# shellcheck disable=SC2154  # rc IS assigned (rc=$?) and used ("$rc") within this trap string; shellcheck can't see across the trap boundary.
+trap 'rc=$?; printf "\n\033[0;31m✖ run.sh FAILED\033[0m — %s:%d\n    command: %s\n    exit code: %d\n" "${BASH_SOURCE[0]}" "$LINENO" "$BASH_COMMAND" "$rc" >&2' ERR
 cd "$(dirname "${BASH_SOURCE[0]}")/../../.."   # repo root
 
 TF_DIR=infra/terraform/envs/dev
@@ -65,6 +78,9 @@ STATE_LIFECYCLE=infra/run/gcp/tfstate-lifecycle.json
 # immediate, one async-backstop. State keys live under the backend prefix "gke/dev".
 STATE_KEEP_VERSIONS=3
 STATE_PREFIX="gke/dev/"
+# How long apply() holds the provisioning marker past a SUCCESSFUL tofu apply, to cover GCP IAM
+# eventual consistency — see the sleep call site in apply() for the incident this closes.
+IAM_PROPAGATION_COOLDOWN=120
 PLAN_FILE=devstash.tfplan
 NS=devstash
 DB_NAME=devstash   # logical DB inside the Cloud SQL instance (dump/restore --database target)
@@ -87,8 +103,19 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 # Cohesive step clusters split into sourced sub-libraries beside this file, purely to keep this
 # orchestrator readable. They SHARE this shell's scope (globals + helpers defined above and
-# below), so this is organisational, not a decoupling. Source order matters: suspend.sh's
-# suspend/resume call into db.sh (dump_db/restore_db) and dns.sh (update_dns), so it comes last.
+# below), so this is organisational, not a decoupling. Bash resolves function names at CALL time,
+# so a lib may call helpers/globals defined later in run.sh — the only hard requirement is that
+# everything exists before the dispatch case at the bottom invokes anything. bootstrap.sh,
+# reconcile.sh, and gke.sh are leaf clusters (only depend on common.sh + run.sh globals).
+# suspend.sh comes last only for readability: its suspend/resume call into db.sh
+# (dump_db/restore_db), dns.sh (update_dns) AND run.sh/gke.sh core steps (apply/eso/deploy/
+# wait_for_cluster).
+# shellcheck source=lib/bootstrap.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/bootstrap.sh"
+# shellcheck source=lib/reconcile.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/reconcile.sh"
+# shellcheck source=lib/gke.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/gke.sh"
 # shellcheck source=lib/db.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/db.sh"
 # shellcheck source=lib/dns.sh
@@ -97,16 +124,16 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/dns.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/suspend.sh"
 
 # ── helpers ────────────────────────────────────────────────────────────────
-# log/ok/warn/die + need() are provided by the sourced infra/lib/common.sh (shared with
-# infra/run/local/run.sh so both orchestrators speak one logging/preflight vocabulary).
+# log/ok/warn/die/need + confirm/poll_until/count_missing are provided by the sourced
+# infra/lib/common.sh (shared with infra/run/local/run.sh so both orchestrators speak one
+# logging/preflight/CLI-plumbing vocabulary).
 
-confirm() {
-  [[ "${AUTO_APPROVE:-}" == "1" ]] && return 0
-  read -r -p "$1 [y/N] " reply
-  [[ "$reply" == "y" || "$reply" == "Y" ]]
-}
-
-# Read a scalar from terraform.tfvars (single source of truth for project/region).
+# Read a scalar from terraform.tfvars (single source of truth for project/region). Runs BEFORE
+# `tofu init`, so `tofu output/console` is not yet an option — a line-oriented read is the only
+# tool available this early. Scoped by design: it handles the simple quoted scalars this script
+# scaffolds from tfvars.example (project_id/region/environment/app_domain), NOT arbitrary HCL
+# (heredocs, multi-line lists, or `=` inside a value). $1 is interpolated into the regex, so
+# call it only with literal key names (all current callers do) — never with user input.
 tfvar() {
   [[ -f "$TFVARS" ]] || return 1
   grep -E "^[[:space:]]*$1[[:space:]]*=" "$TFVARS" | head -1 \
@@ -115,12 +142,27 @@ tfvar() {
 
 tofu_() { tofu -chdir="$TF_DIR" "$@"; }
 
-# tf_out <output-name> [fallback]: soft-read a raw tofu output, swallowing the error and
-# returning [fallback] (default empty) when the output is absent — the normal case for a
-# suspended or not-yet-applied env. Centralises the `2>/dev/null || <default>` so call sites
-# read as intent, not incantation. Use plain `tofu_ output -raw` (NOT this) where a missing
-# output must fail loudly (e.g. pushing required GitHub secrets).
-tf_out() { tofu_ output -raw "$1" 2>/dev/null || printf '%s' "${2:-}"; }
+# tf_out <output-name> [fallback]: soft-read a tofu output, returning [fallback] (default
+# empty) when the output is absent — the normal case for a suspended or not-yet-applied env.
+# Centralises the soft-read so call sites read as intent, not incantation. Use plain
+# `tofu_ output -raw` (NOT this) where a missing output must fail loudly (e.g. pushing
+# required GitHub secrets).
+#
+# WHY -json, not -raw: on a state with NO outputs (fresh/destroyed env) `tofu output -raw X`
+# prints its "No outputs found" WARNING BOX to STDOUT (not stderr) and still exits 0 — a
+# long-standing terraform bug (hashicorp/terraform#26991). So the old `-raw 2>/dev/null ||
+# fallback` returned that multi-line box AS the value (2>/dev/null can't catch a stdout
+# warning, and the `||` never fires on exit 0). Callers then fed the garbage to gcloud
+# (e.g. `--instance=╷…`), which failed and — under `set -e` — killed the whole run silently.
+# `tofu output -json` instead prints `{}` on empty state (no warning box), so jq cleanly
+# yields the fallback. jq is a preflight-required CLI. Missing key OR json null → fallback.
+tf_out() {
+  local json
+  json="$(tofu_ output -json 2>/dev/null)" || json='{}'
+  printf '%s' "$json" \
+    | jq -r --arg k "$1" --arg fb "${2:-}" '(.[$k]?.value // $fb) | tostring' 2>/dev/null \
+    || printf '%s' "${2:-}"
+}
 
 # app_config_blob: print the devstash-app-config JSON from its newest ENABLED version, or
 # nothing (empty output, non-fatal) if the secret is absent/has no enabled version. The
@@ -133,81 +175,39 @@ app_config_blob() {
   gcloud secrets versions access "$ver" --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true
 }
 
-# _kube_context_is_gke: true iff the CURRENT kubectl context looks like a GKE context
-# (gcloud always names them "gke_<project>_<location>_<cluster>"). Belt-and-suspenders check
-# after use_cluster/use_cluster_soft's `eval "$c"`: that eval already targets the exact
-# project/cluster from tofu output, so in the normal case this can't fail — but `eval` inside
-# `use_cluster_soft`'s `... || warn` swallows a failed get-credentials silently, which would
-# otherwise leave kubectl pointed at whatever context (e.g. local kind) was active before the
-# call, and every kubectl command downstream would then silently run against the wrong cluster.
-_kube_context_is_gke() {
-  local ctx; ctx="$(kubectl config current-context 2>/dev/null || true)"
-  [[ "$ctx" == gke_* ]]
+# gh_var_value <name>: echo the value of a GitHub Actions *variable* (empty if absent).
+# `gh variable list` exits 0 even when the variable is missing, so a per-name value fetch is
+# the only reliable presence check — centralised here so secrets() never repeats the jq select.
+gh_var_value() {
+  gh variable list --json name,value \
+    -q ".[] | select(.name==\"$1\") | .value" 2>/dev/null || true
 }
 
-# use_cluster / use_cluster_soft: point kubeconfig at the GKE cluster via the tofu-emitted
-# get_credentials_command. `use_cluster` aborts if no cluster exists; the _soft variant only
-# warns and continues (for read-only status/log commands that still work partially offline).
-# Optional $1 overrides the default message. Guard on the `gcloud*` prefix before eval-ing:
-# when the env is suspended, get_credentials_command is a human-readable sentinel (NOT a gcloud
-# command), so eval-ing it is meaningless — bail with the same message as a missing cluster.
-# Centralising this one guard makes every caller (apply/eso/status/rotate-secret/
-# verify-secrets/upgrade-helm/logs) sentinel-safe and GKE-context-safe consistently.
-use_cluster() {
-  local c; c="$(tofu_ output -raw get_credentials_command 2>/dev/null || true)"
-  [[ "$c" == gcloud* ]] || die "${1:-no cluster yet — run 'apply' first}"
-  eval "$c"
-  _kube_context_is_gke || die "get-credentials ran but kubectl context is not a GKE context ('$(kubectl config current-context 2>/dev/null)') — refusing to proceed against a possibly-wrong cluster"
-}
-use_cluster_soft() {
-  local c; c="$(tofu_ output -raw get_credentials_command 2>/dev/null || true)"
-  [[ "$c" == gcloud* ]] || { warn "${1:-no cluster yet}"; return 0; }
-  eval "$c" 2>/dev/null || { warn "${1:-no cluster yet}"; return 0; }
-  _kube_context_is_gke || warn "get-credentials ran but kubectl context is not a GKE context ('$(kubectl config current-context 2>/dev/null)') — subsequent kubectl calls may target the wrong cluster"
+# gh_var_set_or_clear <name> <value>: set the variable when <value> is non-empty, else
+# best-effort DELETE any stale copy so a disabled feature toggle (Cloud Armor, Binary
+# Authorization) leaves no lingering var for the CI step to key off. Collapses the
+# set-if-present-else-delete pattern secrets() otherwise repeats for every optional toggle.
+gh_var_set_or_clear() {
+  local name="$1" value="$2"
+  if [[ -n "$value" ]]; then
+    gh variable set "$name" --body "$value"
+  else
+    gh variable delete "$name" >/dev/null 2>&1 || true
+  fi
 }
 
-# helm_repo <name> <url>: register (idempotent — ignore "already exists") + refresh a single
-# Helm chart repo. Used by upgrade_helm to freshen both repos before querying latest versions
-# (eso/reloader delegate their repo add+update to infra/ci/ensure-*.sh).
-helm_repo() {
-  helm repo add "$1" "$2" >/dev/null 2>&1 || true
-  helm repo update "$1" >/dev/null
-}
-
-# count_missing "<newline-list>" item…: for each item, ok if present in the list (exact-line
-# match) else warn "MISSING". Returns the count of missing items so callers can gate on it —
-# capture with `count_missing … || missing=$?` (the non-zero return would otherwise trip set -e).
-count_missing() {
-  local have="$1"; shift
-  local n=0 item
-  for item in "$@"; do
-    # -qxF + --: fixed-string, whole-line match, metachar-safe (matches the sibling
-    # membership tests in _in_state / verify_secrets so all three read identically).
-    if printf '%s\n' "$have" | grep -qxF -- "$item"; then
-      ok "$item"
-    else
-      warn "MISSING: $item"
-      n=$((n + 1))
-    fi
-  done
-  return "$n"
-}
-
-# poll_until <max_attempts> <sleep_secs> -- <cmd…>: run <cmd> repeatedly until it exits 0 or
-# <max_attempts> is reached, printing a dot per attempt. Returns 0 on success, 1 on timeout.
-# The caller prints its own trailing newline + success/failure message so the wording stays
-# specific to what was being waited on. Pass a quiet predicate (e.g. a small helper that
-# redirects its own noisy command) so only the progress dots reach the terminal.
-poll_until() {
-  local attempts="$1" gap="$2"; shift 2
-  [[ "${1:-}" == "--" ]] && shift
-  local i=0
-  until "$@"; do
-    i=$((i + 1))
-    [[ $i -lt $attempts ]] || return 1
-    printf '.'
-    sleep "$gap"
-  done
+# _ci_secrets_present: true iff the GitHub secrets CI needs to authenticate to GCP
+# (WORKLOAD_IDENTITY_PROVIDER + DEPLOYER_SA) already exist. Gates whether `up` may PRE-dispatch
+# the deploy-gke workflow (so its cluster-independent build-push job overlaps `apply`) or must
+# fall back to the serial order. On a FIRST-EVER `up` there are no tofu outputs yet, so `secrets`
+# cannot push these and CI would fail at its auth step — so we only pre-dispatch once a prior
+# cycle has populated them. `gh secret list` exits 0 even when a secret is absent, so match by
+# name in the JSON. Best-effort: any gh/auth hiccup returns "not present" → safe serial fallback.
+_ci_secrets_present() {
+  local names
+  names="$(gh secret list --json name -q '.[].name' 2>/dev/null || true)"
+  printf '%s\n' "$names" | grep -qxF WORKLOAD_IDENTITY_PROVIDER \
+    && printf '%s\n' "$names" | grep -qxF DEPLOYER_SA
 }
 
 # wait_for_cluster: poll `kubectl cluster-info` until the GKE Autopilot control plane responds
@@ -270,191 +270,8 @@ ensure_tfvars() {
 }
 
 # ── steps ──────────────────────────────────────────────────────────────────
-
-# bootstrap: everything that must exist in GCP *before* `tofu init` can run.
-# In order: gcloud login check → project create/select → billing link → ADC →
-# state bucket create + harden → required APIs enable. All steps are idempotent
-# (each checks existence before acting), so re-running after a partial failure is safe.
-bootstrap() {
-  ensure_tfvars
-  log "GCP bootstrap for project '$PROJECT_ID' (region $REGION)"
-
-  # Logged in?
-  gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q . \
-    || { warn "no active gcloud account — launching login"; gcloud auth login; }
-  ok "gcloud authenticated"
-
-  # Project (global-unique). Create only if we can't describe it.
-  if gcloud projects describe "$PROJECT_ID" >/dev/null 2>&1; then
-    ok "project exists"
-  else
-    log "Creating project $PROJECT_ID"
-    gcloud projects create "$PROJECT_ID" --name="DevStash"
-  fi
-  gcloud config set project "$PROJECT_ID" >/dev/null
-  ok "active project set"
-
-  # Billing — most APIs (and the $300 credit) require a linked account.
-  if [[ "$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingEnabled)' 2>/dev/null)" == "True" ]]; then
-    ok "billing linked"
-  else
-    local acct="${BILLING_ACCOUNT:-}"
-    [[ -n "$acct" ]] || acct="$(gcloud billing accounts list --filter=open=true --format='value(name)' | head -1)"
-    [[ -n "$acct" ]] || die "no open billing account found — set BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX"
-    log "Linking billing account $acct"
-    gcloud billing projects link "$PROJECT_ID" --billing-account="$acct"
-  fi
-
-  # Application Default Credentials — the Terraform google provider reads these.
-  if gcloud auth application-default print-access-token >/dev/null 2>&1; then
-    ok "ADC present"
-  else
-    warn "no ADC — launching application-default login"
-    gcloud auth application-default login
-  fi
-
-  # Terraform state bucket (chicken-and-egg: must exist before `tofu init`).
-  if gcloud storage buckets describe "gs://$STATE_BUCKET" >/dev/null 2>&1; then
-    ok "state bucket gs://$STATE_BUCKET exists"
-  else
-    log "Creating state bucket gs://$STATE_BUCKET (single-region $REGION)"
-    # Single-region (us-central1), not the US multi-region: lower cost, co-located
-    # with the rest of the stack. Location is IMMUTABLE — an existing bucket in a
-    # different location must be recreated + state migrated, not updated in place.
-    gcloud storage buckets create "gs://$STATE_BUCKET" --location="$REGION"
-  fi
-  # Reconcile security properties even for a pre-existing bucket. Existence alone
-  # does not prove that state has object version recovery or that ACL/public access
-  # paths are disabled.
-  gcloud storage buckets update "gs://$STATE_BUCKET" \
-    --uniform-bucket-level-access --public-access-prevention --versioning
-  ok "state bucket has uniform access, public-access prevention, and versioning"
-
-  # Lifecycle: versioning above keeps every superseded state generation forever. State
-  # objects are tiny, but over the env's life the noncurrent versions accumulate unbounded.
-  # The rule (in $STATE_LIFECYCLE) keeps the 2 most recent noncurrent generations for rollback
-  # (3 total incl. the live state) and drops older ones regardless of age — ARCHIVED-only
-  # (isLive=false), so the LIVE state object is never touched — keeping the bucket a $0 residual.
-  gcloud storage buckets update "gs://$STATE_BUCKET" --lifecycle-file="$STATE_LIFECYCLE"
-  ok "state bucket lifecycle: keep 2 noncurrent state versions (3 total), drop older regardless of age"
-
-  # Enable APIs up front (Terraform also does this via google_project_service, but
-  # pre-enabling here speeds up the first `tofu apply` by avoiding Terraform's
-  # per-API enable wait. Must stay in sync with the list in infra/terraform/envs/dev/main.tf.
-  # --project is explicit here even though `gcloud config set project` was called above,
-  # because gcloud config is mutable across terminals and explicit is safer.
-  log "Enabling required APIs (idempotent)"
-  gcloud services enable --project="$PROJECT_ID" \
-    compute.googleapis.com container.googleapis.com \
-    sqladmin.googleapis.com \
-    artifactregistry.googleapis.com secretmanager.googleapis.com \
-    iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
-    servicenetworking.googleapis.com memorystore.googleapis.com \
-    orgpolicy.googleapis.com \
-    binaryauthorization.googleapis.com \
-    containeranalysis.googleapis.com \
-    cloudresourcemanager.googleapis.com
-  ok "APIs enabled"
-}
-
-# reconcile_state: heal state↔cloud drift that a plain `tofu plan` cannot resolve, so a
-# single `run.sh apply` is enough. Populates the RECONCILE_REPLACE array with any -replace
-# targets for the caller to fold into `tofu plan`. MUST run AFTER `tofu init` (needs state).
-# Both branches are self-disabling — once healed, subsequent applies are no-ops.
-#
-#   1. Cloud SQL `devstash` database present in the instance but ABSENT from state. The
-#      ABANDON deletion policy (modules/cloudsql) drops the DB resource from state on a
-#      db_active toggle WITHOUT dropping the physical database, so re-activating collides
-#      with "database already exists". Import the existing database instead of recreating it.
-#   2. The PSC subnet tracked with the legacy purpose PRIVATE_SERVICE_CONNECT. Memorystore
-#      service-connectivity automation requires an ordinary PRIVATE subnet, and GCP cannot
-#      PATCH a subnet's purpose in place — so the subnet must be REPLACED, not updated.
-#   3. The Artifact Registry repo DELETED out-of-band by a deep-suspend (auto-suspend step 5
-#      / `run.sh suspend` run `artifactregistry.repositories.delete` on the WHOLE repo for $0
-#      idle storage — see infra/docs/10-suspend-resume.md), yet still tracked in state along
-#      with its four repo-scoped IAM members. On resume, refreshing those IAM members calls
-#      getIamPolicy on the vanished repo, and GCP answers 403 (NOT 404) for an IAM read on a
-#      missing resource — aborting the apply before the repo can be recreated. `state rm` the
-#      repo + its members so the next plan recreates them cleanly (nothing exists remotely, so
-#      there is no name-conflict on re-create). CI rebuilds+repushes the images after apply.
-reconcile_state() {
-  RECONCILE_REPLACE=()
-  local db_addr='module.cloudsql.google_sql_database.devstash[0]'
-  local subnet_addr='module.network.google_compute_subnetwork.psc'
-  # _in_state <addr>: true iff <addr> is tracked in state. Filters by the exact address
-  # (authoritative — no whole-list grep) so an unrelated line can't fool it. Used by all
-  # three reconcile branches below.
-  _in_state() { tofu_ state list "$1" 2>/dev/null | grep -qxF "$1"; }
-
-  # 1. Adopt an untracked-but-existing Cloud SQL database. The presence check filters state
-  # by the exact address (authoritative — no whole-list grep) so it can't be fooled by an
-  # unrelated line. The import is idempotent: a stale/locked state read right after `init`
-  # could miss an address that import then reports as already-managed, so treat that outcome
-  # as success and only fail if the address is genuinely still absent afterwards.
-  #
-  # ONLY when db_active=true (resume/apply-up). The devstash database resource is count-gated
-  # on instance_active (= db_active); during a suspend (db_active=false) its config is count→0,
-  # so an import target has no configuration and `tofu import` fails with "Configuration for
-  # import target does not exist" — blocking the very suspend that is meant to destroy the DB.
-  # A suspend WANTS the physical database gone, so there is nothing to adopt: skip the import.
-  local db_active
-  db_active="$(sed -nE 's/^[[:space:]]*db_active[[:space:]]*=[[:space:]]*(true|false).*/\1/p' \
-    "$TF_DIR/active.auto.tfvars" 2>/dev/null | head -1)"
-  if [[ "$db_active" != "false" ]] && ! _in_state "$db_addr"; then
-    local inst
-    inst="$(tf_out db_instance_name)"
-    if [[ -n "$inst" ]] && gcloud sql databases describe "$DB_NAME" \
-         --instance="$inst" --project="$PROJECT_ID" >/dev/null 2>&1; then
-      log "Reconcile: importing existing Cloud SQL database '$DB_NAME' into state (abandoned by a prior db-active toggle)"
-      if tofu_ import -lock-timeout=120s "$db_addr" \
-           "projects/$PROJECT_ID/instances/$inst/databases/$DB_NAME"; then
-        ok "database '$DB_NAME' adopted into state"
-      elif _in_state "$db_addr"; then
-        warn "database '$DB_NAME' was already managed in state — import skipped"
-      else
-        die "failed to import $db_addr — resolve manually, then re-run apply"
-      fi
-    fi
-  fi
-
-  # 2. Force-replace a legacy-purpose PSC subnet (purpose is immutable → cannot be patched).
-  local purpose
-  purpose="$(tofu_ state show "$subnet_addr" 2>/dev/null \
-    | sed -nE 's/^[[:space:]]*purpose[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -1)"
-  if [[ "$purpose" == "PRIVATE_SERVICE_CONNECT" ]]; then
-    warn "Reconcile: PSC subnet has legacy purpose PRIVATE_SERVICE_CONNECT — scheduling a replace with a PRIVATE subnet"
-    RECONCILE_REPLACE+=("-replace=$subnet_addr")
-  fi
-
-  # 3. Forget an Artifact Registry repo a deep-suspend deleted out-of-band but state still
-  # tracks. The repo id is the literal from modules/artifact-registry ("devstash"). Only act
-  # when the repo is ABSENT in GCP (describe fails) AND its resource is PRESENT in state — so
-  # this self-disables the moment the next plan recreates it. The four repo-scoped IAM members
-  # are removed alongside the repo: their getIamPolicy refresh is exactly what 403s on the
-  # missing repo. Filter state by each exact address (authoritative — no whole-list grep). The
-  # count-gated addresses ([0]) may be absent depending on toggles, so rm each individually and
-  # tolerate an already-absent one rather than failing the whole reconcile.
-  local ar_repo='devstash'
-  local ar_repo_addr='module.artifact_registry.google_artifact_registry_repository.docker'
-  if _in_state "$ar_repo_addr" \
-     && ! gcloud artifacts repositories describe "$ar_repo" \
-            --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    warn "Reconcile: Artifact Registry repo '$ar_repo' was deleted by a deep-suspend but is still in state — forgetting the repo + its IAM members so the apply recreates them"
-    local ar_addr
-    for ar_addr in \
-      'module.iam.google_artifact_registry_repository_iam_member.node_artifact_registry_reader' \
-      'module.iam.google_artifact_registry_repository_iam_member.custom_node_artifact_registry_reader[0]' \
-      'module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry' \
-      'google_artifact_registry_repository_iam_member.lifecycle_ar_delete[0]' \
-      "$ar_repo_addr"; do
-      if _in_state "$ar_addr"; then
-        tofu_ state rm -lock-timeout=120s "$ar_addr" \
-          || die "failed to forget $ar_addr — resolve manually, then re-run apply"
-      fi
-    done
-    ok "Artifact Registry repo + IAM members forgotten — the plan will recreate them"
-  fi
-}
+# bootstrap (+ _bootstrap_* steps) lives in lib/bootstrap.sh; reconcile_state (+ its nested
+# _reconcile_* helpers) lives in lib/reconcile.sh — both sourced above and sharing this scope.
 
 # wait_for_no_autosuspend_build: serialise against the scheduled idle auto-suspend Cloud
 # Build. That build and any human `run.sh apply/suspend/resume` share ONE OpenTofu state
@@ -488,6 +305,28 @@ wait_for_no_autosuspend_build() {
   done
 }
 
+# mark_provisioning / clear_provisioning: a GCS marker object read by auto-suspend-guard.sh's
+# idle-traffic check. That check can't tell a fresh provisioning apply (real work against the
+# cluster, but zero LB traffic yet) from a genuinely idle env — the same gap the guard already
+# closes for deploy-gke.yml via the GitHub Actions API, but a plain local `apply` dispatches no
+# CI run for it to poll. This closes the reverse-race window too: wait_for_no_autosuspend_build
+# only rejects a build that has ALREADY started; if the guard evaluates in the split second
+# before we write this marker, it can still greenlight a suspend. -lock-timeout on the tofu
+# commands below is the last line of defense for that residual sliver.
+# Written right before we'd contend for the lock and removed on every exit path (success,
+# apply failure, or abort) — see apply()'s three clear_provisioning call sites. On a SUCCESSFUL
+# apply the marker is held for IAM_PROPAGATION_COOLDOWN past completion (not cleared instantly):
+# a successful apply can durably mutate project IAM (e.g. the auto-suspend lifecycle SA's own
+# bindings), and GCP's IAM read path can lag the write by up to ~1-2 min, wide enough for the
+# auto-suspend guard's next tick to see stale "no diff" state and greenlight a suspend that then
+# self-403s mid-teardown (see the sleep call site's comment for the incident). Failure/abort
+# paths clear it immediately — no IAM mutation is assumed to have landed on those paths.
+# Best-effort throughout (never fails the apply): a write/delete hiccup here must not block
+# provisioning, and a stale marker just costs one skipped idle-suspend tick, self-healing on
+# the next `apply` (which overwrites it) or once it ages past the guard's idle-window grace.
+mark_provisioning()  { gcloud storage cp /dev/null "gs://$STATE_BUCKET/${STATE_PREFIX}.provisioning" >/dev/null 2>&1 || true; }
+clear_provisioning() { gcloud storage rm "gs://$STATE_BUCKET/${STATE_PREFIX}.provisioning" >/dev/null 2>&1 || true; }
+
 # apply: initialise the Terraform remote backend and run plan → apply.
 # Requires the state bucket to exist (bootstrap must have run first).
 # Always plans to a file and applies that exact plan so there is no drift between
@@ -495,8 +334,21 @@ wait_for_no_autosuspend_build() {
 # deleted after apply (success or failure) so no sensitive state lingers on disk.
 apply() {
   ensure_tfvars
-  # Delete any stale plan file to ensure a fresh start
-  rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
+  # Saved plans contain sensitive values, so they must never linger, on any exit path
+  # below — success, apply failure, or abort. `die` (common.sh) calls `exit`, which would
+  # bypass a RETURN trap, and an EXIT trap here would clobber up()'s own EXIT trap (set
+  # around its call to apply() to cancel a pre-dispatched CI run on failure — traps don't
+  # stack in bash, the last one set wins). So this stays an explicit local helper, called
+  # at every exit point, rather than a trap.
+  #
+  # clear_provisioning is called separately (not inlined here) on the SUCCESS path only —
+  # see the IAM_PROPAGATION_COOLDOWN sleep below for why a successful apply must not clear
+  # the marker immediately.
+  _clear_plan_file() { rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"; }
+  # Always start from a clean slate: delete any stale plan file so `up`/`apply` ALWAYS
+  # regenerate a fresh plan below against current state + tfvars. A leftover plan from a
+  # prior run must never be applied — it could no longer match reality.
+  _clear_plan_file
   # Guard: the GCS state bucket must exist before `tofu init` can initialise the
   # remote backend. If `bootstrap` was skipped, the init fails with a cryptic
   # "bucket not found" error. Check explicitly so the message is actionable.
@@ -504,8 +356,15 @@ apply() {
     die "State bucket gs://$STATE_BUCKET not found — run 'bootstrap' first to create it."
   fi
   # Serialise against the scheduled idle auto-suspend build BEFORE touching state — they share
-  # one lock and would otherwise collide mid-apply (see wait_for_no_autosuspend_build).
+  # one lock and would otherwise collide mid-apply (see wait_for_no_autosuspend_build). Only
+  # mark ourselves as provisioning AFTER this clears (not before): marking earlier would leave
+  # the marker behind on the die() timeout path above, since that exits before _clear_plan_file
+  # runs — and there is no reason to claim "provisioning" while still blocked on someone else's
+  # build anyway.
   wait_for_no_autosuspend_build
+  # See mark_provisioning's comment: closes the residual race where the guard evaluates in the
+  # split second between the wait above clearing and tofu actually acquiring the lock below.
+  mark_provisioning
   log "OpenTofu init + plan ($TF_DIR)"
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
   # Heal state↔cloud drift a plain plan can't (untracked DB → import; legacy-purpose PSC
@@ -520,18 +379,35 @@ apply() {
   tofu_ plan -lock-timeout=120s ${RECONCILE_REPLACE[@]+"${RECONCILE_REPLACE[@]}"} -out="$PLAN_FILE"
   if confirm "Apply this plan? (review the resource changes above)"; then
     if tofu_ apply -lock-timeout=120s "$PLAN_FILE"; then
-      rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
+      _clear_plan_file
       # Force the state history down to STATE_KEEP_VERSIONS the instant the write lands, rather
       # than waiting for the bucket's ~daily lifecycle sweep. Best-effort (never aborts apply):
       # the state is already durably written and the lifecycle rule backstops anything missed.
       gcs_prune_versions "gs://$STATE_BUCKET/$STATE_PREFIX" "$STATE_KEEP_VERSIONS"
+      # IAM propagation cooldown — hold the provisioning marker past the apply's own completion.
+      # A successful apply that touched project IAM bindings (e.g. the lifecycle SA's own roles)
+      # is not immediately consistent: GCP's IAM read path can lag the write by up to ~1-2 min.
+      # Exactly this gap cost a real suspend build: `run.sh apply` cleared the marker the
+      # instant `tofu apply` returned, the auto-suspend guard's very next tick (seconds later)
+      # found no lock and no marker, greenlit a suspend, and by the time suspend.sh reached its
+      # own `tofu apply` minutes later the lifecycle SA's bindings were mid-propagation — its
+      # apply then 403'd "Policy update access denied" self-modifying its own project IAM
+      # (auto-suspend.tf's lifecycle_roles INVARIANT), stranding the build before the cleanup
+      # steps (registry/build/NEG) ran. Sleeping here — not shortening the guard's own idle-
+      # window grace — keeps the fix isolated to the one path that actually mutates IAM.
+      log "Waiting ${IAM_PROPAGATION_COOLDOWN}s for IAM propagation before releasing the provisioning marker"
+      sleep "$IAM_PROPAGATION_COOLDOWN"
+      clear_provisioning
     else
-      # Saved plans contain sensitive values; remove it on failure as well as success.
-      rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
+      # Saved plans contain sensitive values; remove it on failure as well as success. No IAM
+      # mutation is assumed to have landed durably on this path, so clear the marker immediately.
+      _clear_plan_file
+      clear_provisioning
       die "OpenTofu apply failed"
     fi
   else
-    rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"
+    _clear_plan_file
+    clear_provisioning
     die "aborted before apply"
   fi
   # Only fetch kubectl creds when a cluster exists. use_cluster_soft handles the missing-
@@ -542,45 +418,22 @@ apply() {
   use_cluster_soft "no cluster (environment suspended) — skipping kubectl credential fetch"
 }
 
-# External Secrets Operator — required ONCE per cluster before any `kubectl apply -k`,
-# because the gcp overlay ships SecretStore/ExternalSecret CRs whose CRDs ESO installs.
-# Without it, CI's apply fails ("no matches for kind SecretStore") and pods never get
-# their secrets. ESO authenticates via Workload Identity (no static key) — see
-# external-secrets.yaml. Idempotent: `helm upgrade --install` + a CRD/rollout wait.
-# NOTE: this function also calls reloader() at the end — `run.sh eso` installs both.
-# Use `run.sh reloader` to reinstall Reloader alone without touching ESO.
-eso() {
-  log "Installing External Secrets Operator (idempotent)"
-  use_cluster
-  # Delegate the actual helm install to the SAME script CI runs (infra/ci/ensure-eso.sh) —
-  # one source of truth for the chart, --version (from versions.env), the Autopilot 50m
-  # --set block, and the failure policy (HELM_FAILURE_POLICY, overridden above for local
-  # Helm). run.sh only adds the cluster-cred fetch above and the webhook wait below; the
-  # install itself never diverges from CI again.
-  infra/ci/ensure-eso.sh
-  # Belt-and-suspenders: the chart's --wait covers the Deployments, but CR-admission
-  # also needs the validating webhook live before the overlay's SecretStore is accepted.
-  kubectl -n external-secrets rollout status deploy/external-secrets-webhook --timeout=3m
-  ok "ESO installed; SecretStore/ExternalSecret CRDs available"
-
-  reloader
+# _apply_and_wire: the standard post-bootstrap bring-up tail — apply the plan, wait for the
+# control plane, install the in-cluster operators, push CI secrets, then print + assert DNS.
+# Single-sourced so the `apply` dispatch command and up()'s first-ever (serial) branch can never
+# drift on this sequence. dns_hint prints the record; update_dns then asserts it automatically
+# (self-guarding — it warns + falls back to the printed hint when creds/IP are missing, so the
+# manual path still works on a first-ever bring-up before Spaceship creds are stored).
+_apply_and_wire() {
+  apply
+  wait_for_cluster
+  eso
+  secrets
+  dns_hint
+  update_dns
 }
 
-# Stakater Reloader — required ONCE per cluster (also installed by CI on every deploy).
-# Watches the devstash-secrets K8s Secret and rolls Deployment pods when ESO refreshes
-# it from Secret Manager, so secret updates propagate without a manual rollout restart.
-# Without Reloader the secret.reloader.stakater.com/reload annotation on the Deployment
-# is inert and updated secrets only take effect on the next manual deploy.
-# Idempotent: `helm upgrade --install` is a no-op when already at the pinned version.
-# Pin the same version used in deploy-gke.yml to keep bootstrap and CI in sync.
-reloader() {
-  log "Installing Stakater Reloader (idempotent)"
-  use_cluster
-  # Same single-source-of-truth delegation as eso(): infra/ci/ensure-reloader.sh owns the
-  # chart, --version, --set, and the failure policy (HELM_FAILURE_POLICY) shared with CI.
-  infra/ci/ensure-reloader.sh
-  ok "Stakater Reloader installed; Deployment auto-restarts on secret rotation"
-}
+# eso / reloader / upgrade_helm / status / logs live in lib/gke.sh (sourced above).
 
 # secrets: read Terraform outputs and write them as GitHub Actions secrets/variables.
 # Sets GCP_PROJECT_ID, DEPLOYER_SA, WORKLOAD_IDENTITY_PROVIDER (secrets) and
@@ -594,36 +447,45 @@ secrets() {
   gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu_ output -raw wif_provider)"
   # APP_DOMAIN is a GitHub *variable* (non-secret public config), not a secret.
   # It is read by the CI workflow as ${{ vars.APP_DOMAIN }} and injected into
-  # settings.yaml as the public domain for the ManagedCertificate and NEXTAUTH_URL.
+  # settings.yaml as the public host for the HTTPRoute + NEXTAUTH_URL (TLS is served by
+  # the Certificate Manager cert map, referenced separately via data.certMapName).
   gh variable set APP_DOMAIN              --body "$(tofu_ output -raw app_domain)"
   gh variable set EMAIL_FROM              --body "$(tofu_ output -raw email_from)"
   gh variable set ENABLE_GITHUB_ATTESTATIONS --body "false"
-  # Cloud Armor toggle — inject-settings.sh keys the BackendConfig securityPolicy on this.
-  # true → CI attaches devstash-dev-armor; cleared (dev $0 default) → empty policy (no WAF).
-  if [ "$(tf_out armor_enabled false)" = "true" ]; then
-    gh variable set ARMOR_ENABLED --body "true"
-  else
-    gh variable delete ARMOR_ENABLED >/dev/null 2>&1 || true
-  fi
-  # Binary Authorization attestor/KMS resource names (non-secret) — read by the
-  # "Sign images for Binary Authorization" CI step. See modules/gke/main.tf.
-  # When binauthz_enabled=false these outputs are null (the pipeline is not provisioned);
-  # `tofu output -raw` errors on null, so guard on a non-empty value. If disabled, DELETE
-  # any stale vars so the CI step self-skips instead of signing against a gone attestor.
-  local attestor
+  # Cloud Armor toggle — inject-settings.sh keys the GCPBackendPolicy securityPolicy on this.
+  # true → CI attaches devstash-dev-armor; cleared (dev $0 default) → var deleted (no WAF).
+  local armor=""; [[ "$(tf_out armor_enabled false)" == "true" ]] && armor="true"
+  gh_var_set_or_clear ARMOR_ENABLED "$armor"
+  # Binary Authorization attestor/KMS resource names (non-secret) — read by the "Sign images
+  # for Binary Authorization" CI step (see modules/gke/main.tf). When binauthz_enabled=false
+  # these outputs are null, so gh_var_set_or_clear deletes any stale vars and the CI step
+  # self-skips instead of signing against a gone attestor. attestor gates the KMS pair: it is
+  # non-empty iff the pipeline is provisioned, so the -raw reads below never hit a null output.
+  local attestor keyring="" key=""
   attestor="$(tf_out binauthz_attestor_name)"
-  if [ -n "$attestor" ]; then
-    gh variable set BINAUTHZ_ATTESTOR       --body "$attestor"
-    gh variable set BINAUTHZ_KMS_KEYRING    --body "$(tofu_ output -raw binauthz_kms_keyring)"
-    gh variable set BINAUTHZ_KMS_KEY        --body "$(tofu_ output -raw binauthz_kms_key)"
+  if [[ -n "$attestor" ]]; then
+    keyring="$(tofu_ output -raw binauthz_kms_keyring)"
+    key="$(tofu_ output -raw binauthz_kms_key)"
+  fi
+  gh_var_set_or_clear BINAUTHZ_ATTESTOR    "$attestor"
+  gh_var_set_or_clear BINAUTHZ_KMS_KEYRING "$keyring"
+  gh_var_set_or_clear BINAUTHZ_KMS_KEY     "$key"
+  if [[ -n "$attestor" ]]; then
     ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS / BINAUTHZ_* set as variables"
   else
-    gh variable delete BINAUTHZ_ATTESTOR    >/dev/null 2>&1 || true
-    gh variable delete BINAUTHZ_KMS_KEYRING >/dev/null 2>&1 || true
-    gh variable delete BINAUTHZ_KMS_KEY     >/dev/null 2>&1 || true
     ok "GCP_PROJECT_ID / DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS set as variables (Binary Authorization disabled — BINAUTHZ_* cleared)"
   fi
 
+  _verify_pushed_secrets
+}
+
+# _verify_pushed_secrets: re-read GitHub and confirm every value secrets() just pushed actually
+# landed — the write half of `gh secret/variable set` exits 0 even on a silent failure, so a
+# read-back is the only proof. Split out of secrets() so the push and the verification each read
+# as one responsibility. Required secrets missing → die (a real setup failure); required
+# variables missing → warn (secrets() already reported success, so surface but don't abort);
+# optional feature toggles → reported only when present (absent by design in the dev $0 posture).
+_verify_pushed_secrets() {
   log "Verifying GitHub Actions secrets are present"
   # Use JSON output so column-aligned table text never causes a false miss.
   # NOTE: APP_DOMAIN is a variable (not a secret) — it is NOT verified here because
@@ -637,7 +499,7 @@ secrets() {
   local gh_var gh_val
   # Always-present variables — a missing one is a real setup failure.
   for gh_var in APP_DOMAIN EMAIL_FROM ENABLE_GITHUB_ATTESTATIONS; do
-    gh_val="$(gh variable list --json name,value -q ".[] | select(.name==\"$gh_var\") | .value" 2>/dev/null || true)"
+    gh_val="$(gh_var_value "$gh_var")"
     if [[ -z "$gh_val" ]]; then
       warn "$gh_var variable not found in GitHub — gh variable set may have failed; re-run 'secrets'"
     else
@@ -647,7 +509,7 @@ secrets() {
   # Optional feature toggles — absent by design in the dev $0 posture (Binary Authorization
   # off, Cloud Armor off), so report only when present rather than warning on absence.
   for gh_var in ARMOR_ENABLED BINAUTHZ_ATTESTOR BINAUTHZ_KMS_KEYRING BINAUTHZ_KMS_KEY; do
-    gh_val="$(gh variable list --json name,value -q ".[] | select(.name==\"$gh_var\") | .value" 2>/dev/null || true)"
+    gh_val="$(gh_var_value "$gh_var")"
     [[ -n "$gh_val" ]] && ok "$gh_var variable = $gh_val"
   done
 }
@@ -664,11 +526,22 @@ secrets() {
 # workflow run` itself does not return the new run's ID, so the ID of the newest
 # existing run is recorded BEFORE dispatch and poll_until waits for a strictly newer
 # one to appear (GitHub takes a few seconds to register a dispatched run).
+#
+# $1 == "provision": pass `-f reason=provision` so CI's `gate` job builds even though the
+# cluster does not exist yet (a run.sh resume/up PRE-DISPATCH that overlaps `apply`). Called
+# WITHOUT that arg (bare `run.sh deploy`, or a manual dispatch) the gate falls back to the
+# live cluster check — correct for a deploy against an already-active env, and it declines to
+# waste a build on a parked one. See infra/ci/decide-build.sh + deploy-gke.yml `gate` job.
 deploy() {
+  local reason="${1:-}"
   log "Triggering the deploy-gke CI workflow (build web+migrate → push → apply -k → migrate Job → rollout)"
   local before_id
   before_id="$(gh run list --workflow deploy-gke.yml --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
-  gh workflow run deploy-gke.yml
+  if [[ "$reason" == "provision" ]]; then
+    gh workflow run deploy-gke.yml -f reason=provision
+  else
+    gh workflow run deploy-gke.yml
+  fi
   DEPLOY_RUN_ID=""
   _new_run_appeared() {
     local id
@@ -678,6 +551,35 @@ deploy() {
   poll_until 12 5 -- _new_run_appeared \
     || { warn "dispatched, but could not confirm the new run ID — follow it with: gh run watch"; return 0; }
   ok "dispatched — run $DEPLOY_RUN_ID — follow it with:  gh run watch $DEPLOY_RUN_ID"
+}
+
+# _predispatch_ci_build: the shared "pre-dispatch the deploy so its cluster-independent build-push
+# job overlaps apply" step used identically by up()'s CI-secrets-present branch and resume(). CI
+# authenticates to GCP with the WIF/DEPLOYER_SA GitHub secrets, so `secrets` MUST run first to
+# refresh them against the current tofu outputs before the just-dispatched run tries to authenticate.
+# `deploy provision` then tells CI's gate job to build even though the cluster does not exist yet
+# (we are mid-provision). Sets DEPLOY_RUN_ID (via deploy) for the watch + the cancel trap below.
+_predispatch_ci_build() {
+  secrets
+  deploy provision   # sets DEPLOY_RUN_ID
+}
+
+# _arm_ci_cancel_trap: install the EXIT trap that cancels the pre-dispatched CI run if the caller
+# exits early before handing ownership to its own watch/return. Both up() and resume() call `apply`
+# after pre-dispatch, and apply()'s internal `die` (exit 1) means a plain `if ! apply` could never
+# catch a failure — so an EXIT trap is the only way to guarantee the orphaned build (left compiling
+# against infra that will never finish provisioning) is cancelled on ANY non-zero exit. The caller
+# MUST clear it with `trap - EXIT` the instant it takes ownership of the run — a successful bring-up
+# must not cancel the very run it is about to watch. Traps do NOT stack in bash (the last one set
+# wins), which is exactly why this delicate block is single-sourced here rather than copied into
+# both call sites where a one-sided future edit would silently orphan runs. No-op when DEPLOY_RUN_ID
+# is unset (deploy couldn't confirm the run id) — nothing to cancel.
+_arm_ci_cancel_trap() {
+  local phase="$1"   # "up" or "resume" — only used in the warning message
+  [[ -n "${DEPLOY_RUN_ID:-}" ]] || return 0
+  # shellcheck disable=SC2064,SC2154  # expand DEPLOY_RUN_ID + phase NOW (fixed values); rc IS
+  # assigned (rc=$?) and read within the trap string — shellcheck can't see across the trap boundary.
+  trap "rc=\$?; [[ \$rc -ne 0 ]] && { gh run cancel '$DEPLOY_RUN_ID' >/dev/null 2>&1 || true; warn '$phase failed — cancelled pre-dispatched CI run $DEPLOY_RUN_ID'; }" EXIT
 }
 
 # verify-secrets: list expected Secret Manager secrets and flag any that are missing.
@@ -803,71 +705,8 @@ rotate_secret() {
   warn "Also update third_party_secrets[\"$secret_name\"] in the gitignored terraform.tfvars so disaster recovery does not recreate the old value."
 }
 
-# upgrade-helm: bump ESO and Reloader to their latest published Helm chart versions.
-# Checks `helm search repo` for each chart, updates infra/versions.env in-place, and
-# re-installs both charts on the live cluster (via eso → infra/ci/ensure-*.sh). Safe to run
-# at any time — `helm upgrade --install` is idempotent and the failure policy
-# (HELM_FAILURE_POLICY) rolls the release back on failure.
-#
-# HOW IT WORKS:
-#   1. Ensures both repos are registered and fresh (repo update).
-#   2. Fetches the latest chart version for each using `helm search repo --output json`.
-#   3. Compares against the current versions.env values — skips if already at latest.
-#   4. Writes the new versions to versions.env (sed in-place).
-#   5. Calls eso (reinstalls ESO + Reloader) so the live cluster matches.
-upgrade_helm() {
-  ensure_tfvars
-  use_cluster
+# upgrade_helm / _app_healthy live in lib/gke.sh (sourced above).
 
-  log "Checking for Helm chart updates"
-  helm_repo external-secrets https://charts.external-secrets.io
-  helm_repo stakater https://stakater.github.io/stakater-charts
-
-  local latest_eso latest_reloader
-  latest_eso="$(helm search repo external-secrets/external-secrets --output json | jq -r '.[0].version')"
-  latest_reloader="$(helm search repo stakater/reloader --output json | jq -r '.[0].version')"
-
-  [[ -n "$latest_eso" ]]      || die "could not fetch latest ESO chart version"
-  [[ -n "$latest_reloader" ]] || die "could not fetch latest Reloader chart version"
-
-  local versions_file
-  versions_file="$(dirname "${BASH_SOURCE[0]}")/../../versions.env"
-
-  if [[ "$ESO_VERSION" == "$latest_eso" ]]; then
-    ok "ESO already at latest ($ESO_VERSION)"
-  else
-    warn "ESO: $ESO_VERSION → $latest_eso (check release notes before upgrading)"
-    if confirm "Upgrade ESO from $ESO_VERSION to $latest_eso?"; then
-      sed -i.bak "s/^ESO_VERSION=.*/ESO_VERSION=$latest_eso/" "$versions_file" && rm -f "$versions_file.bak"
-      ESO_VERSION="$latest_eso"
-      ok "versions.env updated: ESO_VERSION=$latest_eso"
-    fi
-  fi
-
-  if [[ "$RELOADER_VERSION" == "$latest_reloader" ]]; then
-    ok "Reloader already at latest ($RELOADER_VERSION)"
-  else
-    warn "Reloader: $RELOADER_VERSION → $latest_reloader (check release notes before upgrading)"
-    if confirm "Upgrade Reloader from $RELOADER_VERSION to $latest_reloader?"; then
-      sed -i.bak "s/^RELOADER_VERSION=.*/RELOADER_VERSION=$latest_reloader/" "$versions_file" && rm -f "$versions_file.bak"
-      RELOADER_VERSION="$latest_reloader"
-      ok "versions.env updated: RELOADER_VERSION=$latest_reloader"
-    fi
-  fi
-
-  log "Applying Helm chart versions to the cluster (eso + reloader)"
-  eso
-}
-
-# _app_healthy <domain>: deep health check that passes ONLY when the JSON body reports
-# status "ok". WHY jq -e (not plain curl -sf): `curl -sf` only checks the HTTP status (2xx),
-# but the endpoint can return HTTP 200 with {"status":"error","db":"..."} when Cloud SQL
-# isn't reachable yet (e.g. right after first deploy, before IAM propagation). `jq .` exits 0
-# on any valid JSON, which would declare the app healthy while every DB op is broken. `jq -e`
-# exits non-zero on a false/null result, so the poll keeps retrying until the body is ok.
-_app_healthy() {
-  curl -sf --max-time 10 "https://${1}/api/health?deep=1" | jq -e '.status == "ok"' >/dev/null
-}
 # smoke: wait for the latest CI workflow run to finish, then hit the health endpoint.
 # Useful after 'deploy' to confirm the rollout completed successfully end-to-end.
 smoke() {
@@ -896,78 +735,85 @@ smoke() {
   fi
 }
 
-# status: print a quick health snapshot of the running environment.
-# Shows workloads, pods, ESO sync state, managed TLS cert, Ingress IP, and the
-# deep health endpoint. Useful to poll after `deploy` or `dns_hint` while waiting
-# for the cert to become Active.
-status() {
-  log "Cluster status"
-  use_cluster_soft
+# status / logs live in lib/gke.sh (sourced above).
 
-  echo
-  log "Workloads"
-  kubectl -n "$NS" get deploy,statefulset,job,managedcertificate,ingress 2>/dev/null || true
-
-  echo
-  log "Pods"
-  kubectl -n "$NS" get pods -o wide 2>/dev/null || true
-
-  echo
-  log "ExternalSecrets (ESO sync)"
-  kubectl -n "$NS" get externalsecret 2>/dev/null || warn "no externalsecrets (ESO not installed?)"
-
-  echo
-  log "Managed TLS certificate"
-  kubectl -n "$NS" get managedcertificate devstash-cert -o wide 2>/dev/null \
-    || warn "managed certificate not found — overlay not applied yet"
-  warn "GCP-managed cert provisioning takes up to 60 min after DNS propagates."
-  warn "The app will return 502/404 until the cert is Active — this is expected on first deploy."
-  warn "Rerun 'status' to poll until 'Status: Active' appears."
-
-  echo
-  log "Infra"
-  echo "  Ingress IP: $(tf_out ingress_ip_address '—')"
-  echo "  App domain: $(tf_out app_domain '—')"
-
-  echo
-  log "App health (deep — requires pod to be running)"
-  local domain
-  domain="$(tf_out app_domain)"
-  if [[ -n "$domain" ]]; then
-    curl -sf --max-time 5 "https://${domain}/api/health?deep=1" | jq . 2>/dev/null \
-      || warn "health endpoint unreachable (cert provisioning or app not up yet)"
-  else
-    warn "app_domain not available — run 'apply' first"
-  fi
+# empty_bucket <gs://bucket>: recursively delete every object (all versions) in a bucket so
+# the no-force_destroy guard on google_storage_bucket does not block `tofu destroy`. Best-
+# effort — an absent/already-empty bucket (or one destroyed earlier in the same run) must not
+# abort the teardown. `--all-versions` reaches noncurrent generations too (both buckets have
+# versioning on), otherwise archived versions keep the bucket non-empty and the delete fails.
+empty_bucket() {
+  local uri="$1"
+  [[ -n "$uri" ]] || return 0
+  gcloud storage buckets describe "$uri" --project="$PROJECT_ID" >/dev/null 2>&1 || return 0
+  log "Emptying $uri (all object versions) so destroy can delete the bucket"
+  gcloud storage rm -r --all-versions "$uri/**" --quiet --project="$PROJECT_ID" \
+    || warn "empty of $uri returned non-zero (likely already empty) — continuing"
 }
 
-# logs: tail the last 100 log lines from all devstash-web pods simultaneously.
-# Prefixes each line with the pod name so interleaved output is attributable.
-logs() {
-  use_cluster_soft
-  kubectl -n "$NS" logs -l app.kubernetes.io/name=devstash --tail=100 --prefix --ignore-errors 2>/dev/null || true
+# force_release_psa: after `tofu destroy`, reclaim the leftover PSA plumbing GCP holds past the
+# teardown. The service_networking_connection is ABANDONed on destroy (see modules/network) — it
+# is dropped from state but the actual GCP peering + its reserved global address linger until
+# GCP's producer lock clears (up to ~4 days after the last Cloud SQL instance died). Try to
+# force them now so a `down` leaves the GCP side clean rather than trickling out over days.
+# BOTH deletes are best-effort: the peering delete may still hit the producer lock (identical to
+# the destroy path — nothing we can do but wait), and the address delete 409s until the peering
+# releasing frees it. A miss here is not a teardown failure; it just means GCP finishes the job
+# on its own schedule. Names are deterministic (modules/network name_prefix = devstash-<env>).
+force_release_psa() {
+  local vpc="devstash-${ENVIRONMENT}-vpc"
+  local psa_range="devstash-${ENVIRONMENT}-psa"
+  # Only attempt if the VPC still exists — a fully-completed destroy already removed it, and
+  # then there is no peering to reap. `describe` is the existence probe; --project is explicit.
+  gcloud compute networks describe "$vpc" --project="$PROJECT_ID" >/dev/null 2>&1 || return 0
+  log "Force-releasing leftover PSA peering on $vpc (ABANDONed on destroy; GCP may still hold it)"
+  gcloud services vpc-peerings delete --network="$vpc" \
+    --service=servicenetworking.googleapis.com --project="$PROJECT_ID" --quiet \
+    || warn "PSA peering delete returned non-zero (GCP producer lock not yet released — it clears on its own, up to ~4 days) — continuing"
+  log "Releasing reserved PSA range $psa_range"
+  gcloud compute addresses delete "$psa_range" --global --project="$PROJECT_ID" --quiet \
+    || warn "PSA range delete returned non-zero (still held by the peering above) — continuing"
 }
 
-# down: destroy the entire dev environment with `tofu destroy`.
+# down: FORCE-destroy the entire dev environment with `tofu destroy`.
 # GKE and Cloud SQL are already unprotected in this env (they are torn down on every
 # suspend cycle), so no deletion_protection dance is needed — destroy runs directly.
-# The state bucket and GCP project are left intact after destroy.
+# Unlike `suspend` (which deliberately PRESERVES the verified Cloud SQL dump so `resume`
+# can restore it), `down` is a full teardown: it EMPTIES the uploads + db-dumps buckets
+# first so the no-force_destroy guard cannot block destroy, then force-releases the
+# ABANDONed PSA peering + reserved range that GCP holds past the teardown. The state
+# bucket and GCP project are left intact after destroy.
 down() {
   ensure_tfvars
   # A fresh checkout has no initialized backend even when the state bucket exists.
   # Use the same explicit backend selection as apply so destroy cannot read local or
   # wrong-environment state by accident.
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
-  log "Tear down — tofu destroy ($TF_DIR)"
+  log "FORCE tear down — tofu destroy ($TF_DIR)"
   warn "This deletes the GKE cluster, Cloud SQL, and Memorystore."
-  warn "The uploads + db-dumps GCS buckets will NOT be deleted if they contain objects"
-  warn "(force_destroy is not set). This means the last Cloud SQL dump SURVIVES a 'down' —"
-  warn "empty the bucket manually if you truly want everything gone:"
-  warn "  gcloud storage rm -r gs://<bucket>/*"
-  if confirm "Destroy the entire dev environment?"; then
+  warn "UNLIKE 'suspend', 'down' also EMPTIES + DELETES the uploads AND db-dumps buckets —"
+  warn "the last Cloud SQL dump is DESTROYED. There is no restore after a 'down'."
+  warn "If you want a recoverable ~\$0 idle instead, use 'suspend' (keeps the dump)."
+  if confirm "FORCE-destroy the entire dev environment (buckets + dump included)?"; then
+    # Capture bucket names BEFORE destroy — the tofu outputs vanish once state is gone.
+    # tf_out swallows a missing output (already-suspended/partial env) → empty, which
+    # empty_bucket treats as a no-op.
+    local uploads_uri db_dumps_uri
+    uploads_uri="$(tf_out uploads_bucket)"; [[ -n "$uploads_uri" ]] && uploads_uri="gs://$uploads_uri"
+    db_dumps_uri="$(tf_out db_dumps_bucket)"; [[ -n "$db_dumps_uri" ]] && db_dumps_uri="gs://$db_dumps_uri"
+    empty_bucket "$uploads_uri"
+    empty_bucket "$db_dumps_uri"
+    # Reap GKE-leaked NEGs + firewall rules BEFORE destroy — they reference the VPC and would
+    # otherwise fail its delete ("network resource is already being used by …/networkEndpointGroups/
+    # …"). cleanup_leaked_negs (lib/suspend.sh) is VPC-scoped and best-effort. This must run before
+    # destroy, unlike the suspend path where it runs after (there the cluster destroy is a Terraform
+    # apply, not a full VPC teardown, so the VPC survives and the NEGs only need reaping for later).
+    cleanup_leaked_negs
     # The script already obtained explicit confirmation; avoid a second prompt that
     # makes AUTO_APPROVE=1 ineffective in automation.
     tofu_ destroy -auto-approve
+    # Reclaim the PSA peering + range GCP holds past the ABANDONed connection (best-effort).
+    force_release_psa
     ok "destroyed. (State bucket gs://$STATE_BUCKET and the project are left intact.)"
   else
     die "aborted"
@@ -980,23 +826,48 @@ down() {
 # delete_registry/suspend/resume) live in lib/db.sh, lib/dns.sh, and lib/suspend.sh — all
 # sourced above and sharing this shell's scope.
 
+# up: full bring-up — bootstrap → apply → cluster-side wiring → DNS. Like `resume`, it PRE-
+# DISPATCHES the deploy-gke workflow (whose cluster-independent build-push job then builds +
+# pushes WHILE `apply` provisions Cloud SQL ~10 min + the control plane) — but ONLY when CI's
+# auth secrets already exist (a prior cycle). On a first-ever `up` there are no tofu outputs yet,
+# so `secrets` cannot push WIF/DEPLOYER_SA and a pre-dispatched CI run would fail at auth; there
+# we keep the original serial order and leave `deploy` as a printed manual next step. Unlike
+# `resume`, `up` also runs `bootstrap` (project/billing/state/APIs) and does NOT restore a DB.
+up() {
+  preflight
+  bootstrap
+  if _ci_secrets_present; then
+    log "CI auth secrets already present — pre-dispatching deploy so its build overlaps apply"
+    # Same overlap + cancel-on-early-exit pattern as resume(): pre-dispatch CI (secrets refresh →
+    # deploy provision) so build-push runs WHILE apply provisions, arm the cancel trap so an early
+    # exit reaps the orphaned run, then apply in parallel. Both steps single-sourced above.
+    _predispatch_ci_build          # sets DEPLOY_RUN_ID
+    _arm_ci_cancel_trap up         # cancel the run if anything below dies before the handoff
+    apply
+    wait_for_cluster
+    eso
+    trap - EXIT   # cluster is up; the run now owns its own success/failure — stop cancelling it
+    dns_hint; update_dns
+    log "Infra up and the app deploy is building/rolling out in parallel. Follow it:"
+    [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
+    echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
+    return 0
+  fi
+  # First-ever bring-up (no CI secrets yet): original serial order, app deploy stays manual.
+  # _apply_and_wire runs the apply→wait→eso→secrets→dns tail (shared with the `apply` command).
+  _apply_and_wire
+  log "Bootstrap + infra done. Next:"
+  echo "  1. If the DNS A-record above was not set automatically (creds missing),"
+  echo "     add it by hand, then wait for the cert to go Active."
+  echo "  2. bash infra/run/gcp/run.sh verify-secrets  # confirm all SM secrets exist + ESO synced"
+  echo "  3. bash infra/run/gcp/run.sh deploy          # build + migrate + roll out the app"
+  echo "  4. bash infra/run/gcp/run.sh smoke           # wait for CI + verify health endpoint"
+}
+
 # ── dispatch ───────────────────────────────────────────────────────────────
 
 case "$CMD" in
-  up)
-    preflight; bootstrap; apply
-    wait_for_cluster
-    # dns_hint prints the record; update_dns then asserts it automatically. On a
-    # first-ever bring-up the Spaceship creds may not be stored yet — update_dns
-    # warns and falls back to the printed hint, so the manual path still works.
-    eso; secrets; dns_hint; update_dns
-    log "Bootstrap + infra done. Next:"
-    echo "  1. If the DNS A-record above was not set automatically (creds missing),"
-    echo "     add it by hand, then wait for the cert to go Active."
-    echo "  2. bash infra/run/gcp/run.sh verify-secrets  # confirm all SM secrets exist + ESO synced"
-    echo "  3. bash infra/run/gcp/run.sh deploy          # build + migrate + roll out the app"
-    echo "  4. bash infra/run/gcp/run.sh smoke           # wait for CI + verify health endpoint"
-    ;;
+  up)              up ;;
   bootstrap)       preflight; bootstrap ;;
   # update_dns re-points the gke.* A-record at the current ingress IP. The IP is
   # released on suspend and re-allocated fresh on every bring-up, so DNS MUST be
@@ -1005,7 +876,7 @@ case "$CMD" in
   # self-guarding: it warns-and-prints a manual hint if creds/IP are missing, and it
   # only ever touches the gke A-record (prod Vercel/email records are never affected),
   # so it strictly supersedes the print-only dns_hint here.
-  apply)           preflight; apply; wait_for_cluster; eso; secrets; dns_hint; update_dns ;;
+  apply)           preflight; _apply_and_wire ;;
   eso)             eso ;;
   reloader)        reloader ;;
   secrets)         secrets ;;

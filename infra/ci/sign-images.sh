@@ -13,6 +13,7 @@
 #
 # Required env:
 #   IMAGE_URI, WEB_DIGEST, MIGRATE_IMAGE          — from build-push.sh via $GITHUB_ENV
+#                                                   (sign-images runs in the `build-push` job)
 #   GCP_PROJECT_ID                                — attestor/keyversion project
 #   BINAUTHZ_ATTESTOR, BINAUTHZ_KMS_KEYRING, BINAUTHZ_KMS_KEY
 set -euo pipefail

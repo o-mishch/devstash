@@ -50,6 +50,21 @@ resource "google_service_networking_connection" "psa" {
   network                 = google_compute_network.vpc.id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_service_range.name]
+
+  # ABANDON, not DELETE, on destroy. When the last Cloud SQL / Memorystore instance is
+  # torn down (deep suspend or `run.sh down`), GCP's servicenetworking producer keeps a
+  # lock on this peering for a propagation window that can last UP TO ~4 DAYS after the
+  # instance is gone — during which BOTH `tofu destroy` and a manual `gcloud services
+  # vpc-peerings delete` fail with "Producer services … are still using this connection"
+  # (FLOW_SN_DC_RESOURCE_PREVENTING_DELETE_CONNECTION). The provider 5.x+ switched from
+  # removePeering to deleteConnection, so a destroy that used to succeed now blocks the
+  # whole teardown on this one resource. ABANDON drops the connection from Terraform state
+  # WITHOUT calling deleteConnection, so the teardown never stalls; GCP reclaims the
+  # peering on its own schedule, and `run.sh down` best-effort force-deletes the leftover
+  # peering + reserved range afterwards. Refs: hashicorp/terraform-provider-google #16275,
+  # #19908. NOTE: on a normal (non-destroy) apply this has no effect — the connection is
+  # created/updated as usual; ABANDON only governs the destroy path.
+  deletion_policy = "ABANDON"
 }
 
 # --- Private Service Connect for Memorystore for Valkey -------------------------

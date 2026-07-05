@@ -57,7 +57,33 @@ locals {
   #   compute.networkAdmin   delete ingress IP + Cloud Router + Cloud NAT
   #   compute.securityAdmin  delete the Cloud Armor policy
   #   cloudsql.admin         export the DB to GCS + DESTROY the instance (db_active=false)
-  #   secretmanager.admin    delete the redis-* + database-* secrets; read all for reconstruction
+  #   secretmanager.secretVersionManager
+  #                          add/disable versions of the ONE consolidated devstash-app-config
+  #                          secret. The suspend apply rewrites that secret's version via
+  #                          secret_data_wo (fewer keys once db_active=false), and its
+  #                          deletion_policy=DISABLE may disable a superseded version — both are
+  #                          versions.add/disable, plus versions.list/get to plan. It does NOT
+  #                          delete whole secrets (there are none to delete — redis-*/database-*
+  #                          are JSON PROPERTIES of that single secret, not separate secrets) and
+  #                          does NOT touch secret IAM (the app_access binding is ungated). So the
+  #                          old project-wide roles/secretmanager.admin (delete + setIamPolicy on
+  #                          EVERY secret) was far past least privilege for a version-rewrite
+  #                          workload — this predefined role is the minimal write grant.
+  #   secretmanager.secretAccessor
+  #                          read the payloads of devstash-app-config + devstash-ops-config for
+  #                          secret RECONSTRUCTION (auto-suspend-prepare.sh: versions access). The
+  #                          version-manager role above intentionally does NOT include access, so
+  #                          the two are paired. Project-scoped like the rest; still far narrower
+  #                          than admin (no delete, no IAM writes).
+  #   secretmanager.viewer   backfills secretmanager.secrets.get. The apply MANAGES the
+  #                          google_secret_manager_secret.app_config *resource*, so the provider
+  #                          issues a GetSecret on it during the plan/refresh — a permission the
+  #                          old secretmanager.admin carried but neither secretVersionManager
+  #                          (versions.* only) nor secretAccessor (versions.access only) grants.
+  #                          Without it the unattended suspend apply 403s on refresh and the env
+  #                          silently stops suspending. viewer is the minimal predefined role that
+  #                          adds secrets.get (+ list, versions.get/list) with NO payload access
+  #                          and NO writes.
   #   monitoring.viewer      read request_count for the idle re-check
   #   browser                data.google_project (resourcemanager.projects.get)
   #   cloudkms.viewer        data.google_kms_crypto_key_version (binauthz signer — ungated)
@@ -87,13 +113,28 @@ locals {
   # to be able to write. Feeding the real auto_suspend_* values into that tfvars blob makes
   # the suspend apply render byte-identical config → zero self-diff → no self-update
   # permission needed. Removing the cause is safer than permitting the symptom.
+  #
+  # INVARIANT — CHANGES TO THIS LIST ARE OPERATOR-APPLIED, NEVER SELF-APPLIED. The suspend
+  # build RUNS AS this same lifecycle SA. This list drives the for_each on
+  # google_project_iam_member.lifecycle, so editing it makes the next apply CREATE/DESTROY the
+  # SA's own project bindings — a setIamPolicy write. The SA deliberately holds NO
+  # resourcemanager.projectIamAdmin (that would let it rewrite any project IAM = the escalation
+  # this whole least-privilege split exists to avoid), so it CANNOT apply its own binding delta:
+  # it 403s "Policy update access denied" mid-teardown, exactly the failure that stranded a
+  # prior suspend. Therefore: after ANY edit here, an OPERATOR must run `run.sh apply` (as an
+  # owner/projectIamAdmin) to converge the bindings FIRST. Only once committed `main` == state
+  # does the unattended suspend build find zero IAM diff and need no setIamPolicy. Same
+  # "remove the cause, don't permit the symptom" posture as the self-updater note above — we do
+  # NOT grant the SA projectIamAdmin to make it self-sufficient; we require the operator apply.
   lifecycle_roles = local.auto_suspend_on ? [
     "roles/container.admin",
     "roles/memorystore.admin",
     "roles/compute.networkAdmin",
     "roles/compute.securityAdmin",
     "roles/cloudsql.admin",
-    "roles/secretmanager.admin",
+    "roles/secretmanager.secretVersionManager",
+    "roles/secretmanager.secretAccessor",
+    "roles/secretmanager.viewer",
     "roles/monitoring.viewer",
     "roles/browser",
     "roles/cloudkms.viewer",
@@ -494,6 +535,10 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     # storage (resume's full-refresh apply recreates it; CI rebuilds + repushes). Same repo
     # id run.sh delete_registry uses.
     _AR_REPO = module.artifact_registry.repository_id
+    # VPC name — the cleanup-negs step (7) scopes its NEG + firewall reap to THIS network only, so
+    # the project's `default` network and any unrelated resource are never touched. Deterministic
+    # (modules/network builds "${name_prefix}-vpc"), so it is known plan-time without a data read.
+    _VPC = "${local.name_prefix}-vpc"
     # This build's own id — step 6 excludes it so cancelling in-flight builds never cancels
     # the suspend build itself. $BUILD_ID is a Cloud Build built-in substitution; ALLOW_LOOSE
     # (options below) lets a user substitution reference it.
@@ -569,6 +614,19 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
       name   = local.cloud_sdk_image
       env    = local.auto_suspend_build_env
       script = file("${path.module}/scripts/auto-suspend-cleanup-builds.sh")
+    }
+
+    # 7 — CLEANUP LEAKED NEGs (only if idle). GKE races its own teardown and orphans the zonal
+    #     Network Endpoint Groups (+ sometimes firewall rules) the ingress created — they survive
+    #     the cluster destroy and, left unreaped, accumulate across suspend generations until they
+    #     block the VPC delete at the eventual `run.sh down`. Reap the ones on OUR VPC here so the
+    #     count stays bounded. Runs last, off the critical path, best-effort (never fails the
+    #     build). Mirrors run.sh's cleanup_leaked_negs (laptop path) — keep the two in sync.
+    step {
+      id     = "cleanup-negs"
+      name   = local.cloud_sdk_image
+      env    = local.auto_suspend_build_env
+      script = file("${path.module}/scripts/auto-suspend-cleanup-negs.sh")
     }
   }
 

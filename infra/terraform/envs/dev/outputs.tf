@@ -100,9 +100,35 @@ output "binauthz_kms_key" {
   value = module.gke.binauthz_kms_key
 }
 
+# --- Gateway / TLS (Certificate Manager) ----------------------------------
+# The Gateway references the cert MAP by name via the networking.gke.io/certmap annotation
+# (overlays/gcp). CI injects this into settings.yaml (data.certMapName) so the committed
+# manifest stays a placeholder. Survives suspend (Certificate Manager is project-scoped).
+output "cert_map_name" {
+  value = google_certificate_manager_certificate_map.app.name
+}
+
+# The underlying certificate resource (distinct from the map above) — run.sh `status` queries
+# this directly rather than deriving it from cert_map_name by string substitution.
+output "cert_name" {
+  value = google_certificate_manager_certificate.app.name
+}
+
+# One-time DNS-authorization CNAME for the Google-managed cert. Because the domain is on
+# Spaceship (not Cloud DNS), the operator adds this CNAME ONCE to the Spaceship zone; the cert
+# then provisions and auto-renews forever, independent of suspend/resume. See §7 of
+# infra/docs/08-gcp-bootstrap.md.
+#   Add:  <dns_authorization_cname_record>  CNAME  <dns_authorization_cname_target>
+output "dns_authorization_cname_record" {
+  value = google_certificate_manager_dns_authorization.app.dns_resource_record[0].name
+}
+output "dns_authorization_cname_target" {
+  value = google_certificate_manager_dns_authorization.app.dns_resource_record[0].data
+}
+
 # --- Ingress / DNS --------------------------------------------------------
-# Point an A-record for var.app_domain at this IP; the managed cert provisions
-# once DNS resolves here.
+# Point an A-record for var.app_domain at this IP; the Gateway serves TLS from the
+# Certificate Manager cert (already provisioned via the DNS-auth CNAME above).
 output "ingress_ip_address" {
   value = module.network.ingress_ip_address
 }

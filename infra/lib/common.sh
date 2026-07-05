@@ -26,6 +26,58 @@ die()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # Callers build their own tool list (each script needs a different set) and call need per tool.
 need() { command -v "$1" >/dev/null 2>&1 || die "missing required CLI: $1 ($2)"; }
 
+# confirm <prompt>: interactive y/N gate. AUTO_APPROVE=1 skips the prompt entirely (scripted/
+# CI use). Only y/Y/n/N (and Enter = default No) are accepted; anything else re-prompts rather
+# than silently aborting — a stray keystroke (e.g. a wrong keyboard layout) must not read as
+# decline.
+confirm() {
+  [[ "${AUTO_APPROVE:-}" == "1" ]] && return 0
+  local reply
+  while true; do
+    read -r -p "$1 [y/N] " reply || return 1
+    case "$reply" in
+      y | Y) return 0 ;;
+      n | N | "") return 1 ;;
+      *) warn "Please answer y or N." ;;
+    esac
+  done
+}
+
+# poll_until <max_attempts> <sleep_secs> -- <cmd…>: run <cmd> repeatedly until it exits 0 or
+# <max_attempts> is reached, printing a dot per attempt. Returns 0 on success, 1 on timeout.
+# The caller prints its own trailing newline + success/failure message so the wording stays
+# specific to what was being waited on. Pass a quiet predicate (e.g. a small helper that
+# redirects its own noisy command) so only the progress dots reach the terminal.
+poll_until() {
+  local attempts="$1" gap="$2"; shift 2
+  [[ "${1:-}" == "--" ]] && shift
+  local i=0
+  until "$@"; do
+    i=$((i + 1))
+    [[ $i -lt $attempts ]] || return 1
+    printf '.'
+    sleep "$gap"
+  done
+}
+
+# count_missing "<newline-list>" item…: for each item, ok if present in the list (exact-line
+# match) else warn "MISSING". Returns the count of missing items so callers can gate on it —
+# capture with `count_missing … || missing=$?` (the non-zero return would otherwise trip set -e).
+count_missing() {
+  local have="$1"; shift
+  local n=0 item
+  for item in "$@"; do
+    # -qxF + --: fixed-string, whole-line match, metachar-safe.
+    if printf '%s\n' "$have" | grep -qxF -- "$item"; then
+      ok "$item"
+    else
+      warn "MISSING: $item"
+      n=$((n + 1))
+    fi
+  done
+  return "$n"
+}
+
 # require_kube_context <expected-glob> <fix-hint>: die if the CURRENT kubectl context does
 # not match <expected-glob> (a glob, so the GCP caller can match "gke_*_devstash-*-gke" without
 # hardcoding the project id). Guards against exactly the failure mode that motivated this: GCP's
@@ -44,12 +96,32 @@ require_kube_context() {
   ok "kubectl context: $current"
 }
 
+# ssa_apply <yq-select-expr>: server-side apply the subset of /tmp/rendered.yaml matched by
+# <yq-select-expr>, under the STABLE field manager devstash-deploy with --force-conflicts. The
+# split-apply CI steps run this on complementary slices of the SAME render: apply-infra.sh on
+# 'select(.kind != "Deployment")' (everything but the web Deployment) and rollout-web.sh on
+# 'select(.kind == "Deployment")' (the web Deployment only), AFTER migrations land. Kept here so
+# the field-manager name + the --server-side/--force-conflicts flag set are single-sourced and
+# can never drift between the two applies (they must match for the CSA→SSA ownership transfer to
+# be a genuine one-time move). The full rationale for --force-conflicts and the dedicated
+# field-manager lives in the apply-infra.sh header. Assumes /tmp/rendered.yaml exists (written
+# once by render-manifests.sh) and that yq + kubectl are on PATH.
+ssa_apply() {
+  yq "$1" /tmp/rendered.yaml \
+    | kubectl apply --server-side --force-conflicts --field-manager=devstash-deploy -f -
+}
+
 # The container images this project builds and deploys — declared once so adding or renaming
 # an image is a single edit shared by every script that sources this library (the builder in
 # build-push.sh). The deep-suspend path no longer needs this list: it deletes the whole
 # Artifact Registry repo rather than looping individual images.
 # shellcheck disable=SC2034  # consumed by scripts that source this library, not here
 DEVSTASH_IMAGES=(web migrate)
+
+# The k8s namespace every CI script targets (base kustomize; matches settings.yaml). Declared
+# once so a namespace rename is a single edit instead of updating each script's local `NS=`.
+# shellcheck disable=SC2034  # consumed by scripts that source this library, not here
+DEVSTASH_NS=devstash
 
 # ds_image_base <region> <project> <repo>: the Artifact Registry repo path that every
 # devstash image hangs off (e.g. us-central1-docker.pkg.dev/<project>/devstash). Kept here
@@ -103,6 +175,29 @@ helm_skip_if_current() {
     echo "$4 version ${3##*-} is already installed. Skipping Helm upgrade."
     exit 0
   fi
+}
+
+# ds_cluster_present <cluster> <project> <region>: 0 iff <cluster> is listable in GKE. A `list`
+# filtered to the exact name returns the name (non-empty) when present, empty when absent. Does
+# NOT swallow a `gcloud list` failure — it propagates under the caller's `set -e`, matching
+# decide-build.sh's documented contract (a genuine API error must fail loudly, not be misread as
+# "absent"). check-env-active.sh wraps this in a poll loop and swallows at ITS call site instead
+# (`ds_cluster_present ... || true`), because there a transient error should retry, not abort.
+ds_cluster_present() {
+  local cluster="$1" project="$2" region="$3" found
+  found="$(gcloud container clusters list \
+    --project "$project" --region "$region" \
+    --filter="name=$cluster" --format='value(name)')"
+  [[ -n "$found" ]]
+}
+
+# ds_dump_job_diagnostics <namespace> <job-name>: best-effort logs + describe for a failed/timed-out
+# Job, printed right before the caller exits 1. Kept here so the two identical dumps inside
+# run-migrations.sh (Failed condition vs. deadline exceeded) can't drift from each other.
+ds_dump_job_diagnostics() {
+  local ns="$1" job="$2"
+  kubectl -n "$ns" logs "job/$job" --tail=200 || true
+  kubectl -n "$ns" describe "job/$job" || true
 }
 
 # gcs_prune_versions <gs-uri-prefix> <keep>: SYNCHRONOUSLY force the object-version history at

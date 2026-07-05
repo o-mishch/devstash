@@ -8,8 +8,6 @@ variable "project_id" { type = string }
 # the cheap resources are already gone. Same static-derivation fix as gke_node_sa_email.
 variable "project_number" { type = string }
 variable "region" { type = string }
-# GKE cluster name — used to scope container.developer to this cluster only.
-variable "gke_cluster_name" { type = string }
 
 variable "k8s_namespace" {
   type    = string

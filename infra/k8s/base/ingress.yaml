@@ -5,9 +5,10 @@ metadata:
   labels:
     app.kubernetes.io/name: devstash
     app.kubernetes.io/component: web
-  # The ingressClassName + provider-specific annotations are set per overlay:
-  #   - gcp overlay   → GCE ingress (provisions a Google Cloud HTTP(S) LB)
-  #   - local overlay → nginx ingress (runs inside kind)
+  # This base Ingress is consumed ONLY by the local (kind) overlay, which patches on the
+  # nginx ingressClassName. The gcp overlay DELETES this Ingress ($patch: delete) and serves
+  # the app through the Gateway API instead (overlays/gcp/gateway.yaml + httproute.yaml) —
+  # so no GCE Ingress / classic Application Load Balancer is ever created on GKE.
 spec:
   rules:
     # Placeholder replaced per-overlay via kustomize replacement:

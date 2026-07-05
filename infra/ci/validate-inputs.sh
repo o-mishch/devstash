@@ -2,7 +2,7 @@
 # Fail the deploy BEFORE image builds or GCP auth if a required GitHub deployment
 # input is missing. Empty GitHub secrets/variables expand to empty strings; without
 # this guard the failures surface much later as malformed image names, STS errors,
-# or an invalid ManagedCertificate.
+# or a Gateway/HTTPRoute with an empty host or cert map.
 #
 # Required env (from the calling workflow step's `env:` block):
 #   GCP_PROJECT_ID, WORKLOAD_IDENTITY_PROVIDER, DEPLOYER_SA, APP_DOMAIN

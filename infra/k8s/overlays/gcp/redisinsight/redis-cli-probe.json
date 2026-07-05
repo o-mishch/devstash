@@ -15,10 +15,11 @@
         "image": "redis:7-alpine",
         "command": ["/bin/sh", "-c"],
         "args": [
-          "TOKEN=$(wget -qO- --header='Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | sed -n 's/.*\"access_token\":\"\\([^\"]*\\)\".*/\\1/p'); redis-cli -u \"$REDIS_URL\" --user default --pass \"$TOKEN\" --no-auth-warning --tls --insecure ping"
+          "TOKEN=$(wget -qO- --header='Metadata-Flavor: Google' 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' | sed -n 's/.*\"access_token\":\"\\([^\"]*\\)\".*/\\1/p'); printf '%s' \"$REDIS_CA_CERT\" > /tmp/ca.pem; redis-cli -u \"$REDIS_URL\" --user default --pass \"$TOKEN\" --no-auth-warning --tls --cacert /tmp/ca.pem ping"
         ],
         "env": [
-          { "name": "REDIS_URL", "valueFrom": { "secretKeyRef": { "name": "devstash-secrets", "key": "REDIS_URL" } } }
+          { "name": "REDIS_URL", "valueFrom": { "secretKeyRef": { "name": "devstash-secrets", "key": "REDIS_URL" } } },
+          { "name": "REDIS_CA_CERT", "valueFrom": { "secretKeyRef": { "name": "devstash-secrets", "key": "REDIS_CA_CERT" } } }
         ],
         "resources": { "requests": { "cpu": "100m", "memory": "128Mi" } },
         "securityContext": {
