@@ -33,12 +33,16 @@ set_active_state() {
 }
 
 # The Artifact Registry repo is destroyed by the suspend apply itself — modules/artifact-
-# registry gates the repo (and its 4 repo-scoped IAM members) on environment_active, so when
-# suspend() sets environment_active=false the plan destroys the repo + every image it holds
-# through Terraform. No out-of-band `gcloud artifacts repositories delete` is needed, and no
-# orphaned-repo state remains to 403 on the next refresh (which is why reconcile.sh no longer
-# carries an AR-repo branch). Resume flips the gate back on; the plan recreates the repo, then
-# CI rebuilds + repushes before the app is deployed. Symmetric across both suspend paths.
+# registry gates the repo on environment_active, and modules/iam gates its 3 repo-scoped IAM
+# members on the same var, so when suspend() sets environment_active=false the plan destroys the
+# repo + every image it holds through Terraform. No out-of-band `gcloud artifacts repositories
+# delete` is needed. The members target the STATIC repo-id string, so a depends_on edge
+# (modules/iam artifact_registry_repository_depends_on) is what forces them to destroy BEFORE the
+# repo — without it they race the repo, 403 on the vanished repo (getIamPolicy/setIamPolicy on an
+# absent resource returns 403), and abort the apply before the GKE destroy, stranding the cluster
+# billing. reconcile.sh branch 4 heals any state a PRE-fix suspend already stranded. Resume flips
+# the gate back on; the plan recreates the repo + members, then CI rebuilds + repushes before the
+# app is deployed. Symmetric across both suspend paths.
 
 # cleanup_builds: cancel any in-flight Cloud Builds and delete the ${project}_cloudbuild
 # source-staging bucket so a deep-suspended env holds no lingering Cloud Build state/storage.
@@ -53,14 +57,12 @@ set_active_state() {
 cleanup_builds() {
   local ids
   # Scope to THIS env's auto-suspend trigger only (match by the stable TRIGGER_NAME
-  # substitution, as wait_for_no_autosuspend_build does). A bare `builds list --ongoing` would
-  # also catch — and cancel — an unrelated in-flight `deploy-gke` run a teammate kicked off, or
-  # any other build in this shared project. We only ever want to reap a stray auto-suspend
-  # build here; everything else must be left running.
-  local trigger="devstash-${ENVIRONMENT}-auto-suspend"
-  ids="$(gcloud builds list --region="$REGION" --project="$PROJECT_ID" --ongoing \
-           --filter="substitutions.TRIGGER_NAME=$trigger" \
-           --format='value(id)' 2>/dev/null || true)"
+  # substitution). A bare `builds list --ongoing` would also catch — and cancel — an unrelated
+  # in-flight `deploy-gke` run a teammate kicked off, or any other build in this shared project.
+  # We only ever want to reap a stray auto-suspend build here; everything else must be left
+  # running. _ongoing_autosuspend_build_ids (run.sh, sourced above this scope) single-sources
+  # the trigger-name/filter contract shared with wait_for_no_autosuspend_build.
+  ids="$(_ongoing_autosuspend_build_ids)"
   if [[ -n "$ids" ]]; then
     log "Cancelling in-flight auto-suspend Cloud Builds: ${ids//$'\n'/ }"
     # shellcheck disable=SC2086 # word-splitting is intended: one arg per build id.

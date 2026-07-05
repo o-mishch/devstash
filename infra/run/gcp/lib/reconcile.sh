@@ -27,11 +27,12 @@ _DEVSTASH_GCP_RECONCILE_SH=1
 #      service-connectivity automation requires an ordinary PRIVATE subnet, and GCP cannot
 #      PATCH a subnet's purpose in place — so the subnet must be REPLACED, not updated.
 #
-# NOTE — there is no longer an Artifact Registry reconcile branch. The AR repo + its 4
-# repo-scoped IAM members are gated on environment_active (modules/artifact-registry,
-# modules/iam), so a deep-suspend destroys them THROUGH Terraform (state count→0) instead of
-# out-of-band. That leaves no orphaned repo in state, so the getIamPolicy-403-on-a-vanished-repo
-# failure this branch used to `state rm` around can no longer occur.
+# NOTE — the AR repo + its 3 repo-scoped IAM members are gated on environment_active
+# (modules/artifact-registry, modules/iam), so a deep-suspend destroys them THROUGH Terraform
+# (state count→0). A depends_on edge (modules/iam artifact_registry_repository_depends_on) now
+# forces the members to destroy BEFORE the repo, so a clean suspend no longer 403s. Branch 4
+# below only heals the ALREADY-STRANDED state a PRE-fix suspend left behind: repo gone in GCP,
+# members still in state. It is self-disabling — once the state is clean it is a no-op.
 reconcile_state() {
   RECONCILE_REPLACE=()
   local db_addr='module.cloudsql.google_sql_database.devstash[0]'
@@ -196,4 +197,38 @@ reconcile_state() {
   _reconcile_adopt_wif "$wif_provider_addr" "$wif_pool_name/providers/$wif_provider_id" \
     gcloud iam workload-identity-pools providers describe "$wif_provider_id" \
       --workload-identity-pool="$wif_pool_id" --location=global --project="$PROJECT_ID"
+
+  # 4. Drop STRANDED repo-scoped AR IAM members from state. A suspend that ran BEFORE the
+  # destroy-order fix (modules/iam artifact_registry_repository_depends_on) destroyed the repo
+  # first, then 403'd trying to remove these members via the now-vanished repo — aborting the
+  # apply mid-teardown and leaving GKE billing. The members stay in state pointing at a repo GCP
+  # no longer has; the very next apply retries the same repo-scoped setIamPolicy and 403s again,
+  # re-wedging every apply/resume. They cannot be destroyed through the API (no repo to setIamPolicy
+  # on), so purge them from state: harmless because they are recreated on resume (environment_active
+  # =true recreates the repo, and modules/iam recreates the members gated on the same var).
+  #
+  # ONLY when the repo is genuinely ABSENT in GCP — the exact stranded-state signature. If the repo
+  # exists (normal active env) these are legitimately managed and must NOT be removed. Self-disabling:
+  # once purged (or on a clean env where they were never stranded) the state-list check finds nothing.
+  #
+  # SIBLING: the unattended auto-suspend runs the same reconcile in POSIX sh before its apply
+  # (envs/dev/scripts/auto-suspend-suspend.sh) — different execution model (Cloud Build container,
+  # can't source this file), so if these addresses/logic change, change them there too.
+  local ar_repo_id='devstash' # mirrors modules/artifact-registry local.repository_id
+  if ! gcloud artifacts repositories describe "$ar_repo_id" \
+       --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    local ar_iam_addrs=(
+      'module.iam.google_artifact_registry_repository_iam_member.node_artifact_registry_reader[0]'
+      'module.iam.google_artifact_registry_repository_iam_member.custom_node_artifact_registry_reader[0]'
+      'module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry[0]'
+    )
+    local ar_addr
+    for ar_addr in "${ar_iam_addrs[@]}"; do
+      if _reconcile_in_state "$ar_addr"; then
+        warn "Reconcile: repo '$ar_repo_id' is gone but $ar_addr is still in state (stranded by a pre-fix suspend) — removing from state so the next apply is not re-wedged by a 403"
+        tofu_ state rm -lock-timeout=120s "$ar_addr" \
+          || die "failed to state-rm $ar_addr — resolve manually, then re-run apply"
+      fi
+    done
+  fi
 }

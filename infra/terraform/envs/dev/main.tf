@@ -266,7 +266,13 @@ module "iam" {
   gke_node_sa_email               = module.gke.node_service_account_email
   uploads_bucket_name             = module.gcs.bucket_name
   artifact_registry_repository_id = module.artifact_registry.repository_id
-  github_repository               = var.github_repository
+  # Ordering-only handle on the repo RESOURCE (not its static id). The 3 repo-scoped AR IAM
+  # members in modules/iam target the static id string, so without this edge the suspend destroy
+  # races them against the repo: the repo destroys first, the members then 403 on the vanished
+  # repo, and the apply aborts BEFORE the GKE destroy — stranding the cluster billing (fixed here).
+  # depends_on reverses on destroy, so this forces the members to be removed while the repo lives.
+  artifact_registry_repository_depends_on = module.artifact_registry.repository_depends_on
+  github_repository                       = var.github_repository
   github_owner_id                 = var.github_owner_id
   labels                          = local.common_labels
 

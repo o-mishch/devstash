@@ -4,10 +4,44 @@
 # so plain POSIX shell. Now that the verified dump exists, drive to ~$0: destroy
 # compute AND the Cloud SQL instance (db_active=false). -refresh=false keeps the apply (and
 # this SA's perms) scoped to just what these two vars change.
+#
+# Before the apply it runs the same stranded-AR-IAM reconcile (branch 4) that run.sh's
+# reconcile_state runs on the laptop path, so the unattended suspend recovers from a pre-fix
+# stranding instead of 403-wedging every tick — behaviourally matching `run.sh suspend`.
 set -eu
 [ -f /workspace/SUSPEND ] || { echo "not idle — skipping suspend"; exit 0; }
 cd /workspace/repo/infra/terraform/envs/dev
 tofu init -input=false -backend-config="bucket=$_STATE_BUCKET"
+
+# RECONCILE (branch 4) — heal an ALREADY-STRANDED repo-scoped AR-IAM state before the apply, so
+# the unattended path recovers from a pre-fix stranding exactly as run.sh's reconcile_state does
+# on the laptop path (infra/run/gcp/lib/reconcile.sh branch 4). A suspend that ran BEFORE the
+# destroy-order fix (modules/iam artifact_registry_repository_depends_on) destroyed the repo
+# first, then 403'd removing these members via the now-vanished repo — leaving them in state
+# pointing at a repo GCP no longer has. The apply below would retry the same repo-scoped
+# setIamPolicy and 403 AGAIN, re-wedging every scheduled tick (and firing the failure alert),
+# with NO way to recover unattended. They cannot be destroyed through the API (no repo to
+# setIamPolicy on), so purge them from state; resume recreates them (environment_active=true
+# recreates the repo + members). Idempotent: each `state rm` is guarded by an exact-address
+# `state list` check (tofu state rm on an absent address exits non-zero), so once purged — or on
+# a clean env that was never stranded — this is a no-op. ONLY when the repo is genuinely ABSENT
+# in GCP (the exact stranded signature); if the repo exists these are legitimately managed.
+# SIBLING: mirrors reconcile.sh branch 4 — different execution model (Cloud Build container vs.
+# local bash, can't share code), so if the addresses/logic change there, change them here too.
+if ! gcloud artifacts repositories describe devstash \
+     --location="$_REGION" --project="$_PROJECT_ID" >/dev/null 2>&1; then
+  for _ar_addr in \
+    'module.iam.google_artifact_registry_repository_iam_member.node_artifact_registry_reader[0]' \
+    'module.iam.google_artifact_registry_repository_iam_member.custom_node_artifact_registry_reader[0]' \
+    'module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry[0]'
+  do
+    if tofu state list "$_ar_addr" 2>/dev/null | grep -qxF "$_ar_addr"; then
+      echo "Reconcile: repo 'devstash' is gone but $_ar_addr is still in state (stranded by a pre-fix suspend) — removing from state so this apply is not re-wedged by a 403"
+      tofu state rm -lock-timeout=120s "$_ar_addr"
+    fi
+  done
+fi
+
 # -lock-timeout=120s: the guard (step 1) checked the state lock was free, but steps 2-4 (clone,
 # secret fetch, dump) take minutes, during which a human `run.sh apply` could acquire the lock.
 # Without a timeout tofu's default is fail-immediately (0s), wedging the suspend on a briefly-held

@@ -22,6 +22,20 @@ variable "k8s_service_account" {
 variable "uploads_bucket_name" { type = string }
 variable "artifact_registry_repository_id" { type = string }
 
+# ORDERING-ONLY dependency handle on the Artifact Registry repo resource. The 3 repo-scoped AR
+# IAM members below target the STATIC artifact_registry_repository_id string, so without this the
+# graph has no edge to the repo and the suspend destroy races them: the repo is destroyed first,
+# then the member destroys 403 on the vanished repo (getIamPolicy/setIamPolicy on an absent
+# resource returns 403), aborting the apply before the GKE destroy — the cluster stays billing.
+# Threading the repo resource here as a depends_on target forces the members to destroy BEFORE
+# the repo (depends_on edges reverse on destroy). Consumed ONLY in depends_on, never as a value,
+# so it does not make any member string plan-time-unknown under the -refresh=false suspend apply.
+# Defaults to [] so callers that don't wire it (or the suspended count=0 case) still plan.
+variable "artifact_registry_repository_depends_on" {
+  type    = set(any)
+  default = []
+}
+
 # Whether the environment is active (vs deep-suspended). Gates the repo-scoped Artifact
 # Registry READER bindings: the AR repo is destroyed on suspend, and a repo-scoped IAM
 # binding cannot outlive its repo, so these bindings track the repo's existence. The node

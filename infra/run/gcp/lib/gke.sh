@@ -106,6 +106,13 @@ reloader() {
 #   3. Compares against the current versions.env values — skips if already at latest.
 #   4. Writes the new versions to versions.env (sed in-place).
 #   5. Calls eso (reinstalls ESO + Reloader) so the live cluster matches.
+
+# _set_versions_env <key> <value>: rewrite `KEY=…` in-place in "$versions_file". The `.bak`
+# temp + explicit rm is the portable BSD/GNU form of `sed -i` (macOS sed requires an argument
+# to -i; GNU accepts an empty one). Single-sources the in-place edit the ESO/Reloader bumps
+# below both perform. Relies on the caller's `versions_file` local being in scope.
+_set_versions_env() { sed -i.bak "s/^$1=.*/$1=$2/" "$versions_file" && rm -f "$versions_file.bak"; }
+
 upgrade_helm() {
   ensure_tfvars
   use_cluster
@@ -129,7 +136,7 @@ upgrade_helm() {
   else
     warn "ESO: $ESO_VERSION → $latest_eso (check release notes before upgrading)"
     if confirm "Upgrade ESO from $ESO_VERSION to $latest_eso?"; then
-      sed -i.bak "s/^ESO_VERSION=.*/ESO_VERSION=$latest_eso/" "$versions_file" && rm -f "$versions_file.bak"
+      _set_versions_env ESO_VERSION "$latest_eso"
       ESO_VERSION="$latest_eso"
       ok "versions.env updated: ESO_VERSION=$latest_eso"
     fi
@@ -140,7 +147,7 @@ upgrade_helm() {
   else
     warn "Reloader: $RELOADER_VERSION → $latest_reloader (check release notes before upgrading)"
     if confirm "Upgrade Reloader from $RELOADER_VERSION to $latest_reloader?"; then
-      sed -i.bak "s/^RELOADER_VERSION=.*/RELOADER_VERSION=$latest_reloader/" "$versions_file" && rm -f "$versions_file.bak"
+      _set_versions_env RELOADER_VERSION "$latest_reloader"
       RELOADER_VERSION="$latest_reloader"
       ok "versions.env updated: RELOADER_VERSION=$latest_reloader"
     fi
@@ -151,13 +158,10 @@ upgrade_helm() {
 }
 
 # _app_healthy <domain>: deep health check that passes ONLY when the JSON body reports
-# status "ok". WHY jq -e (not plain curl -sf): `curl -sf` only checks the HTTP status (2xx),
-# but the endpoint can return HTTP 200 with {"status":"error","db":"..."} when Cloud SQL
-# isn't reachable yet (e.g. right after first deploy, before IAM propagation). `jq .` exits 0
-# on any valid JSON, which would declare the app healthy while every DB op is broken. `jq -e`
-# exits non-zero on a false/null result, so the poll keeps retrying until the body is ok.
+# status "ok". The health contract (why HTTP 200 alone is not enough) lives in ds_health_ok
+# (infra/lib/common.sh), shared with local run.sh's deep_health_check.
 _app_healthy() {
-  curl -sf --max-time 10 "https://${1}/api/health?deep=1" | jq -e '.status == "ok"' >/dev/null
+  ds_health_ok "https://${1}/api/health?deep=1"
 }
 
 # status: print a quick health snapshot of the running environment.

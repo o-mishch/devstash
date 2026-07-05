@@ -111,6 +111,17 @@ ssa_apply() {
     | kubectl apply --server-side --force-conflicts --field-manager=devstash-deploy -f -
 }
 
+# ds_health_ok <url>: 0 iff the deep health endpoint at <url> reports {"status":"ok"}. Encodes
+# the app's health contract in ONE place for both orchestrators — HTTP 200 alone is NOT healthy:
+# the endpoint can return 200 with {"status":"error","db":"…"} while a backing service (Cloud SQL
+# / Postgres / Redis / MinIO) is still coming up, so `curl -sf` (status-only) and `jq .` (any
+# valid JSON) both false-pass. `jq -e '.status == "ok"'` exits non-zero on a false/null result so
+# the caller keeps polling. gcp/run.sh's _app_healthy polls it silently against https; local
+# run.sh's deep_health_check prints the body first, then asserts the verdict via this predicate.
+ds_health_ok() {
+  curl -sf --max-time 10 "$1" | jq -e '.status == "ok"' >/dev/null 2>&1
+}
+
 # The container images this project builds and deploys — declared once so adding or renaming
 # an image is a single edit shared by every script that sources this library (the builder in
 # build-push.sh). The deep-suspend path no longer needs this list: it deletes the whole
@@ -140,6 +151,18 @@ ds_image_base() {
 ds_newest_enabled_secret_version() {
   gcloud secrets versions list "$1" --project="$2" \
     --filter=state:ENABLED --sort-by=~createTime --limit=1 --format='value(name)' 2>/dev/null || true
+}
+
+# ds_access_secret_blob <secret> <project>: echo the payload of <secret>'s newest ENABLED
+# version, or nothing (empty output, non-fatal) if the secret is absent / has no enabled
+# version. Folds the resolve-newest-enabled + access + tolerate-missing idiom that the app-
+# config read (run.sh) and the ops-config read (dns.sh) both perform, on top of
+# ds_newest_enabled_secret_version so the "avoid `access latest`" hardening stays single-sourced.
+ds_access_secret_blob() {
+  local ver
+  ver="$(ds_newest_enabled_secret_version "$1" "$2")"
+  [[ -n "$ver" ]] || return 0
+  gcloud secrets versions access "$ver" --secret="$1" --project="$2" 2>/dev/null || true
 }
 
 # helm_release_at_version <release> <namespace> <expected-chart>: exit 0 iff <release> is

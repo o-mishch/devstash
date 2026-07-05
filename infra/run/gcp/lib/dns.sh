@@ -91,9 +91,8 @@ update_dns() {
   # for the same reason as everywhere else in this tooling (common.sh / auto-suspend-prepare.sh):
   # a stray DISABLED top version (e.g. an interrupted rotation) makes `access latest` fail with
   # FAILED_PRECONDITION, which would silently break the DNS re-point after resume.
-  local ops_blob ops_ver
-  ops_ver="$(ds_newest_enabled_secret_version devstash-ops-config "$PROJECT_ID")"
-  ops_blob="$([[ -n "$ops_ver" ]] && gcloud secrets versions access "$ops_ver" --secret=devstash-ops-config --project="$PROJECT_ID" 2>/dev/null || true)"
+  local ops_blob
+  ops_blob="$(ds_access_secret_blob devstash-ops-config "$PROJECT_ID")"
   key="${SPACESHIP_API_KEY:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-key" // empty' 2>/dev/null || true)}"
   secret="${SPACESHIP_API_SECRET:-$(printf '%s' "$ops_blob" | jq -r '."spaceship-api-secret" // empty' 2>/dev/null || true)}"
   if [[ -z "$key" || -z "$secret" ]]; then

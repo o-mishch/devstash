@@ -9,6 +9,7 @@
 #   helpers   log/ok/warn/die (infra/lib/common.sh), tf_out, poll_until, ensure_tfvars
 # Sets (shared globals, consumed within this file):
 #   DUMP_INSTANCE, DUMP_URI  (populated by resolve_dump_target)
+#   DUMP_SIZE_KIB            (verified dump size, set by _export_and_verify_dump)
 #
 # Source-guard: sourcing twice is a harmless no-op.
 [[ -n "${_DEVSTASH_GCP_DB_SH:-}" ]] && return 0
@@ -37,16 +38,52 @@ resolve_dump_target() {
 _sql_runnable() {
   [[ "$(gcloud sql instances describe "$1" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null)" == "RUNNABLE" ]]
 }
+# _export_and_verify_dump: server-side export + non-empty verify, with ONE retry that first
+# deletes an empty/partial dump object. `gcloud sql export` can leave a 0-byte object behind on
+# a transient failure; re-exporting over it would be verified against that stale empty object, so
+# the retry removes it first, then re-exports and re-verifies. Returns 0 once a non-empty dump is
+# confirmed (setting the shared DUMP_SIZE_KIB for the caller's log) and non-zero if it still
+# cannot — the caller (dump_db) turns that into the data-safety abort. Progress goes to the
+# terminal via log/warn (stdout), so it is NOT run in a command substitution.
+# SIBLING: auto-suspend-dump.sh runs this same export → verify → (delete-empty + retry) sequence
+# on the Cloud Build path — keep the two in sync.
+_export_and_verify_dump() {
+  local attempt size
+  DUMP_SIZE_KIB=""
+  for attempt in 1 2; do
+    log "Exporting Cloud SQL '$DUMP_INSTANCE' → $DUMP_URI (server-side pg_dump, attempt $attempt/2)"
+    gcloud sql export sql "$DUMP_INSTANCE" "$DUMP_URI" --database="$DB_NAME" --project="$PROJECT_ID" \
+      || warn "gcloud sql export failed (attempt $attempt)"
+    size="$(gcloud storage objects describe "$DUMP_URI" --format='value(size)' 2>/dev/null || true)"
+    if [[ "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]]; then
+      DUMP_SIZE_KIB="$((size / 1024))"
+      return 0
+    fi
+    warn "dump $DUMP_URI missing or empty (size='${size:-none}')"
+    # Delete the empty/partial object so the retry re-verifies against a fresh export, not stale bytes.
+    gcloud storage rm "$DUMP_URI" --quiet 2>/dev/null || true
+  done
+  return 1
+}
 dump_db() {
-  local state size
+  local state
   ensure_tfvars
   resolve_dump_target || die "cannot resolve Cloud SQL instance / dump bucket / object from tofu output — run 'apply' first"
+
+  # IDEMPOTENT TEARDOWN: a prior partial suspend may have already destroyed the instance. That is
+  # NOT a failure — there is nothing left to dump (and a gone instance can't be dumped retroactively
+  # anyway), so log it and SKIP so the caller proceeds to tear down whatever remains (e.g. GKE).
+  # The data-safety gate below only applies when the instance still EXISTS. SIBLING: same
+  # absent-instance skip in scripts/auto-suspend-dump.sh — keep in sync.
+  state="$(gcloud sql instances describe "$DUMP_INSTANCE" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null || true)"
+  if [[ -z "$state" ]]; then
+    warn "Cloud SQL instance '$DUMP_INSTANCE' not found — already destroyed by a prior suspend; skipping dump and continuing teardown"
+    return 0
+  fi
 
   # Must be RUNNABLE to export. If a prior compute-only suspend left it STOPPED
   # (activation_policy=NEVER), start it just long enough to dump; the apply that follows
   # destroys it anyway, so this transient start is harmless.
-  state="$(gcloud sql instances describe "$DUMP_INSTANCE" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null || true)"
-  [[ -n "$state" ]] || die "Cloud SQL instance '$DUMP_INSTANCE' not found — nothing to dump (already deep-suspended?)"
   if [[ "$state" != "RUNNABLE" ]]; then
     warn "instance is '$state' — starting it to take a consistent dump"
     gcloud sql instances patch "$DUMP_INSTANCE" --project="$PROJECT_ID" --activation-policy=ALWAYS --quiet
@@ -55,18 +92,13 @@ dump_db() {
     echo
   fi
 
-  log "Exporting Cloud SQL '$DUMP_INSTANCE' → $DUMP_URI (server-side pg_dump)"
-  gcloud sql export sql "$DUMP_INSTANCE" "$DUMP_URI" --database="$DB_NAME" --project="$PROJECT_ID" \
-    || die "gcloud sql export failed — NOT suspending (instance left intact)"
-
-  # Verify the dump exists and is non-empty BEFORE the caller is allowed to destroy the
-  # instance. This is the safety gate that replaces Cloud SQL deletion_protection.
-  # SIBLING: the event-driven path duplicates this exact export+non-empty-size gate in
-  # scripts/auto-suspend-dump.sh (different execution model — Cloud Build container — so it
-  # can't be shared code). If you change the verification rule here, change it there too.
-  size="$(gcloud storage objects describe "$DUMP_URI" --format='value(size)' 2>/dev/null || true)"
-  [[ "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]] || die "dump $DUMP_URI missing or empty (size='${size:-none}') — NOT suspending"
-  ok "DB exported and verified ($((size / 1024)) KiB) — safe to destroy the instance"
+  # The instance EXISTS, so the data-safety gate is in force: export + verify non-empty (with one
+  # delete-empty + retry) BEFORE the caller is allowed to destroy it. This replaces Cloud SQL
+  # deletion_protection — an instance-present export that never verifies ABORTS the suspend, so we
+  # never destroy an un-backed-up database.
+  _export_and_verify_dump \
+    || die "could not produce a non-empty dump of '$DUMP_INSTANCE' after retry — NOT suspending (instance left intact)"
+  ok "DB exported and verified (${DUMP_SIZE_KIB} KiB) — safe to destroy the instance"
 
   # Force the dump history down NOW rather than waiting for the bucket's ~daily lifecycle sweep.
   # db_dump_keep_versions counts NONCURRENT dumps (matching the lifecycle rule in db-dumps.tf),

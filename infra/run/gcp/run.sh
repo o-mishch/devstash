@@ -209,12 +209,9 @@ _tf_outputs_present() {
 # app_config_blob: print the devstash-app-config JSON from its newest ENABLED version, or
 # nothing (empty output, non-fatal) if the secret is absent/has no enabled version. The
 # newest-ENABLED-version resolution (and the reason we avoid `access latest`) lives in
-# ds_newest_enabled_secret_version (infra/lib/common.sh), shared with the CI tooling.
+# ds_access_secret_blob (infra/lib/common.sh), shared with the ops-config read in dns.sh.
 app_config_blob() {
-  local ver
-  ver="$(ds_newest_enabled_secret_version devstash-app-config "$PROJECT_ID")"
-  [[ -n "$ver" ]] || return 0
-  gcloud secrets versions access "$ver" --secret=devstash-app-config --project="$PROJECT_ID" 2>/dev/null || true
+  ds_access_secret_blob devstash-app-config "$PROJECT_ID"
 }
 
 # gh_var_value <name>: echo the value of a GitHub Actions *variable* (empty if absent).
@@ -313,17 +310,25 @@ ensure_tfvars() {
 # direction (build starts while a human holds the lock) is handled by the guard step in
 # auto-suspend-guard.sh, and the residual window where a build starts in the split second
 # after this check clears is caught by -lock-timeout on the tofu commands below.
+#
+# _ongoing_autosuspend_build_ids: echo the ongoing (QUEUED/WORKING) Cloud Build IDs for THIS
+# env's auto-suspend trigger, newline-separated, empty if none. Match by the trigger's NAME
+# (Cloud Build's built-in TRIGGER_NAME substitution), which is stable across trigger replaces —
+# unlike buildTriggerId, which is regenerated whenever the trigger is recreated. Single-sourced
+# so wait_for_no_autosuspend_build (below) and cleanup_builds (lib/suspend.sh) can never drift
+# on how "our auto-suspend build" is identified. Non-fatal on a transient list error (|| true).
+_ongoing_autosuspend_build_ids() {
+  gcloud builds list --region="$REGION" --project="$PROJECT_ID" --ongoing \
+    --filter="substitutions.TRIGGER_NAME=devstash-${ENVIRONMENT}-auto-suspend" \
+    --format='value(id)' 2>/dev/null || true
+}
+
 wait_for_no_autosuspend_build() {
-  # Match by the trigger's NAME (Cloud Build's built-in TRIGGER_NAME substitution), which is
-  # stable across trigger replaces — unlike buildTriggerId, which is regenerated whenever the
-  # trigger is recreated. One server-side --filter, no per-build describe.
   local trigger="devstash-${ENVIRONMENT}-auto-suspend"
   local deadline=$(( SECONDS + 900 ))  # cap the wait so a stuck build can't hang us forever
   local id
   while :; do
-    id="$(gcloud builds list --region="$REGION" --project="$PROJECT_ID" --ongoing \
-            --filter="substitutions.TRIGGER_NAME=$trigger" \
-            --format='value(id)' 2>/dev/null | head -1)"
+    id="$(_ongoing_autosuspend_build_ids | head -1)"
     [[ -z "$id" ]] && return 0
     if (( SECONDS >= deadline )); then
       die "auto-suspend build $id ($trigger) still running after 900s — it holds the state lock. Wait for it to finish (gcloud builds log $id --region=$REGION) or cancel it, then re-run."

@@ -77,15 +77,15 @@ preflight() {
 # against applies here too: the endpoint can return 200 with {"status":"error","db":"..."} while
 # Postgres/Redis/MinIO is still coming up, and a human skimming the printed JSON could miss that.
 deep_health_check() {
-  local body
-  body="$(curl -s --max-time 10 'http://localhost:8080/api/health?deep=1')" || {
+  local url='http://localhost:8080/api/health?deep=1' body
+  body="$(curl -s --max-time 10 "$url")" || {
     warn "app unreachable on :8080"
     return 0
   }
   printf '%s\n' "$body"
-  if ! printf '%s' "$body" | jq -e '.status == "ok"' >/dev/null 2>&1; then
-    warn "deep health check did not report status=ok — inspect the body above"
-  fi
+  # Delegate the verdict to the shared health contract (common.sh); print-the-body stays local.
+  ds_health_ok "$url" \
+    || warn "deep health check did not report status=ok — inspect the body above"
 }
 
 # ── Helper: self-signed TLS for local Valkey (mirrors GCP Memorystore) ────────
@@ -131,12 +131,27 @@ ensure_valkey_tls() {
 # that prevents new code from reaching live pods before its schema migration lands.
 run_migrate() {
   log "running migrate job"
-  kubectl -n "$NS" delete job devstash-migrate --ignore-not-found
+  kubectl -n "$NS" delete job devstash-migrate --ignore-not-found --cascade=foreground
   kubectl apply -f "$OVERLAY/migrate-job-local.yaml"
-  if ! kubectl -n "$NS" wait --for=condition=complete \
-      job/devstash-migrate --timeout=300s; then
+  # Poll Complete AND Failed rather than `kubectl wait --for=condition=complete`, which only
+  # watches one condition and so burns the full deadline on a Failed Job before diagnostics
+  # run. Mirrors infra/ci/run-migrations.sh so a broken migration aborts immediately here too.
+  local deadline=$(( SECONDS + 300 )) complete="" failed=""
+  while (( SECONDS < deadline )); do
+    complete="$(kubectl -n "$NS" get job devstash-migrate \
+      -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null)"
+    [[ "$complete" == "True" ]] && break
+    failed="$(kubectl -n "$NS" get job devstash-migrate \
+      -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null)"
+    if [[ "$failed" == "True" ]]; then
+      ds_dump_job_diagnostics "$NS" devstash-migrate
+      die "migrate job reached Failed condition"
+    fi
+    sleep 5
+  done
+  if [[ "$complete" != "True" ]]; then
     ds_dump_job_diagnostics "$NS" devstash-migrate
-    die "migrate job did not complete"
+    die "migrate job did not complete within 300s"
   fi
   kubectl -n "$NS" logs job/devstash-migrate --tail=30 || true
   ok "migrate job complete"
@@ -150,18 +165,19 @@ build_and_load() {
   kind load docker-image devstash-migrate:local --name devstash
 }
 
-# ── Helper: apply a named slice of the backing-services base ($LOCAL_K8S) ─────
-# The base (infra/k8s/local) bundles ALL backing services + the two init-script ConfigMaps
-# (generated via configMapGenerator, so run.sh no longer materialises them by hand). But the
-# up-flow must still stage them: the data services (Postgres/Redis/MinIO/Mailpit) come up
-# BEFORE the migrate gate, and the dashboards (Headlamp/pgAdmin) roll out AFTER the app — so
-# we render the base once and apply it in slices, mirroring apply_overlay_slice's approach for
-# the app overlay. $1 is a yq boolean expression over each doc (e.g. a .metadata.name test).
-# The generated ConfigMaps ride along with whichever slice mounts them (name match below).
-apply_local_slice() {
-  kubectl kustomize "$LOCAL_K8S" \
-    | yq "select($1)" \
-    | kubectl apply -f -
+# ── Helper: render a kustomize dir and apply the slice matched by a yq select expr ─────
+# Renders <dir>, keeps the docs matching the full yq boolean expression <expr> (passed whole —
+# e.g. a .metadata.name test for the backing-services base, or `.kind == "Deployment"` for the
+# app overlay), and applies them with any extra kubectl-apply args (the overlay slices pass
+# --server-side). The base up-flow must stage data services (Postgres/Redis/MinIO/Mailpit)
+# BEFORE the migrate gate and the dashboards (Headlamp/pgAdmin) AFTER the app rolls out; the
+# overlay must apply infra before the migrate Job and the Deployment after — so both render
+# once (configMapGenerator materialises the init-script ConfigMaps) and apply in complementary
+# slices through this one helper. The generated ConfigMaps ride along with whichever slice
+# mounts them (name match below).
+apply_slice() {
+  local dir="$1" expr="$2"; shift 2
+  kubectl kustomize "$dir" | yq "select($expr)" | kubectl apply "$@" -f -
 }
 
 # The dashboards (Headlamp + pgAdmin) and their objects, by name — the one group held back
@@ -169,16 +185,6 @@ apply_local_slice() {
 # slice 2 (dashboards) is this set. Kept as a single yq predicate so the two slices stay
 # exact complements and can never overlap or drop a resource.
 DASHBOARD_NAMES='["headlamp","headlamp-admin","pgadmin","pgadmin-config","pgadmin-seed-script"]'
-
-# ── Helper: render the local overlay and apply one kind slice server-side ─────
-# The migrate gate requires infra (everything except the Deployment) to exist BEFORE the
-# migrate Job, and the Deployment to roll out AFTER it — so up/deploy each apply the overlay
-# in two slices. $1 is the yq kind filter, e.g. '!= "Deployment"' or '== "Deployment"'.
-apply_overlay_slice() {
-  kubectl kustomize "$OVERLAY" \
-    | yq "select(.kind $1)" \
-    | kubectl apply --server-side -f -
-}
 
 # ── Helper: provision the kind cluster via OpenTofu (envs/local) ──────────────
 # Mirrors infra/run/gcp/run.sh's tofu flow (init -backend-config → apply), scaled down to a
@@ -236,7 +242,7 @@ up() {
   #    MinIO, Mailpit + the minio-bucket-init Job and its generated init-script ConfigMap.
   #    The dashboards (Headlamp/pgAdmin) are held back to step 8 (post-app). Wait for each
   #    to be ready before running migrations.
-  apply_local_slice "(.metadata.name as \$n | $DASHBOARD_NAMES | contains([\$n]) | not)"
+  apply_slice "$LOCAL_K8S" "(.metadata.name as \$n | $DASHBOARD_NAMES | contains([\$n]) | not)"
   kubectl -n "$NS" rollout status statefulset/postgres --timeout=120s
   kubectl -n "$NS" rollout status deploy/redis         --timeout=120s
   kubectl -n "$NS" rollout status deploy/minio         --timeout=120s
@@ -247,7 +253,7 @@ up() {
   #    This creates the namespace, Secret (devstash-secrets), ConfigMap, Service,
   #    Ingress, HPA, PDB, and NetworkPolicy so the migrate Job can read the Secret.
   #    Mirrors the GCP CI "Apply infra (everything except the web Deployment)" step.
-  apply_overlay_slice '!= "Deployment"'
+  apply_slice "$OVERLAY" '.kind != "Deployment"' --server-side
 
   # 6. Migrate gate: run the migrate Job and wait for completion BEFORE the web
   #    Deployment rolls out. Same ordering as GCP — new code never reaches pods
@@ -255,13 +261,13 @@ up() {
   run_migrate
 
   # 7. Roll out the web Deployment (post-migration).
-  apply_overlay_slice '== "Deployment"'
+  apply_slice "$OVERLAY" '.kind == "Deployment"' --server-side
   kubectl -n "$NS" rollout status deploy/devstash-web --timeout=180s
 
   # 8. Dashboards (Headlamp + pgAdmin) — the held-back slice of the base, applied post-app.
   #    pgAdmin's seed-pgpass initContainer mounts its script from the pgadmin-seed-script
   #    ConfigMap, which the base generates and this slice carries.
-  apply_local_slice "(.metadata.name as \$n | $DASHBOARD_NAMES | contains([\$n]))"
+  apply_slice "$LOCAL_K8S" "(.metadata.name as \$n | $DASHBOARD_NAMES | contains([\$n]))"
   kubectl -n headlamp rollout status deploy/headlamp --timeout=120s
   kubectl -n "$NS" rollout status deploy/pgadmin --timeout=120s
 
@@ -281,13 +287,13 @@ deploy() {
   build_and_load
 
   # Re-apply infra (namespace, Secret, ConfigMap, Service, Ingress, HPA, PDB, NetworkPolicy).
-  apply_overlay_slice '!= "Deployment"'
+  apply_slice "$OVERLAY" '.kind != "Deployment"' --server-side
 
   # Migrate gate before the Deployment rolls to the new image.
   run_migrate
 
   # Roll out the Deployment.
-  apply_overlay_slice '== "Deployment"'
+  apply_slice "$OVERLAY" '.kind == "Deployment"' --server-side
   kubectl -n "$NS" rollout restart deploy/devstash-web
   kubectl -n "$NS" rollout status  deploy/devstash-web --timeout=180s
 

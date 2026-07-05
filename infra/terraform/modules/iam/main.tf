@@ -204,6 +204,15 @@ resource "google_project_iam_member" "gke_node_sa_node" {
 # PROJECT-LEVEL bindings (kept always-on to avoid project setIamPolicy on teardown), removing a
 # repo-scoped binding needs only artifactregistry.repositories.setIamPolicy on THIS repo, which
 # the lifecycle SA holds via the project-scoped lifecycle_ar_deleter role.
+#
+# DESTROY ORDER — depends_on on the repo resource (var.artifact_registry_repository_depends_on).
+# These members target the STATIC repo-id string, NOT the repo resource, so without this edge
+# Terraform is free to destroy the repo FIRST; the member destroy then calls getIamPolicy/
+# setIamPolicy on a repo that is already gone, which GCP answers with 403 (not 404). That 403
+# aborts the whole suspend apply BEFORE it reaches the GKE count→0 destroy, stranding the cluster
+# billing — the exact incident this edge fixes. A depends_on is reversed on destroy, so it forces
+# every member below to be removed while the repo still exists, then the repo. Value unused (edge
+# only) → no plan-time-unknown under -refresh=false.
 resource "google_artifact_registry_repository_iam_member" "node_artifact_registry_reader" {
   count      = var.environment_active ? 1 : 0
   project    = var.project_id
@@ -211,6 +220,8 @@ resource "google_artifact_registry_repository_iam_member" "node_artifact_registr
   repository = var.artifact_registry_repository_id
   role       = "roles/artifactregistry.reader"
   member     = local.compute_default_sa_member
+
+  depends_on = [var.artifact_registry_repository_depends_on]
 }
 
 resource "google_artifact_registry_repository_iam_member" "custom_node_artifact_registry_reader" {
@@ -220,6 +231,8 @@ resource "google_artifact_registry_repository_iam_member" "custom_node_artifact_
   repository = var.artifact_registry_repository_id
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${var.gke_node_sa_email}"
+
+  depends_on = [var.artifact_registry_repository_depends_on]
 }
 
 # --- CI/CD deployer service account ---------------------------------------
@@ -250,6 +263,10 @@ resource "google_artifact_registry_repository_iam_member" "deployer_artifact_reg
   repository = var.artifact_registry_repository_id
   role       = "roles/artifactregistry.repoAdmin"
   member     = "serviceAccount:${google_service_account.deployer.email}"
+
+  # See node_artifact_registry_reader — same destroy-order edge so this member is removed while
+  # the repo still exists (else its setIamPolicy 403s on the vanished repo and aborts suspend).
+  depends_on = [var.artifact_registry_repository_depends_on]
 }
 
 # --- Binary Authorization signing + vulnerability-gate read access ---------------
