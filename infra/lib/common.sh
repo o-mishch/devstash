@@ -43,6 +43,21 @@ confirm() {
   done
 }
 
+# read_secret <prompt> <out-var-name>: read a credential into the named variable WITHOUT echoing
+# it — a hidden `read -s` prompt on a tty, or a plain line from stdin when piped (automation).
+# Single-sources the "never let a secret reach shell history or the process list" input idiom that
+# rotate_secret (run.sh) and set_dns_creds (dns.sh) both need. Uses `printf -v` to assign the
+# caller's variable by name (no eval, no nameref — portable to the Helm-3/bash-3 CI runner too).
+read_secret() {
+  local _prompt="$1" _out="$2" _val
+  if [[ -t 0 ]]; then
+    read -r -s -p "$_prompt" _val; printf '\n'
+  else
+    read -r _val
+  fi
+  printf -v "$_out" '%s' "$_val"
+}
+
 # poll_until <max_attempts> <sleep_secs> -- <cmd…>: run <cmd> repeatedly until it exits 0 or
 # <max_attempts> is reached, printing a dot per attempt. Returns 0 on success, 1 on timeout.
 # The caller prints its own trailing newline + success/failure message so the wording stays
@@ -200,6 +215,17 @@ helm_skip_if_current() {
   fi
 }
 
+# helm_repo <name> <url>: register (idempotent — ignore the "already exists" warning on re-add) +
+# refresh a single Helm chart repo. Output is silenced because the add/update result is not
+# diagnostic — a real failure surfaces at the subsequent `helm upgrade --install` (and `helm repo
+# update` still propagates its exit code under set -e; only stdout is redirected). Single-sourced
+# here so upgrade_helm (gke.sh, freshens both repos) and the ensure-eso.sh / ensure-reloader.sh CI
+# installers all register a repo the same way instead of each open-coding the add+update pair.
+helm_repo() {
+  helm repo add "$1" "$2" >/dev/null 2>&1 || true
+  helm repo update "$1" >/dev/null
+}
+
 # ds_cluster_present <cluster> <project> <region>: 0 iff <cluster> is listable in GKE. A `list`
 # filtered to the exact name returns the name (non-empty) when present, empty when absent. Does
 # NOT swallow a `gcloud list` failure — it propagates under the caller's `set -e`, matching
@@ -221,6 +247,32 @@ ds_dump_job_diagnostics() {
   local ns="$1" job="$2"
   kubectl -n "$ns" logs "job/$job" --tail=200 || true
   kubectl -n "$ns" describe "job/$job" || true
+}
+
+# wait_for_job_gate <namespace> <job> <deadline-secs>: poll a gated Job's terminal conditions and
+# return a distinct code so the caller keeps its own wording/exit style. Watches BOTH Complete and
+# Failed each tick — `kubectl wait --for=condition=complete` only tracks one condition and so burns
+# the full deadline on an already-Failed Job before diagnostics run. Returns 0 on Complete, 1 on
+# Failed, 2 on timeout; on 1/2 it runs ds_dump_job_diagnostics FIRST so the post-mortem is emitted
+# once here rather than duplicated at every call site. Single-sources the migrate→rollout gate loop
+# that CI (run-migrations.sh, `::error::`/exit) and local run.sh (`die`) each wrap with their own
+# message — the only differences between the two were the deadline and that wording.
+wait_for_job_gate() {
+  local ns="$1" job="$2" deadline=$(( SECONDS + $3 )) complete="" failed=""
+  while (( SECONDS < deadline )); do
+    complete="$(kubectl -n "$ns" get job "$job" \
+      -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null)"
+    [[ "$complete" == "True" ]] && return 0
+    failed="$(kubectl -n "$ns" get job "$job" \
+      -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null)"
+    if [[ "$failed" == "True" ]]; then
+      ds_dump_job_diagnostics "$ns" "$job"
+      return 1
+    fi
+    sleep 5
+  done
+  ds_dump_job_diagnostics "$ns" "$job"
+  return 2
 }
 
 # gcs_prune_versions <gs-uri-prefix> <keep>: SYNCHRONOUSLY force the object-version history at

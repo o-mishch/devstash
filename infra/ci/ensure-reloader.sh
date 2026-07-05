@@ -17,8 +17,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 # (and the helm-list/jq probe it wraps) is shared with ensure-eso.sh via common.sh.
 helm_skip_if_current reloader reloader "reloader-$RELOADER_VERSION" "Stakater Reloader"
 
-helm repo add stakater https://stakater.github.io/stakater-charts
-helm repo update stakater
+# helm_repo (common.sh) single-sources the add+update pair shared with ensure-eso.sh + run.sh.
+helm_repo stakater https://stakater.github.io/stakater-charts
 
 # Resource requests set to Autopilot's 50m CPU floor. Failure policy comes from
 # helm_failure_policy (common.sh) — same "--atomic" default and override as ensure-eso.sh.

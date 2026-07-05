@@ -133,26 +133,18 @@ run_migrate() {
   log "running migrate job"
   kubectl -n "$NS" delete job devstash-migrate --ignore-not-found --cascade=foreground
   kubectl apply -f "$OVERLAY/migrate-job-local.yaml"
-  # Poll Complete AND Failed rather than `kubectl wait --for=condition=complete`, which only
-  # watches one condition and so burns the full deadline on a Failed Job before diagnostics
-  # run. Mirrors infra/ci/run-migrations.sh so a broken migration aborts immediately here too.
-  local deadline=$(( SECONDS + 300 )) complete="" failed=""
-  while (( SECONDS < deadline )); do
-    complete="$(kubectl -n "$NS" get job devstash-migrate \
-      -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null)"
-    [[ "$complete" == "True" ]] && break
-    failed="$(kubectl -n "$NS" get job devstash-migrate \
-      -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null)"
-    if [[ "$failed" == "True" ]]; then
-      ds_dump_job_diagnostics "$NS" devstash-migrate
-      die "migrate job reached Failed condition"
-    fi
-    sleep 5
-  done
-  if [[ "$complete" != "True" ]]; then
-    ds_dump_job_diagnostics "$NS" devstash-migrate
-    die "migrate job did not complete within 300s"
-  fi
+  # Gate on the Job's terminal condition (Complete/Failed/timeout) via the shared poll loop, so a
+  # broken migration aborts immediately instead of burning the full deadline. wait_for_job_gate
+  # (common.sh) dumps diagnostics on any non-zero code; we map the code to the local `die` wording.
+  # Mirrors infra/ci/run-migrations.sh, which wraps the SAME helper with its own ::error:: message.
+  # `|| gate_rc=$?` keeps the non-zero return from tripping set -e (diagnostics already printed).
+  local gate_rc=0
+  wait_for_job_gate "$NS" devstash-migrate 300 || gate_rc=$?
+  case "$gate_rc" in
+    0) : ;;
+    1) die "migrate job reached Failed condition" ;;
+    *) die "migrate job did not complete within 300s" ;;
+  esac
   kubectl -n "$NS" logs job/devstash-migrate --tail=30 || true
   ok "migrate job complete"
 }

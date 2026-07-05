@@ -148,13 +148,11 @@ update_dns() {
 # prompts (or stdin) and never echoed. Re-run to rotate.
 set_dns_creds() {
   ensure_tfvars
+  # read_secret (common.sh) single-sources the never-echo-a-credential input idiom (hidden tty
+  # prompt, or a plain stdin line when piped) shared with rotate_secret in run.sh.
   local key secret
-  if [[ -t 0 ]]; then
-    read -r -s -p "Spaceship API key: " key; printf '\n'
-    read -r -s -p "Spaceship API secret: " secret; printf '\n'
-  else
-    read -r key; read -r secret
-  fi
+  read_secret "Spaceship API key: " key
+  read_secret "Spaceship API secret: " secret
   [[ -n "$key" && -n "$secret" ]] || die "both key and secret are required"
   log "Storing Spaceship DNS API creds in the consolidated devstash-ops-config secret (project $PROJECT_ID)"
   # Both creds live as properties of ONE JSON blob (matches the Terraform-managed

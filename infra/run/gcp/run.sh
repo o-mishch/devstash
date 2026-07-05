@@ -788,12 +788,9 @@ rotate_secret() {
     # ConfigMap (settings.yaml). Change them there (or the deploy-gke.yml override var).
     *) die "unsupported secret '$secret_name' — non-secret config lives in settings.yaml; generated database/Redis/GCS secrets rotate through OpenTofu" ;;
   esac
-  if [[ -t 0 ]]; then
-    read -r -s -p "New value for devstash-${secret_name}: " new_value
-    printf '\n'
-  else
-    new_value="$(cat)"
-  fi
+  # read_secret (common.sh) single-sources the never-echo-a-credential input idiom (hidden tty
+  # prompt, or a plain stdin line when piped) shared with set_dns_creds in dns.sh.
+  read_secret "New value for devstash-${secret_name}: " new_value
   [[ -n "$new_value" ]] || die "secret value must not be empty"
   ensure_tfvars
   use_cluster "cluster not reachable — run 'apply' first"

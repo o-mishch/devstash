@@ -14,9 +14,13 @@
 # an ENABLED latest version by construction: the version resource is write-only
 # (`secret_data_wo` + a hash-derived `secret_data_wo_version`) so a value change updates it IN
 # PLACE rather than replacing it, and `deletion_policy = "DISABLE"` means a version is never
-# DESTROYED — so `access latest` can never hit the FAILED_PRECONDITION/destroyed state that once
-# broke this step. What changes is the CONTENTS — the infra-derived keys are conditionally
-# omitted (envs/dev/main.tf `app_secrets`):
+# DESTROYED. We STILL read it through ds_access_secret_blob (common.sh) — the same newest-ENABLED
+# resolver every other reader of this secret uses (run.sh's app_config_blob, dns.sh's ops-config
+# read) — rather than `access latest`: the write-only invariant makes `access latest` safe TODAY,
+# but reading through the shared helper is defense-in-depth against a manual `versions disable`
+# during an incident, and keeps this the one-and-only secret-read idiom in the tree instead of a
+# lone `access latest` special case. What changes is the CONTENTS — the infra-derived keys are
+# conditionally omitted (envs/dev/main.tf `app_secrets`):
 #   - redis-url / redis-ca-cert            → omitted whenever environment_active=false (any suspend)
 #   - database-url / direct-url / database-ca-cert → omitted whenever db_active=false (deep suspend)
 # So the failure mode that stalls this step is NOT a destroyed/absent secret — it is the blob
@@ -63,9 +67,8 @@ fi
 # reading the source blob and checking whether every infra property ESO needs is present.
 echo "ExternalSecret '$ES' did not become Ready within the timeout — inspecting '$SM_SECRET' for the expected infra properties…"
 
-blob="$(gcloud secrets versions access latest \
-  --secret="$SM_SECRET" \
-  --project="$GCP_PROJECT_ID" 2>/dev/null || true)"
+# Read the newest ENABLED version via the shared helper (see header) — never `access latest`.
+blob="$(ds_access_secret_blob "$SM_SECRET" "$GCP_PROJECT_ID")"
 
 if [ -z "$blob" ]; then
   # No accessible enabled version at all — the secret was never created, or IAM access is broken.

@@ -58,29 +58,16 @@ MIGRATE_IMAGE="${MIGRATE_IMAGE}" yq '.spec.template.spec.containers[0].image = s
   migrate-job.yaml > /tmp/migrate-job-patched.yaml
 kubectl apply -f /tmp/migrate-job-patched.yaml
 
-# `kubectl wait` accepts one scalar --for value; repeating the flag does not race Complete
-# and Failed (the last value wins). Poll both conditions so a failed Job aborts immediately
-# rather than consuming the full deadline.
-deadline=$((SECONDS + 600))
-complete=""
-while (( SECONDS < deadline )); do
-  complete="$(kubectl -n "$NS" get job devstash-migrate \
-    -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')"
-  failed="$(kubectl -n "$NS" get job devstash-migrate \
-    -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')"
-  if [[ "$complete" == "True" ]]; then
-    break
-  fi
-  if [[ "$failed" == "True" ]]; then
-    echo "::error::migration job reached Failed condition"
-    ds_dump_job_diagnostics "$NS" devstash-migrate
-    exit 1
-  fi
-  sleep 5
-done
-if [[ "${complete:-}" != "True" ]]; then
-  echo "::error::migration job did not complete within 600s"
-  ds_dump_job_diagnostics "$NS" devstash-migrate
-  exit 1
-fi
+# `kubectl wait` accepts one scalar --for value; repeating the flag does not race Complete and
+# Failed (the last value wins). wait_for_job_gate (common.sh) polls BOTH conditions so a failed Job
+# aborts immediately rather than consuming the full deadline, and dumps diagnostics on any non-zero
+# code; we map its code (1=Failed, 2=timeout) to the CI ::error:: wording. local run.sh's run_migrate
+# wraps the SAME helper with a `die`, so the two paths can no longer drift on the gate logic.
+gate_rc=0
+wait_for_job_gate "$NS" devstash-migrate 600 || gate_rc=$?
+case "$gate_rc" in
+  0) : ;;
+  1) echo "::error::migration job reached Failed condition"; exit 1 ;;
+  *) echo "::error::migration job did not complete within 600s"; exit 1 ;;
+esac
 kubectl -n "$NS" logs job/devstash-migrate --tail=50 || true

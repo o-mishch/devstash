@@ -46,13 +46,9 @@ use_cluster_soft() {
   _kube_context_is_gke || warn "get-credentials ran but kubectl context is not a GKE context ('$(kubectl config current-context 2>/dev/null)') — subsequent kubectl calls may target the wrong cluster"
 }
 
-# helm_repo <name> <url>: register (idempotent — ignore "already exists") + refresh a single
-# Helm chart repo. Used by upgrade_helm to freshen both repos before querying latest versions
-# (eso/reloader delegate their repo add+update to infra/ci/ensure-*.sh).
-helm_repo() {
-  helm repo add "$1" "$2" >/dev/null 2>&1 || true
-  helm repo update "$1" >/dev/null
-}
+# helm_repo (register + refresh a chart repo) now lives in infra/lib/common.sh so the ensure-*.sh
+# CI installers share it too; upgrade_helm below still calls it to freshen both repos before
+# querying latest versions.
 
 # External Secrets Operator — required ONCE per cluster before any `kubectl apply -k`,
 # because the gcp overlay ships SecretStore/ExternalSecret CRs whose CRDs ESO installs.

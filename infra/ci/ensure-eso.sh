@@ -17,8 +17,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 # (and the helm-list/jq probe it wraps) is shared with ensure-reloader.sh via common.sh.
 helm_skip_if_current external-secrets external-secrets "external-secrets-$ESO_VERSION" "External Secrets Operator"
 
-helm repo add external-secrets https://charts.external-secrets.io
-helm repo update external-secrets
+# helm_repo (common.sh) single-sources the add+update pair shared with ensure-reloader.sh + run.sh.
+helm_repo external-secrets https://charts.external-secrets.io
 
 # Resource requests set to GKE Autopilot's 50m CPU minimum per container. The ESO chart
 # defaults to 10m, which Autopilot silently mutates — explicit values here eliminate the
