@@ -423,27 +423,26 @@ jobs:
           ARMOR_ENABLED: ${{ vars.ARMOR_ENABLED }}
         run: infra/ci/inject-settings.sh
 
-      # The overlay ships an ESO SecretStore + ExternalSecret (Secret Manager →
-      # devstash-secrets). Their CRDs must exist before `apply -k`. Install/upgrade
-      # ESO idempotently — a no-op on clusters that already have it.
-      # --version is read from infra/versions.env (single source of truth shared with run.sh).
-      # Update the version there to bump both CI and the bootstrap script together.
-      - name: Ensure External Secrets Operator
-        run: infra/ci/ensure-eso.sh
-
-      # Stakater Reloader: watches Secrets/ConfigMaps and rolls Deployments when
-      # their data changes. Required for secret.reloader.stakater.com/reload
-      # annotations (set on the web Deployment) to take effect — without Reloader
-      # the annotation is inert and ESO-refreshed secrets only propagate on the
-      # next manual deploy. --version is read from infra/versions.env.
-      - name: Ensure Stakater Reloader
-        run: infra/ci/ensure-reloader.sh
-
       # Render the overlay ONCE to /tmp/rendered.yaml; the infra apply and the
       # post-migration rollout below both consume that same render (real migrate→rollout
-      # gate, not the old :latest race). See infra/ci/render-manifests.sh.
+      # gate, not the old :latest race). See infra/ci/render-manifests.sh. This is
+      # cluster-independent CPU-only work (inject-settings mutated settings.yaml above,
+      # kustomize renders it), so it runs BEFORE the operator install — off the critical
+      # path — instead of being wedged between two cluster operations.
       - name: Render manifests
         run: infra/ci/render-manifests.sh
+
+      # The overlay ships an ESO SecretStore + ExternalSecret (Secret Manager →
+      # devstash-secrets) and web Deployment secret-reload annotations, so BOTH External
+      # Secrets Operator and Stakater Reloader must be installed before `apply -k`. The two
+      # installs are independent (different releases/namespaces, no shared state) and each is
+      # a `helm upgrade --install ... --wait --timeout 5m`, so ensure-operators.sh runs them
+      # CONCURRENTLY (up to ~5 min saved on a cold cluster vs. back-to-back) and joins on both
+      # before returning. It delegates to the same ensure-eso.sh / ensure-reloader.sh that
+      # run.sh runs individually — only the parallelism is added here. --version for each chart
+      # is read from infra/versions.env (single source of truth shared with run.sh).
+      - name: Ensure operators (ESO ‖ Reloader)
+        run: infra/ci/ensure-operators.sh
 
       # Apply everything EXCEPT the web Deployment (server-side, --force-conflicts) so
       # existing pods keep the previous image until the post-migration rollout. The full
