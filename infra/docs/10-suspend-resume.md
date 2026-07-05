@@ -52,7 +52,7 @@ been driven to zero — every survivor now sits inside an Always-Free allowance:
 
 | Surviving residual | ~$/mo idle | How it reaches $0 |
 |---|---|---|
-| Artifact Registry image storage | **$0** | `web`+`migrate` images are **purged on deep-suspend** (`run.sh suspend` + auto-suspend step 5); CI rebuilds+repushes on resume, so nothing is stored while idle |
+| Artifact Registry image storage | **$0** | the repo is **gated on `environment_active`**, so the deep-suspend apply (both `run.sh suspend` and the unattended auto-suspend) **destroys the whole repo + its images through Terraform**; CI rebuilds+repushes on resume, so nothing is stored while idle |
 | Secret Manager | **$0** | the ~14 per-key secrets are **consolidated into one `devstash-app-config` JSON blob** → 1 active version (was 9), inside the 6-version free tier |
 | KMS Binary Authorization signing key | **$0** | `binauthz_enabled=false` in dev → the key (KMS has **no** free tier) is **never created**; prod sets it true for enforcement parity |
 | GCS: db-dumps + uploads + tfstate | **$0** | us-central1 Always-Free 5 GB regional tier; noncurrent versions expire via lifecycle rules |
@@ -233,7 +233,7 @@ feature branch.
 
 Neither the Cloud Scheduler job (`devstash-dev-auto-suspend-uptime-cap`) nor the Monitoring
 alert carry useful logs themselves — they only publish a Pub/Sub message. The real
-guard/prepare/dump/suspend/delete-registry output lives in the **Cloud Build** run they
+guard/prepare/dump/suspend/cleanup output lives in the **Cloud Build** run they
 trigger (`devstash-dev-auto-suspend`).
 
 Find the trigger id once (stable across runs):

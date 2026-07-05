@@ -1,8 +1,8 @@
 #!/bin/sh
-# Cloud Build step 6 — CLEANUP BUILDS (only if idle; see auto-suspend.tf). $_VAR values are
+# Cloud Build step 5 — CLEANUP BUILDS (only if idle; see auto-suspend.tf). $_VAR values are
 # Cloud Build substitutions mapped onto the step env — the `script` field doesn't expand them
-# in content — so plain POSIX shell. Runs AFTER the tofu suspend + registry delete, off the
-# critical dump→destroy path, so a hiccup here never blocks the teardown.
+# in content — so plain POSIX shell. Runs AFTER the tofu suspend (which now also destroys the
+# AR repo), off the critical dump→destroy path, so a hiccup here never blocks the teardown.
 #
 # WHY — a deep-suspended env should hold zero avoidable Cloud Build residue:
 #   1. CANCEL any QUEUED/WORKING builds (except THIS one) so no stray build keeps running —

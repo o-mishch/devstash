@@ -103,6 +103,15 @@ module "network" {
 module "artifact_registry" {
   source     = "../../modules/artifact-registry"
   region     = var.region
+  project_id = var.project_id
+  # Gated on environment_active: the repo (and every image it holds) is destroyed by the same
+  # `-refresh=false` suspend apply that tears down compute + Cloud SQL, so a deep-suspended env
+  # holds $0 Artifact Registry storage — no out-of-band `gcloud artifacts repositories delete`
+  # step. Resume (environment_active=true) recreates it via a full-refresh apply, then CI
+  # rebuilds + repushes images before the Deployment is applied. The module's repository_id/url
+  # outputs are static (the repo NAME, not the resource attribute) so the root repository_url
+  # output and the IAM module's binding target still resolve while the repo is absent.
+  create     = var.environment_active
   labels     = local.common_labels
   depends_on = [google_project_service.apis]
 }
@@ -239,13 +248,21 @@ module "iam" {
   project_number = var.project_number
   region         = var.region
   # Always non-empty now: the node SA is kept always-on across suspend (modules/gke —
-  # SAs are free), so its email is stable and its project-IAM + AR-reader bindings never
-  # flip to a DESTROY on suspend. That churn was the root cause of the suspend build's
-  # 403: deleting a google_project_iam_member needs resourcemanager.projects.setIamPolicy
-  # (the "grants-everything" permission the least-privilege lifecycle SA deliberately
-  # lacks), so the apply failed AFTER Valkey was already gone, leaving the env half-torn
-  # and recreating Valkey every 15-min cycle. Keeping the SA alive avoids both the delete
-  # 403 AND the stale `deleted:serviceAccount:` binding a same-email recreate would leave.
+  # SAs are free), so its email is stable and its PROJECT-LEVEL IAM bindings never flip to
+  # a DESTROY on suspend. That churn was the root cause of the suspend build's 403: deleting
+  # a google_project_iam_member needs resourcemanager.projects.setIamPolicy (the
+  # "grants-everything" permission the least-privilege lifecycle SA deliberately lacks), so
+  # the apply failed AFTER Valkey was already gone, leaving the env half-torn and recreating
+  # Valkey every 15-min cycle. Keeping the SA alive avoids both the delete 403 AND the stale
+  # `deleted:serviceAccount:` binding a same-email recreate would leave.
+  #
+  # The AR-repo READER bindings are the exception: they gate on environment_active (below)
+  # because the Artifact Registry repo itself is now gated + destroyed on suspend, and a
+  # repo-scoped binding cannot outlive its repo. Removing a repo-scoped binding needs only
+  # artifactregistry.repositories.setIamPolicy on THAT repo (not the project-wide
+  # resourcemanager.projects.setIamPolicy the node's project-IAM would need) — the lifecycle
+  # SA holds exactly that via the project-scoped lifecycle_ar_deleter role (auto-suspend.tf).
+  environment_active              = var.environment_active
   gke_node_sa_email               = module.gke.node_service_account_email
   uploads_bucket_name             = module.gcs.bucket_name
   artifact_registry_repository_id = module.artifact_registry.repository_id

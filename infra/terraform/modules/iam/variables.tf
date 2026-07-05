@@ -22,6 +22,16 @@ variable "k8s_service_account" {
 variable "uploads_bucket_name" { type = string }
 variable "artifact_registry_repository_id" { type = string }
 
+# Whether the environment is active (vs deep-suspended). Gates the repo-scoped Artifact
+# Registry READER bindings: the AR repo is destroyed on suspend, and a repo-scoped IAM
+# binding cannot outlive its repo, so these bindings track the repo's existence. The node
+# SA's PROJECT-LEVEL bindings stay always-on regardless (see envs/dev/main.tf) — only the
+# repo-scoped grants gate here.
+variable "environment_active" {
+  type    = bool
+  default = true
+}
+
 # Binary Authorization attestor wiring (modules/gke outputs) — grants the deployer SA
 # permission to sign attestations during CI, without granting it broader KMS/Container
 # Analysis access than this one key/note. Both are null when the pipeline is disabled

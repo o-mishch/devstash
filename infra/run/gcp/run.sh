@@ -811,7 +811,18 @@ down() {
     cleanup_leaked_negs
     # The script already obtained explicit confirmation; avoid a second prompt that
     # makes AUTO_APPROVE=1 ineffective in automation.
-    tofu_ destroy -auto-approve
+    #
+    # -refresh=false: destroy from state WITHOUT the pre-destroy refresh. `down` is a full
+    # teardown, so we don't need to reconcile against live state first — and a resource the
+    # env deleted out-of-band (e.g. the Artifact Registry repo + its repo-scoped IAM members,
+    # which a deep-suspend destroys through Terraform / an older suspend deleted via gcloud)
+    # would otherwise 403 during that refresh: GCP answers getIamPolicy on a vanished repo with
+    # 403 (not 404), aborting the whole teardown before any destroy runs. Skipping the refresh
+    # makes destroy operate on state alone — an already-gone resource just 404s on its own
+    # delete call, which the provider tolerates, and the teardown proceeds. (Force-delete,
+    # catch-if-absent, move on.) State-only destroy is safe here precisely because down()
+    # removes EVERYTHING; there is no partial-state risk to guard against.
+    tofu_ destroy -auto-approve -refresh=false
     # Reclaim the PSA peering + range GCP holds past the ABANDONed connection (best-effort).
     force_release_psa
     ok "destroyed. (State bucket gs://$STATE_BUCKET and the project are left intact.)"
@@ -822,9 +833,9 @@ down() {
 
 # ── suspend / resume (on-demand showcase) ───────────────────────────────────
 # The DB dump/restore (resolve_dump_target/dump_db/restore_db), DNS (spaceship_api/update_dns/
-# set_dns_creds/dns_hint), and the suspend/resume orchestrators (set_active_state/
-# delete_registry/suspend/resume) live in lib/db.sh, lib/dns.sh, and lib/suspend.sh — all
-# sourced above and sharing this shell's scope.
+# set_dns_creds/dns_hint), and the suspend/resume orchestrators (set_active_state/suspend/
+# resume) live in lib/db.sh, lib/dns.sh, and lib/suspend.sh — all sourced above and sharing
+# this shell's scope.
 
 # up: full bring-up — bootstrap → apply → cluster-side wiring → DNS. Like `resume`, it PRE-
 # DISPATCHES the deploy-gke workflow (whose cluster-independent build-push job then builds +

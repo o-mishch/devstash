@@ -1,11 +1,26 @@
 # Artifact Registry — Docker repository the CI pipeline pushes images to and GKE
 # pulls from. Replaces "where does the image live" (Docker Hub / ECR equivalent).
 
-resource "google_artifact_registry_repository" "docker" {
+# Repo name is a static constant, NOT a computed attribute. The module's outputs derive from
+# this so they resolve even when the repo resource is gated off (var.create = false during
+# deep-suspend) — see outputs.tf and variables.tf. Consumers (the root repository_url output,
+# the IAM module's binding target) must keep resolving to the repo name whether the repo
+# currently exists or not.
+locals {
   repository_id = "devstash"
+}
+
+resource "google_artifact_registry_repository" "docker" {
+  count = var.create ? 1 : 0
+
+  repository_id = local.repository_id
   location      = var.region
   format        = "DOCKER"
   description   = "DevStash container images"
+
+  # deletion_policy defaults to DELETE — a `terraform destroy` (i.e. the -refresh=false suspend
+  # apply when var.create flips to false) force-deletes the repo AND every image/version/tag it
+  # holds, the equivalent of `gcloud artifacts repositories delete`. No pre-empty step needed.
 
   # GCP requires a DELETE policy AND a KEEP policy: KEEP marks what to preserve,
   # DELETE removes everything else. A KEEP-only policy never deletes anything.

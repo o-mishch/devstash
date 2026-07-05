@@ -1,5 +1,5 @@
 #!/bin/sh
-# Cloud Build step 7 — CLEANUP LEAKED NEGs (only if idle; see auto-suspend.tf). $_VAR values are
+# Cloud Build step 6 — CLEANUP LEAKED NEGs (only if idle; see auto-suspend.tf). $_VAR values are
 # Cloud Build substitutions mapped onto the step env — the `script` field doesn't expand them in
 # content — so plain POSIX shell. Runs AFTER the tofu suspend, off the critical dump→destroy path,
 # so a hiccup here never blocks the teardown.

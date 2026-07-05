@@ -32,27 +32,13 @@ set_active_state() {
   } > "$TF_DIR/active.auto.tfvars"
 }
 
-# delete_registry: delete the ENTIRE Artifact Registry repository (every image, version, tag,
-# incl. :buildcache) so a deep-suspended env holds ZERO image storage AND no lingering repo —
-# the last standing cost above the always-free tier. Safe: 'resume' runs a full-refresh apply
-# that RECREATES the repo (TF-managed, ungated on environment_active), then CI rebuilds +
-# repushes from source before the app is applied, and the Deployment pins images by the
-# digest CI just produced. Best-effort — a delete miss (repo already gone) must not abort the
-# suspend. Mirrors the unattended auto-suspend delete step
-# (scripts/auto-suspend-delete-repo.sh); keep the two in sync.
-delete_registry() {
-  local repo
-  # Prefer Terraform's own repository_id output (single source of truth — modules/artifact-
-  # registry) so this never drifts from a repository_id rename. Fall back to the "devstash"
-  # literal if the output isn't readable, e.g. state unavailable.
-  repo="$(tf_out artifact_registry_url)"
-  repo="${repo##*/}"                 # last path segment of region-docker.pkg.dev/project/repo
-  [[ -n "$repo" ]] || repo="devstash"
-  log "Deleting Artifact Registry repository ${repo} (all images + tags)"
-  gcloud artifacts repositories delete "${repo}" \
-    --location="$REGION" --quiet --project="$PROJECT_ID" \
-    || warn "repository delete returned non-zero (likely already gone) — continuing"
-}
+# The Artifact Registry repo is destroyed by the suspend apply itself — modules/artifact-
+# registry gates the repo (and its 4 repo-scoped IAM members) on environment_active, so when
+# suspend() sets environment_active=false the plan destroys the repo + every image it holds
+# through Terraform. No out-of-band `gcloud artifacts repositories delete` is needed, and no
+# orphaned-repo state remains to 403 on the next refresh (which is why reconcile.sh no longer
+# carries an AR-repo branch). Resume flips the gate back on; the plan recreates the repo, then
+# CI rebuilds + repushes before the app is deployed. Symmetric across both suspend paths.
 
 # cleanup_builds: cancel any in-flight Cloud Builds and delete the ${project}_cloudbuild
 # source-staging bucket so a deep-suspended env holds no lingering Cloud Build state/storage.
@@ -149,8 +135,7 @@ suspend() {
   warn "DNS for $APP_DOMAIN will go stale until 'resume' (the ingress IP is released)."
   dump_db                       # export + verify BEFORE anything is destroyed — aborts on failure
   set_active_state false false  # compute off + Cloud SQL instance destroyed
-  apply                         # plan → review → apply; the plan shows the destroys
-  delete_registry               # delete the AR repo (resume recreates it, CI rebuilds) — after apply, off the destroy path
+  apply                         # plan → review → apply; the plan shows the destroys (incl. the AR repo, now gated on environment_active)
   cleanup_builds                # cancel in-flight builds + delete the _cloudbuild staging bucket — best-effort, off the destroy path
   cleanup_leaked_negs           # reap NEGs/firewall rules GKE orphaned on cluster destroy — bounds the count so 'down' stays clean
   ok "Suspended to ~\$0 (data safe in the GCS dump). Run 'resume' to bring it back."

@@ -187,7 +187,15 @@ resource "google_project_iam_member" "gke_node_sa_node" {
 #
 # Both the default compute SA (legacy) and the custom GKE node SA need roles/artifactregistry.reader
 # to pull images from Artifact Registry.
+#
+# Gated on environment_active: these are REPO-SCOPED bindings, and the AR repo itself is
+# destroyed on deep-suspend (envs/dev/main.tf), so a binding cannot outlive it — Terraform
+# destroys them with the repo in the same `-refresh=false` suspend apply. Unlike the node SA's
+# PROJECT-LEVEL bindings (kept always-on to avoid project setIamPolicy on teardown), removing a
+# repo-scoped binding needs only artifactregistry.repositories.setIamPolicy on THIS repo, which
+# the lifecycle SA holds via the project-scoped lifecycle_ar_deleter role.
 resource "google_artifact_registry_repository_iam_member" "node_artifact_registry_reader" {
+  count      = var.environment_active ? 1 : 0
   project    = var.project_id
   location   = var.region
   repository = var.artifact_registry_repository_id
@@ -196,7 +204,7 @@ resource "google_artifact_registry_repository_iam_member" "node_artifact_registr
 }
 
 resource "google_artifact_registry_repository_iam_member" "custom_node_artifact_registry_reader" {
-  count      = var.gke_node_sa_email != "" ? 1 : 0
+  count      = var.environment_active && var.gke_node_sa_email != "" ? 1 : 0
   project    = var.project_id
   location   = var.region
   repository = var.artifact_registry_repository_id
@@ -223,6 +231,10 @@ resource "google_service_account" "deployer" {
 # root module and passed in as an input; that dependency is acyclic and is preferable to a
 # project-wide grant.
 resource "google_artifact_registry_repository_iam_member" "deployer_artifact_registry" {
+  # Gated on environment_active for the same reason as the node readers above: repo-scoped, so it
+  # is destroyed with the repo on suspend. The deployer SA does not run the suspend build (that's
+  # the lifecycle SA); on resume this binding is recreated before CI pushes the first image.
+  count      = var.environment_active ? 1 : 0
   project    = var.project_id
   location   = var.region
   repository = var.artifact_registry_repository_id

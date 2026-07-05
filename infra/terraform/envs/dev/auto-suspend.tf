@@ -89,7 +89,7 @@ locals {
   #   cloudkms.viewer        data.google_kms_crypto_key_version (binauthz signer — ungated)
   #   logging.logWriter      Cloud Build custom-SA builds must write their own logs
   #   cloudbuild.builds.editor
-  #                          step 6 lists + cancels in-flight builds (cloudbuild.builds.list /
+  #                          step 5 lists + cancels in-flight builds (cloudbuild.builds.list /
   #                          .update). No narrower predefined role exists (viewer can't cancel);
   #                          this role's write surface is only over Cloud Build builds — it
   #                          cannot start/mutate anything else — so it is the minimal grant.
@@ -154,8 +154,8 @@ locals {
   # Scheduler + alert policy back to the default on every suspend — a self-inflicted in-place
   # update mid-teardown. That is exactly what stranded a prior run: idle_window drifted
   # 1800 (operator) -> 300 (default), the trigger update 403'd, tofu exited non-zero BEFORE
-  # the Cloud SQL destroy AND before the delete-registry step, leaving both billing. Feeding
-  # the real values in makes the suspend apply render byte-identical config → zero self-diff.
+  # the Cloud SQL + Artifact Registry destroys ran, leaving them billing. Feeding the real
+  # values in makes the suspend apply render byte-identical config → zero self-diff.
   auto_suspend_nonsecret_tfvars = base64encode(jsonencode({
     project_id                       = var.project_id
     project_number                   = var.project_number
@@ -206,8 +206,7 @@ locals {
     "_DB_DUMPS_BUCKET=$_DB_DUMPS_BUCKET",
     "_DB_DUMP_OBJECT=$_DB_DUMP_OBJECT",
     "_DB_DUMP_KEEP=$_DB_DUMP_KEEP",
-    "_AR_REPO=$_AR_REPO",
-    # Cloud Build's own build id (built-in $BUILD_ID substitution) — step 6 excludes it when
+    # Cloud Build's own build id (built-in $BUILD_ID substitution) — step 5 excludes it when
     # cancelling in-flight builds so the suspend build never cancels itself.
     "_BUILD_ID=$_BUILD_ID",
   ]
@@ -315,29 +314,43 @@ resource "google_storage_bucket_iam_member" "lifecycle_db_dumps_iam" {
   member = "serviceAccount:${google_service_account.lifecycle[0].email}"
 }
 
-# The delete-registry step (step 5) deletes the WHOLE repo. No predefined role scopes just
-# repository deletion (repoAdmin covers deleteArtifacts but NOT repositories.delete), and
-# project-wide artifactregistry.admin is far broader than needed — so mint a custom role with
-# exactly the two permissions `gcloud artifacts repositories delete` calls, then bind it to
-# THIS repo only. Same repo-scoped least-privilege posture as the node reader in modules/iam.
+# The suspend apply (step 4, -refresh=false) now DESTROYS the Artifact Registry repo through
+# Terraform — the module is gated on environment_active (envs/dev/main.tf) — instead of a
+# separate out-of-band `gcloud artifacts repositories delete` step. That destroy also removes
+# the repo's 4 repo-scoped IAM bindings (deployer + 2 node readers, which gate on the same var;
+# and no lifecycle self-binding — see below). The lifecycle SA therefore needs, on the repo:
+#   repositories.delete        destroy the repo resource
+#   repositories.get           the provider GETs it during destroy planning
+#   repositories.getIamPolicy  } read-then-rewrite the repo IAM policy when Terraform removes
+#   repositories.setIamPolicy  } each gated repo-scoped binding before the repo itself is gone
+#
+# PROJECT-scoped, NOT a repo-scoped binding — deliberately. A repo-scoped grant would be
+# destroyed by the very apply that uses it (the repo is torn down in the same run), so the SA
+# could revoke its own hand mid-teardown and 403 — the exact self-revocation hazard the node
+# SA's project-IAM avoids. Project scope makes the grant independent of the repo's existence,
+# the same posture (and for the same reason) as lifecycle_staging_deleter below: "so it doesn't
+# depend on the bucket existing". The SA can still only act on the one repo it targets.
 resource "google_project_iam_custom_role" "lifecycle_ar_deleter" {
   count       = local.auto_suspend_on ? 1 : 0
   role_id     = "${replace(local.name_prefix, "-", "_")}_ar_repo_deleter"
   title       = "DevStash ${var.environment} AR repo deleter (idle auto-suspend)"
-  description = "Delete the Artifact Registry repo on deep-suspend so idle storage is $0."
+  description = "Destroy the Artifact Registry repo + its IAM on deep-suspend so idle storage is $0."
   permissions = [
     "artifactregistry.repositories.delete",
     "artifactregistry.repositories.get",
+    "artifactregistry.repositories.getIamPolicy",
+    "artifactregistry.repositories.setIamPolicy",
   ]
 }
 
-resource "google_artifact_registry_repository_iam_member" "lifecycle_ar_delete" {
-  count      = local.auto_suspend_on ? 1 : 0
-  project    = var.project_id
-  location   = var.region
-  repository = module.artifact_registry.repository_id
-  role       = google_project_iam_custom_role.lifecycle_ar_deleter[0].id
-  member     = "serviceAccount:${google_service_account.lifecycle[0].email}"
+# Bound at PROJECT scope (google_project_iam_member) so the grant outlives the repo the suspend
+# apply destroys — see the rationale above. Mirrors lifecycle_staging_deleter's project-scoped
+# binding for the same not-tied-to-a-destroyed-resource reason.
+resource "google_project_iam_member" "lifecycle_ar_delete" {
+  count   = local.auto_suspend_on ? 1 : 0
+  project = var.project_id
+  role    = google_project_iam_custom_role.lifecycle_ar_deleter[0].id
+  member  = "serviceAccount:${google_service_account.lifecycle[0].email}"
 }
 
 # Step 6 (cleanup) deletes the ${project}_cloudbuild source-staging bucket. That bucket is
@@ -531,15 +544,11 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     # the event-driven idle suspend caps dump history immediately instead of waiting for the
     # bucket's ~daily lifecycle sweep — same "on each touch" behaviour as the laptop path.
     _DB_DUMP_KEEP = var.db_dump_keep_versions
-    # Artifact Registry repo — the delete-registry step removes the whole repo for $0 idle
-    # storage (resume's full-refresh apply recreates it; CI rebuilds + repushes). Same repo
-    # id run.sh delete_registry uses.
-    _AR_REPO = module.artifact_registry.repository_id
-    # VPC name — the cleanup-negs step (7) scopes its NEG + firewall reap to THIS network only, so
+    # VPC name — the cleanup-negs step (6) scopes its NEG + firewall reap to THIS network only, so
     # the project's `default` network and any unrelated resource are never touched. Deterministic
     # (modules/network builds "${name_prefix}-vpc"), so it is known plan-time without a data read.
     _VPC = "${local.name_prefix}-vpc"
-    # This build's own id — step 6 excludes it so cancelling in-flight builds never cancels
+    # This build's own id — step 5 excludes it so cancelling in-flight builds never cancels
     # the suspend build itself. $BUILD_ID is a Cloud Build built-in substitution; ALLOW_LOOSE
     # (options below) lets a user substitution reference it.
     _BUILD_ID = "$BUILD_ID"
@@ -584,8 +593,10 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     }
 
     # 4 — SUSPEND (only if idle). Now that the verified dump exists, drive to ~$0: destroy
-    #     compute AND the Cloud SQL instance (db_active=false). -refresh=false keeps the
-    #     apply (and this SA's perms) scoped to just what these two vars change.
+    #     compute, the Cloud SQL instance (db_active=false), AND the Artifact Registry repo +
+    #     its images (the module gates on environment_active=false, so the same apply tears it
+    #     down — no separate out-of-band delete step). -refresh=false keeps the apply (and this
+    #     SA's perms) scoped to just what these vars change.
     step {
       id     = "suspend"
       name   = local.opentofu_image
@@ -593,18 +604,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
       script = file("${path.module}/scripts/auto-suspend-suspend.sh")
     }
 
-    # 5 — DELETE REGISTRY (only if idle). Delete the whole Artifact Registry repo so idle
-    #     storage is $0 (the last cost above the always-free tier). Runs after the tofu
-    #     suspend — off the critical dump→destroy path — and is best-effort (a delete failure
-    #     does not fail the build; resume's apply recreates the repo and CI repushes).
-    step {
-      id     = "delete-registry"
-      name   = local.cloud_sdk_image
-      env    = local.auto_suspend_build_env
-      script = file("${path.module}/scripts/auto-suspend-delete-repo.sh")
-    }
-
-    # 6 — CLEANUP BUILDS (only if idle). Cancel any OTHER in-flight build and delete the
+    # 5 — CLEANUP BUILDS (only if idle). Cancel any OTHER in-flight build and delete the
     #     ${project}_cloudbuild source-staging bucket so a suspended env holds no lingering
     #     Cloud Build state/storage. Runs last, off the critical path, best-effort (a failure
     #     never fails the build). Build RECORDS can't be deleted (no Cloud Build delete API);
@@ -616,7 +616,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
       script = file("${path.module}/scripts/auto-suspend-cleanup-builds.sh")
     }
 
-    # 7 — CLEANUP LEAKED NEGs (only if idle). GKE races its own teardown and orphans the zonal
+    # 6 — CLEANUP LEAKED NEGs (only if idle). GKE races its own teardown and orphans the zonal
     #     Network Endpoint Groups (+ sometimes firewall rules) the ingress created — they survive
     #     the cluster destroy and, left unreaped, accumulate across suspend generations until they
     #     block the VPC delete at the eventual `run.sh down`. Reap the ones on OUR VPC here so the
@@ -636,7 +636,7 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     google_service_account_iam_member.lifecycle_actas,
     google_storage_bucket_iam_member.lifecycle_db_dumps,
     google_storage_bucket_iam_member.lifecycle_db_dumps_iam,
-    google_artifact_registry_repository_iam_member.lifecycle_ar_delete,
+    google_project_iam_member.lifecycle_ar_delete,
     google_project_iam_member.lifecycle_staging_deleter,
   ]
 }

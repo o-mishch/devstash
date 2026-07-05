@@ -26,14 +26,12 @@ _DEVSTASH_GCP_RECONCILE_SH=1
 #   2. The PSC subnet tracked with the legacy purpose PRIVATE_SERVICE_CONNECT. Memorystore
 #      service-connectivity automation requires an ordinary PRIVATE subnet, and GCP cannot
 #      PATCH a subnet's purpose in place — so the subnet must be REPLACED, not updated.
-#   3. The Artifact Registry repo DELETED out-of-band by a deep-suspend (auto-suspend step 5
-#      / `run.sh suspend` run `artifactregistry.repositories.delete` on the WHOLE repo for $0
-#      idle storage — see infra/docs/10-suspend-resume.md), yet still tracked in state along
-#      with its four repo-scoped IAM members. On resume, refreshing those IAM members calls
-#      getIamPolicy on the vanished repo, and GCP answers 403 (NOT 404) for an IAM read on a
-#      missing resource — aborting the apply before the repo can be recreated. `state rm` the
-#      repo + its members so the next plan recreates them cleanly (nothing exists remotely, so
-#      there is no name-conflict on re-create). CI rebuilds+repushes the images after apply.
+#
+# NOTE — there is no longer an Artifact Registry reconcile branch. The AR repo + its 4
+# repo-scoped IAM members are gated on environment_active (modules/artifact-registry,
+# modules/iam), so a deep-suspend destroys them THROUGH Terraform (state count→0) instead of
+# out-of-band. That leaves no orphaned repo in state, so the getIamPolicy-403-on-a-vanished-repo
+# failure this branch used to `state rm` around can no longer occur.
 reconcile_state() {
   RECONCILE_REPLACE=()
   local db_addr='module.cloudsql.google_sql_database.devstash[0]'
@@ -89,36 +87,7 @@ reconcile_state() {
     RECONCILE_REPLACE+=("-replace=$subnet_addr")
   fi
 
-  # 3. Forget an Artifact Registry repo a deep-suspend deleted out-of-band but state still
-  # tracks. The repo id is the literal from modules/artifact-registry ("devstash"). Only act
-  # when the repo is ABSENT in GCP (describe fails) AND its resource is PRESENT in state — so
-  # this self-disables the moment the next plan recreates it. The four repo-scoped IAM members
-  # are removed alongside the repo: their getIamPolicy refresh is exactly what 403s on the
-  # missing repo. Filter state by each exact address (authoritative — no whole-list grep). The
-  # count-gated addresses ([0]) may be absent depending on toggles, so rm each individually and
-  # tolerate an already-absent one rather than failing the whole reconcile.
-  local ar_repo='devstash'
-  local ar_repo_addr='module.artifact_registry.google_artifact_registry_repository.docker'
-  if _reconcile_in_state "$ar_repo_addr" \
-     && ! gcloud artifacts repositories describe "$ar_repo" \
-            --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    warn "Reconcile: Artifact Registry repo '$ar_repo' was deleted by a deep-suspend but is still in state — forgetting the repo + its IAM members so the apply recreates them"
-    local ar_addr
-    for ar_addr in \
-      'module.iam.google_artifact_registry_repository_iam_member.node_artifact_registry_reader' \
-      'module.iam.google_artifact_registry_repository_iam_member.custom_node_artifact_registry_reader[0]' \
-      'module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry' \
-      'google_artifact_registry_repository_iam_member.lifecycle_ar_delete[0]' \
-      "$ar_repo_addr"; do
-      if _reconcile_in_state "$ar_addr"; then
-        tofu_ state rm -lock-timeout=120s "$ar_addr" \
-          || die "failed to forget $ar_addr — resolve manually, then re-run apply"
-      fi
-    done
-    ok "Artifact Registry repo + IAM members forgotten — the plan will recreate them"
-  fi
-
-  # 4. Adopt untracked-but-existing GLOBALLY-UNIQUE / SINGLETON resources whose names cannot
+  # 3. Adopt untracked-but-existing GLOBALLY-UNIQUE / SINGLETON resources whose names cannot
   # be reused if a prior apply created them in GCP but failed to persist state (a mid-apply
   # crash, an aborted state write, or a state restore). A plain plan tries to CREATE them and
   # dies with 409 "already exists" — and unlike an ordinary resource these have no alternate
