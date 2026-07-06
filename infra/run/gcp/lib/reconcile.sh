@@ -73,20 +73,86 @@ _reconcile_adopt() {
   fi
 }
 
-# _reconcile_adopt_wif <state-addr> <import-id> <describe-cmd...>: adopt one WIF resource (pool
-# OR its provider) that is ABSENT from state but PRESENT in GCP. Both are soft-deletable
-# singletons with the SAME hazard: a deep-suspend/manual-cleanup leaves them state=DELETED for
-# ~30d while the name stays reserved, so a plain create 409s AND a plain import would adopt a
-# DELETED resource the ACTIVE config immediately wants to recreate. So: describe → if DELETED,
-# undelete and WAIT for ACTIVE (undelete is async — the resource reads DELETED for a beat after
-# the call returns) → import. No-op when already in state or genuinely absent in GCP (describe
-# empty). NOTE: undeleting the pool does NOT cascade to its provider — each must be undeleted on
-# its own.
-_reconcile_adopt_wif() {
+# _reconcile_choose <label> <destroy-note> -- <adopt-cmd...> :: <destroy-cmd...>: the SINGLE
+# interactive gate every reconcile branch routes its "already exists / stranded" decision through,
+# so the adopt-vs-reprovision behaviour is uniform across the whole file. It runs EXACTLY ONE of the
+# two command vectors and never leaves the strand unhealed (an unhealed strand re-wedges the very
+# apply this is trying to unblock — so the final fallback is ALWAYS the safe adopt).
+#
+#   <label>       human name of the resource, e.g. "Artifact Registry repo 'devstash'".
+#   <destroy-note> a one-line note about the destroy option (empty "" to skip). Its meaning depends
+#                 on whether destroy is possible (see the IMPOSSIBLE sentinel below):
+#                   - destroy POSSIBLE  → a caution printed BEFORE the destroy prompt (e.g. "deletes
+#                     all pushed images").
+#                   - destroy IMPOSSIBLE → the reason it cannot work, printed instead of any prompt.
+#   --            literal separator; the adopt command vector follows.
+#   ::            literal separator; the destroy command vector follows. Pass the single literal
+#                 token `IMPOSSIBLE` (instead of a command) when destroy CANNOT succeed even with
+#                 extra steps (e.g. a soft-DELETED WIF name reserved for 30d) — the gate then never
+#                 OFFERS destroy: it prints <destroy-note> and adopts. Offering a choice that can't
+#                 succeed is worse than not offering it.
+#
+# Decision order (mirrors suspend.sh's _handle_psc_destroy_block: warn-context then confirm):
+#   1. AUTO_APPROVE=1 (CI / Cloud Build / auto-suspend, no TTY) → run ADOPT immediately, NO prompt.
+#      This preserves reconcile's self-healing contract that the unattended paths depend on; the
+#      DESTROY vector must NEVER fire unattended. We check AUTO_APPROVE EXPLICITLY here rather than
+#      letting confirm()'s implicit auto-yes carry it — the same safety precedent as run.sh's
+#      state-lock release gate, where a dangerous action is gated on an explicit AUTO_APPROVE test.
+#   2. destroy IMPOSSIBLE → warn <destroy-note> (why destroy can't work), then ADOPT. No prompt —
+#      the user asked not to be offered an option that is impossible anyway.
+#   3. Interactive TTY (destroy possible) → confirm "Adopt … and keep the existing resource?"
+#        yes → ADOPT.
+#        no  → print <destroy-note> (if any), then confirm "Destroy … and re-provision from config?"
+#                yes → DESTROY (a subsequent plan recreates it from config).
+#                no  → ADOPT (final safe fallback — never leave the strand).
+#   4. No TTY and no AUTO_APPROVE → confirm returns 1 (declines the adopt question) → the destroy
+#      question also declines → ADOPT. So a piped/non-tty invocation still self-heals safely.
+_reconcile_choose() {
+  local label="$1" destroy_note="$2"; shift 2
+  [[ "$1" == "--" ]] || die "internal: _reconcile_choose expects -- before the adopt command"
+  shift
+  local adopt=() destroy=() seen_sep=0
+  local tok
+  for tok in "$@"; do
+    if [[ "$seen_sep" == 0 && "$tok" == "::" ]]; then seen_sep=1; continue; fi
+    if [[ "$seen_sep" == 0 ]]; then adopt+=("$tok"); else destroy+=("$tok"); fi
+  done
+  [[ "$seen_sep" == 1 ]] || die "internal: _reconcile_choose expects :: before the destroy command"
+
+  # Unattended → always adopt (self-healing contract; destroy never fires without a human).
+  if [[ "${AUTO_APPROVE:-}" == "1" ]]; then
+    "${adopt[@]}"
+    return
+  fi
+
+  # Destroy genuinely impossible → do not offer it; explain and adopt.
+  if [[ "${destroy[0]:-}" == "IMPOSSIBLE" ]]; then
+    warn "Reconcile: $label already exists in GCP but is not tracked in Terraform state."
+    [[ -n "$destroy_note" ]] && warn "$destroy_note"
+    "${adopt[@]}"
+    return
+  fi
+
+  warn "Reconcile: $label already exists in GCP but is not tracked in Terraform state."
+  if confirm "Adopt $label into state and keep the existing resource?"; then
+    "${adopt[@]}"
+    return
+  fi
+  [[ -n "$destroy_note" ]] && warn "$destroy_note"
+  if confirm "Destroy $label in GCP and re-provision it from config instead?"; then
+    "${destroy[@]}"
+    return
+  fi
+  warn "Neither confirmed — defaulting to adopt so the strand is healed and the apply can proceed."
+  "${adopt[@]}"
+}
+
+# _reconcile_wif_undelete_import <state-addr> <import-id> <describe-cmd...>: the ADOPT path for a WIF
+# resource — if it reads DELETED, undelete + poll-for-ACTIVE first (undelete is async), then import.
+# This is the command vector _reconcile_adopt_wif hands the choose-gate as "adopt".
+_reconcile_wif_undelete_import() {
   local addr="$1" import_id="$2"; shift 2  # remaining args = the gcloud describe command
-  _reconcile_in_state "$addr" && return 0
   local st; st="$("$@" --format='value(state)' 2>/dev/null || true)"
-  [[ -z "$st" ]] && return 0  # not in GCP at all → let the plan CREATE it normally
   if [[ "$st" == "DELETED" ]]; then
     warn "Reconcile: WIF resource '$import_id' is soft-DELETED but its name is still reserved — undeleting before import"
     # Same describe args, verb swapped to `undelete` (describe/undelete share the flag set).
@@ -104,6 +170,35 @@ _reconcile_adopt_wif() {
   # Shared import tail (import → ok / already-managed-warn / die) — the WIF-specific work is the
   # undelete + poll-for-ACTIVE prelude above; the adoption itself is the same as every other branch.
   _reconcile_adopt "$addr" "$import_id" "WIF resource '$import_id'"
+}
+
+# _reconcile_adopt_wif <state-addr> <import-id> <describe-cmd...>: gate one WIF resource (pool OR its
+# provider) that is ABSENT from state but PRESENT in GCP. No-op when already in state or genuinely
+# absent in GCP (describe empty). Otherwise routes through _reconcile_choose:
+#   - soft-DELETED (the common strand) → destroy is IMPOSSIBLE: the name stays reserved ~30d, delete
+#     cannot free it early, and a fresh create would 409 — so the gate does NOT offer destroy; it
+#     explains why and adopts (undelete + import), the only path that actually works.
+#   - ACTIVE-but-untracked (rare) → destroy IS possible (`gcloud … delete`), so both options are
+#     offered; ADOPT = plain import.
+# The describe verb is swapped to `undelete`/`delete` for the respective vectors. NOTE: undeleting
+# the pool does NOT cascade to its provider — each is gated on its own.
+_reconcile_adopt_wif() {
+  local addr="$1" import_id="$2"; shift 2  # remaining args = the gcloud describe command
+  _reconcile_in_state "$addr" && return 0
+  local st; st="$("$@" --format='value(state)' 2>/dev/null || true)"
+  [[ -z "$st" ]] && return 0  # not in GCP at all → let the plan CREATE it normally
+  if [[ "$st" == "DELETED" ]]; then
+    _reconcile_choose "WIF resource '$import_id'" \
+      "It is soft-DELETED: the name stays reserved for ~30d and cannot be freed early, so destroy-and-re-provision is impossible (a fresh create would 409). Undeleting + adopting is the only path that works." \
+      -- _reconcile_wif_undelete_import "$addr" "$import_id" "$@" \
+      :: IMPOSSIBLE
+    return
+  fi
+  local delete_cmd=("${@/describe/delete}")
+  _reconcile_choose "WIF resource '$import_id'" \
+    "Deleting a WIF pool/provider soft-deletes it — its name is then reserved ~30d, so it cannot be recreated until the reservation lapses. Adopt is strongly preferred." \
+    -- _reconcile_adopt "$addr" "$import_id" "WIF resource '$import_id'" \
+    :: "${delete_cmd[@]}" --quiet
 }
 
 # ── Per-branch reconcile steps (file scope; called in order by reconcile_state) ─────────────────
@@ -128,10 +223,15 @@ _reconcile_db_database() {
   if [[ -n "$inst" ]] && gcloud sql databases describe "$DB_NAME" \
        --instance="$inst" --project="$PROJECT_ID" >/dev/null 2>&1; then
     # Abandoned by a prior db-active toggle (the ABANDON deletion policy dropped it from state
-    # without dropping the physical database) — adopt it instead of colliding on recreate.
-    _reconcile_adopt "$db_addr" \
-      "projects/$PROJECT_ID/instances/$inst/databases/$DB_NAME" \
-      "Cloud SQL database '$DB_NAME'"
+    # without dropping the physical database). Ask adopt-vs-reprovision; destroy drops the physical
+    # database (all rows) so a subsequent apply recreates it empty — run.sh then restores the dump.
+    _reconcile_choose "Cloud SQL database '$DB_NAME'" \
+      "Destroying the database drops ALL its rows — the next apply recreates it empty (run.sh restores the last GCS dump on resume)." \
+      -- _reconcile_adopt "$db_addr" \
+           "projects/$PROJECT_ID/instances/$inst/databases/$DB_NAME" \
+           "Cloud SQL database '$DB_NAME'" \
+      :: gcloud sql databases delete "$DB_NAME" --instance="$inst" \
+           --project="$PROJECT_ID" --quiet
   fi
 }
 
@@ -161,6 +261,15 @@ _reconcile_wait_sql_runnable() {
   _sql_runnable "$sql_name" && return 0
   warn "Reconcile: Cloud SQL '$sql_name' exists but is not RUNNABLE yet — waiting before import"
   poll_until 60 10 -- _sql_runnable "$sql_name" || true  # best-effort; adopt is attempted regardless
+}
+
+# _reconcile_adopt_sql_instance <state-addr> <instance-name>: the ADOPT command vector for the Cloud
+# SQL instance branch — wait for RUNNABLE (so a resume racing an in-flight create doesn't import a
+# PENDING_CREATE instance), then import. Single call so _reconcile_choose can run it as one vector.
+_reconcile_adopt_sql_instance() {
+  local sql_addr="$1" sql_name="$2"
+  _reconcile_wait_sql_runnable "$sql_name"
+  _reconcile_adopt "$sql_addr" "$PROJECT_ID/$sql_name" "Cloud SQL instance '$sql_name'"
 }
 
 # _reconcile_singletons <db_active> <env_active>: branch 3 — adopt untracked-but-existing GLOBALLY-
@@ -215,7 +324,10 @@ _reconcile_singletons() {
   local bucket_name="${PROJECT_ID}-devstash-${ENVIRONMENT}-db-dumps"
   if ! _reconcile_in_state "$bucket_addr" \
      && gcloud storage buckets describe "gs://$bucket_name" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    _reconcile_adopt "$bucket_addr" "$PROJECT_ID/$bucket_name" "GCS bucket '$bucket_name'"
+    _reconcile_choose "GCS bucket '$bucket_name'" \
+      "Destroying the bucket deletes ALL its objects, including the last Cloud SQL dump — there is no restore after that." \
+      -- _reconcile_adopt "$bucket_addr" "$PROJECT_ID/$bucket_name" "GCS bucket '$bucket_name'" \
+      :: gcloud storage rm --recursive "gs://$bucket_name" --project="$PROJECT_ID" --quiet
   fi
 
   local quota_addr='google_cloud_quotas_quota_preference.compute_ssd_total_gb'
@@ -228,8 +340,14 @@ _reconcile_singletons() {
     # Non-fatal + quiet import: a genuinely-absent preference ⇒ the plan CREATEs it normally
     # (no 409), so a failed import here is NOT fatal — only the create path decides; and the
     # describe/import is silenced because the Cloud Quotas describe needs the `alpha` component
-    # (not always installed), so the probe is the import itself.
-    _reconcile_adopt "$quota_addr" "$quota_name" "quota preference '$quota_id'" 0 1
+    # (not always installed), so the probe is the import itself. "Destroy" for a quota preference
+    # needs the `alpha` component and rarely applies (a stranded preference re-CREATEs cleanly, no
+    # 409) — offered for uniformity, but adopt is almost always right.
+    _reconcile_choose "quota preference '$quota_id'" \
+      "Deleting a quota preference needs the gcloud 'alpha' component and is rarely necessary — a stranded preference re-creates cleanly on the next apply." \
+      -- _reconcile_adopt "$quota_addr" "$quota_name" "quota preference '$quota_id'" 0 1 \
+      :: gcloud alpha quotas preferences delete "$quota_id" \
+           --service=compute.googleapis.com --project="$PROJECT_ID" --quiet
   fi
 
   # Cloud SQL instance. Gated on db_active. May be mid-creation (PENDING_CREATE) when a resume
@@ -241,8 +359,10 @@ _reconcile_singletons() {
     sql_state="$(gcloud sql instances describe "$sql_name" --project="$PROJECT_ID" \
       --format='value(state)' 2>/dev/null || true)"
     if [[ -n "$sql_state" ]]; then
-      _reconcile_wait_sql_runnable "$sql_name"
-      _reconcile_adopt "$sql_addr" "$PROJECT_ID/$sql_name" "Cloud SQL instance '$sql_name'"
+      _reconcile_choose "Cloud SQL instance '$sql_name'" \
+        "Deleting the instance destroys the database and ALL its data — the next apply recreates an empty instance (run.sh restores the last GCS dump on resume)." \
+        -- _reconcile_adopt_sql_instance "$sql_addr" "$sql_name" \
+        :: gcloud sql instances delete "$sql_name" --project="$PROJECT_ID" --quiet
     fi
   fi
 
@@ -252,9 +372,13 @@ _reconcile_singletons() {
   if [[ "$env_active" != "false" ]] && ! _reconcile_in_state "$gke_addr" \
      && gcloud container clusters describe "$gke_name" --region="$REGION" \
           --project="$PROJECT_ID" >/dev/null 2>&1; then
-    _reconcile_adopt "$gke_addr" \
-      "projects/$PROJECT_ID/locations/$REGION/clusters/$gke_name" \
-      "GKE cluster '$gke_name'"
+    _reconcile_choose "GKE cluster '$gke_name'" \
+      "Deleting the cluster tears down every running workload on it and takes several minutes to recreate." \
+      -- _reconcile_adopt "$gke_addr" \
+           "projects/$PROJECT_ID/locations/$REGION/clusters/$gke_name" \
+           "GKE cluster '$gke_name'" \
+      :: gcloud container clusters delete "$gke_name" --region="$REGION" \
+           --project="$PROJECT_ID" --quiet
   fi
 
   # Valkey Memorystore instance. The whole module is count-gated on environment_active, so the
@@ -264,9 +388,13 @@ _reconcile_singletons() {
   if [[ "$env_active" != "false" ]] && ! _reconcile_in_state "$valkey_addr" \
      && gcloud memorystore instances describe "$valkey_name" --location="$REGION" \
           --project="$PROJECT_ID" >/dev/null 2>&1; then
-    _reconcile_adopt "$valkey_addr" \
-      "projects/$PROJECT_ID/locations/$REGION/instances/$valkey_name" \
-      "Valkey instance '$valkey_name'"
+    _reconcile_choose "Valkey instance '$valkey_name'" \
+      "Deleting the cache instance drops all cached data (rebuilt on demand) and takes a few minutes to recreate." \
+      -- _reconcile_adopt "$valkey_addr" \
+           "projects/$PROJECT_ID/locations/$REGION/instances/$valkey_name" \
+           "Valkey instance '$valkey_name'" \
+      :: gcloud memorystore instances delete "$valkey_name" --location="$REGION" \
+           --project="$PROJECT_ID" --quiet
   fi
 
   # Artifact Registry repo. Gated on environment_active (module.artifact_registry create=cluster
@@ -283,9 +411,13 @@ _reconcile_singletons() {
   if [[ "$env_active" != "false" ]] && ! _reconcile_in_state "$ar_repo_addr" \
      && gcloud artifacts repositories describe "$ar_repo_name" --location="$REGION" \
           --project="$PROJECT_ID" >/dev/null 2>&1; then
-    _reconcile_adopt "$ar_repo_addr" \
-      "projects/$PROJECT_ID/locations/$REGION/repositories/$ar_repo_name" \
-      "Artifact Registry repo '$ar_repo_name'"
+    _reconcile_choose "Artifact Registry repo '$ar_repo_name'" \
+      "Deleting the repo permanently removes ALL images pushed to it — the next apply recreates it empty, so CI must rebuild + repush before a deploy can roll out." \
+      -- _reconcile_adopt "$ar_repo_addr" \
+           "projects/$PROJECT_ID/locations/$REGION/repositories/$ar_repo_name" \
+           "Artifact Registry repo '$ar_repo_name'" \
+      :: gcloud artifacts repositories delete "$ar_repo_name" --location="$REGION" \
+           --project="$PROJECT_ID" --quiet
   fi
 
   local wif_pool_addr='module.iam.google_iam_workload_identity_pool.github'
@@ -322,11 +454,36 @@ _reconcile_singletons() {
 # (infra/lib/posix/reconcile-ar-iam.sh, sourced above). Single-sourcing BOTH is what keeps the two
 # reconcilers from drifting. The helper runs raw `tofu` (both callers are already inside `tofu init`);
 # here we escalate its non-zero return to `die` so a laptop apply stops loudly on a failed state-rm.
+# _reconcile_run_purge_ar_iam <repo-id> <addr-file>: the ADOPT/heal command vector for the AR-IAM
+# purge branch — runs the SHARED POSIX helper (single-sourced with the unattended Cloud Build
+# reconcile) and escalates its non-zero to `die`. Kept a named wrapper so _reconcile_choose can run
+# it as one adopt vector without pushing any prompt down into the shared, unattended-safe helper.
+_reconcile_run_purge_ar_iam() {
+  ds_purge_stranded_ar_iam "$1" "$REGION" "$PROJECT_ID" "$2" \
+    || die "failed to purge stranded AR-IAM member(s) from state — resolve manually, then re-run apply"
+}
+
 _reconcile_purge_stranded_ar_iam() {
   local ar_repo_id='devstash' # mirrors modules/artifact-registry local.repository_id
   local ar_addrs_file; ar_addrs_file="$(dirname "${BASH_SOURCE[0]}")/../../../lib/ar-iam-member-addresses.txt"
-  ds_purge_stranded_ar_iam "$ar_repo_id" "$REGION" "$PROJECT_ID" "$ar_addrs_file" \
-    || die "failed to purge stranded AR-IAM member(s) from state — resolve manually, then re-run apply"
+  # A stranded member exists only when the repo is GONE in GCP AND at least one member address is
+  # still tracked. Detect that here (mirroring the shared helper's own gate) so we only prompt when
+  # there is real work — a clean env stays a silent no-op.
+  gcloud artifacts repositories describe "$ar_repo_id" \
+    --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1 && return 0
+  local stranded=0 addr
+  while IFS= read -r addr; do
+    case "$addr" in '' | \#*) continue ;; esac
+    _reconcile_in_state "$addr" && { stranded=1; break; }
+  done < "$ar_addrs_file"
+  [[ "$stranded" == 1 ]] || return 0
+  # Destroy is IMPOSSIBLE: the members cannot be removed through the API (no repo left to
+  # setIamPolicy on) — purging the dangling STATE entry is the only heal, and re-provision happens
+  # on the next apply (environment_active=true recreates the repo + members). So no destroy option.
+  _reconcile_choose "stranded AR-IAM member(s) for repo '$ar_repo_id'" \
+    "The repo is gone in GCP, so these members cannot be removed through the API — the only heal is to drop the dangling state entries; the next apply recreates the repo + members." \
+    -- _reconcile_run_purge_ar_iam "$ar_repo_id" "$ar_addrs_file" \
+    :: IMPOSSIBLE
 }
 
 # _reconcile_purge_stranded_sql: branch 5 — drop STRANDED Cloud SQL state entries when the instance
@@ -347,11 +504,11 @@ _reconcile_purge_stranded_ar_iam() {
 # purged (or on a clean env) the state-list check below finds nothing. Distinct from branch 1/3d
 # above, which ADOPT an untracked-but-EXISTING instance; this is the inverse — a TRACKED-but-GONE
 # instance. The two never both fire (present XOR absent).
-_reconcile_purge_stranded_sql() {
-  local sql_purge_name="devstash-${ENVIRONMENT}-pg"
-  ! gcloud sql instances describe "$sql_purge_name" --project="$PROJECT_ID" \
-      --format='value(state)' >/dev/null 2>&1 || return 0
-  local sql_stranded_addr
+# _reconcile_run_purge_sql <instance-name>: the ADOPT/heal command vector for the SQL purge branch —
+# state-rm the 3 stranded addresses (leaves→instance order, mirroring Terraform's destroy order).
+# Named wrapper so _reconcile_choose can run it as one vector.
+_reconcile_run_purge_sql() {
+  local sql_purge_name="$1" sql_stranded_addr
   for sql_stranded_addr in \
     'module.cloudsql.google_sql_user.app[0]' \
     'module.cloudsql.google_sql_database.devstash[0]' \
@@ -362,6 +519,28 @@ _reconcile_purge_stranded_sql() {
         || die "failed to purge stranded Cloud SQL entry '$sql_stranded_addr' from state — resolve manually, then re-run apply"
     fi
   done
+}
+
+_reconcile_purge_stranded_sql() {
+  local sql_purge_name="devstash-${ENVIRONMENT}-pg"
+  ! gcloud sql instances describe "$sql_purge_name" --project="$PROJECT_ID" \
+      --format='value(state)' >/dev/null 2>&1 || return 0
+  # Only prompt when there is real work — at least one of the 3 addresses still tracked.
+  local stranded=0 addr
+  for addr in \
+    'module.cloudsql.google_sql_user.app[0]' \
+    'module.cloudsql.google_sql_database.devstash[0]' \
+    'module.cloudsql.google_sql_database_instance.postgres[0]'; do
+    _reconcile_in_state "$addr" && { stranded=1; break; }
+  done
+  [[ "$stranded" == 1 ]] || return 0
+  # Destroy is IMPOSSIBLE: the instance is already GONE in GCP (nothing to delete; the database
+  # carries deletion_policy=ABANDON anyway) — dropping the dangling state entries is the only heal,
+  # and resume recreates the instance + database + user, then restores the last GCS dump.
+  _reconcile_choose "stranded Cloud SQL state entries for '$sql_purge_name'" \
+    "The instance is already gone in GCP, so there is nothing to delete — the only heal is to drop the dangling state entries; resume recreates the instance + DB + user and restores the last dump." \
+    -- _reconcile_run_purge_sql "$sql_purge_name" \
+    :: IMPOSSIBLE
 }
 
 # reconcile_state: heal state↔cloud drift that a plain `tofu plan` cannot resolve, so a single

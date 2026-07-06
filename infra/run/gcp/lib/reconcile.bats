@@ -254,6 +254,188 @@ _load_reconcile() {
   refute_output --partial "waiting"
 }
 
+# ── _reconcile_choose: the interactive adopt-vs-reprovision gate. Drives it with two visible probe
+# commands (`_probe_adopt` / `_probe_destroy`) that print a marker so a test can assert WHICH vector
+# ran, and stubs `confirm` (a shell function, so override — never spy_cmd) to script the answers. ──
+_choose_probes() {
+  # shellcheck disable=SC2317  # invoked indirectly via _reconcile_choose
+  _probe_adopt() { echo "ADOPTED"; }
+  # shellcheck disable=SC2317
+  _probe_destroy() { echo "DESTROYED"; }
+}
+
+@test "_reconcile_choose: AUTO_APPROVE=1 → adopts with NO prompt (CI self-heal contract)" {
+  _load_reconcile
+  _choose_probes
+  # confirm MUST NOT be called under AUTO_APPROVE — if it is, fail loudly.
+  # shellcheck disable=SC2317
+  confirm() { echo "UNEXPECTED confirm" >&2; return 0; }
+  AUTO_APPROVE=1 run _reconcile_choose "the thing" "unsafe" -- _probe_adopt :: _probe_destroy
+  assert_success
+  assert_output --partial "ADOPTED"
+  refute_output --partial "DESTROYED"
+  refute_output --partial "UNEXPECTED"
+}
+
+@test "_reconcile_choose: interactive, user adopts → runs the adopt vector" {
+  _load_reconcile
+  _choose_probes
+  # Accept the first (adopt) prompt.
+  # shellcheck disable=SC2317
+  confirm() { [[ "$1" == "Adopt "* ]]; }
+  AUTO_APPROVE=0 run _reconcile_choose "the thing" "unsafe" -- _probe_adopt :: _probe_destroy
+  assert_success
+  assert_output --partial "ADOPTED"
+  refute_output --partial "DESTROYED"
+}
+
+@test "_reconcile_choose: interactive, decline adopt then confirm destroy → runs the destroy vector" {
+  _load_reconcile
+  _choose_probes
+  local confirms="${BATS_TEST_TMPDIR}/confirm.calls"; : > "$confirms"
+  # Decline the adopt prompt, accept the destroy prompt.
+  # shellcheck disable=SC2317
+  confirm() { echo "$1" >> "$confirms"; [[ "$1" == "Destroy "* ]]; }
+  AUTO_APPROVE=0 run _reconcile_choose "the thing" "IMAGE LOSS WARNING" -- _probe_adopt :: _probe_destroy
+  assert_success
+  assert_output --partial "DESTROYED"
+  refute_output --partial "ADOPTED"
+  # The unsafe note is printed before the destroy prompt.
+  assert_output --partial "IMAGE LOSS WARNING"
+  # Both prompts were shown, adopt first.
+  run cat "$confirms"
+  assert_line --index 0 --partial "Adopt "
+  assert_line --index 1 --partial "Destroy "
+}
+
+@test "_reconcile_choose: interactive, decline BOTH → falls back to adopt (never leaves the strand)" {
+  _load_reconcile
+  _choose_probes
+  # Decline everything.
+  # shellcheck disable=SC2317
+  confirm() { return 1; }
+  AUTO_APPROVE=0 run _reconcile_choose "the thing" "unsafe" -- _probe_adopt :: _probe_destroy
+  assert_success
+  assert_output --partial "ADOPTED"
+  refute_output --partial "DESTROYED"
+  assert_output --partial "defaulting to adopt"
+}
+
+@test "_reconcile_choose: destroy IMPOSSIBLE → never prompts, prints the reason, adopts" {
+  _load_reconcile
+  _choose_probes
+  # confirm must NEVER be reached on the IMPOSSIBLE path.
+  # shellcheck disable=SC2317
+  confirm() { echo "UNEXPECTED confirm" >&2; return 0; }
+  AUTO_APPROVE=0 run _reconcile_choose "the thing" "cannot be destroyed within 30d" \
+    -- _probe_adopt :: IMPOSSIBLE
+  assert_success
+  assert_output --partial "cannot be destroyed within 30d"
+  assert_output --partial "ADOPTED"
+  refute_output --partial "UNEXPECTED"
+}
+
+@test "_reconcile_choose: no adopt vector before -- is a hard internal error" {
+  _load_reconcile
+  # Missing the -- separator → die (mis-wiring must fail loudly, not silently no-op).
+  run _reconcile_choose "the thing" "unsafe" _probe_adopt :: _probe_destroy
+  assert_failure
+}
+
+@test "_reconcile_singletons AR-repo: interactive destroy → deletes the repo, does NOT import" {
+  _load_reconcile
+  printf 'environment_active = true\n' > "$TF_DIR/active.auto.tfvars"
+  local calls="${BATS_TEST_TMPDIR}/gcloud.calls"; : > "$calls"
+  # The AR repo is the ONLY singleton present: its describe succeeds, every other describe fails,
+  # and the repo is untracked in state. Record gcloud so we can prove `repositories delete` ran.
+  # shellcheck disable=SC2317
+  gcloud() {
+    echo "$*" >> "$calls"
+    case "$1 $2" in
+      "artifacts repositories") [[ "$3" == describe ]] && return 0 ;;  # repo present
+    esac
+    return 1  # bucket/sql/gke/valkey describes all absent
+  }
+  # Untracked in state (state list echoes nothing) so the adopt branch arms.
+  # shellcheck disable=SC2317
+  tofu_() { case "$1" in state) return 0 ;; esac; return 0; }
+  # Decline adopt, accept destroy.
+  # shellcheck disable=SC2317
+  confirm() { [[ "$1" == "Destroy "* ]]; }
+  AUTO_APPROVE=0 run _reconcile_singletons true true
+  assert_success
+  run cat "$calls"
+  assert_output --partial "artifacts repositories delete devstash"
+  # It must NOT have imported the repo after choosing destroy.
+  refute_output --partial "import"
+}
+
+@test "_reconcile_singletons AR-repo: AUTO_APPROVE=1 → adopts (imports), never deletes" {
+  _load_reconcile
+  printf 'environment_active = true\n' > "$TF_DIR/active.auto.tfvars"
+  local gcalls="${BATS_TEST_TMPDIR}/gcloud.calls"; : > "$gcalls"
+  local tcalls="${BATS_TEST_TMPDIR}/tofu.calls"; : > "$tcalls"
+  # shellcheck disable=SC2317
+  gcloud() {
+    echo "$*" >> "$gcalls"
+    case "$1 $2" in
+      "artifacts repositories") [[ "$3" == describe ]] && return 0 ;;
+    esac
+    return 1
+  }
+  # tofu_ import succeeds; state list echoes nothing (untracked) so the branch arms.
+  # shellcheck disable=SC2317
+  tofu_() { echo "$*" >> "$tcalls"; case "$1" in import) return 0 ;; esac; return 0; }
+  AUTO_APPROVE=1 run _reconcile_singletons true true
+  assert_success
+  run cat "$tcalls"
+  assert_line --partial "import -lock-timeout=120s module.artifact_registry.google_artifact_registry_repository.docker[0]"
+  run cat "$gcalls"
+  refute_output --partial "repositories delete"
+}
+
+@test "_reconcile_adopt_wif: soft-DELETED → destroy is not offered; undeletes + imports" {
+  _load_reconcile
+  local gcalls="${BATS_TEST_TMPDIR}/gcloud.calls"; : > "$gcalls"
+  local tcalls="${BATS_TEST_TMPDIR}/tofu.calls"; : > "$tcalls"
+  # sleep is called by the undelete poll — skip the real wait.
+  # shellcheck disable=SC2317
+  sleep() { :; }
+  # describe reports DELETED first, then ACTIVE after undelete; undelete + import recorded.
+  # shellcheck disable=SC2317
+  gcloud() { echo "$*" >> "$gcalls"; case "$*" in *undelete*) return 0 ;; *) echo "DELETED" ;; esac; }
+  # shellcheck disable=SC2317
+  tofu_() { echo "$*" >> "$tcalls"; case "$1" in state) return 0 ;; import) return 0 ;; esac; return 0; }
+  # confirm must NEVER fire — destroy is IMPOSSIBLE for a DELETED pool.
+  # shellcheck disable=SC2317
+  confirm() { echo "UNEXPECTED confirm" >&2; return 0; }
+  AUTO_APPROVE=0 run _reconcile_adopt_wif module.iam.google_iam_workload_identity_pool.github \
+    projects/proj/locations/global/workloadIdentityPools/github-actions \
+    gcloud iam workload-identity-pools describe github-actions --location=global --project=proj
+  assert_success
+  refute_output --partial "UNEXPECTED"
+  run cat "$gcalls"
+  assert_output --partial "undelete"
+  run cat "$tcalls"
+  assert_line --partial "import -lock-timeout=120s module.iam.google_iam_workload_identity_pool.github"
+}
+
+@test "_reconcile_adopt_wif: absent in GCP → no-op (plan CREATEs it normally)" {
+  _load_reconcile
+  # describe returns empty state → not in GCP → the branch returns without prompting or importing.
+  # shellcheck disable=SC2317
+  gcloud() { return 0; }  # --format='value(state)' yields empty
+  # shellcheck disable=SC2317
+  tofu_() { case "$1" in import) echo "UNEXPECTED import" >&2; return 1 ;; state) return 0 ;; esac; return 0; }
+  # shellcheck disable=SC2317
+  confirm() { echo "UNEXPECTED confirm" >&2; return 0; }
+  AUTO_APPROVE=0 run _reconcile_adopt_wif module.iam.google_iam_workload_identity_pool.github \
+    projects/proj/locations/global/workloadIdentityPools/github-actions \
+    gcloud iam workload-identity-pools describe github-actions --location=global --project=proj
+  assert_success
+  refute_output --partial "UNEXPECTED"
+}
+
 # ── Sync guard: the _load_fallback copy above must match run.sh's real _plan_with_refresh_fallback
 # body, so a future edit to run.sh that isn't mirrored here fails loudly instead of testing a stale
 # copy. Assert run.sh's function still contains the salient lines the test copy relies on. ──
