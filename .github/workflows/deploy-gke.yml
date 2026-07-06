@@ -478,16 +478,27 @@ jobs:
       - name: Apply infra (everything except the web Deployment)
         run: infra/ci/apply-infra.sh
 
+      # Gate on devstash-app-config having an ENABLED version BEFORE the ESO wait, to close the
+      # version-bump race: the write-only Terraform version resource disables the old version and
+      # adds the new one as two separate operations, leaving a brief gap with zero enabled
+      # versions. A deploy landing in that gap used to read an empty blob and finish green with the
+      # app broken. This polls a short window so an apply/resume mid-bump resolves, and fails
+      # loudly if no enabled version appears (a real fault, not a parked env). See
+      # infra/ci/check-secret-version.sh.
+      - name: Ensure app-config has an enabled version (gate)
+        run: infra/ci/check-secret-version.sh
+
       - name: Wait for secrets to sync (ESO)
         # devstash-secrets is materialized by External Secrets Operator from
         # Secret Manager. Both the migrate Job and the web pods need it, so block
         # until the ExternalSecret reports Ready before running anything against
         # the database. The source blob (devstash-app-config) always has an enabled
-        # version, but its infra keys (redis-*/database-*) are omitted while the env
-        # is suspended / mid-resume — ESO can't sync then. When the script finds
-        # those properties missing it warns, sets synced=false, and finishes without
-        # failing; a blob with every property that still won't sync fails loudly.
-        # The migrate + rollout steps below gate on synced=true.
+        # version (the preceding gate guarantees it), but its infra keys
+        # (redis-*/database-*) are omitted while the env is suspended / mid-resume —
+        # ESO can't sync then. When the script finds those properties missing it
+        # warns, sets synced=false, and finishes without failing; a blob with every
+        # property that still won't sync — or an empty blob — fails loudly. The
+        # migrate + rollout steps below gate on synced=true.
         id: eso-sync
         run: infra/ci/wait-secrets-sync.sh
 

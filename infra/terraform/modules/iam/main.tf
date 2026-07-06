@@ -110,6 +110,36 @@ resource "google_secret_manager_secret_version" "app_config" {
   deletion_policy        = "DISABLE"
 }
 
+# Drift detection: assert the version Terraform manages is still ENABLED. This is the
+# continuous-validation pattern the google provider documents for catching out-of-band state
+# changes (their example asserts a VM is RUNNING). It exists because a real outage was masked
+# here: the version-bump is TWO Secret Manager operations (disable old → add new), and a deploy
+# that read the secret between them saw ZERO enabled versions, then silently "succeeded" with the
+# app broken. This check surfaces the wrong state — a managed version disabled out-of-band, or an
+# apply interrupted mid-bump leaving the tracked version disabled — at plan/apply time as a
+# warning, instead of at the next deploy as a silent failure. The CI enabled-version gate
+# (infra/ci/check-secret-version.sh) is the deploy-time counterpart; this is the apply-time one.
+#
+# We read the SPECIFIC version this resource created (not "latest") — the `latest` data source
+# resolves to the newest ENABLED version and would happily return an OLDER enabled one, hiding the
+# very drift we want to catch. A `check` block's failed assertion is a non-blocking warning, so
+# this never wedges an apply; it only flags the operator.
+check "app_config_version_enabled" {
+  data "google_secret_manager_secret_version" "app_config" {
+    secret  = google_secret_manager_secret.app_config.secret_id
+    version = google_secret_manager_secret_version.app_config.version
+  }
+
+  assert {
+    condition = data.google_secret_manager_secret_version.app_config.enabled
+    error_message = format(
+      "devstash-app-config version %s is DISABLED — External Secrets can't sync and the app has no credentials. A version-bump apply may have been interrupted (disable-old→add-new), or the version was disabled out-of-band. Re-enable it: gcloud secrets versions enable %s --secret=devstash-app-config, or re-apply to push a fresh enabled version.",
+      google_secret_manager_secret_version.app_config.version,
+      google_secret_manager_secret_version.app_config.version,
+    )
+  }
+}
+
 # Grant the app SA read access to the one consolidated secret.
 resource "google_secret_manager_secret_iam_member" "app_access" {
   secret_id = google_secret_manager_secret.app_config.id

@@ -338,14 +338,57 @@ gh_var_set_or_clear() {
   fi
 }
 
-# wait_for_cluster: poll `kubectl cluster-info` until the GKE Autopilot control plane responds
-# (typically 5-7 min after `tofu apply` completes). Times out after 10 minutes with an
-# actionable error pointing to the GCP console. Called by the up / apply / resume flows.
+# wait_for_cluster: block until the GKE control plane answers kubectl. On a fresh `tofu apply` the
+# endpoint responds ~5-7 min in; on a DEEP-SUSPEND resume the control-plane endpoint is recreated
+# cold and — because get_credentials_command uses the DNS-based --dns-endpoint — its reachability
+# can propagate SLOWER than that (the documented deep-suspend gap: the cluster reports RUNNING before
+# kubectl can connect). A fixed 10-minute ceiling used to `die` while the cluster was genuinely on its
+# way up, and because resume/up arm a CI cancel trap around this call that spurious `die` ALSO
+# cancelled the pre-dispatched deploy — a healthy-but-slow resume reported as a failure that killed a
+# perfectly good build. Three changes fix that (see decisions below):
+#
+#   1. FAST-FAIL PRE-GATE — before waiting at all, confirm via `gcloud container clusters list` that
+#      the cluster actually EXISTS. If it is genuinely absent (a real fault: apply never created it,
+#      or it was deleted) we die immediately instead of burning the full reachability window. Once we
+#      know it exists, an unreachable endpoint is "still propagating", so we wait patiently. (Listable
+#      is the strongest cheap existence signal gcloud gives without a control-plane call; the top-level
+#      RUNNING status does NOT imply kubectl reachability — the endpoint is decoupled from it — so we
+#      don't gate on status, only on existence, then let the kubectl poll be the reachability oracle.)
+#   2. LONGER, TUNABLE CEILING — default ~15 min (was a hard 10), env-overridable, to cover the
+#      DNS-endpoint propagation gap. A per-attempt diagnostic line replaces silent dots.
+#   3. TIMEOUT DOES NOT CANCEL CI — on reachability timeout we clear the EXIT cancel-trap FIRST (the
+#      same `trap - EXIT` hand-off _watch_ci_run uses) so the pre-dispatched deploy — which has its own
+#      waits and may well succeed once the endpoint settles — is LEFT RUNNING, then still `die` so the
+#      local bring-up aborts loudly. A missing-cluster pre-gate failure is a real fault and DOES let the
+#      trap cancel CI (there is nothing for the build to deploy onto).
+#
+# Distinct env from check-env-active.sh's CLUSTER_WAIT_* (that gate polls cluster LISTABILITY as a
+# suspended-vs-active decision; this polls kubectl REACHABILITY) so overriding one never moves the other.
+# Optional env:
+#   CLUSTER_REACHABLE_WAIT_ATTEMPTS (default 90) × CLUSTER_REACHABLE_WAIT_GAP secs (default 10) = ~15 min.
 _cluster_reachable() { kubectl cluster-info >/dev/null 2>&1; }
+# poll_until message hook — module scope (reachable-by-name to shellcheck, no SC2317/SC2329 disable);
+# the gap arrives as a forwarded msg_arg ($3), mirroring check-env-active.sh's _cluster_wait_msg.
+_cluster_reachable_wait_msg() { echo "GKE control plane not reachable yet (attempt $1/$2) — a fresh apply is ~5-7 min, a deep-suspend resume can take longer as the DNS endpoint propagates; waiting ${3}s…"; }
 wait_for_cluster() {
-  log "Waiting for GKE cluster control plane to become reachable (Autopilot takes 5-7 min)"
-  poll_until 60 10 -- _cluster_reachable \
-    || die "Cluster not reachable after 10 minutes — check GCP console"
+  local attempts="${CLUSTER_REACHABLE_WAIT_ATTEMPTS:-90}" gap="${CLUSTER_REACHABLE_WAIT_GAP:-10}"
+  # Fast-fail pre-gate: a genuinely-absent cluster is a real fault — die now (and let the armed CI
+  # cancel-trap reap the build, which has nothing to deploy onto) rather than waiting out the window.
+  # ds_cluster_present propagates a transient gcloud error under set -e; we tolerate that here (|| true
+  # on the sub-check) so a blip doesn't abort — only a confirmed-empty listing fails.
+  local cluster; cluster="$(tofu_ output -raw gke_cluster_name 2>/dev/null || true)"
+  if [[ -n "$cluster" ]] && ! ds_cluster_present "$cluster" "$PROJECT_ID" "$REGION" 2>/dev/null; then
+    die "GKE cluster '$cluster' is not listable in $REGION — it does not exist (apply never created it, or it was deleted). This is a real fault, not the reachability gap; check the GCP console and re-run apply/resume."
+  fi
+  log "Waiting for GKE cluster control plane to become reachable (fresh apply ~5-7 min; deep-suspend resume can take longer)"
+  if ! poll_until -m _cluster_reachable_wait_msg :: "$gap" :: "$attempts" "$gap" -- _cluster_reachable; then
+    # Reachability timeout ≠ CI-cancel: the cluster EXISTS (pre-gate passed) and its endpoint is just
+    # still propagating, so leave the pre-dispatched deploy running (its own waits may carry it home).
+    # Clear the cancel-trap BEFORE dying so the die's non-zero exit can't trip it. Same hand-off as
+    # _watch_ci_run. No-op when no trap/run is armed (bare `apply`, or DEPLOY_RUN_ID unset).
+    trap - EXIT
+    die "Cluster '$cluster' not reachable after $((attempts * gap / 60)) minutes — it is RUNNING but the control-plane endpoint never answered kubectl (the deep-suspend DNS-endpoint propagation gap). The pre-dispatched deploy was LEFT RUNNING (follow it: gh run watch). Re-run resume, or raise CLUSTER_REACHABLE_WAIT_ATTEMPTS, if it stays unreachable."
+  fi
   echo
   ok "cluster reachable"
 }
