@@ -692,6 +692,17 @@ resource "google_monitoring_notification_channel" "auto_suspend_ops_email" {
   }
 }
 
+# Bridge another eventual-consistency gap (same class as monitoring_identity_propagation
+# above): a freshly-created log-based metric is not immediately queryable by the Monitoring
+# API — an alert policy referencing it by name right after creation 404s with "Cannot find
+# metric(s) that match type = … If a metric was created recently, it could take up to 10
+# minutes to become available" (observed live). Only in the create path — no destroy delay.
+resource "time_sleep" "build_failures_metric_propagation" {
+  count           = local.auto_suspend_on ? 1 : 0
+  depends_on      = [google_logging_metric.auto_suspend_build_failures]
+  create_duration = "10m"
+}
+
 # Alert: fire once the suspend build has failed repeatedly — a persistent problem, not a
 # one-off raced apply. The scheduler fires every 15 min, so ≥3 failures across a rolling hour
 # (threshold 2 = "more than 2") means suspend has been wedged for ~45 min and the env is still
@@ -701,6 +712,7 @@ resource "google_monitoring_alert_policy" "auto_suspend_build_failures" {
   count        = local.auto_suspend_on ? 1 : 0
   display_name = "DevStash ${var.environment} auto-suspend build failing"
   combiner     = "OR"
+  depends_on   = [time_sleep.build_failures_metric_propagation]
 
   conditions {
     display_name = "Suspend build failed 3+ times in an hour"

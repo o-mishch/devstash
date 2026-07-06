@@ -865,8 +865,15 @@ apply() {
 # apply-infra.sh is the only thing that needs them, and CI installs them itself first.
 _apply_and_wire() {
   apply
-  wait_for_cluster
+  # wait_for_cluster (kubectl/gcloud polling, up to ~5-15 min on a from-scratch/deep-suspend
+  # resume) and secrets (reads tofu outputs + pushes via `gh` — no cluster/kubectl dependency)
+  # touch entirely disjoint subsystems, so run them concurrently instead of paying secrets'
+  # cost serialized behind the cluster wait. `wait $pid` surfaces wait_for_cluster's real exit
+  # code; secrets stays foreground so its own failures still fail this function directly.
+  wait_for_cluster &
+  local cluster_wait_pid=$!
   secrets
+  wait "$cluster_wait_pid"
   dns_hint
   update_dns
 }
@@ -1170,15 +1177,26 @@ _staging_apply() {
 
 _apply_ci_identity() {
   # Full CI-auth identity subgraph (WIF pool/provider + deployer & lifecycle SAs + their principalSet
-  # bindings) PLUS the AR push target — the post-down / first-ever superset. Plans then applies that
-  # exact plan via _staging_apply so the diff is visible under the single bring-up consent.
-  _staging_apply "CI auth identity + AR push target (WIF + deployer SA + repo/binding)" \
+  # bindings) PLUS the AR push target PLUS the app-config secret version — the post-down / first-ever
+  # superset. Plans then applies that exact plan via _staging_apply so the diff is visible under the
+  # single bring-up consent.
+  #
+  # The secret-version target closes the race behind the 2026-07-07 incident: _predispatch_ci_build
+  # (called right after this function by every caller) dispatches the GitHub Actions deploy, whose
+  # "Ensure app-config has an enabled version" gate (infra/ci/check-secret-version.sh) polls for
+  # ~2 min. That gate previously raced the FULL apply (~11 min, Cloud SQL + GKE first) for the secret
+  # version — on a slow apply, or when the version didn't exist yet at all, the gate legitimately
+  # timed out. Applying it here instead means it exists+enabled BEFORE the deploy is even dispatched.
+  # Its dependency (google_storage_hmac_key.uploads → google_service_account.app) is module-local, no
+  # Cloud SQL/GKE — so it stays inside the "~1 min, no Cloud SQL" invariant this subgraph relies on.
+  _staging_apply "CI auth identity + AR push target + app-config secret (WIF + deployer SA + repo/binding + secret version)" \
     -target=module.iam.google_iam_workload_identity_pool.github \
     -target=module.iam.google_iam_workload_identity_pool_provider.github \
     -target=module.iam.google_service_account.deployer \
     -target=module.iam.google_service_account_iam_member.github_wif \
     -target=module.iam.google_service_account.lifecycle_deployer \
     -target=module.iam.google_service_account_iam_member.lifecycle_deployer_github_wif \
+    -target=module.iam.google_secret_manager_secret_version.app_config \
     "${_AR_PUSH_TARGET_ARGS[@]}"
   # Gate CI dispatch on the deployer SA actually being able to push (repo IAM → registry data-plane
   # propagation can lag the apply return) — see _wait_ar_push_ready.

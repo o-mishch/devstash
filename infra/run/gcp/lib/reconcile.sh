@@ -420,6 +420,24 @@ _reconcile_singletons() {
            --project="$PROJECT_ID" --quiet
   fi
 
+  # Ingress global static IP. Gated on compute_active (= environment_active, main.tf:99). Global
+  # addresses are project-wide SINGLETONS by name ('devstash-<env>-ip', modules/network local
+  # .name_prefix), so a re-create 409s exactly like the other singletons above — observed when a
+  # prior teardown released it from state (deliberately, to stop billing for an idle reserved IP)
+  # but the physical address survived (still IN_USE, bound to the live LB). Import form per the
+  # provider docs: projects/<project>/global/addresses/<name>.
+  local ip_addr='module.network.google_compute_global_address.ingress_ip[0]'
+  local ip_name="devstash-${ENVIRONMENT}-ip" # mirrors modules/network name_prefix + "-ip"
+  if [[ "$env_active" != "false" ]] && ! _reconcile_in_state "$ip_addr" \
+     && gcloud compute addresses describe "$ip_name" --global \
+          --project="$PROJECT_ID" >/dev/null 2>&1; then
+    _reconcile_choose "ingress static IP '$ip_name'" \
+      "Deleting the IP releases it back to the pool — DNS keeps pointing at the old address until resume re-points it, so the app becomes unreachable until the next apply/resume completes." \
+      -- _reconcile_adopt "$ip_addr" "$PROJECT_ID/$ip_name" \
+           "ingress static IP '$ip_name'" \
+      :: gcloud compute addresses delete "$ip_name" --global --project="$PROJECT_ID" --quiet
+  fi
+
   local wif_pool_addr='module.iam.google_iam_workload_identity_pool.github'
   local wif_provider_addr='module.iam.google_iam_workload_identity_pool_provider.github'
   local wif_pool_id='github-actions'

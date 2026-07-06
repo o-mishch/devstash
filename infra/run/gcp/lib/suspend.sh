@@ -612,8 +612,12 @@ down() {
     local uploads_uri db_dumps_uri
     uploads_uri="$(tf_out uploads_bucket)"; [[ -n "$uploads_uri" ]] && uploads_uri="gs://$uploads_uri"
     db_dumps_uri="$(tf_out db_dumps_bucket)"; [[ -n "$db_dumps_uri" ]] && db_dumps_uri="gs://$db_dumps_uri"
-    empty_bucket "$uploads_uri"
+    # Two independent buckets, no shared state (empty_bucket is a pure describe+rm on its own
+    # URI, never fatal) — run concurrently instead of paying both emptying times serially.
+    empty_bucket "$uploads_uri" &
+    local uploads_empty_pid=$!
     empty_bucket "$db_dumps_uri"
+    wait "$uploads_empty_pid"
     # Reap GKE-leaked NEGs + firewall rules BEFORE destroy — they reference the VPC and would
     # otherwise fail its delete ("network resource is already being used by …/networkEndpointGroups/
     # …"). cleanup_leaked_negs (this file) is VPC-scoped and best-effort. This must run before

@@ -394,6 +394,58 @@ _choose_probes() {
   refute_output --partial "repositories delete"
 }
 
+@test "_reconcile_singletons ingress IP: interactive destroy → deletes the IP, does NOT import" {
+  _load_reconcile
+  printf 'environment_active = true\n' > "$TF_DIR/active.auto.tfvars"
+  local calls="${BATS_TEST_TMPDIR}/gcloud.calls"; : > "$calls"
+  # The ingress IP is the ONLY singleton present: its describe succeeds, every other describe
+  # fails, and it is untracked in state. Record gcloud so we can prove `addresses delete` ran.
+  # shellcheck disable=SC2317
+  gcloud() {
+    echo "$*" >> "$calls"
+    case "$1 $2" in
+      "compute addresses") [[ "$3" == describe ]] && return 0 ;;  # IP present
+    esac
+    return 1  # bucket/sql/gke/valkey/AR-repo describes all absent
+  }
+  # Untracked in state (state list echoes nothing) so the adopt branch arms.
+  # shellcheck disable=SC2317
+  tofu_() { case "$1" in state) return 0 ;; esac; return 0; }
+  # Decline adopt, accept destroy.
+  # shellcheck disable=SC2317
+  confirm() { [[ "$1" == "Destroy "* ]]; }
+  AUTO_APPROVE=0 run _reconcile_singletons true true
+  assert_success
+  run cat "$calls"
+  assert_output --partial "compute addresses delete devstash-dev-ip --global"
+  # It must NOT have imported the IP after choosing destroy.
+  refute_output --partial "import"
+}
+
+@test "_reconcile_singletons ingress IP: AUTO_APPROVE=1 → adopts (imports), never deletes" {
+  _load_reconcile
+  printf 'environment_active = true\n' > "$TF_DIR/active.auto.tfvars"
+  local gcalls="${BATS_TEST_TMPDIR}/gcloud.calls"; : > "$gcalls"
+  local tcalls="${BATS_TEST_TMPDIR}/tofu.calls"; : > "$tcalls"
+  # shellcheck disable=SC2317
+  gcloud() {
+    echo "$*" >> "$gcalls"
+    case "$1 $2" in
+      "compute addresses") [[ "$3" == describe ]] && return 0 ;;
+    esac
+    return 1
+  }
+  # tofu_ import succeeds; state list echoes nothing (untracked) so the branch arms.
+  # shellcheck disable=SC2317
+  tofu_() { echo "$*" >> "$tcalls"; case "$1" in import) return 0 ;; esac; return 0; }
+  AUTO_APPROVE=1 run _reconcile_singletons true true
+  assert_success
+  run cat "$tcalls"
+  assert_line --partial "import -lock-timeout=120s module.network.google_compute_global_address.ingress_ip[0]"
+  run cat "$gcalls"
+  refute_output --partial "addresses delete"
+}
+
 @test "_reconcile_adopt_wif: soft-DELETED → destroy is not offered; undeletes + imports" {
   _load_reconcile
   local gcalls="${BATS_TEST_TMPDIR}/gcloud.calls"; : > "$gcalls"

@@ -482,10 +482,18 @@ jobs:
       # version-bump race: the write-only Terraform version resource disables the old version and
       # adds the new one as two separate operations, leaving a brief gap with zero enabled
       # versions. A deploy landing in that gap used to read an empty blob and finish green with the
-      # app broken. This polls a short window so an apply/resume mid-bump resolves, and fails
-      # loudly if no enabled version appears (a real fault, not a parked env). See
-      # infra/ci/check-secret-version.sh.
+      # app broken. run.sh now applies this secret version as part of its identity pre-apply
+      # (before dispatching this workflow) on a first-ever/post-down up, closing the race for that
+      # case; a resume's secret content depends on Cloud SQL/Memorystore outputs, so it can only be
+      # applied as part of the full apply and can still race this gate. 50×6s=5min (vs. the default
+      # 20×6s=2min) gives that full apply (~11 min worst case, but this step runs well after
+      # preflight/build-push/apply-infra already consumed several minutes of it) more realistic
+      # headroom, within the job's 45-min budget. Fails loudly if no enabled version appears within
+      # that window (a real fault, not a parked env). See infra/ci/check-secret-version.sh.
       - name: Ensure app-config has an enabled version (gate)
+        env:
+          SECRET_VERSION_WAIT_ATTEMPTS: "50"
+          SECRET_VERSION_WAIT_GAP: "6"
         run: infra/ci/check-secret-version.sh
 
       - name: Wait for secrets to sync (ESO)
