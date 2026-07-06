@@ -5,7 +5,7 @@
 # organisational, not a standalone module.
 #
 # Depends on (provided by run.sh before this file is sourced):
-#   globals   PROJECT_ID, NS; optional env overrides INGRESS_IP, SPACESHIP_API_KEY/-SECRET
+#   globals   PROJECT_ID, ENVIRONMENT, NS; optional env overrides INGRESS_IP, SPACESHIP_API_KEY/-SECRET
 #   helpers   log/ok/warn/die (infra/lib/common.sh), tf_out
 #
 # Source-guard: sourcing twice is a harmless no-op.
@@ -20,7 +20,7 @@ _DEVSTASH_GCP_DNS_SH=1
 # Stripe webhook + OAuth URIs.
 dns_hint() {
   local ip dom
-  ip="$(tf_out ingress_ip_address)"
+  ip="$(_gcp_ingress_ip)"; ip="${ip:-$(tf_out ingress_ip_address)}"
   dom="$(tf_out app_domain)"
   log "DNS — point your subdomain at the Gateway static IP; the Certificate Manager cert is already provisioned"
   echo "  Add an A-record:  ${dom:-<app_domain>}  →  ${ip:-<run: tofu output ingress_ip_address>}"
@@ -53,6 +53,18 @@ spaceship_api() {
   fi
 }
 
+# _gcp_ingress_ip: read the reserved global static IP straight from GCP (the resource itself,
+# not tofu state) — `gcloud compute addresses describe <prefix>-ip --global`. Name matches
+# modules/network's `"${name_prefix}-ip"` (name_prefix = "devstash-${ENVIRONMENT}"). This is
+# the authoritative source: it's correct even when tofu state/outputs are empty, stale, or
+# mid-migration (a `tofu output` after a raw `apply` that never surfaced outputs, or any drift
+# between state and the live project). Echoes nothing (and warns) if the address doesn't exist
+# (e.g. the environment is suspended and the IP was released).
+_gcp_ingress_ip() {
+  gcloud compute addresses describe "devstash-${ENVIRONMENT}-ip" --global \
+    --project="$PROJECT_ID" --format='value(address)' 2>/dev/null || true
+}
+
 # update_dns: re-point the app's A-record at the current ingress IP via the Spaceship
 # DNS API. Needed on resume because the ingress IP is released on suspend and a fresh
 # one is allocated each resume. Best-effort: prints a manual hint if creds are missing.
@@ -69,10 +81,11 @@ spaceship_api() {
 # host — instead of blindly adding one.
 update_dns() {
   local ip domain root sub key secret code existing prune del_code
-  # INGRESS_IP override: re-assert DNS when the tofu output is unavailable (mid-migration,
-  # inconsistent state, or a raw `tofu apply` that never surfaced the output). Read the live
-  # value with:  kubectl -n devstash get ingress devstash-web -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-  ip="${INGRESS_IP:-$(tf_out ingress_ip_address)}"
+  # Resolution order: INGRESS_IP (explicit manual override) > live GCP read (authoritative —
+  # correct even when tofu state is stale/empty/mid-migration) > tofu output (last-resort
+  # fallback if the gcloud read itself fails, e.g. transient API error).
+  ip="${INGRESS_IP:-$(_gcp_ingress_ip)}"
+  ip="${ip:-$(tf_out ingress_ip_address)}"
   if [[ -z "$ip" || "$ip" == "null" ]]; then
     warn "no ingress IP available (environment suspended?) — skipping DNS update"
     warn "Pass one explicitly:  INGRESS_IP=<ip> bash infra/run/gcp/run.sh update-dns"
@@ -161,8 +174,16 @@ update_dns() {
 # HTTPS. So this record is UPSERTED and never pruned; update_dns's A-record prune only
 # matches `type == "A"`, so it can never touch this CNAME. It must also be the ONLY record
 # for its name (no competing TXT/CNAME) — a plain PUT upsert by (type,name) guarantees that.
+#
+# force:true does NOT make the PUT upsert a CNAME that already exists at that name — Spaceship
+# hard-rejects with 422 "CNAME with host X already exists" (confirmed against the live API;
+# `force` only turns off the *conflict* checker across record types, not same-type collisions).
+# This bites whenever the dns_authorization resource is recreated (fresh renewal, `apply`
+# rebuild) and the token — hence the CNAME target — changes. So a stale CNAME must be DELETEd
+# by its exact (type,name,cname) before the new one is PUT, same explicit prune-then-reassert
+# shape update_dns already uses for the A-record.
 ensure_cert_cname() {
-  local root="$1" key="$2" secret="$3" record target name existing have code
+  local root="$1" key="$2" secret="$3" record target name existing have stale code
   record="$(tf_out dns_authorization_cname_record)"   # e.g. _acme-challenge.gke.devstash.one.
   target="$(tf_out dns_authorization_cname_target)"    # e.g. <uuid>.<n>.authorize.certificatemanager.goog.
   if [[ -z "$record" || "$record" == "null" || -z "$target" || "$target" == "null" ]]; then
@@ -183,6 +204,20 @@ ensure_cert_cname() {
   if [[ "$have" == "true" ]]; then
     ok "Cert DNS-auth CNAME already present ($name → $target)"
     return 0
+  fi
+
+  # Any OTHER CNAME already sitting at this name is stale (a prior dns_authorization
+  # token) and must be deleted first — Spaceship's PUT will 422 rather than replace it.
+  stale="$(printf '%s' "$existing" \
+    | jq -c --arg n "$name" --arg t "$target" \
+        '[.items[]? | select(.type == "CNAME" and .name == $n and .cname != $t and .cname != ($t + "."))
+          | {type, name, cname}]' \
+    2>/dev/null || printf '[]')"
+  if [[ -n "$stale" && "$stale" != "[]" ]]; then
+    log "Removing stale cert DNS-auth CNAME(s) at $name: $(printf '%s' "$stale" | jq -r 'map(.cname) | join(", ")')"
+    code="$(spaceship_api DELETE "$root" "$stale")"
+    [[ "$code" =~ ^2 ]] \
+      || warn "Spaceship DELETE returned HTTP ${code:-000} for stale cert CNAME(s) — the PUT below may still 422."
   fi
 
   log "Asserting cert DNS-auth CNAME: $name → $target"
