@@ -139,60 +139,6 @@ _join_fail_fast() {
   return 0
 }
 
-# _prefix <tag>: stream filter that prefixes each stdout line with "[tag] " so the interleaved
-# output of concurrently-backgrounded steps stays attributable. Shared by ensure_operators (which
-# prefixes [eso]/[reloader]) and the resume overlap driver (which prefixes [apply]).
-_prefix() { sed -e "s/^/[$1] /"; }
-
-# ensure_operators: install ESO + Reloader CONCURRENTLY (the two are fully independent — different
-# releases, namespaces, no shared state; see infra/ci/ensure-operators.sh, which does the same for
-# the CI deploy job). run.sh's serial eso()→reloader() ran them back-to-back; this overlaps them,
-# saving the shorter install's duration on a cold cluster. It is the bring-up path's replacement for
-# calling eso() (which chains reloader()); the standalone `run.sh eso`/`reloader` commands still use
-# the serial functions above.
-#
-# KUBECONFIG SAFETY: use_cluster (which runs `gcloud … get-credentials`, MUTATING the shared
-# kubeconfig + current-context) is called ONCE HERE, in the parent, BEFORE any backgrounding.
-# Concurrent get-credentials calls corrupt the central kubeconfig or flip the context out from under
-# each other (documented GKE/CI race), so it must never run inside the backgrounded installs — the
-# ensure-*.sh scripts deliberately do NOT fetch creds; they inherit the context set here. The two
-# backgrounded helm installs then only READ that kubeconfig (no context switch), the same safe
-# pattern CI's ensure-operators.sh already runs in production.
-#
-# EXTRA OVERLAP: any pid passed as an argument (e.g. a backgrounded apply exec from resume's overlap
-# driver) is joined alongside the two installs via _join_fail_fast, so an independent long task
-# overlaps the operator install under one fail-fast wait instead of a second serial wait.
-#
-# NARRATION (only when the caller labels the extra pids): the caller may pass, before the pids, the
-# NAME of a pid→label associative array (declare -A) so _join_fail_fast prints each path's own
-# "✓ [label] done in <dur>" as it lands. The two installs are added to that map here. With no map
-# (a bare `run.sh up` bring-up passes only pids and "" for the map) the join stays silent — the
-# exact prior behaviour. There is no separate liveness ticker: the join's per-path DONE lines and
-# the caller's numbered [stage N/M] banners already show forward motion.
-ensure_operators() {
-  local labels_ref="$1"; shift          # name of a pid→label map, or "" for a silent join
-  local extra_pids=("$@")               # optional already-backgrounded pids to join with the installs
-  use_cluster                           # ONCE, in the parent — sets kubeconfig + context first
-  log "Installing External Secrets Operator ‖ Stakater Reloader (parallel)"
-  { infra/ci/ensure-eso.sh 2>&1 | _prefix eso; exit "${PIPESTATUS[0]}"; } &
-  local eso_pid=$!
-  { infra/ci/ensure-reloader.sh 2>&1 | _prefix reloader; exit "${PIPESTATUS[0]}"; } &
-  local reloader_pid=$!
-  # If narrating, register our two installs in the caller's map so the join names them on finish.
-  # _JFF_T0 (set by the resume driver, the sole narrating caller) anchors each DONE duration.
-  if [[ -n "$labels_ref" ]]; then
-    local -n _eo_labels="$labels_ref"
-    _eo_labels[$eso_pid]=eso; _eo_labels[$reloader_pid]=reloader
-  fi
-  # Join the two installs + any caller-supplied pids under one fail-fast wait — see _join_fail_fast.
-  _join_fail_fast \
-    "operator install overlap failed — re-run the bring-up (all steps are retry-safe)" \
-    "$labels_ref" \
-    "$eso_pid" "$reloader_pid" ${extra_pids[@]+"${extra_pids[@]}"}
-  _wait_eso_webhook   # same belt-and-suspenders webhook wait eso() does — see the helper above
-  ok "ESO + Reloader installed; SecretStore/ExternalSecret CRDs available"
-}
-
 # upgrade-helm: bump ESO and Reloader to their latest published Helm chart versions.
 # Checks `helm search repo` for each chart, updates infra/versions.env in-place, and
 # re-installs both charts on the live cluster (via eso → infra/ci/ensure-*.sh). Safe to run

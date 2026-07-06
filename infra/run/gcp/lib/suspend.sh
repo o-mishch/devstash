@@ -12,7 +12,7 @@
 #   globals   TF_DIR, PROJECT_ID, REGION, APP_DOMAIN, ENVIRONMENT, STATE_BUCKET
 #   helpers   log/ok/warn/die/confirm (infra/lib/common.sh), tf_out, tofu_, ensure_tfvars
 #   run.sh core steps   apply/_apply_plan/_apply_exec, deploy, wait_for_cluster
-#   gke.sh    ensure_operators, _join_fail_fast, _prefix, _wait_eso_webhook, use_cluster/_soft
+#   gke.sh    use_cluster/_soft
 #   db.sh    dump_db, restore_db
 #   dns.sh   update_dns
 #
@@ -142,20 +142,27 @@ suspend() {
 # run.sh:apply's split comment), so the overlap is cluster-side work (kubectl/helm, no lock) against
 # the ONE running apply, not two applies.
 #
-# HOW: background _apply_exec, then join it alongside the two operator installs via ensure_operators's
-# existing extra-PID join (apply ‖ eso ‖ reloader, one fail-fast wait). The DB restore runs SERIALLY
-# after that join — it is gated on Cloud SQL being RUNNABLE (i.e. the apply finishing), by which point
-# the operators (started ~5 min earlier, ~3-4 min each) are already done, so there is no operator tail
-# left for it to overlap. Keeping restore serial trades a ~zero-length overlap for much simpler code.
+# HOW: background _apply_exec, then join it with a fail-fast wait (_join_fail_fast) so an apply
+# failure aborts immediately. The DB restore runs SERIALLY after that join — it is gated on Cloud
+# SQL being RUNNABLE (i.e. the apply finishing).
 #
-# ORDERING (kubeconfig safety, same rules ensure_operators documents):
+# NO local ESO/Reloader install here (removed 2026-07-06): resume() always pre-dispatches the
+# deploy-gke CI job before calling this function, and that job's ensure-operators.sh always
+# installs ESO + Reloader before its own apply-infra.sh. A local ensure_operators() call here
+# raced the CI job's install against the SAME Helm release on the SAME cluster with no
+# coordination between the two processes — one side hit Helm's "another operation (install/
+# upgrade/rollback) is in progress" lock, the other saw the external-secrets namespace as
+# NotFound (created-but-not-yet-visible). restore_db (below) only touches Cloud SQL via gcloud —
+# it has no dependency on ESO/Reloader — so there is nothing local left for the operators to
+# unblock; CI's apply-infra.sh is the only thing that needs the ESO CRDs, and CI installs them
+# itself first.
+#
+# ORDERING (kubeconfig safety):
 #   1. _apply_plan runs in the FOREGROUND — keeps the interactive plan-review gate (AUTO_APPROVE skips
 #      it on the CI/UI path; a manual laptop resume still reviews the plan).
 #   2. _apply_exec is backgrounded ([apply]-prefixed). It runs no kubectl, so no context race.
 #   3. wait_for_cluster runs in the FOREGROUND (shared-scope poll: uses run.sh helpers, prints
 #      progress, die-on-timeout must abort directly) — must not be subshelled.
-#   4. ensure_operators fetches creds ONCE (use_cluster, in the parent) before backgrounding the two
-#      installs, and joins the apply pid alongside them — so an apply failure aborts immediately.
 #
 # The provisioning marker still spans the ENTIRE apply: mark_provisioning fires in _apply_plan and
 # clear_provisioning (after the IAM cooldown) at the tail of the backgrounded _apply_exec — so
@@ -181,24 +188,11 @@ suspend() {
 _apply_and_wire_cluster_overlapped() {
   stage "apply → applying (Cloud SQL ~10m + control plane), pre-dispatched CI build overlapping"
   _apply_plan                       # foreground: init → reconcile → plan → CONFIRM (review gate)
-  # Narration state for the concurrent join (see gke.sh:_join_fail_fast):
-  #   _JFF_T0        — the group's start; every "✓ [path] done in <dur>" is measured against it.
-  #   _resume_labels — pid→label map. ensure_operators adds eso/reloader; we add apply here.
-  # Both are plain shell state (a subshell inherits _JFF_T0 at fork), so no temp file / no cleanup.
-  local _JFF_T0=$SECONDS   # local: bash dynamic scope makes it visible to ensure_operators
-  local -A _resume_labels=()
-  { _apply_exec 2>&1 | _prefix apply; exit "${PIPESTATUS[0]}"; } &
-  local apply_pid=$!
-  _resume_labels[$apply_pid]=apply
-  wait_for_cluster                  # foreground poll; control plane up ~5-7 min in, mid-apply
-  stage "cluster control plane reachable — installing operators ‖ finishing apply"
-  # Pass the map's NAME so _join_fail_fast prints each path's own "✓ [label] done in <dur>" as it
-  # lands (apply/eso/reloader).
-  ensure_operators _resume_labels "$apply_pid"   # ESO ‖ Reloader ‖ (apply exec, joined) — overlaps Cloud SQL create
-  stage "restore DB from GCS dump (Cloud SQL runnable now that apply joined)"
-  restore_db                        # serial: Cloud SQL is RUNNABLE now (apply joined); operators done.
+  _apply_exec                       # foreground: no local operator install left to overlap it with
+  wait_for_cluster                  # control plane up ~5-7 min in, mid-apply
+  stage "restore DB from GCS dump (Cloud SQL runnable now that apply finished)"
+  restore_db                        # serial: Cloud SQL is RUNNABLE now (apply finished)
                                     # A restore failure aborts resume via restore_db's own die + set -e
-                                    # (no longer folded into the join — restore is no longer backgrounded).
 }
 
 # resume: bring the environment back from a deep-suspended state. Recreates compute AND

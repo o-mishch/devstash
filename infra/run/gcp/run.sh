@@ -803,15 +803,25 @@ apply() {
 }
 
 # _apply_and_wire: the standard post-bootstrap bring-up tail — apply the plan, wait for the
-# control plane, install the in-cluster operators, push CI secrets, then print + assert DNS.
-# Single-sourced so the `apply` dispatch command and up()'s first-ever (serial) branch can never
-# drift on this sequence. dns_hint prints the record; update_dns then asserts it automatically
-# (self-guarding — it warns + falls back to the printed hint when creds/IP are missing, so the
-# manual path still works on a first-ever bring-up before Spaceship creds are stored).
+# control plane, push CI secrets, then print + assert DNS. Single-sourced so the `apply` dispatch
+# command and up()'s first-ever (serial) branch can never drift on this sequence. dns_hint prints
+# the record; update_dns then asserts it automatically (self-guarding — it warns + falls back to
+# the printed hint when creds/IP are missing, so the manual path still works on a first-ever
+# bring-up before Spaceship creds are stored).
+#
+# NO local ESO/Reloader install here (removed 2026-07-06): every caller of _apply_and_wire
+# (_apply_with_overlap's two branches, up()'s first-ever branch) calls _predispatch_ci_build
+# first, and the dispatched deploy-gke job ALWAYS runs infra/ci/ensure-operators.sh before its
+# own apply-infra.sh. A local install here raced the CI job's install against the SAME Helm
+# release (same cluster) with no coordination — one side hit "another operation (install/
+# upgrade/rollback) is in progress", the other saw the external-secrets namespace as NotFound
+# (created-but-not-yet-visible). Nothing between wait_for_cluster and the end of this function
+# touches the cluster (secrets() only pushes GitHub Actions secrets/vars from tofu output) or
+# needs the ESO CRDs, so there is nothing local left for the operators to unblock — CI's
+# apply-infra.sh is the only thing that needs them, and CI installs them itself first.
 _apply_and_wire() {
   apply
   wait_for_cluster
-  ensure_operators ""   # "" = silent join (no resume-style narration) — ESO ‖ Reloader in parallel; see gke.sh
   secrets
   dns_hint
   update_dns
@@ -1417,7 +1427,9 @@ up() {
     _arm_ci_cancel_trap up         # cancel the run if anything below dies before the handoff
     apply
     wait_for_cluster
-    ensure_operators ""   # "" = silent join (no resume-style narration) — ESO ‖ Reloader in parallel; see gke.sh
+    # NO local ESO/Reloader install — the pre-dispatched deploy job's ensure-operators.sh
+    # installs them before its own apply-infra.sh; see _apply_and_wire's comment for why a
+    # local install here would race CI's install against the same Helm release.
     trap - EXIT   # cluster is up; the run now owns its own success/failure — stop cancelling it
     dns_hint; update_dns
     log "Infra up and the app deploy is building/rolling out in parallel. Follow it:"
