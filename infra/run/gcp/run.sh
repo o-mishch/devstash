@@ -614,24 +614,40 @@ unlock() {
 mark_provisioning()  { gcloud storage cp /dev/null "gs://$STATE_BUCKET/${STATE_PREFIX}.provisioning" >/dev/null 2>&1 || true; }
 clear_provisioning() { gcloud storage rm "gs://$STATE_BUCKET/${STATE_PREFIX}.provisioning" >/dev/null 2>&1 || true; }
 
-# apply: initialise the Terraform remote backend and run plan → apply.
-# Requires the state bucket to exist (bootstrap must have run first).
-# Always plans to a file and applies that exact plan so there is no drift between
-# the reviewed diff and what actually mutates GCP. The plan file is gitignored and
-# deleted after apply (success or failure) so no sensitive state lingers on disk.
-apply() {
+# _clear_plan_file: delete any saved plan (from either working dir). Saved plans contain
+# sensitive values, so they must never linger on ANY exit path — success, apply failure, or
+# abort. Module-level (not nested in apply()) so both halves of the split — _apply_plan and
+# _apply_exec — call the SAME cleanup; resume()'s overlap driver backgrounds _apply_exec, and a
+# nested-in-apply() helper would not be in scope there. `die` (common.sh) calls `exit`, which
+# bypasses a RETURN trap, and an EXIT trap here would clobber up()'s own EXIT trap — so cleanup
+# stays an explicit call at every exit point, not a trap.
+_clear_plan_file() { rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"; }
+
+# apply is split into two halves so the resume path can OVERLAP the cluster-side operator install
+# (ESO ‖ Reloader) with the long tail of the apply itself — the Cloud SQL create (~10 min). Within
+# one apply OpenTofu already builds module.gke and module.cloudsql as independent DAG branches, so
+# the GKE control plane is reachable ~5-7 min in WHILE Cloud SQL is still creating; apply just does
+# not RETURN until both finish. suspend.sh's _apply_and_wire_cluster_overlapped runs _apply_plan in
+# the foreground (keeps the interactive plan-review gate), then BACKGROUNDS _apply_exec and installs
+# the operators the instant the control plane responds — see that function. A second tofu apply
+# cannot run concurrently (the state lock is a global mutex), so the overlap is cluster-side work
+# (kubectl/helm, no lock) against the single running apply, NOT two applies.
+#
+#   _apply_plan  — init → reconcile → plan → CONFIRM. Foreground only (interactive review + the
+#                  auto-suspend serialise + the provisioning marker). Leaves $PLAN_FILE ready.
+#   _apply_exec  — apply that exact plan + the post-apply tail (state prune, IAM cooldown, marker
+#                  clear). Safe to background: runs no kubectl, so it never races the kubeconfig.
+#
+# apply() = _apply_plan → _apply_exec → creds. Byte-for-byte the same behaviour for every existing
+# serial caller (up / suspend / apply dispatch / _apply_and_wire); only resume drives the halves
+# apart.
+
+# _apply_plan: initialise the backend, heal drift, plan to a file, and get interactive approval.
+# Requires the state bucket to exist (bootstrap must have run first). Always plans to a file and
+# _apply_exec applies that EXACT plan so there is no drift between the reviewed diff and what
+# mutates GCP. `die`s (clearing the marker) on abort. The saved plan is gitignored and short-lived.
+_apply_plan() {
   ensure_tfvars
-  # Saved plans contain sensitive values, so they must never linger, on any exit path
-  # below — success, apply failure, or abort. `die` (common.sh) calls `exit`, which would
-  # bypass a RETURN trap, and an EXIT trap here would clobber up()'s own EXIT trap (set
-  # around its call to apply() to cancel a pre-dispatched CI run on failure — traps don't
-  # stack in bash, the last one set wins). So this stays an explicit local helper, called
-  # at every exit point, rather than a trap.
-  #
-  # clear_provisioning is called separately (not inlined here) on the SUCCESS path only —
-  # see the IAM_PROPAGATION_COOLDOWN sleep below for why a successful apply must not clear
-  # the marker immediately.
-  _clear_plan_file() { rm -f "$PLAN_FILE" "$TF_DIR/$PLAN_FILE"; }
   # Always start from a clean slate: delete any stale plan file so `up`/`apply` ALWAYS
   # regenerate a fresh plan below against current state + tfvars. A leftover plan from a
   # prior run must never be applied — it could no longer match reality.
@@ -652,50 +668,64 @@ apply() {
   # Heal state↔cloud drift a plain plan can't (untracked DB → import; legacy-purpose PSC
   # subnet → -replace). Runs after init (needs state); both branches self-disable once healed.
   reconcile_state
-  # Apply exactly the reviewed plan. A bare `tofu apply` would refresh and create a
-  # second plan after confirmation, allowing infrastructure drift between review and
-  # mutation. The plan file is local, short-lived, and gitignored. Any reconcile -replace
-  # targets are folded into THIS plan so the replacement is reviewed before it mutates GCP.
+  # Plan to a file so _apply_exec applies EXACTLY the reviewed diff. A bare `tofu apply` would
+  # refresh and create a second plan after confirmation, allowing infrastructure drift between
+  # review and mutation. The plan file is local, short-lived, and gitignored. Any reconcile
+  # -replace targets are folded into THIS plan so the replacement is reviewed before it mutates GCP.
   # -lock-timeout: wait (don't instantly fail) if the lock is briefly held — covers the
   # residual window where an auto-suspend build starts just after the pre-check above cleared.
   _plan_with_refresh_fallback -lock-timeout=120s ${RECONCILE_REPLACE[@]+"${RECONCILE_REPLACE[@]}"} -out="$PLAN_FILE"
-  if confirm "Apply this plan? (review the resource changes above)"; then
-    if tofu_locked_ apply -lock-timeout=120s "$PLAN_FILE"; then
-      _clear_plan_file
-      # Force the state history down to STATE_KEEP_VERSIONS the instant the write lands, rather
-      # than waiting for the bucket's ~daily lifecycle sweep. Best-effort (never aborts apply):
-      # the state is already durably written and the lifecycle rule backstops anything missed.
-      # ds_prune_dump_versions (infra/lib/posix/dump.sh, sourced via lib/db.sh) is the shared,
-      # unit-tested prune — its <keep-total> arg is STATE_KEEP_VERSIONS (live + noncurrent), and it
-      # groups per object path so the multi-object state prefix (default.tfstate, default.tflock, …)
-      # keeps STATE_KEEP_VERSIONS per object. Progress goes to stderr (still visible to the operator).
-      ds_prune_dump_versions "gs://$STATE_BUCKET/$STATE_PREFIX" "$STATE_KEEP_VERSIONS"
-      # IAM propagation cooldown — hold the provisioning marker past the apply's own completion.
-      # A successful apply that touched project IAM bindings (e.g. the lifecycle SA's own roles)
-      # is not immediately consistent: GCP's IAM read path can lag the write by up to ~1-2 min.
-      # Exactly this gap cost a real suspend build: `run.sh apply` cleared the marker the
-      # instant `tofu apply` returned, the auto-suspend guard's very next tick (seconds later)
-      # found no lock and no marker, greenlit a suspend, and by the time suspend.sh reached its
-      # own `tofu apply` minutes later the lifecycle SA's bindings were mid-propagation — its
-      # apply then 403'd "Policy update access denied" self-modifying its own project IAM
-      # (auto-suspend.tf's lifecycle_roles INVARIANT), stranding the build before the cleanup
-      # steps (registry/build/NEG) ran. Sleeping here — not shortening the guard's own idle-
-      # window grace — keeps the fix isolated to the one path that actually mutates IAM.
-      log "Waiting ${IAM_PROPAGATION_COOLDOWN}s for IAM propagation before releasing the provisioning marker"
-      sleep "$IAM_PROPAGATION_COOLDOWN"
-      clear_provisioning
-    else
-      # Saved plans contain sensitive values; remove it on failure as well as success. No IAM
-      # mutation is assumed to have landed durably on this path, so clear the marker immediately.
-      _clear_plan_file
-      clear_provisioning
-      die "OpenTofu apply failed"
-    fi
-  else
+  if ! confirm "Apply this plan? (review the resource changes above)"; then
     _clear_plan_file
     clear_provisioning
     die "aborted before apply"
   fi
+}
+
+# _apply_exec: apply the plan _apply_plan produced, then run the post-apply tail. Safe to run in
+# the background (resume overlaps it with the operator install) — it touches NO kubeconfig. On
+# failure it clears the marker and `die`s; when backgrounded its `die` only kills the subshell, so
+# the caller's `wait` captures the non-zero status and re-raises (aborting the bring-up).
+_apply_exec() {
+  if tofu_locked_ apply -lock-timeout=120s "$PLAN_FILE"; then
+    _clear_plan_file
+    # Force the state history down to STATE_KEEP_VERSIONS the instant the write lands, rather
+    # than waiting for the bucket's ~daily lifecycle sweep. Best-effort (never aborts apply):
+    # the state is already durably written and the lifecycle rule backstops anything missed.
+    # ds_prune_dump_versions (infra/lib/posix/dump.sh, sourced via lib/db.sh) is the shared,
+    # unit-tested prune — its <keep-total> arg is STATE_KEEP_VERSIONS (live + noncurrent), and it
+    # groups per object path so the multi-object state prefix (default.tfstate, default.tflock, …)
+    # keeps STATE_KEEP_VERSIONS per object. Progress goes to stderr (still visible to the operator).
+    ds_prune_dump_versions "gs://$STATE_BUCKET/$STATE_PREFIX" "$STATE_KEEP_VERSIONS"
+    # IAM propagation cooldown — hold the provisioning marker past the apply's own completion.
+    # A successful apply that touched project IAM bindings (e.g. the lifecycle SA's own roles)
+    # is not immediately consistent: GCP's IAM read path can lag the write by up to ~1-2 min.
+    # Exactly this gap cost a real suspend build: `run.sh apply` cleared the marker the
+    # instant `tofu apply` returned, the auto-suspend guard's very next tick (seconds later)
+    # found no lock and no marker, greenlit a suspend, and by the time suspend.sh reached its
+    # own `tofu apply` minutes later the lifecycle SA's bindings were mid-propagation — its
+    # apply then 403'd "Policy update access denied" self-modifying its own project IAM
+    # (auto-suspend.tf's lifecycle_roles INVARIANT), stranding the build before the cleanup
+    # steps (registry/build/NEG) ran. Sleeping here — not shortening the guard's own idle-
+    # window grace — keeps the fix isolated to the one path that actually mutates IAM.
+    log "Waiting ${IAM_PROPAGATION_COOLDOWN}s for IAM propagation before releasing the provisioning marker"
+    sleep "$IAM_PROPAGATION_COOLDOWN"
+    clear_provisioning
+  else
+    # Saved plans contain sensitive values; remove it on failure as well as success. No IAM
+    # mutation is assumed to have landed durably on this path, so clear the marker immediately.
+    _clear_plan_file
+    clear_provisioning
+    die "OpenTofu apply failed"
+  fi
+}
+
+# apply: the standard serial "plan → apply → fetch creds" used by up / suspend / the `apply`
+# dispatch / _apply_and_wire. resume() instead drives _apply_plan + _apply_exec apart to overlap
+# the operator install with the apply (see suspend.sh:_apply_and_wire_cluster_overlapped).
+apply() {
+  _apply_plan
+  _apply_exec
   # Only fetch kubectl creds when a cluster exists. use_cluster_soft handles the missing-
   # cluster sentinel (suspended env) AND the post-fetch GKE-context check consistently with
   # every other credential-fetching entry point (eso/reloader/verify-secrets/upgrade-helm/
@@ -876,23 +906,35 @@ _predispatch_ci_build() {
 }
 
 # _apply_ci_identity: apply ONLY the WIF pool/provider + the deployer + lifecycle-deployer SAs and
-# their principalSet bindings — the CI build's SOLE auth prerequisites (WORKLOAD_IDENTITY_PROVIDER /
+# their principalSet bindings, PLUS the Artifact Registry repo and the deployer's repo-scoped
+# repoAdmin binding — the CI build's SOLE auth prerequisites (WORKLOAD_IDENTITY_PROVIDER /
 # DEPLOYER_SA / LIFECYCLE_DEPLOYER_SA — the full SECRETS_REQUIRED_OUTPUTS set _tf_outputs_present
-# checks, minus the static app_domain/email_from vars which need no apply). This exists so a
-# FIRST-EVER / post-down bring-up (no tofu outputs yet) can still overlap the image build with
-# the ~11-min Cloud SQL create, the same way the outputs-present branches already do — instead of
-# leaving `deploy` a serial manual step behind the full apply.
+# checks, minus the static app_domain/email_from vars which need no apply) AND the push destination
+# build-push.sh's ds_ar_writable gate waits on. This exists so a FIRST-EVER / post-down bring-up (no
+# tofu outputs yet) can still overlap the image build with the ~11-min Cloud SQL create, the same
+# way the outputs-present branches already do — instead of leaving `deploy` a serial manual step
+# behind the full apply.
 #
-# WHY THIS IS SAFE (a targeted apply is normally discouraged as a partial graph): the six resource
-# addresses below reference ONLY string literals + var.project_id/var.github_* (verified against
-# modules/iam/main.tf) — never var.app_secrets (= module.cloudsql/memorystore outputs),
-# var.gke_node_sa_email, var.binauthz_*, or var.artifact_registry_*. So `-target` walks a ~1-min
-# subgraph that pulls in ZERO cloudsql/gke/memorystore resources. The secret-VERSION that reads
-# those slow outputs is a DEPENDENT of the module, not a dependency of the WIF provider, so it is
-# excluded here and applied by the full `apply` that follows. That second apply carries NO -target,
-# applies the COMPLETE graph, and reconciles everything — so the final state is whole and
-# consistent. This step only reorders WHEN the WIF identity lands so `secrets` can push it and CI
-# can start. -auto-approve because it is an internal staging apply, not the reviewed main plan.
+# WHY THE AR REPO + BINDING ARE HERE: both are count=environment_active — destroyed on suspend,
+# recreated on resume. Before this, they landed only in the full (untargeted) apply that follows,
+# so the pre-dispatched build reached the registry BEFORE the repoAdmin binding existed and sat in
+# ds_ar_writable's poll for MINUTES every resume (observed to attempt 29/40, past the step's 8m
+# retry timeout, restarting the wait). Landing them in this ~1-min pre-apply means the binding
+# exists before the build is even dispatched, so the gate passes on attempt 1 in the common case;
+# only the residual IAM→data-plane propagation (build-push.sh's `sleep 5` + a few short polls) remains.
+#
+# WHY THIS IS SAFE (a targeted apply is normally discouraged as a partial graph): the eight resource
+# addresses below reference ONLY string literals + var.project_id/var.github_*/var.region/var.labels
+# (verified against modules/iam + modules/artifact-registry) — never var.app_secrets
+# (= module.cloudsql/memorystore outputs), var.gke_node_sa_email, or var.binauthz_*. The AR repo
+# depends only on google_project_service.apis; the binding depends only on the repo + the deployer SA
+# (both targeted here). So `-target` still walks a ~1-min subgraph that pulls in ZERO
+# cloudsql/gke/memorystore resources. The secret-VERSION that reads those slow outputs is a DEPENDENT
+# of the module, not a dependency of the WIF provider, so it is excluded here and applied by the full
+# `apply` that follows. That second apply carries NO -target, applies the COMPLETE graph, and
+# reconciles everything — so the final state is whole and consistent. This step only reorders WHEN the
+# WIF identity + AR push target land so `secrets` can push and CI can start.
+# -auto-approve because it is an internal staging apply, not the reviewed main plan.
 #
 # KEEP IN SYNC WITH SECRETS_REQUIRED_OUTPUTS: every output that predicate checks must have its
 # backing resource targeted here, or the first-ever/post-down path loops forever — _apply_ci_identity
@@ -903,11 +945,20 @@ _predispatch_ci_build() {
 #
 # init + the autosuspend-lock coordination mirror apply() — this runs BEFORE it, so it cannot rely
 # on apply() having initialised the backend or serialised against the idle-suspend build.
+# The AR push target ds_ar_writable gates on: the repo the image is pushed to + the deployer's
+# repo-scoped repoAdmin binding that authorizes the push. Shared by _apply_ci_identity (post-down /
+# first-ever, where the whole identity is also absent) and _apply_ar_push_target (post-suspend fast
+# path, where identity already survives the suspend and only these two were destroyed).
+_AR_PUSH_TARGET_ARGS=(
+  -target=module.artifact_registry.google_artifact_registry_repository.docker
+  -target=module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry
+)
+
 _apply_ci_identity() {
   ensure_tfvars
   require_state_bucket
   wait_for_no_autosuspend_build
-  log "Applying CI auth identity only (WIF + deployer SA) so the image build can start now"
+  log "Applying CI auth identity + AR push target (WIF + deployer SA + repo/binding) so the image build can start now"
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
   tofu_locked_ apply -auto-approve -lock-timeout=120s \
     -target=module.iam.google_iam_workload_identity_pool.github \
@@ -915,7 +966,28 @@ _apply_ci_identity() {
     -target=module.iam.google_service_account.deployer \
     -target=module.iam.google_service_account_iam_member.github_wif \
     -target=module.iam.google_service_account.lifecycle_deployer \
-    -target=module.iam.google_service_account_iam_member.lifecycle_deployer_github_wif
+    -target=module.iam.google_service_account_iam_member.lifecycle_deployer_github_wif \
+    "${_AR_PUSH_TARGET_ARGS[@]}"
+}
+
+# _apply_ar_push_target: recreate ONLY the AR repo + deployer repoAdmin binding, ~1 min, BEFORE the
+# post-suspend fast path pre-dispatches CI. Both are count=environment_active, so suspend destroyed
+# them; unlike the post-down path the WIF identity + deployer SA SURVIVE a suspend, so this targets
+# just the two AR resources the build's push needs — not the full identity subgraph. Without it the
+# fast path pre-dispatches the build and only recreates the repo/binding inside the main `apply`
+# (Cloud SQL + control plane), so the push reaches the registry minutes before the binding lands and
+# sits in build-push.sh's ds_ar_writable poll (observed to attempt 29/40, past the step's 8m retry
+# timeout). The two -targets reference only string literals + var.project_id/region/labels and
+# google_project_service.apis + the (surviving) deployer SA — ZERO cloudsql/gke/memorystore — so the
+# ~1-min-subgraph invariant that makes _apply_ci_identity safe holds here too. The full `apply` that
+# follows carries no -target and reconciles the complete graph, so the final state stays consistent.
+_apply_ar_push_target() {
+  ensure_tfvars
+  require_state_bucket
+  wait_for_no_autosuspend_build
+  log "Recreating the Artifact Registry repo + deployer push binding so the pre-dispatched build can push on attempt 1"
+  tofu_ init -backend-config="bucket=$STATE_BUCKET"
+  tofu_locked_ apply -auto-approve -lock-timeout=120s "${_AR_PUSH_TARGET_ARGS[@]}"
 }
 
 # _arm_ci_cancel_trap: install the EXIT trap that cancels the pre-dispatched CI run if the caller

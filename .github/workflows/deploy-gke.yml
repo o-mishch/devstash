@@ -26,13 +26,22 @@ on:
         required: false
         default: ''
 
-# Serialize deployments but never cancel one already mutating external state. GitHub
-# cancellation does not stop an in-cluster migration Job; a newer run could then delete
-# that still-running Job and interrupt a schema change. `false` lets the active deploy
-# finish while GitHub keeps only the newest pending run for this group.
+# Serialize deployments but never cancel one — a newer run must QUEUE behind the active one, not
+# evict it. GitHub cancellation does not stop an in-cluster migration Job; a newer run could then
+# delete that still-running Job and interrupt a schema change.
+#
+# `queue: max` (GitHub, 2026-05) queues pending runs FIFO instead of the default "keep only the
+# newest pending, cancel the rest". This fixes the exact eviction we hit live: run.sh resume/up
+# PRE-DISPATCH this workflow (reason=provision) so its build overlaps `apply`, and that build sits
+# for minutes in build-push.sh's AR-writable gate while the repo/binding are recreated. Under the
+# default policy an ordinary push to main landing during a resume found the pre-dispatched build
+# still PENDING and cancelled it (observed: cancelled at AR attempt 24/40 by a push 4 min later),
+# leaving infra up with no image pushed. With `queue: max` the push simply queues behind the
+# provision run instead — no clever per-run group key needed. Cannot be combined with
+# cancel-in-progress: true (conflicting semantics), which is fine — we never want to cancel here.
 concurrency:
   group: deploy-gke-${{ github.ref }}
-  cancel-in-progress: false
+  queue: max
 
 env:
   # us-central1 is one of the three GCS Always Free regions (with us-west1/us-east1).

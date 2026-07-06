@@ -19,6 +19,10 @@ REPO_ROOT="$(cd "${_HELPER_DIR}/../../../.." && pwd)"
 # does not flag it unused and so it survives into the test's environment.
 # shellcheck disable=SC2034
 RUN_SH="${REPO_ROOT}/infra/run/gcp/run.sh"
+# shellcheck disable=SC2034
+SUSPEND_SH="${REPO_ROOT}/infra/run/gcp/lib/suspend.sh"
+# shellcheck disable=SC2034
+GKE_SH="${REPO_ROOT}/infra/run/gcp/lib/gke.sh"
 
 load "${REPO_ROOT}/node_modules/bats-support/load.bash"
 load "${REPO_ROOT}/node_modules/bats-assert/load.bash"

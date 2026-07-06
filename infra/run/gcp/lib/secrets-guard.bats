@@ -126,3 +126,36 @@ _gate_present() {
       || fail "_apply_ci_identity is missing -target=${resource} (backs output '${name}', required by SECRETS_REQUIRED_OUTPUTS)"
   done
 }
+
+# ── The AR push target build-push.sh's ds_ar_writable gate waits on ──────────────────────────────
+# The AR repo + the deployer's repo-scoped repoAdmin binding are count=environment_active — they
+# vanish on suspend and must be recreated BEFORE the pre-dispatched build reaches the registry, or
+# the push sits in ds_ar_writable's poll (seen live to attempt 29/40, past the step's 8m retry). The
+# shared _AR_PUSH_TARGET_ARGS array is the single source of those two -target addresses; assert it
+# names exactly the repo + the deployer binding so a rename in modules/{artifact-registry,iam} that
+# isn't mirrored here fails CI instead of silently reintroducing the poll.
+@test "the shared AR push-target array targets the repo and the deployer repoAdmin binding" {
+  local ar_block
+  ar_block="$(awk '/^_AR_PUSH_TARGET_ARGS=\(/,/^\)/' "$RUN_SH")"
+  echo "$ar_block" | grep -qF -- "-target=module.artifact_registry.google_artifact_registry_repository.docker" \
+    || fail "_AR_PUSH_TARGET_ARGS is missing the AR repo target"
+  echo "$ar_block" | grep -qF -- "-target=module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry" \
+    || fail "_AR_PUSH_TARGET_ARGS is missing the deployer repoAdmin binding target"
+}
+
+# The post-suspend FAST path (outputs present) must recreate the AR push target BEFORE it
+# pre-dispatches the build — else the build races the still-absent repoAdmin binding. Assert the
+# ordering statically: _apply_ar_push_target appears before _predispatch_ci_build in resume()'s
+# outputs-present branch. Guards the exact regression that made the push poll to attempt 29/40.
+@test "resume fast path recreates the AR push target before pre-dispatching the build" {
+  local resume_block ar_line predispatch_line
+  resume_block="$(awk '/^resume\(\)/,/^}/' "$SUSPEND_SH")"
+  # Match the CALL lines (leading whitespace then the bare function name), not the comments that
+  # also mention these names — a `# … run.sh:_predispatch_ci_build` note precedes the real calls.
+  ar_line="$(echo "$resume_block" | grep -nE '^[[:space:]]+_apply_ar_push_target([[:space:]]|$)' | head -1 | cut -d: -f1)"
+  predispatch_line="$(echo "$resume_block" | grep -nE '^[[:space:]]+_predispatch_ci_build([[:space:]]|$)' | head -1 | cut -d: -f1)"
+  [[ -n "$ar_line" ]] || fail "resume() never calls _apply_ar_push_target"
+  [[ -n "$predispatch_line" ]] || fail "resume() never calls _predispatch_ci_build"
+  (( ar_line < predispatch_line )) \
+    || fail "_apply_ar_push_target ($ar_line) must precede _predispatch_ci_build ($predispatch_line) in resume()"
+}
