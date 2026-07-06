@@ -365,20 +365,27 @@ ds_cluster_present() {
   [[ -n "$found" ]]
 }
 
-# ds_ar_writable <region> <project> <repo>: 0 iff the Artifact Registry repo EXISTS and its IAM
-# policy grants the CALLING identity (the WIF-federated deployer SA in CI) a role that carries
-# artifactregistry.repositories.uploadArtifacts — i.e. the push will authorize. Guards the
-# resume/first-apply RACE: run.sh PRE-DISPATCHES deploy-gke so build-push overlaps `tofu apply`,
-# but the repo AND the deployer's repo-scoped repoAdmin binding are count=environment_active —
-# destroyed on suspend, RECREATED partway through that still-running apply. Pushing before the
-# binding lands (or before it propagates to the registry data plane) is the exact
-# "denied: ...uploadArtifacts" failure this probe polls away. Checks, in order:
+# ds_ar_writable <region> <project> <repo>: 0 iff the Artifact Registry repo EXISTS and the CALLER
+# (the WIF-federated deployer SA in CI) actually holds artifactregistry.repositories.uploadArtifacts
+# on it — i.e. the push will authorize. Guards the resume/first-apply RACE: run.sh PRE-DISPATCHES
+# deploy-gke so build-push overlaps `tofu apply`, but the repo AND the deployer's repo-scoped
+# repoAdmin binding are count=environment_active — destroyed on suspend, RECREATED partway through
+# that still-running apply. Pushing before the binding lands (or before it propagates to the
+# registry data plane) is the exact "denied: ...uploadArtifacts" failure this probe polls away.
+# Checks, in order:
 #   1. repo describe succeeds       — the repo has been recreated (else 404 → not yet),
-#   2. its IAM policy lists our SA against roles/artifactregistry.{repoAdmin,writer,admin}
-#      — the write binding has been applied (a bare repo with no binding still can't push).
-# gcloud has no `test-iam-permissions` for artifacts, so we read the policy and match our own
-# member. `gcloud config get account` is the identity gcloud will mint the push token for (the
-# impersonated deployer SA under WIF), so matching it against the policy is faithful to the push.
+#   2. the caller has uploadArtifacts on the repo, asked via the AR `:testIamPermissions` REST API.
+#
+# WHY NOT match the IAM policy against our own member (the previous approach): under WIF the
+# `google-github-actions/auth` action writes an ADC external_account credentials file and never
+# registers a gcloud account, so `gcloud config get-value account` returns EMPTY in CI — the old
+# `[[ -n "$account" ]] || return 1` guard then failed on EVERY poll and the gate never cleared even
+# though the deployer SA genuinely had repoAdmin (the live "attempt 40/40" hang). testIamPermissions
+# asks "can THE CALLER do X on this resource" without naming our own identity, so it works identically
+# under WIF impersonation, direct SA keys, and local user creds, and resolves inherited / conditional
+# / custom-role grants that a member-string match cannot. gcloud has no `test-iam-permissions` verb
+# for artifacts, so we POST the REST endpoint with a caller token from `gcloud auth print-access-token`
+# (which mints from the same external_account creds the push will use — faithful to the push identity).
 # All failures are swallowed to a non-zero return so the CALLER's poll loop retries rather than
 # aborting under set -e — same tolerant-probe contract as check-env-active.sh wraps ds_cluster_present.
 # A brief settle after this returns true still guards raw data-plane propagation (see build-push.sh).
@@ -386,19 +393,19 @@ ds_ar_writable() {
   # repo_id (not `repo`): a lowercase `repo` local would make shellcheck -x, following this source
   # into the CI scripts, flag every uppercase $REPO env use (prune-registry.sh, build-push.sh) as a
   # possible-misspelling SC2153 — those are legit workflow-provided vars, so keep the name distinct.
-  local region="$1" project="$2" repo_id="$3" account members
+  local region="$1" project="$2" repo_id="$3" token url
   gcloud artifacts repositories describe "$repo_id" \
     --project "$project" --location "$region" >/dev/null 2>&1 || return 1
-  account="$(gcloud config get-value account 2>/dev/null)" || return 1
-  [[ -n "$account" ]] || return 1
-  # Bindings that include uploadArtifacts. writer/repoAdmin are the scoped grants this repo uses;
-  # admin is included for completeness (a project-wide artifactregistry.admin would also authorize).
-  members="$(gcloud artifacts repositories get-iam-policy "$repo_id" \
-    --project "$project" --location "$region" \
-    --flatten='bindings[].members' \
-    --filter='bindings.role:(roles/artifactregistry.repoAdmin OR roles/artifactregistry.writer OR roles/artifactregistry.admin)' \
-    --format='value(bindings.members)' 2>/dev/null)" || return 1
-  printf '%s\n' "$members" | grep -qxF "serviceAccount:$account"
+  token="$(gcloud auth print-access-token 2>/dev/null)" || return 1
+  [[ -n "$token" ]] || return 1
+  url="https://artifactregistry.googleapis.com/v1/projects/${project}/locations/${region}/repositories/${repo_id}:testIamPermissions"
+  # A granted permission is echoed back in the response's `permissions` array; a caller WITHOUT it
+  # gets a 200 with the field omitted (empty). grep the returned permission name to decide — a 4xx
+  # (repo/propagation not ready) also fails the grep, so the caller retries.
+  curl -sf --max-time 10 -X POST \
+    -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
+    -d '{"permissions":["artifactregistry.repositories.uploadArtifacts"]}' \
+    "$url" 2>/dev/null | grep -q 'artifactregistry.repositories.uploadArtifacts'
 }
 
 # ds_dump_job_diagnostics <namespace> <job-name>: best-effort logs + describe for a failed/timed-out

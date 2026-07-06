@@ -23,6 +23,8 @@ RUN_SH="${REPO_ROOT}/infra/run/gcp/run.sh"
 SUSPEND_SH="${REPO_ROOT}/infra/run/gcp/lib/suspend.sh"
 # shellcheck disable=SC2034
 GKE_SH="${REPO_ROOT}/infra/run/gcp/lib/gke.sh"
+# shellcheck disable=SC2034
+COMMON_SH="${REPO_ROOT}/infra/lib/common.sh"
 
 load "${REPO_ROOT}/node_modules/bats-support/load.bash"
 load "${REPO_ROOT}/node_modules/bats-assert/load.bash"
