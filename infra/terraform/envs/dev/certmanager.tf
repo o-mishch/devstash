@@ -24,11 +24,19 @@
 # posture): no PEM/key material is ever handled. Google issues and auto-renews the cert once a
 # CNAME (emitted as the dns_authorization_cname_* outputs) exists in the Spaceship DNS zone.
 # Because the app's domain is on Spaceship (not Cloud DNS), that CNAME cannot be managed by the
-# hashicorp/google provider. The namecheap/spaceship provider exists but (as of v0.5.5) its
-# record validator rejects known-after-apply values — and this CNAME's target is a reference to
-# the dns_authorization resource above — so it cannot manage it either. Instead run.sh's
-# update_dns (lib/dns.sh → ensure_cert_cname) asserts it idempotently on every apply/resume from
-# these outputs, so it self-heals and needs no manual step. After it
+# hashicorp/google provider. The namecheap/spaceship provider exists but CANNOT manage it either:
+# its singular spaceship_dns_record validator (internal/provider/dns_record_validator.go, v0.5.5)
+# runs at ValidateConfig time and rejects ANY non-literal value in address/cname with "field is
+# required" — not just known-after-apply, but even a plan-time-KNOWN var/local/remote_state string.
+# This was spiked empirically (2026-07-06) against the live zone: literal passes; var/local/
+# terraform_data reference all rejected; and the CNAME validator additionally rejects the dotted
+# FQDN target this cert needs. So both this CNAME AND the app A-record (whose target is the
+# reference module.network.ingress_ip[0].address) are unmanageable by the provider today — the
+# whole DNS surface stays in shell. The plural spaceship_dns_records might dodge the validator but
+# is group-scoped (deletes any record absent from its list), which would endanger the apex/www
+# prod-Vercel records — not worth it. Revisit if the provider fixes the reference-rejection bug.
+# Instead run.sh's update_dns (lib/dns.sh → ensure_cert_cname) asserts it idempotently on every
+# apply/resume from these outputs, so it self-heals and needs no manual step. After it
 # resolves, the cert provisions and then persists forever — DNS-auth certs renew automatically as
 # long as the CNAME stays in place (which update_dns guarantees; it is upserted, never pruned),
 # independent of any suspend/resume of the cluster. See infra/docs/08-gcp-bootstrap.md §7.

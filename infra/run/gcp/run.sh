@@ -101,10 +101,11 @@ STATE_BUCKET="${STATE_BUCKET:-}"
 # GCS lifecycle config for the out-of-band state bucket. Kept as a standalone JSON file
 # (not an inline heredoc) so it is diffable, jq-validatable, and reviewable as JSON.
 STATE_LIFECYCLE=infra/run/gcp/tfstate-lifecycle.json
-# Synchronous version cap enforced after every state write (see gcs_prune_versions in
-# infra/lib/common.sh). "3 total" = the live state + 2 noncurrent, matching the lifecycle
-# rule in $STATE_LIFECYCLE (numNewerVersions=2) — the two mechanisms deliberately agree, one
-# immediate, one async-backstop. State keys live under the backend prefix "gke/dev".
+# Synchronous version cap enforced after every state write (via ds_prune_dump_versions in
+# infra/lib/posix/dump.sh — the shared prune, sourced transitively through lib/db.sh). "3 total"
+# = the live state + 2 noncurrent, matching the lifecycle rule in $STATE_LIFECYCLE
+# (numNewerVersions=2) — the two mechanisms deliberately agree, one immediate, one async-backstop.
+# State keys live under the backend prefix "gke/dev".
 STATE_KEEP_VERSIONS=3
 STATE_PREFIX="gke/dev/"
 # How long apply() holds the provisioning marker past a SUCCESSFUL tofu apply, to cover GCP IAM
@@ -158,15 +159,27 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/suspend.sh"
 # logging/preflight/CLI-plumbing vocabulary).
 
 # Read a scalar from terraform.tfvars (single source of truth for project/region). Runs BEFORE
-# `tofu init`, so `tofu output/console` is not yet an option — a line-oriented read is the only
-# tool available this early. Scoped by design: it handles the simple quoted scalars this script
-# scaffolds from tfvars.example (project_id/region/environment/app_domain), NOT arbitrary HCL
-# (heredocs, multi-line lists, or `=` inside a value). $1 is interpolated into the regex, so
-# call it only with literal key names (all current callers do) — never with user input.
+# `tofu init`, so `tofu output/console` is not yet an option (the derived value — project_id —
+# is what NAMES the state bucket that init needs, a hard chicken-and-egg): a line-oriented read
+# is the only tool available this early. Scoped by design: it handles the simple quoted scalars
+# this script scaffolds from tfvars.example (project_id/region/environment/app_domain), NOT
+# arbitrary HCL. Rather than silently mis-parse a shape it can't handle — the dangerous failure
+# mode is a truncated project_id that then points every gcloud call at the WRONG project — it
+# DIES loudly on any value that isn't a simple single-line scalar: a list (`[...]`), an object
+# (`{...}`), or an HCL heredoc (`<<`). $1 is interpolated into the regex, so call it only with
+# literal key names (all current callers do) — never with user input.
 tfvar() {
   [[ -f "$TFVARS" ]] || return 1
-  grep -E "^[[:space:]]*$1[[:space:]]*=" "$TFVARS" | head -1 \
-    | sed -E 's/^[^=]*=[[:space:]]*"?([^"#]*[^"# ])"?.*$/\1/'
+  local rhs
+  rhs="$(grep -E "^[[:space:]]*$1[[:space:]]*=" "$TFVARS" | head -1 | sed -E 's/^[^=]*=[[:space:]]*//')"
+  [[ -n "$rhs" ]] || return 0
+  # Reject shapes this scalar reader can't parse, so a mis-typed tfvars fails loudly here
+  # instead of leaking a truncated value into the state-bucket name / gcloud --project.
+  case "$rhs" in
+    '['*|'{'*|*'<<'*) die "tfvar: '$1' in $TFVARS is not a simple scalar (list/object/heredoc) — this early pre-init reader only supports quoted or bare scalars" ;;
+  esac
+  # Strip a trailing inline comment, then surrounding quotes and whitespace.
+  sed -E 's/[[:space:]]*#.*$//; s/^"(.*)"$/\1/; s/^[[:space:]]+|[[:space:]]+$//g' <<<"$rhs"
 }
 
 tofu_() { tofu -chdir="$TF_DIR" "$@"; }
@@ -445,7 +458,11 @@ apply() {
       # Force the state history down to STATE_KEEP_VERSIONS the instant the write lands, rather
       # than waiting for the bucket's ~daily lifecycle sweep. Best-effort (never aborts apply):
       # the state is already durably written and the lifecycle rule backstops anything missed.
-      gcs_prune_versions "gs://$STATE_BUCKET/$STATE_PREFIX" "$STATE_KEEP_VERSIONS"
+      # ds_prune_dump_versions (infra/lib/posix/dump.sh, sourced via lib/db.sh) is the shared,
+      # unit-tested prune — its <keep-total> arg is STATE_KEEP_VERSIONS (live + noncurrent), and it
+      # groups per object path so the multi-object state prefix (default.tfstate, default.tflock, …)
+      # keeps STATE_KEEP_VERSIONS per object. Progress goes to stderr (still visible to the operator).
+      ds_prune_dump_versions "gs://$STATE_BUCKET/$STATE_PREFIX" "$STATE_KEEP_VERSIONS"
       # IAM propagation cooldown — hold the provisioning marker past the apply's own completion.
       # A successful apply that touched project IAM bindings (e.g. the lifecycle SA's own roles)
       # is not immediately consistent: GCP's IAM read path can lag the write by up to ~1-2 min.
@@ -920,110 +937,8 @@ smoke() {
 
 # status / logs live in lib/gke.sh (sourced above).
 
-# empty_bucket <gs://bucket>: recursively delete every object (all versions) in a bucket so
-# the no-force_destroy guard on google_storage_bucket does not block `tofu destroy`. Best-
-# effort — an absent/already-empty bucket (or one destroyed earlier in the same run) must not
-# abort the teardown. `--all-versions` reaches noncurrent generations too (both buckets have
-# versioning on), otherwise archived versions keep the bucket non-empty and the delete fails.
-empty_bucket() {
-  local uri="$1"
-  [[ -n "$uri" ]] || return 0
-  gcloud storage buckets describe "$uri" --project="$PROJECT_ID" >/dev/null 2>&1 || return 0
-  log "Emptying $uri (all object versions) so destroy can delete the bucket"
-  gcloud storage rm -r --all-versions "$uri/**" --quiet --project="$PROJECT_ID" \
-    || warn "empty of $uri returned non-zero (likely already empty) — continuing"
-}
-
-# force_release_psa: after `tofu destroy`, reclaim the leftover PSA plumbing GCP holds past the
-# teardown. The service_networking_connection is ABANDONed on destroy (see modules/network) — it
-# is dropped from state but the actual GCP peering + its reserved global address linger until
-# GCP's producer lock clears (up to ~4 days after the last Cloud SQL instance died). Try to
-# force them now so a `down` leaves the GCP side clean rather than trickling out over days.
-# BOTH deletes are best-effort: the peering delete may still hit the producer lock (identical to
-# the destroy path — nothing we can do but wait), and the address delete 409s until the peering
-# releasing frees it. A miss here is not a teardown failure; it just means GCP finishes the job
-# on its own schedule. Names are deterministic (modules/network name_prefix = devstash-<env>).
-force_release_psa() {
-  local vpc="devstash-${ENVIRONMENT}-vpc"
-  local psa_range="devstash-${ENVIRONMENT}-psa"
-  # Only attempt if the VPC still exists — a fully-completed destroy already removed it, and
-  # then there is no peering to reap. `describe` is the existence probe; --project is explicit.
-  gcloud compute networks describe "$vpc" --project="$PROJECT_ID" >/dev/null 2>&1 || return 0
-  log "Force-releasing leftover PSA peering on $vpc (ABANDONed on destroy; GCP may still hold it)"
-  gcloud services vpc-peerings delete --network="$vpc" \
-    --service=servicenetworking.googleapis.com --project="$PROJECT_ID" --quiet \
-    || warn "PSA peering delete returned non-zero (GCP producer lock not yet released — it clears on its own, up to ~4 days) — continuing"
-  log "Releasing reserved PSA range $psa_range"
-  gcloud compute addresses delete "$psa_range" --global --project="$PROJECT_ID" --quiet \
-    || warn "PSA range delete returned non-zero (still held by the peering above) — continuing"
-}
-
-# down: FORCE-destroy the entire dev environment with `tofu destroy`.
-# GKE and Cloud SQL are already unprotected in this env (they are torn down on every
-# suspend cycle), so no deletion_protection dance is needed — destroy runs directly.
-# Unlike `suspend` (which deliberately PRESERVES the verified Cloud SQL dump so `resume`
-# can restore it), `down` is a full teardown: it EMPTIES the uploads + db-dumps buckets
-# first so the no-force_destroy guard cannot block destroy, then force-releases the
-# ABANDONed PSA peering + reserved range that GCP holds past the teardown. The state
-# bucket and GCP project are left intact after destroy.
-down() {
-  ensure_tfvars
-  # A fresh checkout has no initialized backend even when the state bucket exists.
-  # Use the same explicit backend selection as apply so destroy cannot read local or
-  # wrong-environment state by accident.
-  tofu_ init -backend-config="bucket=$STATE_BUCKET"
-  log "FORCE tear down — tofu destroy ($TF_DIR)"
-  warn "This deletes the GKE cluster, Cloud SQL, and Memorystore."
-  warn "UNLIKE 'suspend', 'down' also EMPTIES + DELETES the uploads AND db-dumps buckets —"
-  warn "the last Cloud SQL dump is DESTROYED. There is no restore after a 'down'."
-  warn "If you want a recoverable ~\$0 idle instead, use 'suspend' (keeps the dump)."
-  if confirm "FORCE-destroy the entire dev environment (buckets + dump included)?"; then
-    # Capture bucket names BEFORE destroy — the tofu outputs vanish once state is gone.
-    # tf_out swallows a missing output (already-suspended/partial env) → empty, which
-    # empty_bucket treats as a no-op.
-    local uploads_uri db_dumps_uri
-    uploads_uri="$(tf_out uploads_bucket)"; [[ -n "$uploads_uri" ]] && uploads_uri="gs://$uploads_uri"
-    db_dumps_uri="$(tf_out db_dumps_bucket)"; [[ -n "$db_dumps_uri" ]] && db_dumps_uri="gs://$db_dumps_uri"
-    empty_bucket "$uploads_uri"
-    empty_bucket "$db_dumps_uri"
-    # Reap GKE-leaked NEGs + firewall rules BEFORE destroy — they reference the VPC and would
-    # otherwise fail its delete ("network resource is already being used by …/networkEndpointGroups/
-    # …"). cleanup_leaked_negs (lib/suspend.sh) is VPC-scoped and best-effort. This must run before
-    # destroy, unlike the suspend path where it runs after (there the cluster destroy is a Terraform
-    # apply, not a full VPC teardown, so the VPC survives and the NEGs only need reaping for later).
-    cleanup_leaked_negs
-    # The script already obtained explicit confirmation; avoid a second prompt that
-    # makes AUTO_APPROVE=1 ineffective in automation.
-    #
-    # -refresh=false: destroy from state WITHOUT the pre-destroy refresh. `down` is a full
-    # teardown, so we don't need to reconcile against live state first — and a resource the
-    # env deleted out-of-band (e.g. the Artifact Registry repo + its repo-scoped IAM members,
-    # which a deep-suspend destroys through Terraform / an older suspend deleted via gcloud)
-    # would otherwise 403 during that refresh: GCP answers getIamPolicy on a vanished repo with
-    # 403 (not 404), aborting the whole teardown before any destroy runs. Skipping the refresh
-    # makes destroy operate on state alone — an already-gone resource just 404s on its own
-    # delete call, which the provider tolerates, and the teardown proceeds. (Force-delete,
-    # catch-if-absent, move on.) State-only destroy is safe here precisely because down()
-    # removes EVERYTHING (bar the excluded secrets); there is no partial-state risk to guard against.
-    #
-    # -exclude the two Secret Manager secret CONTAINERS so a full `down` PRESERVES them (and,
-    # by dependency, their versions + IAM grants — `-exclude` spares anything depending on the
-    # excluded address). Both carry lifecycle.prevent_destroy = true, so WITHOUT these excludes
-    # `tofu destroy` would ERROR ("Instance cannot be destroyed") and abort the whole teardown.
-    # Rationale for keeping them: Secret Manager is ~$0 (inside the free version tier) and
-    # re-entering the app + Spaceship-DNS creds by hand after every teardown is the real cost.
-    # These are the ONLY prevent_destroy resources in the env — keep this list in sync if that
-    # changes. Addresses: app_config lives in module.iam; ops_config is top-level in envs/dev.
-    tofu_ destroy -auto-approve -refresh=false \
-      -exclude=module.iam.google_secret_manager_secret.app_config \
-      -exclude=google_secret_manager_secret.ops_config
-    # Reclaim the PSA peering + range GCP holds past the ABANDONed connection (best-effort).
-    force_release_psa
-    ok "destroyed. (State bucket gs://$STATE_BUCKET and the project are left intact.)"
-  else
-    die "aborted"
-  fi
-}
+# down (full teardown) + its private helpers empty_bucket / force_release_psa live in lib/suspend.sh
+# (sourced below), beside the cleanup_leaked_negs/cleanup_builds teardown family they call into.
 
 # ── suspend / resume (on-demand showcase) ───────────────────────────────────
 # The DB dump/restore (resolve_dump_target/dump_db/restore_db), DNS (spaceship_api/update_dns/

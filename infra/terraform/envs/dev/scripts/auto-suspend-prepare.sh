@@ -18,17 +18,19 @@ mkdir -p /workspace/sec
 # wiping them). Ops-only DNS creds are ALSO one consolidated JSON secret (devstash-ops-config,
 # spaceship-api-key/-secret properties) — fetch it as a whole blob if present (opt-in: a
 # project without DNS creds omits it). The Python helper splits the blob into the two tfvars.
-# fetch_enabled_secret <secret-name> <out-file>: resolve the secret's newest ENABLED version
-# and access it into <out-file>, dying if there is no ENABLED version. Resolve the newest
-# ENABLED version rather than `access latest`: `latest` points at the highest-numbered version
-# regardless of state, so a single DISABLED/DESTROYED top version (e.g. left by an interrupted
-# rotation) makes `access latest` fail with FAILED_PRECONDITION and blocks the whole suspend —
-# the outage the secret_data_wo redesign (modules/iam) was meant to end, still reachable via a
-# stray disabled version. This mirrors ds_newest_enabled_secret_version (infra/lib/common.sh),
-# which this /bin/sh Cloud Build template cannot source — keep the two in sync.
+# The newest-state:ENABLED version resolution (the "avoid `access latest`" hardening) is the SHARED
+# POSIX helper ds_newest_enabled_secret_version (infra/lib/posix/secrets.sh) — sourced from the
+# /workspace/repo clone above so this /bin/sh step and bash's common.sh can no longer drift on it.
+# shellcheck source=infra/lib/posix/secrets.sh
+. /workspace/repo/infra/lib/posix/secrets.sh
+
+# fetch_enabled_secret <secret-name> <out-file>: resolve the secret's newest ENABLED version via the
+# shared helper and access it into <out-file>, dying if there is no ENABLED version. This step's
+# FATAL policy on empty is deliberately unlike the tolerant bash reads (run.sh/dns.sh) that share the
+# same resolver — prepare MUST have the consolidated secret to reconstruct the tfvars, so an absent
+# ENABLED version aborts the suspend rather than silently continuing with a wiped credential.
 fetch_enabled_secret() {
-  _ver="$(gcloud secrets versions list "$1" --project="$_PROJECT_ID" \
-    --filter=state:ENABLED --sort-by=~createTime --limit=1 --format='value(name)')"
+  _ver="$(ds_newest_enabled_secret_version "$1" "$_PROJECT_ID")"
   [ -n "$_ver" ] || { echo "$1 has no ENABLED version — cannot proceed"; exit 1; }
   gcloud secrets versions access "$_ver" --secret="$1" --project="$_PROJECT_ID" > "$2"
 }

@@ -156,29 +156,14 @@ ds_image_base() {
   printf '%s-docker.pkg.dev/%s/%s' "$1" "$2" "$3"
 }
 
-# ds_newest_enabled_secret_version <secret> <project>: echo the resource name of the newest
-# state:ENABLED version of <secret>, or nothing (non-fatal) if the secret is absent / has no
-# enabled version. Resolve the newest ENABLED version rather than `access latest`, because
-# `latest` points at the highest-numbered version regardless of state — one DISABLED/DESTROYED
-# top version (e.g. from an interrupted rotation) makes `access latest` fail with
-# FAILED_PRECONDITION and breaks reads. The auto-suspend Cloud Build path (auto-suspend-prepare.sh)
-# mirrors this same hardening by necessity (it cannot source this file — see the header note).
-ds_newest_enabled_secret_version() {
-  gcloud secrets versions list "$1" --project="$2" \
-    --filter=state:ENABLED --sort-by=~createTime --limit=1 --format='value(name)' 2>/dev/null || true
-}
-
-# ds_access_secret_blob <secret> <project>: echo the payload of <secret>'s newest ENABLED
-# version, or nothing (empty output, non-fatal) if the secret is absent / has no enabled
-# version. Folds the resolve-newest-enabled + access + tolerate-missing idiom that the app-
-# config read (run.sh) and the ops-config read (dns.sh) both perform, on top of
-# ds_newest_enabled_secret_version so the "avoid `access latest`" hardening stays single-sourced.
-ds_access_secret_blob() {
-  local ver
-  ver="$(ds_newest_enabled_secret_version "$1" "$2")"
-  [[ -n "$ver" ]] || return 0
-  gcloud secrets versions access "$ver" --secret="$1" --project="$2" 2>/dev/null || true
-}
+# ds_newest_enabled_secret_version + ds_access_secret_blob — the newest-state:ENABLED secret read
+# (the "avoid `access latest`" hardening) now lives in infra/lib/posix/secrets.sh, single-sourced
+# with the unattended Cloud Build secret fetch (scripts/auto-suspend-prepare.sh, which mirrored it
+# by hand until now). bash sources the POSIX file transparently, so run.sh's app-config read, dns.sh's
+# ops-config read, and wait-secrets-sync.sh lose nothing; prepare.sh layers its own FATAL wrapper on
+# ds_newest_enabled_secret_version (it MUST have the secret, unlike these tolerant reads).
+# shellcheck source=infra/lib/posix/secrets.sh
+source "$(dirname "${BASH_SOURCE[0]}")/posix/secrets.sh"
 
 # helm_release_at_version <release> <namespace> <expected-chart>: exit 0 iff <release> is
 # deployed in <namespace> at exactly <expected-chart> (e.g. "external-secrets-0.20.0"),
@@ -275,52 +260,9 @@ wait_for_job_gate() {
   return 2
 }
 
-# gcs_prune_versions <gs-uri-prefix> <keep>: SYNCHRONOUSLY force the object-version history at
-# <gs-uri-prefix> down to the <keep> most-recent generations, hard-deleting every older
-# noncurrent version immediately. This is the "on every touch, cap the history NOW" mechanism
-# that complements — never replaces — the bucket's async GCS lifecycle rule: lifecycle runs on
-# Google's own ~daily schedule, so between writes the noncurrent count can transiently exceed
-# <keep>; this call collapses it back the instant the write completes. The lifecycle rule stays
-# as the backstop for any generation this misses (e.g. a write that bypasses run.sh).
-#
-# Mechanics: `gcloud storage ls -a "<prefix>**"` lists one line per generation as
-# `gs://bucket/object#<generation>`. GCS generation numbers are monotonically increasing (a
-# microsecond-epoch stamp), so a plain reverse lexicographic sort on the `#<generation>` suffix
-# is newest-first WITHOUT parsing timestamps — the live object always sorts first because its
-# generation is the largest. We keep the first <keep> URLs and delete the rest by explicit
-# `#<generation>` URL, which targets that exact version and can never touch the live object as
-# long as <keep> >= 1. Best-effort and non-fatal: a prune failure must never abort the apply or
-# suspend that triggered it (the data is already safely written); the lifecycle backstop will
-# reclaim anything left behind. Requires the caller's shell to have gcloud authenticated.
-gcs_prune_versions() {
-  local prefix="$1" keep="$2" urls stale
-  [[ "$keep" =~ ^[0-9]+$ && "$keep" -ge 1 ]] || { warn "gcs_prune_versions: invalid keep='$keep' (need >=1) — skipping"; return 0; }
-
-  # -a includes noncurrent generations; the trailing ** matches every object under the prefix
-  # (a single object like devstash-latest.sql, or every key under gke/dev/). Reverse-sort by the
-  # whole URL: identical object paths group together and their #<generation> suffixes order
-  # newest-first. Failures (empty bucket, transient API error) yield no lines → nothing to do.
-  urls="$(gcloud storage ls -a "${prefix}**" 2>/dev/null | grep '#[0-9]' | sort -r || true)"
-  [[ -n "$urls" ]] || return 0
-
-  # Group by object path (strip the #generation) so the keep-newest-N is applied PER object, not
-  # across a mixed listing — matters for the multi-object tfstate prefix (gke/dev/default.tfstate,
-  # default.tflock, …). awk keeps a per-path counter; anything past <keep> for its path is stale.
-  stale="$(printf '%s\n' "$urls" | awk -F'#' -v keep="$keep" '{ if (++seen[$1] > keep) print }')"
-  [[ -n "$stale" ]] || return 0
-
-  local count
-  count="$(printf '%s\n' "$stale" | grep -c . || true)"
-  log "Pruning $count superseded version(s) at ${prefix} (keeping newest $keep per object)"
-  # Delete every stale generation in ONE gcloud invocation via -I (read the explicit #<generation>
-  # URLs from stdin) instead of one `gcloud storage rm` per URL. A per-URL loop paid the ~1-2s
-  # gcloud/Python startup + auth load N times over (47 versions ⇒ ~60-90s of pure spawn latency);
-  # a single stdin-fed call loads auth once and deletes in parallel internally, so this drops to a
-  # few seconds. -c (continue-on-error) preserves the best-effort contract — a partial failure is
-  # non-fatal and whatever is left behind is reclaimed by the bucket's lifecycle backstop; --quiet
-  # suppresses the interactive confirm. Each URL is an explicit #<generation>, so this can never
-  # touch the live object as long as <keep> >= 1.
-  printf '%s\n' "$stale" | gcloud storage rm -I -c --quiet 2>/dev/null \
-    || warn "some versions could not be deleted at ${prefix} (leaving for lifecycle backstop)"
-  ok "history pruned to newest $keep at ${prefix}"
-}
+# GCS object-version pruning ("cap the history NOW" — the complement to the bucket's async
+# lifecycle rule) lives in ds_prune_dump_versions (infra/lib/posix/dump.sh), the ONE POSIX-portable,
+# unit-tested implementation shared by BOTH the bash laptop path (run.sh state prune + db.sh dump
+# prune, which source dump.sh) and the /bin/sh Cloud Build path (auto-suspend-dump.sh). This file
+# used to carry a bash-only near-duplicate (gcs_prune_versions); it was removed so the two can never
+# drift on the delete logic. bash sources the POSIX file transparently, so run.sh loses nothing.

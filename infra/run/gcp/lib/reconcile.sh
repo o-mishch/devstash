@@ -14,6 +14,12 @@
 [[ -n "${_DEVSTASH_GCP_RECONCILE_SH:-}" ]] && return 0
 _DEVSTASH_GCP_RECONCILE_SH=1
 
+# ds_purge_stranded_ar_iam (branch 4 below) — the SHARED describe-gate + state-check + `tofu state rm`
+# loop for stranded repo-scoped AR-IAM members, single-sourced with the unattended Cloud Build reconcile
+# (scripts/auto-suspend-suspend.sh) via infra/lib/posix/reconcile-ar-iam.sh so the two can't drift.
+# shellcheck source=infra/lib/posix/reconcile-ar-iam.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../../lib/posix/reconcile-ar-iam.sh"
+
 # reconcile_state: heal state↔cloud drift that a plain `tofu plan` cannot resolve, so a
 # single `run.sh apply` is enough. Populates the RECONCILE_REPLACE array with any -replace
 # targets for the caller to fold into `tofu plan`. MUST run AFTER `tofu init` (needs state).
@@ -296,24 +302,14 @@ reconcile_state() {
   # exists (normal active env) these are legitimately managed and must NOT be removed. Self-disabling:
   # once purged (or on a clean env where they were never stranded) the state-list check finds nothing.
   #
-  # The three module addresses live in infra/lib/ar-iam-member-addresses.txt — SHARED with the
-  # unattended auto-suspend's POSIX-sh reconcile (envs/dev/scripts/auto-suspend-suspend.sh), which
-  # reads the SAME file from its /workspace/repo clone. Extracting the byte-exact addresses to that
-  # data file is what keeps the two reconcilers from drifting on them (the surrounding logic legitimately
-  # differs: bash uses tofu_/_reconcile_in_state/die here, the sh step uses raw `tofu state`).
+  # Both the stranded-address DATA and the describe-gate + state-check + `state rm` LOOP are SHARED
+  # with the unattended auto-suspend's POSIX-sh reconcile (envs/dev/scripts/auto-suspend-suspend.sh):
+  # the addresses in infra/lib/ar-iam-member-addresses.txt, the loop in ds_purge_stranded_ar_iam
+  # (infra/lib/posix/reconcile-ar-iam.sh, sourced below). Single-sourcing BOTH is what keeps the two
+  # reconcilers from drifting. The helper runs raw `tofu` (both callers are already inside `tofu init`);
+  # here we escalate its non-zero return to `die` so a laptop apply stops loudly on a failed state-rm.
   local ar_repo_id='devstash' # mirrors modules/artifact-registry local.repository_id
-  if ! gcloud artifacts repositories describe "$ar_repo_id" \
-       --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    local ar_addrs_file; ar_addrs_file="$(dirname "${BASH_SOURCE[0]}")/../../../lib/ar-iam-member-addresses.txt"
-    local ar_addr
-    # Read the shared list, skipping blank + `#`-comment lines.
-    while IFS= read -r ar_addr; do
-      [[ -z "$ar_addr" || "$ar_addr" == \#* ]] && continue
-      if _reconcile_in_state "$ar_addr"; then
-        warn "Reconcile: repo '$ar_repo_id' is gone but $ar_addr is still in state (stranded by a pre-fix suspend) — removing from state so the next apply is not re-wedged by a 403"
-        tofu_ state rm -lock-timeout=120s "$ar_addr" \
-          || die "failed to state-rm $ar_addr — resolve manually, then re-run apply"
-      fi
-    done < "$ar_addrs_file"
-  fi
+  local ar_addrs_file; ar_addrs_file="$(dirname "${BASH_SOURCE[0]}")/../../../lib/ar-iam-member-addresses.txt"
+  ds_purge_stranded_ar_iam "$ar_repo_id" "$REGION" "$PROJECT_ID" "$ar_addrs_file" \
+    || die "failed to purge stranded AR-IAM member(s) from state — resolve manually, then re-run apply"
 }
