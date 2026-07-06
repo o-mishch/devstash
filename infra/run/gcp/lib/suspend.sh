@@ -319,6 +319,205 @@ empty_bucket() {
     || warn "empty of $uri returned non-zero (likely already empty) — continuing"
 }
 
+# _reconcile_deletion_protection: correct Terraform-level deletion_protection drift on the three
+# singletons _reconcile_adopt (reconcile.sh) may have imported (Cloud SQL, GKE, Valkey has none).
+# WHY THIS EXISTS — live incident, 2026-07-06: `tofu import` records a resource's attributes AS
+# THEY ARE ON THE PROVIDER SIDE (often defaulting deletion_protection=true), NOT as config says.
+# Nothing reconciles that afterwards because `down` destroys with -refresh=false (by design — see
+# the destroy call below), so an imported Cloud SQL instance kept deletion_protection=true in state
+# indefinitely and `tofu destroy` refused it outright ("Set it to false to proceed with instance
+# deletion"), even though modules/cloudsql/main.tf has hardcoded deletion_protection=false. GKE's
+# google_container_cluster carries the same Terraform-level attribute (modules/gke/variables.tf) and
+# is imported the same way, so it is checked too; Memorystore's google_memorystore_instance has no
+# such attribute (only the API-level deletion_protection_enabled, always false in config) so nothing
+# to check there.
+#
+# For each address: if it's in state AND its state-recorded deletion_protection is true, run a
+# TARGETED apply (still config-driven, not raw state surgery) so config's false wins. Skipped
+# entirely when the address is absent from state (nothing to correct) or already false (the common
+# case for a resource this script itself created). Best-effort per resource: a failed correction
+# warns and lets the real destroy below surface its own error, rather than aborting the teardown
+# on this pre-check alone.
+_reconcile_deletion_protection() {
+  local addr state_val
+  for addr in \
+    module.cloudsql.google_sql_database_instance.postgres[0] \
+    module.gke.google_container_cluster.primary[0]
+  do
+    # `state show` on an address absent from state fails (non-zero, empty stdout) — that failure
+    # doubles as the "nothing to correct" skip, so no separate presence check is needed. (NOTE:
+    # reconcile.sh's _reconcile_in_state helper is NOT usable here — it is defined INSIDE
+    # reconcile_state()'s body, so it only exists in the shell once that function has actually run;
+    # `down` never calls reconcile_state, so relying on it would fail with "command not found" on
+    # a fresh `run.sh down` with no prior `up`/`resume` in the same process — exactly how this
+    # bug was first hit.)
+    # `|| true` on the bare `state show` is REQUIRED under this script's `set -euo pipefail`: an
+    # absent address makes `state show` exit non-zero, and under pipefail that propagates through
+    # the `| sed | head` pipeline and would abort the WHOLE down() — the same footgun reconcile.sh's
+    # PSC-subnet-purpose read already documents and guards against the same way.
+    state_val="$( { tofu_ state show "$addr" 2>/dev/null || true; } \
+      | sed -nE 's/^[[:space:]]*deletion_protection[[:space:]]*=[[:space:]]*(true|false).*/\1/p' | head -1)"
+    [[ "$state_val" == "true" ]] || continue
+    warn "Reconcile: $addr has deletion_protection=true in state (config says false) — correcting before destroy"
+    tofu_locked_ apply -auto-approve -refresh=false -target="$addr" \
+      || warn "could not pre-correct deletion_protection on $addr — the destroy below may fail on it"
+  done
+}
+
+# _psc_connections_still_attached: true iff <destroy-output> matches the specific GCP error a
+# service_connection_policy destroy hits when the Memorystore instance it just tore down hasn't
+# finished its OWN async detach of the PSC connections yet (observed live 2026-07-06: the instance
+# destroy reported complete, but the policy delete still 400'd "still has 2 PSC Connections
+# associated with it" for a few minutes afterwards — a GCP-side cleanup lag, not a real conflict).
+_psc_connections_still_attached() {
+  grep -qiE 'ServiceConnectionPolicy.*still has [0-9]+ PSC Connection' <<<"$1"
+}
+
+# _handle_psc_destroy_block <destroy-output>: interactive recovery for the error above. There is
+# deliberately NO automatic retry and NO force-delete lever here:
+#   - `gcloud network-connectivity service-connection-policies delete` has no --force flag (checked
+#     directly against the installed gcloud's own --help — nothing to pass).
+#   - Google's docs (Configure service connection policies) explicitly warn that the PSC endpoints/
+#     forwarding-rules/addresses a policy tracks are OWNED by the managed service (Memorystore) and
+#     must not be deleted directly — doing so risks orphaned networking state, not a clean teardown.
+# So the only genuinely safe move is to wait for GCP's own async cleanup to catch up (confirmed
+# live: unblocked itself within a few minutes with no gcloud action taken) and retry the SAME
+# destroy call. This function only asks — it never silently loops — per the standing rule that a
+# destructive teardown escalation must be a human decision, not a self-healing retry.
+# Returns 0 if the caller should retry the destroy, 1 if it should give up and propagate failure.
+_handle_psc_destroy_block() {
+  warn "The Memorystore PSC service-connection-policy still shows attached connections — this is usually GCP's own async cleanup lag right after the Memorystore instance destroy, not a real conflict."
+  warn "There is no safe force-delete here: gcloud has no --force flag for this resource, and GCP's own docs warn against deleting the underlying PSC forwarding-rules/addresses directly (they are owned by Memorystore's lifecycle, not yours — doing so risks orphaned networking state)."
+  if confirm "Wait ~60s for GCP's cleanup to catch up, then retry the destroy?"; then
+    log "Waiting 60s for GCP to detach the lingering PSC connections..."
+    sleep 60
+    return 0
+  fi
+  warn "NOT RECOMMENDED by GCP: manually deleting the specific consumer forwarding-rules/addresses the destroy plan listed (shown above, under 'psc_connections') may unblock this, but can orphan networking state Memorystore no longer knows to clean up."
+  if confirm "Skip the safe wait and delete those forwarding-rules/addresses directly anyway?"; then
+    warn "Not automated — the exact resource names are in the destroy output above (consumer_forwarding_rule / consumer_address)."
+    warn "Delete each with: gcloud compute forwarding-rules delete <name> --region=$REGION --project=$PROJECT_ID"
+    warn "                  gcloud compute addresses delete <name> --region=$REGION --project=$PROJECT_ID"
+    confirm "Have you deleted them and want to retry the destroy now?" && return 0
+  fi
+  return 1
+}
+
+# _shelve_protected_secrets / _restore_protected_secrets: preserve app_config/ops_config across a
+# full `down` WITHOUT `-exclude`. WHY NOT `-exclude` — confirmed live, 2026-07-06: passing 2+
+# `-exclude` flags to `tofu destroy`/`plan -destroy` together makes OpenTofu 1.12.3 silently report
+# "No changes. No objects need to be destroyed." for the ENTIRE plan, even though dozens of real
+# resources (confirmed: GKE, the VPC, its subnet) are still live and destroyable — verified by
+# re-running the SAME plan with exactly ONE `-exclude` (correct, scoped result) vs. two-or-more
+# (empty). This means `down` had likely never actually destroyed anything on a run where 2+
+# `-exclude` flags were reached, silently leaving the GKE cluster (and everything else) running.
+# The workaround: remove the protected resources from STATE ONLY (their GCP objects are untouched —
+# `state rm` never calls the provider) right before the real destroy, run destroy with ZERO
+# `-exclude` flags (proven reliable), then `tofu import` them back into state afterward so a
+# subsequent `up`/`resume` still manages them instead of re-creating (and colliding with) them.
+# Their `lifecycle.prevent_destroy = true` is harmless here — destroy never sees them once they are
+# out of state, so the guard never triggers.
+#
+# Addresses: app_config + its version + the app_access IAM-member live in module.iam; ops_config +
+# its version are top-level in envs/dev (ops_config has no separate IAM-member resource). ops_config's
+# version is count-gated ([0]) — see infra/terraform/envs/dev/dns.tf. These are the ONLY
+# prevent_destroy resources in the env — keep this pair of functions in sync if that changes.
+_PROTECTED_SECRET_ADDRS=(
+  module.iam.google_secret_manager_secret.app_config
+  module.iam.google_secret_manager_secret_version.app_config
+  module.iam.google_secret_manager_secret_iam_member.app_access
+  google_secret_manager_secret.ops_config
+  "google_secret_manager_secret_version.ops_config[0]"
+)
+
+# _shelve_protected_secrets: `state rm` each address that is actually present (state rm errors on an
+# absent address, so presence is checked the same guarded way _reconcile_deletion_protection does).
+# Best-effort per address: a failed removal warns and lets the real destroy below surface its own
+# prevent_destroy error for that one resource, rather than aborting the whole teardown on this
+# pre-step alone.
+_shelve_protected_secrets() {
+  local addr
+  for addr in "${_PROTECTED_SECRET_ADDRS[@]}"; do
+    { tofu_ state show "$addr" >/dev/null 2>&1 || continue; }
+    log "Shelving $addr out of state before destroy (GCP object untouched — state rm only)"
+    tofu_locked_ state rm "$addr" \
+      || warn "could not shelve $addr out of state — the destroy below may hit its prevent_destroy guard"
+  done
+}
+
+# _restore_protected_secrets: re-import the two secret containers + their newest ENABLED version +
+# app_config's IAM-member, so a subsequent `up`/`resume` manages them instead of re-creating (and
+# colliding 409 with) them. Best-effort per resource — a failed re-import warns with the exact
+# manual `tofu import` command rather than dying, since the GCP objects themselves are already safe
+# (never touched by shelve or destroy); only Terraform's bookkeeping would be stale.
+_restore_protected_secrets() {
+  local app_config_id="devstash-app-config" ops_config_id="devstash-ops-config"
+  local app_config_ver ops_config_ver app_sa
+  # newest ENABLED version only — re-importing an arbitrary version could pull in a disabled one.
+  # `|| true` is REQUIRED under this script's `set -euo pipefail`: a secret that genuinely does not
+  # exist yet (a first-ever `down` before any `up` ever ran, or one deleted out-of-band) makes
+  # `gcloud` exit non-zero, and a bare assignment would trip `set -e` and kill the WHOLE script
+  # right here — silently, with no error message, potentially after the real destroy already
+  # succeeded. Same footgun `_reconcile_deletion_protection` and reconcile.sh's PSC-subnet-purpose
+  # read already document and guard against.
+  app_config_ver="$(gcloud secrets versions list "$app_config_id" --project="$PROJECT_ID" \
+    --filter='state:enabled' --sort-by='~createTime' --limit=1 --format='value(name)' 2>/dev/null || true)"
+  ops_config_ver="$(gcloud secrets versions list "$ops_config_id" --project="$PROJECT_ID" \
+    --filter='state:enabled' --sort-by='~createTime' --limit=1 --format='value(name)' 2>/dev/null || true)"
+
+  log "Restoring app_config + ops_config into Terraform state (GCP objects were never touched)"
+  tofu_locked_ import module.iam.google_secret_manager_secret.app_config \
+    "$PROJECT_ID/$app_config_id" \
+    || warn "could not re-import the app_config secret — manual: tofu import module.iam.google_secret_manager_secret.app_config $PROJECT_ID/$app_config_id"
+  if [[ -n "$app_config_ver" ]]; then
+    tofu_locked_ import module.iam.google_secret_manager_secret_version.app_config \
+      "projects/$PROJECT_ID/secrets/$app_config_id/versions/$app_config_ver" \
+      || warn "could not re-import the app_config secret version — manual: tofu import module.iam.google_secret_manager_secret_version.app_config projects/$PROJECT_ID/secrets/$app_config_id/versions/$app_config_ver"
+  else
+    warn "app_config has no ENABLED version to re-import (unexpected — check gcloud secrets versions list $app_config_id)"
+  fi
+  # app_access's member is deterministic from the app SA's email (module.iam's own naming).
+  app_sa="$(tf_out app_service_account_email)"
+  if [[ -n "$app_sa" ]]; then
+    tofu_locked_ import module.iam.google_secret_manager_secret_iam_member.app_access \
+      "projects/$PROJECT_ID/secrets/$app_config_id roles/secretmanager.secretAccessor serviceAccount:$app_sa" \
+      || warn "could not re-import the app_access IAM binding — manual: tofu import module.iam.google_secret_manager_secret_iam_member.app_access \"projects/$PROJECT_ID/secrets/$app_config_id roles/secretmanager.secretAccessor serviceAccount:$app_sa\""
+  else
+    warn "no app_service_account_email output yet (post-down, expected until the next apply) — app_access IAM-member re-import deferred to that apply"
+  fi
+  tofu_locked_ import google_secret_manager_secret.ops_config \
+    "$PROJECT_ID/$ops_config_id" \
+    || warn "could not re-import the ops_config secret — manual: tofu import google_secret_manager_secret.ops_config $PROJECT_ID/$ops_config_id"
+  if [[ -n "$ops_config_ver" ]]; then
+    tofu_locked_ import 'google_secret_manager_secret_version.ops_config[0]' \
+      "projects/$PROJECT_ID/secrets/$ops_config_id/versions/$ops_config_ver" \
+      || warn "could not re-import the ops_config secret version — manual: tofu import 'google_secret_manager_secret_version.ops_config[0]' projects/$PROJECT_ID/secrets/$ops_config_id/versions/$ops_config_ver"
+  else
+    warn "ops_config has no ENABLED version to re-import (fine if Spaceship DNS creds were never configured)"
+  fi
+}
+
+# _reap_stranded_router: delete an out-of-band Cloud Router (+ its NAT) `down` finds in GCP but NOT
+# in Terraform state — blocks the VPC delete with "network resource is already being used by
+# .../routers/<name>" otherwise. WHY THIS EXISTS — live incident, 2026-07-06: an earlier partial/
+# interrupted teardown cycle destroyed the router+NAT THROUGH Terraform once, but a later apply
+# re-created them (module.network's google_compute_router/google_compute_router_nat, both gated on
+# compute_active) and a SUBSEQUENT teardown's state ended up without them tracked at all (state
+# reflects a different point in that churn than GCP does) — so `down`'s destroy skipped them
+# entirely and the VPC delete failed on a router Terraform no longer knew existed. Safe to
+# force-delete unconditionally here: `down` runs this AFTER cleanup_leaked_negs and the real destroy
+# has already torn down GKE/compute, so nothing still routes through it. Best-effort + existence-
+# gated (a normal `down` with no drift has no router here at all — 404 is the common case, not an
+# error) so this is a harmless no-op on the normal path.
+_reap_stranded_router() {
+  local router="devstash-${ENVIRONMENT}-router"
+  gcloud compute routers describe "$router" --region="$REGION" --project="$PROJECT_ID" \
+    >/dev/null 2>&1 || return 0
+  warn "Reconcile: Cloud Router '$router' exists in GCP but is untracked in state — deleting it directly so the VPC delete isn't blocked"
+  gcloud compute routers delete "$router" --region="$REGION" --project="$PROJECT_ID" --quiet \
+    || warn "could not delete stranded router $router — the VPC destroy below may fail on it"
+}
+
 # force_release_psa: after `tofu destroy`, reclaim the leftover PSA plumbing GCP holds past the
 # teardown. The service_networking_connection is ABANDONed on destroy (see modules/network) — it
 # is dropped from state but the actual GCP peering + its reserved global address linger until
@@ -344,8 +543,11 @@ force_release_psa() {
 }
 
 # down: FORCE-destroy the entire dev environment with `tofu destroy`.
-# GKE and Cloud SQL are already unprotected in this env (they are torn down on every
-# suspend cycle), so no deletion_protection dance is needed — destroy runs directly.
+# GKE and Cloud SQL are unprotected in CONFIG (they are torn down on every suspend cycle), but a
+# singleton adopted via reconcile.sh's `_reconcile_adopt` (a prior apply that created it in GCP
+# without persisting state) can still carry deletion_protection=true in STATE from the plain
+# `tofu import` that adopted it — import records the provider's live value verbatim, not config's.
+# _reconcile_deletion_protection corrects that drift right before the real destroy (see call below).
 # Unlike `suspend` (which deliberately PRESERVES the verified Cloud SQL dump so `resume`
 # can restore it), `down` is a full teardown: it EMPTIES the uploads + db-dumps buckets
 # first so the no-force_destroy guard cannot block destroy, then force-releases the
@@ -377,6 +579,15 @@ down() {
     # destroy, unlike the suspend path where it runs after (there the cluster destroy is a Terraform
     # apply, not a full VPC teardown, so the VPC survives and the NEGs only need reaping for later).
     cleanup_leaked_negs
+    # Correct any deletion_protection=true left in state by a reconcile-time import (see the
+    # function doc above down()) BEFORE the real destroy — a targeted apply, not raw state surgery.
+    _reconcile_deletion_protection
+    # Shelve app_config/ops_config OUT of state (GCP objects untouched) so the real destroy below
+    # can run with ZERO `-exclude` flags — see _shelve_protected_secrets' doc for why `-exclude`
+    # itself is not safe to use here (a confirmed OpenTofu 1.12.3 bug: 2+ `-exclude` flags together
+    # make the whole plan silently report "No changes", which is how GKE survived a `down` that
+    # reported "destroyed" on 2026-07-06).
+    _shelve_protected_secrets
     # The script already obtained explicit confirmation; avoid a second prompt that
     # makes AUTO_APPROVE=1 ineffective in automation.
     #
@@ -388,23 +599,45 @@ down() {
     # 403 (not 404), aborting the whole teardown before any destroy runs. Skipping the refresh
     # makes destroy operate on state alone — an already-gone resource just 404s on its own
     # delete call, which the provider tolerates, and the teardown proceeds. (Force-delete,
-    # catch-if-absent, move on.) State-only destroy is safe here precisely because down()
-    # removes EVERYTHING (bar the excluded secrets); there is no partial-state risk to guard against.
+    # catch-if-absent, move on.) State-only destroy is safe here precisely because down() removes
+    # EVERYTHING left in state (the two secrets are already shelved OUT of state, above — there is
+    # no partial-state risk to guard against).
     #
-    # -exclude the two Secret Manager secret CONTAINERS so a full `down` PRESERVES them (and,
-    # by dependency, their versions + IAM grants — `-exclude` spares anything depending on the
-    # excluded address). Both carry lifecycle.prevent_destroy = true, so WITHOUT these excludes
-    # `tofu destroy` would ERROR ("Instance cannot be destroyed") and abort the whole teardown.
-    # Rationale for keeping them: Secret Manager is ~$0 (inside the free version tier) and
-    # re-entering the app + Spaceship-DNS creds by hand after every teardown is the real cost.
-    # These are the ONLY prevent_destroy resources in the env — keep this list in sync if that
-    # changes. Addresses: app_config lives in module.iam; ops_config is top-level in envs/dev.
-    tofu_locked_ destroy -auto-approve -refresh=false \
-      -exclude=module.iam.google_secret_manager_secret.app_config \
-      -exclude=google_secret_manager_secret.ops_config
+    # NO `-exclude` here — see _shelve_protected_secrets' doc above down(). Wrapped in a bounded
+    # retry loop (not a plain call): the Memorystore PSC service-connection-policy can 400 with
+    # "still has N PSC Connections associated with it" for a few minutes after the Memorystore
+    # instance's OWN destroy already completed — GCP's async detach lagging behind, not a real
+    # conflict (see _psc_connections_still_attached doc above). Every OTHER destroy failure
+    # propagates immediately via `die` — this loop exists for that one known-transient signature
+    # only, and it only RETRIES after the operator confirms via _handle_psc_destroy_block (no
+    # silent auto-retry of a destructive command).
+    local destroy_out destroy_rc attempt=0
+    while :; do
+      attempt=$((attempt + 1))
+      destroy_rc=0
+      destroy_out="$(tofu_locked_ destroy -auto-approve -refresh=false 2>&1)" || destroy_rc=$?
+      printf '%s\n' "$destroy_out"
+      [[ $destroy_rc -eq 0 ]] && break
+      if _psc_connections_still_attached "$destroy_out" && _handle_psc_destroy_block "$destroy_out"; then
+        log "Retrying the destroy (attempt $((attempt + 1)))..."
+        continue
+      fi
+      # Restore the shelved secrets into state even on failure — otherwise a partial/aborted
+      # destroy leaves them permanently untracked (GCP objects are fine; only Terraform's
+      # bookkeeping would drift) until someone notices and re-imports by hand.
+      _restore_protected_secrets
+      die "tofu destroy failed — resolve the error above, then re-run 'down' (it is safe to re-run; already-destroyed resources are skipped)"
+    done
+    # A leftover Cloud Router+NAT untracked in state (an out-of-band artifact of an earlier
+    # partial teardown cycle) blocks the VPC delete with "network resource is already being used
+    # by .../routers/<name>" — reap it the same way cleanup_leaked_negs reaps leaked NEGs.
+    _reap_stranded_router
     # Reclaim the PSA peering + range GCP holds past the ABANDONed connection (best-effort).
     force_release_psa
-    ok "destroyed. (State bucket gs://$STATE_BUCKET and the project are left intact.)"
+    # Re-import app_config/ops_config now that the rest of the environment is gone — restores
+    # Terraform's bookkeeping for the two objects that were never actually touched.
+    _restore_protected_secrets
+    ok "destroyed. (State bucket gs://$STATE_BUCKET and the project are left intact. app_config/ops_config preserved.)"
   else
     die "aborted"
   fi
