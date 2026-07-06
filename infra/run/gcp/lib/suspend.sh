@@ -128,11 +128,10 @@ suspend() {
 }
 
 # _apply_and_wire_cluster_overlapped: the resume bring-up core — overlap the ESO + Reloader install
-# with the LONG TAIL of the apply itself (the Cloud SQL create, ~10 min), and overlap the DB restore
-# with the operator tail. This is the on-demand-showcase hot path, so every minute of wall-clock
-# counts.
+# with the LONG TAIL of the apply itself (the Cloud SQL create, ~10 min). This is the on-demand-
+# showcase hot path, so every minute of wall-clock counts.
 #
-# WHY THIS IS THE BIG WIN: within one `apply` OpenTofu builds module.gke and module.cloudsql as
+# WHY THIS IS THE WIN: within one `apply` OpenTofu builds module.gke and module.cloudsql as
 # INDEPENDENT DAG branches, so the GKE control plane is reachable ~5-7 min in WHILE Cloud SQL is
 # still creating — apply just does not RETURN until both finish (~10 min). Previously the whole
 # `apply` returned first and only THEN did the operators install, stacking their ~3-4 min serially on
@@ -140,26 +139,21 @@ suspend() {
 # run.sh:apply's split comment), so the overlap is cluster-side work (kubectl/helm, no lock) against
 # the ONE running apply, not two applies.
 #
-# THE THREE INDEPENDENT JOBS, folded under one fail-fast join (_join_fail_fast, gke.sh):
-#   • apply exec   — backgrounded right after the foreground plan+confirm; creating GKE ‖ Cloud SQL.
-#   • operators    — ESO ‖ Reloader, started the instant the control plane responds (mid-apply).
-#   • DB restore   — dependency-gated on Cloud SQL being RUNNABLE, so it CANNOT start up-front; a
-#                    watcher waits for the apply pid, then runs restore_db — overlapping whatever
-#                    operator/webhook tail remains. `restore_db` touches NO kubeconfig.
+# HOW: background _apply_exec, then join it alongside the two operator installs via ensure_operators's
+# existing extra-PID join (apply ‖ eso ‖ reloader, one fail-fast wait). The DB restore runs SERIALLY
+# after that join — it is gated on Cloud SQL being RUNNABLE (i.e. the apply finishing), by which point
+# the operators (started ~5 min earlier, ~3-4 min each) are already done, so there is no operator tail
+# left for it to overlap. Keeping restore serial trades a ~zero-length overlap for much simpler code.
 #
-# ORDERING (mirrors the kubeconfig-safety rules the old _restore_and_wire_cluster documented):
-#   1. _apply_plan runs in the FOREGROUND — keeps the interactive plan-review gate.
+# ORDERING (kubeconfig safety, same rules ensure_operators documents):
+#   1. _apply_plan runs in the FOREGROUND — keeps the interactive plan-review gate (AUTO_APPROVE skips
+#      it on the CI/UI path; a manual laptop resume still reviews the plan).
 #   2. _apply_exec is backgrounded ([apply]-prefixed). It runs no kubectl, so no context race.
 #   3. wait_for_cluster runs in the FOREGROUND (shared-scope poll: uses run.sh helpers, prints
 #      progress, die-on-timeout must abort directly) — must not be subshelled.
-#   4. use_cluster is called ONCE, in the parent, BEFORE backgrounding the helm installs —
-#      concurrent get-credentials corrupt the central kubeconfig (documented GKE race). The two
-#      installs + the restore watcher then only READ that kubeconfig without switching context.
-#   5. restore's watcher `wait`s the apply pid FIRST (Cloud SQL RUNNABLE gate) before importing.
+#   4. ensure_operators fetches creds ONCE (use_cluster, in the parent) before backgrounding the two
+#      installs, and joins the apply pid alongside them — so an apply failure aborts immediately.
 #
-# FAIL-FAST: any of the three exiting non-zero (apply failure, operator install failure, or restore
-# import failure — each `die`s in its own subshell) trips the single _join_fail_fast, which kills the
-# survivors and aborts resume. A best-effort restore skip (no dump / fresh env) exits 0, a no-op.
 # The provisioning marker still spans the ENTIRE apply: mark_provisioning fires in _apply_plan and
 # clear_provisioning (after the IAM cooldown) at the tail of the backgrounded _apply_exec — so
 # backgrounding the exec does not widen the auto-suspend race window.
@@ -168,32 +162,10 @@ _apply_and_wire_cluster_overlapped() {
   { _apply_exec 2>&1 | _prefix apply; exit "${PIPESTATUS[0]}"; } &
   local apply_pid=$!
   wait_for_cluster                  # foreground poll; control plane up ~5-7 min in, mid-apply
-  use_cluster                       # ONCE in the parent — kubeconfig/context before backgrounding
-  log "Installing External Secrets Operator ‖ Stakater Reloader — overlapping the running apply (Cloud SQL create)"
-  { infra/ci/ensure-eso.sh 2>&1 | _prefix eso; exit "${PIPESTATUS[0]}"; } &
-  local eso_pid=$!
-  { infra/ci/ensure-reloader.sh 2>&1 | _prefix reloader; exit "${PIPESTATUS[0]}"; } &
-  local reloader_pid=$!
-  # Fail-fast join over apply ‖ eso ‖ reloader, with a HOOK: the DB restore is dependency-gated on
-  # Cloud SQL being RUNNABLE, which is exactly "apply_pid finished 0". It CANNOT be launched up-front,
-  # nor from a `wait "$apply_pid"` watcher subshell (a subshell may only wait on ITS OWN children, and
-  # apply_pid is a child of THIS shell — bash errors "not a child of this shell", rc 127). So the
-  # restore is spawned by a hook the join calls PLAINLY the instant it observes apply_pid finish — the
-  # spawned job is then a child of the join's shell (this one) and joinable. The hook appends the
-  # restore pid to _JOIN_NEW_PIDS (the loop's hook→pending channel — NOT stdout, which a `$(...)` hook
-  # would orphan; see _join_fail_fast_hook). A failed apply short-circuits the join (fail-fast) BEFORE
-  # the hook runs, so restore never imports into a half-built instance. The restore then overlaps
-  # whatever operator/webhook tail remains.
-  _spawn_restore_after_apply() {    # hook: $1 = the pid that just finished 0
-    [[ "$1" == "$apply_pid" ]] || return 0            # only react to the apply finishing
-    { restore_db 2>&1 | _prefix restore; exit "${PIPESTATUS[0]}"; } &
-    _JOIN_NEW_PIDS+=("$!")                            # fold the restore into the same join
-  }
-  _join_fail_fast_hook _spawn_restore_after_apply \
-    "resume overlap failed — re-run resume (all steps are retry-safe)" \
-    "$apply_pid" "$eso_pid" "$reloader_pid"
-  _wait_eso_webhook                 # belt-and-suspenders: CR-admission needs the webhook live
-  ok "ESO + Reloader installed and DB restored; apply complete"
+  ensure_operators "$apply_pid"     # ESO ‖ Reloader ‖ (apply exec, joined) — overlaps Cloud SQL create
+  restore_db                        # serial: Cloud SQL is RUNNABLE now (apply joined); operators done.
+                                    # A restore failure aborts resume via restore_db's own die + set -e
+                                    # (no longer folded into the join — restore is no longer backgrounded).
 }
 
 # resume: bring the environment back from a deep-suspended state. Recreates compute AND

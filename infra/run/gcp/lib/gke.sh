@@ -97,65 +97,31 @@ reloader() {
   ok "Stakater Reloader installed; Deployment auto-restarts on secret rotation"
 }
 
-# _join_fail_fast_hook <hook-fn> <die-msg> <pid…>: fail-fast join over a set of backgrounded PIDs,
-# with a hook that can add MORE pids as jobs complete. Returns 0 only once ALL (original + hook-
-# added) exit 0; the instant the FIRST exits non-zero it kills every still-running sibling (so
-# nothing is left installing/creating detached after we abort) and `die`s with <die-msg>. Uses
-# `wait -n -p` (bash >= 5.1, guaranteed by run.sh's re-exec) to learn WHICH pid finished each
-# iteration so the pending set shrinks by one and, on failure, only the survivors are killed.
-#
-# THE HOOK: after each pid finishes 0, <hook-fn> is CALLED DIRECTLY (not in a command substitution)
-# with that pid as $1. To fold in a new dependency-gated job (e.g. a DB restore that can only start
-# once the apply pid completes), the hook spawns it with `&` and appends the pid to the caller-shared
-# array `_JOIN_NEW_PIDS`; the loop then moves those into the pending set and re-clears the array.
-# The hook MUST NOT return the pid via stdout — a `$(hook)` command substitution runs in a subshell,
-# so a job it backgrounds is a child of THAT subshell and dies un-waitable when the substitution ends
-# (the exact bug this design avoids). Calling the hook plainly keeps the spawned job a child of THIS
-# loop's shell, so `wait` can join it. The hook fires ONLY on success (the fail-fast branch aborts
-# first), so a gated job never starts after a failed dependency. Pass `:` for a plain join (it never
-# touches _JOIN_NEW_PIDS, so nothing is added).
-#
-# Single-sourced so ensure_operators (plain join) and suspend.sh's resume overlap driver (hooked
-# join that spawns the apply-gated restore) share ONE loop instead of copy-pasting this logic.
-_join_fail_fast_hook() {
-  local hook_fn="$1" die_msg="$2"; shift 2
+# _join_fail_fast <die-msg> <pid…>: fail-fast join over a set of backgrounded PIDs. Returns 0 once
+# ALL exit 0; the instant the FIRST exits non-zero it kills every still-running sibling (so nothing
+# is left installing/creating detached after we abort) and `die`s with <die-msg>. Uses `wait -n -p`
+# (bash >= 5.1, guaranteed by run.sh's re-exec) to learn WHICH pid finished each iteration, so the
+# pending set shrinks by one and, on failure, only the survivors are killed. Single-sourced so
+# ensure_operators and suspend.sh's resume overlap driver share ONE join instead of copy-pasting it.
+_join_fail_fast() {
+  local die_msg="$1"; shift
   local pending=("$@")
   local finished rc p kept
-  # _JOIN_NEW_PIDS is the hook→loop channel: the hook appends spawned pids here (see header). Declared
-  # here so a `:` no-op hook simply leaves it empty. Not `local`-shadowed inside the hook — dynamic
-  # scope lets the hook see and append to this exact array.
-  local _JOIN_NEW_PIDS=()
   while [[ "${#pending[@]}" -gt 0 ]]; do
     finished=""; rc=0
     wait -n -p finished "${pending[@]}" || rc=$?
-    # `wait -n` returns 127 with an EMPTY `finished` when no listed pid is a waitable child anymore (a
-    # job already reaped) — NOT a job failure. Distinguish by whether we learned a finished pid: rc!=0
-    # WITH a finished pid is a real non-zero job exit; rc!=0 WITHOUT one means pids vanished, so prune
-    # the no-longer-alive ones and re-wait. (Guarding on `finished` empty, not the bare 127, also
-    # avoids ever masking a genuine job exit code of 127.)
-    if [[ "$rc" -ne 0 && -z "$finished" ]]; then
-      kept=()
-      for p in "${pending[@]}"; do kill -0 "$p" 2>/dev/null && kept+=("$p"); done
-      pending=(${kept[@]+"${kept[@]}"})
-      continue
-    fi
     if [[ "$rc" -ne 0 ]]; then
       # A tracked job exited non-zero — kill any still-running siblings before aborting so nothing is
       # left compiling/installing/creating detached, then die. `kill` on an already-exited pid is a no-op.
       for p in "${pending[@]}"; do [[ "$p" != "$finished" ]] && kill "$p" 2>/dev/null || true; done
       die "$die_msg (a joined job exited $rc)"
     fi
-    # Rebuild the pending set without the just-finished pid. If -p reported nothing (shouldn't on
-    # >=5.1), fall back to clearing all — every tracked job has exited 0 by then anyway.
+    # Drop the just-finished pid from the pending set. If -p reported nothing (shouldn't on >=5.1),
+    # fall back to clearing all — every tracked job has exited 0 by then anyway.
     if [[ -n "$finished" ]]; then
       kept=()
       for p in "${pending[@]}"; do [[ "$p" != "$finished" ]] && kept+=("$p"); done
       pending=(${kept[@]+"${kept[@]}"})
-      # Let the hook react to THIS pid finishing. Called PLAINLY (not `$(...)`) so any job it spawns
-      # is a child of this shell; it appends the pid(s) to _JOIN_NEW_PIDS, which we then fold in.
-      _JOIN_NEW_PIDS=()
-      "$hook_fn" "$finished"
-      [[ "${#_JOIN_NEW_PIDS[@]}" -gt 0 ]] && pending+=("${_JOIN_NEW_PIDS[@]}")
     else
       pending=()
     fi
@@ -165,14 +131,9 @@ _join_fail_fast_hook() {
   return 0
 }
 
-# _join_fail_fast <die-msg> <pid…>: the hookless join — a plain fail-fast wait over a fixed pid set.
-# Thin wrapper over _join_fail_fast_hook with a no-op hook (`:` never touches _JOIN_NEW_PIDS, so no
-# pids are ever added).
-_join_fail_fast() { _join_fail_fast_hook : "$@"; }
-
 # _prefix <tag>: stream filter that prefixes each stdout line with "[tag] " so the interleaved
-# output of concurrently-backgrounded steps stays attributable. Shared by ensure_operators and
-# the resume overlap driver (which prefixes [apply]/[restore]).
+# output of concurrently-backgrounded steps stays attributable. Shared by ensure_operators (which
+# prefixes [eso]/[reloader]) and the resume overlap driver (which prefixes [apply]).
 _prefix() { sed -e "s/^/[$1] /"; }
 
 # ensure_operators: install ESO + Reloader CONCURRENTLY (the two are fully independent — different
@@ -190,11 +151,9 @@ _prefix() { sed -e "s/^/[$1] /"; }
 # backgrounded helm installs then only READ that kubeconfig (no context switch), the same safe
 # pattern CI's ensure-operators.sh already runs in production.
 #
-# EXTRA OVERLAP: any PID passed as an argument (e.g. a backgrounded DB restore) is joined alongside
-# the two installs via _join_fail_fast, so an independent long task overlaps the operator install
-# under one fail-fast wait instead of a second serial wait. (resume's own overlap driver uses the
-# HOOKED join instead — see suspend.sh:_apply_and_wire_cluster_overlapped — because its restore is
-# dependency-gated on the apply finishing rather than already backgrounded.)
+# EXTRA OVERLAP: any PID passed as an argument (e.g. a backgrounded apply exec from resume's overlap
+# driver) is joined alongside the two installs via _join_fail_fast, so an independent long task
+# overlaps the operator install under one fail-fast wait instead of a second serial wait.
 ensure_operators() {
   local extra_pids=("$@")   # optional already-backgrounded PIDs to join with the installs
   use_cluster               # ONCE, in the parent — sets kubeconfig + context before backgrounding
@@ -203,10 +162,10 @@ ensure_operators() {
   local eso_pid=$!
   { infra/ci/ensure-reloader.sh 2>&1 | _prefix reloader; exit "${PIPESTATUS[0]}"; } &
   local reloader_pid=$!
-  # Join the two installs + any caller-supplied PIDs (e.g. a backgrounded DB restore or apply exec)
-  # under one fail-fast wait — see _join_fail_fast above.
+  # Join the two installs + any caller-supplied PIDs (e.g. a backgrounded apply exec from resume's
+  # overlap driver) under one fail-fast wait — see _join_fail_fast above.
   _join_fail_fast \
-    "operator/restore overlap failed — re-run the bring-up (all steps are retry-safe)" \
+    "operator install overlap failed — re-run the bring-up (all steps are retry-safe)" \
     "$eso_pid" "$reloader_pid" ${extra_pids[@]+"${extra_pids[@]}"}
   _wait_eso_webhook   # same belt-and-suspenders webhook wait eso() does — see the helper above
   ok "ESO + Reloader installed; SecretStore/ExternalSecret CRDs available"
