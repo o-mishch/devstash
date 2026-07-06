@@ -158,11 +158,23 @@ suspend() {
 # clear_provisioning (after the IAM cooldown) at the tail of the backgrounded _apply_exec — so
 # backgrounding the exec does not widen the auto-suspend race window.
 _apply_and_wire_cluster_overlapped() {
+  stage "apply → applying (Cloud SQL ~10m + control plane), pre-dispatched CI build overlapping"
   _apply_plan                       # foreground: init → reconcile → plan → CONFIRM (review gate)
+  # Narration state for the concurrent join (see gke.sh:_join_fail_fast):
+  #   _JFF_T0        — the group's start; every "✓ [path] done in <dur>" is measured against it.
+  #   _resume_labels — pid→label map. ensure_operators adds eso/reloader; we add apply here.
+  # Both are plain shell state (a subshell inherits _JFF_T0 at fork), so no temp file / no cleanup.
+  local _JFF_T0=$SECONDS   # local: bash dynamic scope makes it visible to ensure_operators
+  local -A _resume_labels=()
   { _apply_exec 2>&1 | _prefix apply; exit "${PIPESTATUS[0]}"; } &
   local apply_pid=$!
+  _resume_labels[$apply_pid]=apply
   wait_for_cluster                  # foreground poll; control plane up ~5-7 min in, mid-apply
-  ensure_operators "$apply_pid"     # ESO ‖ Reloader ‖ (apply exec, joined) — overlaps Cloud SQL create
+  stage "cluster control plane reachable — installing operators ‖ finishing apply"
+  # Pass the map's NAME so _join_fail_fast prints each path's own "✓ [label] done in <dur>" as it
+  # lands (apply/eso/reloader).
+  ensure_operators _resume_labels "$apply_pid"   # ESO ‖ Reloader ‖ (apply exec, joined) — overlaps Cloud SQL create
+  stage "restore DB from GCS dump (Cloud SQL runnable now that apply joined)"
   restore_db                        # serial: Cloud SQL is RUNNABLE now (apply joined); operators done.
                                     # A restore failure aborts resume via restore_db's own die + set -e
                                     # (no longer folded into the join — restore is no longer backgrounded).
@@ -176,7 +188,23 @@ _apply_and_wire_cluster_overlapped() {
 # so the app + migrate Job see the restored schema + data.
 resume() {
   ensure_tfvars
-  log "Resuming environment (recreate compute + Cloud SQL, restore the dump). Takes several minutes."
+  # Single upfront intent gate BEFORE anything happens — GCP mutation OR the narration span below.
+  # resume front-loads a staging apply (_apply_ar_push_target / _apply_ci_identity) + a CI dispatch
+  # to overlap the ~10-min Cloud SQL create; _confirm_bringup (run.sh) makes all of that wait for one
+  # `y` and exports _BRINGUP_CONFIRMED=1 so the downstream _apply_plan does not prompt a second time.
+  # It runs before begin_span so a decline (_confirm_bringup `die`s) has nothing to unwind.
+  _confirm_bringup resume
+  # Open a timed narration span with the stage TOTAL: from here every log/ok/warn carries
+  # "HH:MM:SS +elapsed", and `stage` prints numbered "[stage N/6]" banners (the 6 lives here, not
+  # on each call) so the overall position is always visible. `end_span` is called explicitly on the
+  # two graceful returns below (success tail + CI-fail). It is NOT an EXIT trap on purpose: resume
+  # arms the CI-cancel EXIT trap (_arm_ci_cancel_trap) and clears it in _watch_ci_run, so an
+  # end_span EXIT trap would be clobbered by / clobber that one (see run.sh:641). On a `set -e`
+  # death mid-flight the process exits, discarding the span state — so no restore is needed there.
+  begin_span 6
+
+  stage "Resume start — recreate compute + Cloud SQL, restore the dump. Takes several minutes."
+  # Local gitignored tfvars write only (no GCP mutation) — the intent gate above already consented.
   set_active_state true true
 
   # Two entry states reach `resume`, distinguished by whether the tofu outputs `secrets` reads
@@ -230,11 +258,13 @@ resume() {
     # (see _apply_and_wire_cluster_overlapped). All must complete before deploy touches cluster + DB.
     _apply_and_wire_cluster_overlapped
   fi
+  stage "re-point DNS at the new ingress IP"
   update_dns
 
   # Take ownership of the dispatched run and block on it (clears the cancel trap first, returns 1
   # on CI failure). Shared by both branches — see run.sh:_watch_ci_run.
-  _watch_ci_run || return 1
+  stage "watching CI deploy run (build+push overlapped apply; the cluster-gated deploy proceeds now)"
+  _watch_ci_run || { end_span; return 1; }
 
   # TLS is served from the project-scoped Certificate Manager cert (envs/dev/certmanager.tf),
   # which is NOT destroyed on suspend — so on resume the Gateway serves a valid cert immediately,
@@ -243,6 +273,7 @@ resume() {
   # pre-shared-cert stopgap, which existed only because the cluster-scoped cert had to re-provision
   # (~60 min) on every resume.
   ok "HTTPS is live as soon as DNS propagates to the new IP — the Certificate Manager cert survived the suspend (no reprovision wait)."
+  end_span
 }
 
 # ── full teardown (down) ────────────────────────────────────────────────────

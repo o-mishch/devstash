@@ -14,9 +14,8 @@
 # stubs — the test asserts the RETURN CODE for a given probe response, not exact call plans.
 
 setup() {
-  # test_helper lives under infra/run/gcp/lib (shared by the whole infra suite); this .bats file
-  # sits in infra/lib, so load it by its path relative to this file rather than the local dir.
-  load "${BATS_TEST_DIRNAME}/../run/gcp/lib/test_helper"
+  # test_helper is the shared infra-suite helper, co-located here in infra/lib.
+  load "${BATS_TEST_DIRNAME}/test_helper"
   source "$COMMON_SH"
 }
 
@@ -68,4 +67,73 @@ JSON"
   _stub_ar 0 tok-abc '{"permissions":["artifactregistry.repositories.uploadArtifacts"]}'
   run ds_ar_writable us-central1 proj-x devstash
   assert_success
+}
+
+# ── ds_ar_wait — the bounded poll shared by build-push.sh (CI gate) and run.sh (_wait_ar_push_ready).
+# It wraps poll_until + ds_ar_writable; assert it returns the instant the probe passes, and that it
+# gives up after AR_WAIT_ATTEMPTS without hanging. Kept tiny via AR_WAIT_ATTEMPTS/GAP overrides so the
+# timeout case does not actually sleep the default 40×15s.
+@test "ds_ar_wait: returns 0 the moment the deployer SA can push (writable on attempt 1)" {
+  _stub_ar 0 tok-abc '{"permissions":["artifactregistry.repositories.uploadArtifacts"]}'
+  AR_WAIT_ATTEMPTS=3 AR_WAIT_GAP=0 run ds_ar_wait us-central1 proj-x devstash
+  assert_success
+}
+
+@test "ds_ar_wait: gives up after AR_WAIT_ATTEMPTS when never writable (bounded, returns 1)" {
+  # describe 404 → ds_ar_writable never true → the poll exhausts its budget rather than hanging.
+  _stub_ar 1 tok-abc '{"permissions":["artifactregistry.repositories.uploadArtifacts"]}'
+  AR_WAIT_ATTEMPTS=2 AR_WAIT_GAP=0 run ds_ar_wait us-central1 proj-x devstash
+  assert_failure
+}
+
+# ── fmt_dur / stage / _ts_tag — the resume narration primitives ──
+@test "fmt_dur: seconds under a minute render as Ns" {
+  run fmt_dur 44; assert_output "44s"
+  run fmt_dur 0;  assert_output "0s"
+}
+
+@test "fmt_dur: a minute-plus renders as MmSSs (zero-padded seconds)" {
+  run fmt_dur 592; assert_output "9m52s"   # 9*60+52
+  run fmt_dur 65;  assert_output "1m05s"
+}
+
+@test "fmt_dur: an hour-plus renders as HhMMm" {
+  run fmt_dur 3780; assert_output "1h03m"  # 1h + 3m
+}
+
+@test "_ts_tag: emits nothing when no span is open (plain log/ok/warn unchanged)" {
+  unset _SPAN_T0
+  run _ts_tag; assert_output ""
+}
+
+@test "_ts_tag: inside a span emits the '+elapsed' tag (span origin is honoured)" {
+  begin_span 6
+  _SPAN_T0=$(( SECONDS - 5 ))          # pin a deterministic 5s elapsed
+  run _ts_tag; assert_output --partial "+5s"
+  end_span
+}
+
+@test "stage: auto-increments the counter and reads the total from begin_span (callers pass only text)" {
+  begin_span 6                          # the total lives here — never repeated per stage call
+  run stage "first";  assert_output --partial "[stage 1/6] first"
+  # `run` executes in a subshell, so the parent counter didn't advance — drive both in one shell:
+  local out; out="$( stage "a"; stage "b"; stage "c" )"
+  echo "$out" | grep -qF "[stage 1/6] a"
+  echo "$out" | grep -qF "[stage 2/6] b"
+  echo "$out" | grep -qF "[stage 3/6] c"
+  end_span
+}
+
+@test "stage: the total comes from begin_span, not the call site (change it in one place)" {
+  begin_span 3                          # a DIFFERENT total flows to every stage without touching the calls
+  run stage "only";  assert_output --partial "[stage 1/3] only"
+  end_span
+}
+
+@test "end_span: after close, log() drops the timestamp tag and the stage total" {
+  begin_span 6
+  end_span
+  run _ts_tag; assert_output ""
+  # Total is unset too — a stray post-span stage falls back to "?" rather than leaking the old 6.
+  run stage "orphan"; assert_output --partial "[stage 1/?] orphan"
 }

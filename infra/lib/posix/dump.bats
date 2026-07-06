@@ -10,7 +10,7 @@
 # spy_capture_stdin + spy_stdin assert exactly which generations were pruned.
 
 setup() {
-  load "${BATS_TEST_DIRNAME}/../../run/gcp/lib/test_helper"
+  load "${BATS_TEST_DIRNAME}/../test_helper"
   # shellcheck source=infra/lib/posix/dump.sh
   source "${REPO_ROOT}/infra/lib/posix/dump.sh"
 }

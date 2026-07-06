@@ -51,8 +51,13 @@ jobs:
           node-version: "22"
       - name: Install bats toolchain
         run: npm ci --ignore-scripts
+      # GNU `parallel` lets infra/ci/run-bats.sh split the suite across files (~3x faster). It is
+      # preinstalled on ubuntu-latest today, but installing it explicitly keeps the speedup from
+      # silently regressing to serial if the runner image ever drops it. Idempotent + no-op if present.
+      - name: Ensure GNU parallel (for parallel bats)
+        run: command -v parallel >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y parallel; }
       # The bats suite stubs gcloud/tofu/gh/pgrep on PATH — reproduces the empty-state secrets bug,
       # the pre-dispatch gate, state-lock recovery, and the POSIX suspend helpers. Self-contained:
-      # no cloud auth.
+      # no cloud auth. run-bats.sh parallelises across files when `parallel` is present (it is, above).
       - name: Infra shell tests (bats)
         run: npm run test:infra

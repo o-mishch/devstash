@@ -97,16 +97,23 @@ reloader() {
   ok "Stakater Reloader installed; Deployment auto-restarts on secret rotation"
 }
 
-# _join_fail_fast <die-msg> <pid…>: fail-fast join over a set of backgrounded PIDs. Returns 0 once
-# ALL exit 0; the instant the FIRST exits non-zero it kills every still-running sibling (so nothing
-# is left installing/creating detached after we abort) and `die`s with <die-msg>. Uses `wait -n -p`
-# (bash >= 5.1, guaranteed by run.sh's re-exec) to learn WHICH pid finished each iteration, so the
-# pending set shrinks by one and, on failure, only the survivors are killed. Single-sourced so
-# ensure_operators and suspend.sh's resume overlap driver share ONE join instead of copy-pasting it.
+# _join_fail_fast <die-msg> [labels-array-name] <pid…>: fail-fast join over a set of backgrounded
+# jobs. Returns 0 once ALL exit 0; the instant the FIRST exits non-zero it kills every still-running
+# sibling (so nothing is left installing/creating detached after we abort) and `die`s with <die-msg>.
+# Uses `wait -n -p` (bash >= 5.1, guaranteed by run.sh's re-exec) to learn WHICH pid finished each
+# iteration, so the pending set shrinks by one and, on failure, only the survivors are killed.
+# Single-sourced so ensure_operators and suspend.sh's resume overlap driver share ONE join.
+#
+# NARRATION (optional, one clean channel): if the caller passes the NAME of an associative array as
+# the 2nd arg, it is a pid→label map (declare -A) — as each pid lands, "✓ [label] done in <dur>" is
+# printed (dur measured from _JFF_T0, the group's start; the paths were all backgrounded together).
+# Pass the literal "" to skip narration entirely — bare-PID callers (run.sh up) join silently,
+# exactly as before. The map holds only the pids the caller wants named; an unmapped pid joins quietly.
 _join_fail_fast() {
-  local die_msg="$1"; shift
-  local pending=("$@")
-  local finished rc p kept
+  local die_msg="$1"; local labels_ref="$2"; shift 2
+  local -n labels="${labels_ref:-_JFF_NOLABELS}"   # nameref to the caller's map, or an empty fallback
+  local -A _JFF_NOLABELS=()
+  local pending=("$@") finished rc p kept
   while [[ "${#pending[@]}" -gt 0 ]]; do
     finished=""; rc=0
     wait -n -p finished "${pending[@]}" || rc=$?
@@ -116,9 +123,10 @@ _join_fail_fast() {
       for p in "${pending[@]}"; do [[ "$p" != "$finished" ]] && kill "$p" 2>/dev/null || true; done
       die "$die_msg (a joined job exited $rc)"
     fi
-    # Drop the just-finished pid from the pending set. If -p reported nothing (shouldn't on >=5.1),
-    # fall back to clearing all — every tracked job has exited 0 by then anyway.
+    # Drop the just-finished pid, announcing it if the caller mapped a label for it. If -p reported
+    # nothing (shouldn't on >=5.1), fall back to clearing all — every job has exited 0 by then anyway.
     if [[ -n "$finished" ]]; then
+      [[ -n "${labels[$finished]:-}" ]] && ok "[${labels[$finished]}] done in $(fmt_dur "$(( SECONDS - ${_JFF_T0:-SECONDS} ))")"
       kept=()
       for p in "${pending[@]}"; do [[ "$p" != "$finished" ]] && kept+=("$p"); done
       pending=(${kept[@]+"${kept[@]}"})
@@ -151,21 +159,35 @@ _prefix() { sed -e "s/^/[$1] /"; }
 # backgrounded helm installs then only READ that kubeconfig (no context switch), the same safe
 # pattern CI's ensure-operators.sh already runs in production.
 #
-# EXTRA OVERLAP: any PID passed as an argument (e.g. a backgrounded apply exec from resume's overlap
+# EXTRA OVERLAP: any pid passed as an argument (e.g. a backgrounded apply exec from resume's overlap
 # driver) is joined alongside the two installs via _join_fail_fast, so an independent long task
 # overlaps the operator install under one fail-fast wait instead of a second serial wait.
+#
+# NARRATION (only when the caller labels the extra pids): the caller may pass, before the pids, the
+# NAME of a pid→label associative array (declare -A) so _join_fail_fast prints each path's own
+# "✓ [label] done in <dur>" as it lands. The two installs are added to that map here. With no map
+# (a bare `run.sh up` bring-up passes only pids and "" for the map) the join stays silent — the
+# exact prior behaviour. There is no separate liveness ticker: the join's per-path DONE lines and
+# the caller's numbered [stage N/M] banners already show forward motion.
 ensure_operators() {
-  local extra_pids=("$@")   # optional already-backgrounded PIDs to join with the installs
-  use_cluster               # ONCE, in the parent — sets kubeconfig + context before backgrounding
+  local labels_ref="$1"; shift          # name of a pid→label map, or "" for a silent join
+  local extra_pids=("$@")               # optional already-backgrounded pids to join with the installs
+  use_cluster                           # ONCE, in the parent — sets kubeconfig + context first
   log "Installing External Secrets Operator ‖ Stakater Reloader (parallel)"
   { infra/ci/ensure-eso.sh 2>&1 | _prefix eso; exit "${PIPESTATUS[0]}"; } &
   local eso_pid=$!
   { infra/ci/ensure-reloader.sh 2>&1 | _prefix reloader; exit "${PIPESTATUS[0]}"; } &
   local reloader_pid=$!
-  # Join the two installs + any caller-supplied PIDs (e.g. a backgrounded apply exec from resume's
-  # overlap driver) under one fail-fast wait — see _join_fail_fast above.
+  # If narrating, register our two installs in the caller's map so the join names them on finish.
+  # _JFF_T0 (set by the resume driver, the sole narrating caller) anchors each DONE duration.
+  if [[ -n "$labels_ref" ]]; then
+    local -n _eo_labels="$labels_ref"
+    _eo_labels[$eso_pid]=eso; _eo_labels[$reloader_pid]=reloader
+  fi
+  # Join the two installs + any caller-supplied pids under one fail-fast wait — see _join_fail_fast.
   _join_fail_fast \
     "operator install overlap failed — re-run the bring-up (all steps are retry-safe)" \
+    "$labels_ref" \
     "$eso_pid" "$reloader_pid" ${extra_pids[@]+"${extra_pids[@]}"}
   _wait_eso_webhook   # same belt-and-suspenders webhook wait eso() does — see the helper above
   ok "ESO + Reloader installed; SecretStore/ExternalSecret CRDs available"

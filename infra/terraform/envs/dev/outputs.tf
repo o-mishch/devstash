@@ -6,6 +6,14 @@ output "artifact_registry_url" {
   value = module.artifact_registry.repository_url
 }
 
+# The STATIC repository id ("devstash") — resolves even while the repo resource is gated off
+# (deep-suspend), same as repository_url. run.sh reads this as the single source of truth for
+# the AR-writable dispatch gate (_wait_ar_push_ready) instead of re-hardcoding the repo name
+# that CI already carries as deploy-gke.yml's REPO.
+output "artifact_registry_repository_id" {
+  value = module.artifact_registry.repository_id
+}
+
 # Managed Cloud SQL. The app uses the PRIVATE IP in-VPC (synced to Secret Manager).
 # For DIRECT developer access via the PUBLIC IP (must be in db_authorized_networks):
 #   tofu output -raw db_public_database_url

@@ -137,6 +137,28 @@ explicit `~minutes` operation** (Autopilot cluster create ~3-5 min + Cloud SQL s
 min + image build/migrate/rollout). If you want "hit the URL and it's there," use the
 Vercel deployment.
 
+### Aborting a resume/up mid-flight — Ctrl-C ONCE, then re-run
+
+If you must stop a `resume`/`up`/`apply` while OpenTofu is provisioning, press **Ctrl-C
+exactly once** and wait. One interrupt is delivered to the whole foreground process group, so
+the child `tofu` does its own **graceful shutdown** — it finishes the in-flight resource
+operation and persists state before exiting. `run.sh` traps that first interrupt and
+deliberately does **not** tear down, precisely so tofu can finish writing state.
+
+**A second Ctrl-C tells tofu to exit immediately**, cancelling the provider mid-create. If a
+resource (e.g. the Cloud SQL instance) was created cloud-side but its ID never got written to
+state, it becomes an **orphan** — untracked, so neither a re-`apply` nor `terraform refresh`
+will adopt it, and a later `suspend` (which sets `db_active=false`) cannot destroy it. Avoid
+the double Ctrl-C unless you accept manual cleanup.
+
+**Recovery from an interrupted bring-up: just re-run the SAME command** — `run.sh resume` (or
+`up`). Its `reconcile_state` step (branch 3d) detects a Cloud SQL instance / GKE cluster /
+Valkey that exists in GCP but not in state and **imports** it before planning, so the retry
+continues cleanly. Do **not** `suspend` over an interrupted resume — the DB-import branch is
+skipped while `db_active=false`, which strands the orphan. If you already stranded one, delete
+it by hand (`gcloud sql instances delete <name>` — the data is safe in the GCS dump) and then
+resume/suspend as intended.
+
 ### DNS
 
 The ingress IP is released on suspend and a fresh one is allocated on resume, so `resume`

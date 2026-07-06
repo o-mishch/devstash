@@ -8,7 +8,7 @@
 # External commands are stubbed with bats-mock; JSON fixtures live under __fixtures__/.
 
 setup() {
-  load test_helper
+  load "${BATS_TEST_DIRNAME}/../../../lib/test_helper"
   # The GCS object generation of the .tflock — the value `tofu force-unlock` needs on the GCS
   # backend (NOT held-lock.json's UUID "ID"). Numeric, and distinct from that UUID on purpose.
   export TFLOCK_GENERATION=1783293155440141

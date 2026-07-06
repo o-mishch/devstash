@@ -21,10 +21,54 @@ _DEVSTASH_COMMON_SH=1
 # Generic, cloud-agnostic helpers shared by both run.sh orchestrators (gcp-run + local-run).
 # Kept here so the two scripts speak ONE logging/preflight vocabulary instead of each
 # reimplementing it (gcp-run used to own these; local-run used bare `echo`). No GCP coupling.
-log()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
-ok()   { printf '\033[0;32m  ✓ %s\033[0m\n' "$*"; }
-warn() { printf '\033[0;33m  ! %s\033[0m\n' "$*"; }
-die()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+#
+# _ts_tag: when a caller has opened a timed span (via begin_span, below) this emits an
+# "HH:MM:SS +Ns " lead-in for every log/ok/warn line, so the interleaved output of a
+# long concurrent orchestration (resume) carries wall-clock + elapsed on every line. When no
+# span is open (_SPAN_T0 unset — the default for every other caller) it emits nothing, so the
+# plain log/ok/warn output is byte-for-byte unchanged. SECONDS is bash's monotonic
+# second-counter, already the elapsed-time idiom in this codebase (run.sh:wait_* loops). It does
+# fork one `date` per tagged line for the wall-clock stamp — negligible: only the handful of
+# narration lines emitted while a span is open pay it.
+_ts_tag() {
+  [[ -n "${_SPAN_T0:-}" ]] || return 0
+  printf '%s +%s ' "$(date +%H:%M:%S)" "$(fmt_dur "$(( SECONDS - _SPAN_T0 ))")"
+}
+log()  { printf '\n\033[1;36m▶ %s%s\033[0m\n'   "$(_ts_tag)" "$*"; }
+ok()   { printf '\033[0;32m  ✓ %s%s\033[0m\n'   "$(_ts_tag)" "$*"; }
+warn() { printf '\033[0;33m  ! %s%s\033[0m\n'   "$(_ts_tag)" "$*"; }
+die()  { printf '\033[0;31m✗ %s%s\033[0m\n' "$(_ts_tag)" "$*" >&2; exit 1; }
+
+# ── Timed-span + stage narration (opt-in; used by the resume overlap driver) ─────────────────
+# fmt_dur <seconds>: humanise an elapsed second-count as "9m52s" / "44s" / "1h03m". Pure bash
+# arithmetic, no external process (this function alone) — cheap to call on every per-path join.
+fmt_dur() {
+  local s="$1"
+  if   (( s < 60 ));   then printf '%ds' "$s"
+  elif (( s < 3600 )); then printf '%dm%02ds' "$(( s / 60 ))" "$(( s % 60 ))"
+  else                      printf '%dh%02dm' "$(( s / 3600 ))" "$(( (s % 3600) / 60 ))"
+  fi
+}
+
+# begin_span <total>: open a timed narration span. Records the current SECONDS as the span origin
+# so _ts_tag can render "+elapsed" against it, resets the stage counter, and stashes the stage
+# TOTAL so each `stage` call carries the denominator without the caller repeating it (one number,
+# one place — the count can't drift across call sites when a stage is inserted/removed). Idempotent-
+# ish: a second call just re-anchors. end_span closes it (log/ok/warn go back to plain). The span is
+# process-local state — a backgrounded subshell inherits the origin at fork time (correct: children
+# timestamp against the same t0) but its own begin/end never leaks back out.
+begin_span() { _SPAN_T0="$SECONDS"; _SPAN_STAGE=0; _SPAN_TOTAL="${1:-?}"; }
+end_span()   { unset _SPAN_T0 _SPAN_STAGE _SPAN_TOTAL; }
+
+# stage <text>: a numbered stage banner within an open span — "[stage 3/6] <text>". Auto-increments
+# a per-span counter and reads the total set by begin_span, so callers pass ONLY the text — never a
+# hand-maintained index (drifts when a stage is inserted) NOR a repeated total (drifts across call
+# sites). No-op-safe outside a span: it still prints, total shown as "?". Routed through log() so it
+# inherits the _ts_tag.
+stage() {
+  _SPAN_STAGE=$(( ${_SPAN_STAGE:-0} + 1 ))
+  log "[stage ${_SPAN_STAGE}/${_SPAN_TOTAL:-?}] $*"
+}
 
 # need <cli> <install-hint>: assert a required CLI is on PATH, else die with the hint.
 # Callers build their own tool list (each script needs a different set) and call need per tool.
@@ -410,6 +454,26 @@ ds_ar_writable() {
     -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
     -d '{"permissions":["artifactregistry.repositories.uploadArtifacts"]}' \
     "$url" 2>/dev/null | grep -q 'artifactregistry.repositories.uploadArtifacts'
+}
+
+# ds_ar_wait <region> <project> <repo>: BLOCK until ds_ar_writable is true, bounded by
+# AR_WAIT_ATTEMPTS (default 40) × AR_WAIT_GAP secs (default 15) ≈ 10 min. Returns 0 the moment the
+# deployer SA can push, 1 on timeout. Single source of the bounded AR-writable wait — the poll
+# budget, the per-attempt "not writable yet (attempt N/M)" progress line, and the ds_ar_writable
+# probe — shared by BOTH pushers of it: build-push.sh (CI's pre-push gate, which maps a 1 return to a
+# hard ::error:: exit) and run.sh's _wait_ar_push_ready (the pre-dispatch gate, which maps 1 to a
+# soft warn). Splitting the WAIT (here) from the OUTCOME (each caller) keeps one reason-to-change per
+# unit: tune the budget/message once here; each caller still decides fail-hard vs. continue. Emits its
+# progress lines with `echo` (not warn/log) so it stays runtime-agnostic — GitHub Actions surfaces
+# them as plain step output, run.sh as ordinary stdout — while the callers add their own tagged
+# framing around it. The 10-min envelope covers the IAM apply + registry-data-plane propagation tail
+# without outliving CI's 15m job cap or a resume.
+ds_ar_wait() {
+  local region="$1" project="$2" repo_id="$3"
+  local attempts="${AR_WAIT_ATTEMPTS:-40}" gap="${AR_WAIT_GAP:-15}"
+  # shellcheck disable=SC2317,SC2329  # invoked indirectly by poll_until via the -m message hook
+  _ds_ar_wait_msg() { echo "Artifact Registry '$repo_id' not writable yet (attempt $1/$2) — repo/IAM binding still propagating to the registry; waiting ${gap}s…"; }
+  poll_until -m _ds_ar_wait_msg "$attempts" "$gap" -- ds_ar_writable "$region" "$project" "$repo_id"
 }
 
 # ds_dump_job_diagnostics <namespace> <job-name>: best-effort logs + describe for a failed/timed-out

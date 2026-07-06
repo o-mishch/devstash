@@ -14,7 +14,7 @@
 # NOT inline heredocs — so each stays diffable/jq-validatable in its own language (see fixture()).
 
 _HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${_HELPER_DIR}/../../../.." && pwd)"
+REPO_ROOT="$(cd "${_HELPER_DIR}/../.." && pwd)"   # infra/lib/ → repo root (2 up)
 # RUN_SH is consumed by the .bats files that `load` this helper (not here) — export it so shellcheck
 # does not flag it unused and so it survives into the test's environment.
 # shellcheck disable=SC2034
@@ -29,6 +29,48 @@ COMMON_SH="${REPO_ROOT}/infra/lib/common.sh"
 load "${REPO_ROOT}/node_modules/bats-support/load.bash"
 load "${REPO_ROOT}/node_modules/bats-assert/load.bash"
 load "${REPO_ROOT}/node_modules/bats-mock/stub.bash"
+
+# ── Per-test stub isolation (CRITICAL — do not remove) ───────────────────────────────────────────
+# bats-mock points its PATH bindir at ${BATS_TMPDIR}/bin — and BATS_TMPDIR is a MACHINE-GLOBAL temp
+# dir SHARED by every test, every .bats file, and every concurrent `bats` process. bats-mock's own
+# stub/unstub clean up after themselves, but our fake_cmd/spy_cmd write executables into that bindir
+# and (being non-verified) are never removed. With no teardown the leftover shadows a later test's
+# `stub gcloud` on PATH — e.g. state-lock.bats' `not-json-at-all` fake_cmd gcloud leaking into the
+# earlier read_tflock test — producing flaky, order- and cross-process-dependent failures.
+#
+# FIX: repoint the mock bindir at a PER-TEST directory under $BATS_TEST_TMPDIR (bats creates it fresh
+# per test and removes it after), and prepend it to PATH ahead of the stale shared one. Every stub /
+# fake_cmd / spy_cmd a test installs now lives in that private dir and vanishes when the test ends —
+# no cross-test, cross-file, or cross-process (two `bats` runs at once) leakage is possible. This code
+# runs at `load` time, i.e. inside each file's setup(), so it re-isolates before every single test.
+# (test_helper is loaded from setup(), so $BATS_TEST_TMPDIR is already set here.)
+BATS_MOCK_TMPDIR="${BATS_TEST_TMPDIR}/mock"
+BATS_MOCK_BINDIR="${BATS_MOCK_TMPDIR}/bin"
+mkdir -p "${BATS_MOCK_BINDIR}"
+PATH="${BATS_MOCK_BINDIR}:${PATH}"
+# Guard against a leftover shared bindir from a crashed/concurrent run: drop the global one bats-mock
+# put on PATH at load time so a stale executable there can never be reached ahead of a real command.
+PATH="${PATH//${BATS_TMPDIR%/}\/bin:/}"
+
+# Integrity guard for the SHARED bats-mock dispatcher. Every stub/stub_repeated symlinks the command
+# to node_modules/bats-mock/binstub — the one plan-matching dispatcher the whole suite depends on. The
+# pre-isolation leak above could overwrite it (a leftover `stub tofu` symlink + a later `fake_cmd tofu`
+# writing THROUGH it clobbered binstub with a fixture body, silently breaking every stubbed command
+# suite-wide). The isolation now prevents that, but a corrupted node_modules from an OLD run — or
+# another checkout sharing this node_modules — would still poison the run as inscrutable flakiness.
+# Fail LOUD and early instead: the real dispatcher references its plan file; a clobbered copy does not.
+if ! grep -q '_STUB_PLAN' "${REPO_ROOT}/node_modules/bats-mock/binstub" 2>/dev/null; then
+  printf 'FATAL: node_modules/bats-mock/binstub is corrupted (missing the _STUB_PLAN dispatcher).\n' >&2
+  printf '       Restore it with: npm ci  (or reinstall bats-mock). See test_helper.bash isolation notes.\n' >&2
+  exit 1
+fi
+
+# teardown: bats runs this after each test. $BATS_TEST_TMPDIR (and our per-test mock dir inside it) is
+# auto-removed by bats, so this is belt-and-suspenders — it empties the private bindir explicitly so
+# even a within-test PATH quirk cannot carry a stub into the next test. No-op if the dir is gone.
+teardown() {
+  [[ -n "${BATS_MOCK_BINDIR:-}" ]] && rm -rf "${BATS_MOCK_BINDIR}" 2>/dev/null || true
+}
 
 # fixture <name>: absolute path to a __fixtures__/<name> file next to the CALLING .bats file
 # (BATS_TEST_DIRNAME/__fixtures__), so each test dir owns its own fixtures (run/gcp/lib and

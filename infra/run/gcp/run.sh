@@ -94,6 +94,23 @@ set -euo pipefail
 # contained (raw ANSI, bash builtins only) so it works even before common.sh is sourced below.
 # shellcheck disable=SC2154  # rc IS assigned (rc=$?) and used ("$rc") within this trap string; shellcheck can't see across the trap boundary.
 trap 'rc=$?; printf "\n\033[0;31m✖ run.sh FAILED\033[0m — %s:%d\n    command: %s\n    exit code: %d\n" "${BASH_SOURCE[0]}" "$LINENO" "$BASH_COMMAND" "$rc" >&2' ERR
+
+# Interrupt-safe abort: when tofu is mid-apply, a Ctrl-C at the terminal is delivered to the whole
+# foreground process group — so the child `tofu` already receives SIGINT and does its OWN graceful
+# shutdown (finish the in-flight resource op, persist state, exit). The danger is that THIS bash
+# also gets the SIGINT and tears down FIRST, before tofu finishes writing state — which is exactly
+# how an interrupted apply strands a just-created resource in the cloud with no state entry (an
+# orphan that neither re-apply nor `refresh` can ever adopt — only `import`). So on INT/TERM this
+# handler only PRINTS the one-Ctrl-C guidance — it does not exit or otherwise alter control flow.
+# bash defers a running trap until the in-flight FOREGROUND command finishes, so tofu completes its
+# graceful shutdown and persists state first; the shell then exits via `set -e` on tofu's non-zero
+# interrupt code (which the ERR trap above reports). A SECOND Ctrl-C is what tofu treats as "exit
+# immediately" (cancelling the provider mid-create) — that is the operator's explicit escalation,
+# not ours to send. Best-effort and self-contained (bash builtins only). This does not
+# fire for the backgrounded overlap apply (a subshell in its own right); that path's join surfaces
+# the child's status normally.
+# shellcheck disable=SC2154
+trap 'printf "\n\033[0;33m  ! Interrupt received — letting the in-flight OpenTofu op finish its graceful shutdown and persist state.\033[0m\n    \033[0;33mPress Ctrl-C AGAIN only if you must force-exit (this can strand a half-created resource — recover by re-running the same command).\033[0m\n" >&2' INT TERM
 cd "$(dirname "${BASH_SOURCE[0]}")/../../.."   # repo root
 
 TF_DIR=infra/terraform/envs/dev
@@ -113,6 +130,10 @@ STATE_PREFIX="gke/dev/"
 # eventual consistency — see the sleep call site in apply() for the incident this closes.
 IAM_PROPAGATION_COOLDOWN=120
 PLAN_FILE=devstash.tfplan
+# Separate plan file for the pre-apply staging subgraphs (_staging_apply). Kept distinct from
+# PLAN_FILE so a staging plan and the main plan never clobber each other's saved file when the
+# overlap driver runs them close together. Gitignored + short-lived, same as PLAN_FILE.
+STAGING_PLAN_FILE=devstash-staging.tfplan
 NS=devstash
 DB_NAME=devstash   # logical DB inside the Cloud SQL instance (dump/restore --database target)
 CMD="${1:-up}"
@@ -675,7 +696,12 @@ _apply_plan() {
   # -lock-timeout: wait (don't instantly fail) if the lock is briefly held — covers the
   # residual window where an auto-suspend build starts just after the pre-check above cleared.
   _plan_with_refresh_fallback -lock-timeout=120s ${RECONCILE_REPLACE[@]+"${RECONCILE_REPLACE[@]}"} -out="$PLAN_FILE"
-  if ! confirm "Apply this plan? (review the resource changes above)"; then
+  # The overlapped bring-up paths (resume/up/apply) already took ONE upfront `y` at _confirm_bringup
+  # (which set _BRINGUP_CONFIRMED=1) that authorized the WHOLE sequence — the staging apply, the
+  # CI dispatch AND this main apply. Re-prompting here would double-ask, so when that flag is set we
+  # still PRINT the plan above but skip the prompt. Standalone callers (bare `run.sh apply` with no
+  # overlap, suspend, down) never set the flag, so they keep the interactive review gate unchanged.
+  if [[ "${_BRINGUP_CONFIRMED:-}" != "1" ]] && ! confirm "Apply this plan? (review the resource changes above)"; then
     _clear_plan_file
     clear_provisioning
     die "aborted before apply"
@@ -743,7 +769,7 @@ apply() {
 _apply_and_wire() {
   apply
   wait_for_cluster
-  ensure_operators   # ESO ‖ Reloader in parallel (was serial eso→reloader) — see gke.sh
+  ensure_operators ""   # "" = silent join (no resume-style narration) — ESO ‖ Reloader in parallel; see gke.sh
   secrets
   dns_hint
   update_dns
@@ -954,13 +980,74 @@ _AR_PUSH_TARGET_ARGS=(
   -target=module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry
 )
 
-_apply_ci_identity() {
+# _wait_ar_push_ready: block until the deployer SA can ACTUALLY push to the AR repo, then return —
+# called by both AR pre-apply helpers right BEFORE they hand off to _predispatch_ci_build.
+#
+# WHY: the pre-apply's `tofu apply` only returns once google_artifact_registry_repository_iam_member's
+# SetIamPolicy call SUCCEEDS, but there is a residual IAM→registry-data-plane propagation lag AFTER
+# that (the exact gap build-push.sh's `sleep 5` + short poll absorbs). Worse, the freshly-created
+# repo's own IAM subsystem can lag the create by MINUTES, so the provider retries SetIamPolicy for a
+# while and the whole pre-apply runs long (observed 8 min on 2026-07-06). Previously we dispatched CI
+# the instant the pre-apply returned, racing that propagation against CI's OWN ds_ar_writable poll —
+# whose wrapping step retry-timeout can fire before the poll budget is spent, failing the build
+# ("not writable yet, attempt 6/40" then step timeout). Move that wait HERE, onto run.sh's clock
+# (which has no build-step timeout), so CI is dispatched only once the push identity is genuinely
+# usable — the gate passes on attempt 1 in the common case.
+#
+# Delegates the bounded wait to ds_ar_wait (common.sh) — the SAME poll + probe build-push.sh's CI
+# gate uses, so run.sh and CI agree on "writable" and the budget/message live in one place. This
+# caller owns only the run.sh-side outcome: a timeout is a non-fatal warn (not die) — the pre-apply
+# already succeeded so the binding exists in state; let CI's own poll ride out any remaining lag
+# rather than abort the resume. The repo id comes from the artifact_registry_repository_id output
+# (static "devstash"), not a hardcoded literal — one source of truth, shared with CI's REPO.
+_wait_ar_push_ready() {
+  local repo
+  repo="$(tf_out artifact_registry_repository_id)"
+  if [[ -z "$repo" ]]; then
+    warn "artifact_registry_repository_id output empty — skipping the AR-writable dispatch gate; CI's own ds_ar_writable poll will cover it"
+    return 0
+  fi
+  log "Confirming the deployer SA can push to Artifact Registry '$repo' before dispatching CI (covers IAM→registry propagation)"
+  if ds_ar_wait "$REGION" "$PROJECT_ID" "$repo"; then
+    ok "Artifact Registry '$repo' is writable by the deployer SA — dispatching CI"
+  else
+    warn "Artifact Registry '$repo' still not writable after the AR-writable wait — dispatching CI anyway; its ds_ar_writable poll will keep waiting on the residual propagation"
+  fi
+}
+
+# _clear_staging_plan: mirror _clear_plan_file for the staging plan file. Both the CWD-relative and
+# the $TF_DIR-relative path are removed because `tofu -chdir` writes the -out plan under $TF_DIR.
+_clear_staging_plan() { rm -f "$STAGING_PLAN_FILE" "$TF_DIR/$STAGING_PLAN_FILE"; }
+
+# _staging_apply <label> <target-args…>: the shared pre-apply staging step for the overlap paths.
+# It applies a SMALL -target subgraph (WIF/deployer SA/AR repo + push binding) ~1 min BEFORE the main
+# apply so CI's build can start while Cloud SQL provisions. Unlike the old blind `apply -auto-approve
+# <targets>`, this PLANS to a file, RENDERS that plan to the operator, then applies THAT EXACT file —
+# so the staging diff is visible (the plan-first guarantee: you apply only what you reviewed). The one
+# upfront consent already came from _confirm_bringup, so this does NOT prompt again; it just shows what
+# it is about to create. A no-change plan (everything already exists — e.g. a resume where identity
+# survived the suspend) still renders "No changes" and applies as a no-op. init + the autosuspend-lock
+# serialise mirror apply(); this runs BEFORE apply() so it cannot rely on that having run.
+_staging_apply() {
+  local label="$1"; shift
   ensure_tfvars
   require_state_bucket
   wait_for_no_autosuspend_build
-  log "Applying CI auth identity + AR push target (WIF + deployer SA + repo/binding) so the image build can start now"
+  log "Staging apply: $label — planning the pre-apply subgraph so its diff is shown before it mutates GCP"
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
-  tofu_locked_ apply -auto-approve -lock-timeout=120s \
+  _clear_staging_plan
+  # Plan the -target subgraph to a file, then apply that file — no -auto-approve of an unseen diff.
+  tofu_locked_ plan -lock-timeout=120s "$@" -out="$STAGING_PLAN_FILE"
+  log "Staging plan for '$label' shown above — applying it now (already authorised by the bring-up confirmation)"
+  tofu_locked_ apply -lock-timeout=120s "$STAGING_PLAN_FILE"
+  _clear_staging_plan
+}
+
+_apply_ci_identity() {
+  # Full CI-auth identity subgraph (WIF pool/provider + deployer & lifecycle SAs + their principalSet
+  # bindings) PLUS the AR push target — the post-down / first-ever superset. Plans then applies that
+  # exact plan via _staging_apply so the diff is visible under the single bring-up consent.
+  _staging_apply "CI auth identity + AR push target (WIF + deployer SA + repo/binding)" \
     -target=module.iam.google_iam_workload_identity_pool.github \
     -target=module.iam.google_iam_workload_identity_pool_provider.github \
     -target=module.iam.google_service_account.deployer \
@@ -968,6 +1055,9 @@ _apply_ci_identity() {
     -target=module.iam.google_service_account.lifecycle_deployer \
     -target=module.iam.google_service_account_iam_member.lifecycle_deployer_github_wif \
     "${_AR_PUSH_TARGET_ARGS[@]}"
+  # Gate CI dispatch on the deployer SA actually being able to push (repo IAM → registry data-plane
+  # propagation can lag the apply return) — see _wait_ar_push_ready.
+  _wait_ar_push_ready
 }
 
 # _apply_ar_push_target: recreate ONLY the AR repo + deployer repoAdmin binding, ~1 min, BEFORE the
@@ -982,12 +1072,12 @@ _apply_ci_identity() {
 # ~1-min-subgraph invariant that makes _apply_ci_identity safe holds here too. The full `apply` that
 # follows carries no -target and reconciles the complete graph, so the final state stays consistent.
 _apply_ar_push_target() {
-  ensure_tfvars
-  require_state_bucket
-  wait_for_no_autosuspend_build
-  log "Recreating the Artifact Registry repo + deployer push binding so the pre-dispatched build can push on attempt 1"
-  tofu_ init -backend-config="bucket=$STATE_BUCKET"
-  tofu_locked_ apply -auto-approve -lock-timeout=120s "${_AR_PUSH_TARGET_ARGS[@]}"
+  # AR-only subgraph (repo + deployer repoAdmin binding) — the post-suspend fast path where identity
+  # already survives. Plans then applies that exact plan via _staging_apply so the diff is visible.
+  _staging_apply "Artifact Registry repo + deployer push binding" "${_AR_PUSH_TARGET_ARGS[@]}"
+  # Gate CI dispatch on the deployer SA actually being able to push (repo IAM → registry data-plane
+  # propagation can lag the apply return) — see _wait_ar_push_ready.
+  _wait_ar_push_ready
 }
 
 # _arm_ci_cancel_trap: install the EXIT trap that cancels the pre-dispatched CI run if the caller
@@ -1033,6 +1123,31 @@ _watch_ci_run() {
   return 1
 }
 
+# _confirm_bringup <up|resume|apply>: the SINGLE upfront intent gate for the three overlapped
+# bring-up paths. Those paths deliberately FRONT-LOAD GCP mutation — a staging `tofu apply
+# -auto-approve` (WIF pool/provider + deployer & lifecycle SAs + their IAM bindings + the Artifact
+# Registry repo + push binding), a GitHub-secrets push, and a real `deploy-gke` CI dispatch — so the
+# ~1-min identity/AR create and the image build OVERLAP the ~10-min Cloud SQL create. That overlap is
+# kept; this gate just makes it happen only AFTER one explicit `y`. Without it a `resume`/`up`/`apply`
+# creates AR/SAs/WIF and dispatches a build BEFORE the operator ever sees a plan (observed live: an
+# aborted resume left an AR repo, SAs, WIF and pushed images behind). On decline we `die` before ANY
+# mutation. On accept we set _BRINGUP_CONFIRMED=1, which _apply_plan reads to SUPPRESS its own
+# now-redundant "Apply this plan?" prompt (the plan is still printed) — so there is exactly ONE
+# interactive confirmation per invocation. AUTO_APPROVE=1 makes confirm() return 0 without reading
+# stdin (common.sh), so the CI/UI path stays non-interactive and the flag is still set. The flag is
+# a plain (non-exported) global: _apply_plan reads it in this same shell, and NOT exporting it keeps
+# it out of the backgrounded overlap-apply subshells so it can never leak a suppressed prompt there.
+_confirm_bringup() {
+  local phase="$1"
+  log "'$phase' will provision GCP. It runs, IN THIS ORDER, once you confirm:"
+  log "  1. a staging apply: WIF pool/provider, deployer + lifecycle SAs + IAM bindings, Artifact Registry repo + push binding"
+  log "  2. push GitHub Actions secrets, then DISPATCH the deploy-gke CI run (builds + pushes images)"
+  log "  3. the full 'tofu apply': Cloud SQL, GKE, Memorystore, Cloud NAT/Armor, ingress IP — the reviewed plan is printed before it applies"
+  warn "Steps 1-2 begin creating GCP resources IMMEDIATELY after you confirm — there is no separate prompt before them."
+  confirm "Proceed with '$phase'? (nothing has touched GCP yet)" || die "aborted before any GCP changes"
+  _BRINGUP_CONFIRMED=1
+}
+
 # _apply_with_overlap: the `apply` dispatch command's tail. When the tofu outputs `secrets` reads
 # already exist (_tf_outputs_present — an apply against an already-provisioned env, e.g. a plain
 # re-apply or a config tweak), pre-dispatch the deploy-gke build so its cluster-INDEPENDENT
@@ -1048,6 +1163,7 @@ _watch_ci_run() {
 # same overlap as above, no longer a serial "deploy is a manual next step". Gating on OUTPUTS (not
 # stale GitHub secrets) matches up()/resume().
 _apply_with_overlap() {
+  _confirm_bringup apply            # single upfront gate — nothing below touches GCP until confirmed
   if _tf_outputs_present; then
     log "Tofu outputs present — pre-dispatching deploy so its build overlaps apply"
     _predispatch_ci_build          # secrets refresh → deploy provision; sets DEPLOY_RUN_ID
@@ -1248,7 +1364,8 @@ smoke() {
 # APIs), no DB restore.
 up() {
   preflight
-  bootstrap
+  bootstrap                        # its own _confirm_bootstrap gate — distinct GCP scope (project/billing/bucket/APIs)
+  _confirm_bringup up              # single upfront gate for the provision/overlap below — nothing touches GCP until confirmed
   if _tf_outputs_present; then
     log "Tofu outputs present — pre-dispatching deploy so its build overlaps apply"
     # Same overlap + cancel-on-early-exit pattern as resume(): pre-dispatch CI (secrets refresh →
@@ -1258,7 +1375,7 @@ up() {
     _arm_ci_cancel_trap up         # cancel the run if anything below dies before the handoff
     apply
     wait_for_cluster
-    ensure_operators   # ESO ‖ Reloader in parallel (was serial eso→reloader) — see gke.sh
+    ensure_operators ""   # "" = silent join (no resume-style narration) — ESO ‖ Reloader in parallel; see gke.sh
     trap - EXIT   # cluster is up; the run now owns its own success/failure — stop cancelling it
     dns_hint; update_dns
     log "Infra up and the app deploy is building/rolling out in parallel. Follow it:"
@@ -1286,7 +1403,11 @@ up() {
 }
 
 # ── dispatch ───────────────────────────────────────────────────────────────
-
+# Only dispatch when EXECUTED as a script, not when SOURCED. bats unit tests source this file to
+# drive individual functions (e.g. _confirm_bringup) directly without triggering a command run;
+# every real invocation (`bash run.sh <cmd>`, the CI/UI paths) executes it, where BASH_SOURCE[0]
+# equals $0 and the case below runs exactly as before. Guarding is a no-op for execution.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 case "$CMD" in
   up)              up ;;
   bootstrap)       preflight; bootstrap ;;
@@ -1318,3 +1439,4 @@ case "$CMD" in
   unlock)          unlock ;;
   *) die "unknown command '$CMD' — one of: up | bootstrap | apply | eso | reloader | secrets | verify-secrets | rotate-secret | upgrade-helm | deploy | smoke | status | logs | suspend | resume | dump-db | restore-db | update-dns | set-dns-creds | down | unlock" ;;
 esac
+fi

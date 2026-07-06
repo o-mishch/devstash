@@ -10,7 +10,7 @@
 # call plans. tofu-output payloads live as __fixtures__/*.json (no inline JSON).
 
 setup() {
-  load test_helper
+  load "${BATS_TEST_DIRNAME}/../../../lib/test_helper"
   GH_PUSH_LOG="${BATS_TEST_TMPDIR}/pushes.log"; : > "$GH_PUSH_LOG"; export GH_PUSH_LOG
 }
 
@@ -158,4 +158,43 @@ _gate_present() {
   [[ -n "$predispatch_line" ]] || fail "resume() never calls _predispatch_ci_build"
   (( ar_line < predispatch_line )) \
     || fail "_apply_ar_push_target ($ar_line) must precede _predispatch_ci_build ($predispatch_line) in resume()"
+}
+
+# Recreating the repo/binding is not enough: the repo IAM → registry data-plane propagation can lag
+# the pre-apply's return by minutes, so dispatching CI the instant the apply returns races that lag
+# against CI's own ds_ar_writable poll (whose wrapping step retry-timeout can fire first, failing the
+# build at "attempt 6/40"). Both AR pre-apply helpers must therefore end by calling _wait_ar_push_ready
+# — moving that wait onto run.sh's (untimed) clock so CI is dispatched only once the push is usable.
+# The apply itself now lives in the shared _staging_apply helper (plan→print→apply), so assert
+# _wait_ar_push_ready appears AFTER the _staging_apply call in each helper's body, per helper.
+@test "both AR pre-apply helpers gate CI dispatch on _wait_ar_push_ready after applying" {
+  local fn block staging_line wait_line
+  for fn in _apply_ci_identity _apply_ar_push_target; do
+    block="$(awk "/^${fn}\(\) \{/,/^\}/" "$RUN_SH")"
+    [[ -n "$block" ]] || fail "run.sh has no ${fn}() definition"
+    staging_line="$(echo "$block" | grep -nE '^[[:space:]]+_staging_apply([[:space:]]|$)' | head -1 | cut -d: -f1)"
+    wait_line="$(echo "$block" | grep -nE '^[[:space:]]+_wait_ar_push_ready([[:space:]]|$)' | head -1 | cut -d: -f1)"
+    [[ -n "$staging_line" ]] || fail "${fn}() no longer calls _staging_apply (the plan→print→apply staging step)"
+    [[ -n "$wait_line" ]]    || fail "${fn}() never calls _wait_ar_push_ready — CI dispatch is ungated"
+    (( staging_line < wait_line )) \
+      || fail "${fn}(): _wait_ar_push_ready ($wait_line) must follow the staging apply ($staging_line)"
+  done
+}
+
+# The staging applies must NEVER pass -auto-approve — they plan to a file, show it, and apply that
+# exact file (via _staging_apply). A regression back to blind `apply -auto-approve <targets>` would
+# mutate GCP on an unseen diff, defeating the plan-first gate. Assert no -auto-approve in either helper
+# (nor in _staging_apply itself — it applies the SAVED plan, which takes no -auto-approve).
+@test "the staging applies never pass -auto-approve (plan-first, no blind apply)" {
+  local fn block code
+  for fn in _apply_ci_identity _apply_ar_push_target _staging_apply; do
+    block="$(awk "/^${fn}\(\) \{/,/^\}/" "$RUN_SH")"
+    [[ -n "$block" ]] || fail "run.sh has no ${fn}() definition"
+    # Strip comment lines (leading-whitespace '#') so a `-auto-approve` mentioned in a comment
+    # doesn't false-positive — we assert on actual CODE only.
+    code="$(echo "$block" | grep -vE '^[[:space:]]*#')"
+    echo "$code" | grep -q -- '-auto-approve' \
+      && fail "${fn}() passes -auto-approve — the staging apply must plan→show→apply the saved plan instead"
+  done
+  return 0
 }

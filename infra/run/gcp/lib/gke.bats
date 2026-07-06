@@ -9,11 +9,12 @@
 # without sourcing all of run.sh's scope.
 
 setup() {
-  load test_helper
+  load "${BATS_TEST_DIRNAME}/../../../lib/test_helper"
 }
 
-# _load_join: install a test copy of _join_fail_fast, with `die` stubbed. MUST stay byte-identical to
-# gke.sh's copy — the sync guard at the bottom enforces it.
+# _load_join: install a test copy of _join_fail_fast (+ the fmt_dur/ok collaborators it calls), with
+# `die` stubbed. The _join_fail_fast body MUST stay byte-identical to gke.sh's copy — the sync guard
+# at the bottom enforces it.
 _load_join() {
   # die records its message then EXITS non-zero, faithfully to common.sh's real die (which calls
   # exit). Running the join in a `( … )` subshell lets that exit abort it exactly as production would
@@ -22,11 +23,20 @@ _load_join() {
   # exit 0, masking the failure.
   # shellcheck disable=SC2317  # invoked indirectly by the function under test
   die() { printf 'DIE: %s\n' "$*"; exit 1; }
+  # ok mirrors common.sh closely enough for the assertions here: it prints "  ✓ <msg>" (the per-path
+  # finish line the label tests grep for) minus the real ANSI + timestamp, keeping the greps simple.
+  # shellcheck disable=SC2317
+  ok() { printf '  ✓ %s\n' "$*"; }
+  # fmt_dur is sourced from the REAL common.sh (not copied) so the label-duration assertions exercise
+  # the actual renderer — a format change there is reflected here instead of silently drifting.
+  # shellcheck source=/dev/null
+  source <(awk '/^fmt_dur\(\)/,/^}/' "$COMMON_SH")
   # shellcheck disable=SC2317  # invoked indirectly via the tests
   _join_fail_fast() {
-    local die_msg="$1"; shift
-    local pending=("$@")
-    local finished rc p kept
+    local die_msg="$1"; local labels_ref="$2"; shift 2
+    local -n labels="${labels_ref:-_JFF_NOLABELS}"   # nameref to the caller's map, or an empty fallback
+    local -A _JFF_NOLABELS=()
+    local pending=("$@") finished rc p kept
     while [[ "${#pending[@]}" -gt 0 ]]; do
       finished=""; rc=0
       wait -n -p finished "${pending[@]}" || rc=$?
@@ -35,6 +45,7 @@ _load_join() {
         die "$die_msg (a joined job exited $rc)"
       fi
       if [[ -n "$finished" ]]; then
+        [[ -n "${labels[$finished]:-}" ]] && ok "[${labels[$finished]}] done in $(fmt_dur "$(( SECONDS - ${_JFF_T0:-SECONDS} ))")"
         kept=()
         for p in "${pending[@]}"; do [[ "$p" != "$finished" ]] && kept+=("$p"); done
         pending=(${kept[@]+"${kept[@]}"})
@@ -58,7 +69,7 @@ _load_join() {
   ( ( exit 0 ) & a=$!
     ( exit 0 ) & b=$!
     ( exit 0 ) & c=$!
-    _join_fail_fast "should not fire" "$a" "$b" "$c"
+    _join_fail_fast "should not fire" "" "$a" "$b" "$c"
   ) >"$out" 2>&1 || st=$?
   [[ "$st" -eq 0 ]] || fail "expected success, got $st: $(cat "$out")"
   run grep -qF "DIE:" "$out"; assert_failure           # no die fired
@@ -69,7 +80,7 @@ _load_join() {
   local out="${BATS_TEST_TMPDIR}/out" st=0
   ( ( exit 0 )        & ok_pid=$!
     ( sleep 0.2; exit 7 ) & bad_pid=$!
-    _join_fail_fast "resume overlap failed" "$ok_pid" "$bad_pid"
+    _join_fail_fast "resume overlap failed" "" "$ok_pid" "$bad_pid"
   ) >"$out" 2>&1 || st=$?
   [[ "$st" -ne 0 ]] || fail "expected failure, got success: $(cat "$out")"
   run grep -qF "DIE: resume overlap failed (a joined job exited 7)" "$out"; assert_success
@@ -82,7 +93,7 @@ _load_join() {
   local sentinel="${BATS_TEST_TMPDIR}/survivor-finished" pidfile="${BATS_TEST_TMPDIR}/survivor.pid" st=0
   ( ( sleep 5; : > "$sentinel" ) & echo "$!" > "$pidfile"
     ( exit 3 ) & bad_pid=$!
-    _join_fail_fast "overlap failed" "$(cat "$pidfile")" "$bad_pid"
+    _join_fail_fast "overlap failed" "" "$(cat "$pidfile")" "$bad_pid"
   ) >/dev/null 2>&1 || st=$?
   [[ "$st" -ne 0 ]] || fail "expected failure"
   run test -e "$sentinel"; assert_failure              # sentinel never written → survivor was killed
@@ -92,17 +103,59 @@ _load_join() {
 @test "join: an empty pending set is a no-op success" {
   _load_join
   local st=0
-  _join_fail_fast "should not fire" >/dev/null 2>&1 || st=$?
+  _join_fail_fast "should not fire" "" >/dev/null 2>&1 || st=$?
   [[ "$st" -eq 0 ]] || fail "expected success, got $st"
+}
+
+# ── Label + per-path duration narration (the resume transparency feature) ──
+# The caller passes the NAME of a declare -A pid→label map; each labelled pid announces on join,
+# with the duration measured from _JFF_T0 (the group's start).
+@test "join: a labelled pid prints its own '✓ [label] done in <dur>' on finish" {
+  _load_join
+  local out="${BATS_TEST_TMPDIR}/out" st=0
+  ( _JFF_T0=$(( SECONDS - 2 ))        # pin a deterministic 2s elapsed
+    ( exit 0 ) & p=$!
+    declare -A m=(); m[$p]=apply
+    _join_fail_fast "n/a" m "$p"
+  ) >"$out" 2>&1 || st=$?
+  [[ "$st" -eq 0 ]] || fail "expected success, got $st: $(cat "$out")"
+  run grep -qF "✓ [apply] done in 2s" "$out"; assert_success
+}
+
+@test "join: a bare (unmapped) pid stays SILENT — no per-path line (back-compat)" {
+  _load_join
+  local out="${BATS_TEST_TMPDIR}/out" st=0
+  ( ( exit 0 ) & p=$!
+    _join_fail_fast "n/a" "" "$p"        # "" = no map → silent
+  ) >"$out" 2>&1 || st=$?
+  [[ "$st" -eq 0 ]] || fail "expected success, got $st"
+  run grep -qF "done" "$out"; assert_failure          # no map → emits nothing
+}
+
+@test "join: only the mapped pids announce; an unmapped pid in the same join stays silent" {
+  _load_join
+  local out="${BATS_TEST_TMPDIR}/out" st=0
+  ( _JFF_T0=$SECONDS
+    ( exit 0 ) & a=$!
+    ( exit 0 ) & b=$!
+    declare -A m=(); m[$a]=eso        # b is intentionally NOT mapped
+    _join_fail_fast "n/a" m "$a" "$b"
+  ) >"$out" 2>&1 || st=$?
+  [[ "$st" -eq 0 ]] || fail "expected success, got $st: $(cat "$out")"
+  run grep -qF "✓ [eso] done" "$out"; assert_success
+  run bash -c "grep -cF 'done' '$out'"; assert_output "1"   # exactly one announce (b stayed silent)
 }
 
 # ── Sync guard: the _load_join copy above must match gke.sh's real _join_fail_fast body, so a future
 # edit to gke.sh that isn't mirrored here fails loudly instead of testing a stale copy. ──
 @test "join: the test copy matches gke.sh's _join_fail_fast body" {
   local body; body="$(awk '/^_join_fail_fast\(\)/,/^}/' "$GKE_SH")"
+  echo "$body" | grep -qF 'local -n labels="${labels_ref:-_JFF_NOLABELS}"'
   echo "$body" | grep -qF 'wait -n -p finished "${pending[@]}" || rc=$?'
   echo "$body" | grep -qF 'for p in "${pending[@]}"; do [[ "$p" != "$finished" ]] && kill "$p" 2>/dev/null || true; done'
   echo "$body" | grep -qF 'die "$die_msg (a joined job exited $rc)"'
+  # The labelled per-path finish line, timed from the group's t0.
+  echo "$body" | grep -qF '[[ -n "${labels[$finished]:-}" ]] && ok "[${labels[$finished]}] done in $(fmt_dur "$(( SECONDS - ${_JFF_T0:-SECONDS} ))")"'
   # A clean drain must return 0, not the while-condition's non-zero status.
   echo "$body" | grep -qF 'return 0'
 }

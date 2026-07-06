@@ -13,6 +13,24 @@
 [[ -n "${_DEVSTASH_GCP_BOOTSTRAP_SH:-}" ]] && return 0
 _DEVSTASH_GCP_BOOTSTRAP_SH=1
 
+# _confirm_bootstrap: the upfront intent gate for `bootstrap`. Its steps create/link real,
+# billable GCP-org-level resources (a NEW project, a billing-account LINK, a state bucket, enabled
+# APIs) — so, like the bring-up paths, nothing may run until the operator sees the scope and
+# confirms. Each _bootstrap_* step is itself idempotent (existence-checked), so the gate is about
+# consent to the FIRST-time creations, not re-runs. AUTO_APPROVE=1 skips the prompt (common.sh's
+# confirm) so the CI/UI path stays non-interactive. Decline → die before _bootstrap_auth touches
+# anything. Kept separate from _confirm_bringup (run.sh) because the scope is different: this is
+# project/billing/bucket/APIs, that is the WIF/AR/Cloud-SQL/GKE provision — `up` legitimately
+# prompts once for each.
+_confirm_bootstrap() {
+  log "'bootstrap' prepares the GCP prerequisites for project '$PROJECT_ID' (region $REGION). It will, if absent:"
+  log "  • create the GCP project '$PROJECT_ID' and set it active"
+  log "  • LINK a billing account (BILLING_ACCOUNT, else the first open account) — enables billable APIs"
+  log "  • create + harden the Terraform state bucket gs://$STATE_BUCKET"
+  log "  • enable the required GCP APIs (compute, container, sqladmin, secretmanager, …)"
+  confirm "Proceed with 'bootstrap'? (nothing has touched GCP yet)" || die "aborted before any GCP changes"
+}
+
 # bootstrap: everything that must exist in GCP *before* `tofu init` can run, run in the
 # order the chicken-and-egg dependencies demand: auth → project → billing → ADC → state
 # bucket → APIs. Each _bootstrap_* step is idempotent (checks existence before acting), so
@@ -21,6 +39,7 @@ _DEVSTASH_GCP_BOOTSTRAP_SH=1
 # documentation.
 bootstrap() {
   ensure_tfvars
+  _confirm_bootstrap
   log "GCP bootstrap for project '$PROJECT_ID' (region $REGION)"
   _bootstrap_auth
   _bootstrap_project

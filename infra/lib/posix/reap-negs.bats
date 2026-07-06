@@ -6,7 +6,7 @@
 # assert_spy_called_with matches.
 
 setup() {
-  load "${BATS_TEST_DIRNAME}/../../run/gcp/lib/test_helper"
+  load "${BATS_TEST_DIRNAME}/../test_helper"
   # shellcheck source=infra/lib/posix/reap-negs.sh
   source "${REPO_ROOT}/infra/lib/posix/reap-negs.sh"
 }

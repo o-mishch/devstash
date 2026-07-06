@@ -10,7 +10,7 @@
 #      logic-bearing part and are what regressed).
 
 setup() {
-  load test_helper
+  load "${BATS_TEST_DIRNAME}/../../../lib/test_helper"
 }
 
 # ── _plan_with_refresh_fallback: extracted verbatim so it can be driven against a stubbed

@@ -8,7 +8,7 @@
 # The real auto-suspend-lock-id.py (stdlib-only) does the JSON→ID extraction — no stub, faithful.
 
 setup() {
-  load "${BATS_TEST_DIRNAME}/../../run/gcp/lib/test_helper"
+  load "${BATS_TEST_DIRNAME}/../test_helper"
   # shellcheck source=infra/lib/posix/lock-contention.sh
   source "${REPO_ROOT}/infra/lib/posix/lock-contention.sh"
   LOCK_ID_PY="${REPO_ROOT}/infra/terraform/envs/dev/scripts/auto-suspend-lock-id.py"

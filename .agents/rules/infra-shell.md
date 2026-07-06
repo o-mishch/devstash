@@ -18,8 +18,9 @@ description: Infra shell-script testing conventions for DevStash — bats-core +
 We use **bats-core** with **bats-mock** + **bats-support** + **bats-assert** (npm devDependencies, loaded from `node_modules`). This replaced the earlier hand-rolled `*.test.sh` scripts — do not add new `*.test.sh` files.
 
 - Test files: `infra/**/*.bats` (co-located next to the script under test, same basename — `dump.sh` → `dump.bats`).
-- Run: `npm run test:infra` (`bats --recursive infra`). Runs in CI via `.github/workflows/infra-checks.yml`.
-- Shared setup: `infra/run/gcp/lib/test_helper.bash` — every `.bats` file starts with `setup() { load "<path>/test_helper"; … }`.
+- Run: `npm run test:infra` → `infra/ci/run-bats.sh`, which parallelises across files with `bats --jobs` when GNU `parallel` is on PATH (~3× faster) and falls back to a serial run otherwise. Override with `BATS_JOBS=<n>`; `BATS_JOBS=1` forces serial. `parallel` is not a bats dependency — `brew install parallel` locally for the speedup; `ubuntu-latest` ships it, so CI runs parallel. Runs in CI via `.github/workflows/infra-checks.yml`.
+- **Parallel-safety is a hard requirement:** because the suite runs `--jobs`, tests must not depend on execution order or share mutable state across files. All per-test stubs live in `$BATS_TEST_TMPDIR` (unique per test, even across jobs — see `test_helper.bash`'s per-test bindir isolation); the only shared file, `node_modules/bats-mock/binstub`, is read-only (symlinked to, never written). A new test that writes outside `$BATS_TEST_TMPDIR` breaks this — keep all scratch state per-test.
+- Shared setup: `infra/lib/test_helper.bash` (shared by the whole infra suite) — every `.bats` file starts with `setup() { load "${BATS_TEST_DIRNAME}/<rel>/test_helper"; … }`, the relative path reaching `infra/lib/` from that test's directory.
 
 ## What to test
 
