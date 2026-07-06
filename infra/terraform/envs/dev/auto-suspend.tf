@@ -207,8 +207,14 @@ locals {
     "_DB_DUMP_OBJECT=$_DB_DUMP_OBJECT",
     "_DB_DUMP_KEEP=$_DB_DUMP_KEEP",
     # Cloud Build's own build id (built-in $BUILD_ID substitution) — step 5 excludes it when
-    # cancelling in-flight builds so the suspend build never cancels itself.
+    # cancelling in-flight builds so the suspend build never cancels itself, and the guard/suspend
+    # lock-contention layers exclude it when checking for OTHER ongoing auto-suspend builds.
     "_BUILD_ID=$_BUILD_ID",
+    # The trigger's own name (built-in $TRIGGER_NAME substitution) — the stable "our auto-suspend
+    # build" match key the lock-contention helpers filter ongoing builds by (same contract as
+    # run.sh's _ongoing_autosuspend_build_ids). Passed in rather than hardcoded so the POSIX helper
+    # stays parameterised (everything-is-a-parameter — see infra/lib/posix/lock-contention.sh).
+    "_TRIGGER_NAME=$TRIGGER_NAME",
   ]
 
   # Pub/Sub + Cloud Build + Cloud Scheduler service agents (data.google_project is declared

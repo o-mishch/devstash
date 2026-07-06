@@ -45,6 +45,22 @@ if gcloud storage objects describe "gs://$_STATE_BUCKET/gke/dev/default.tflock" 
   echo "state lock held (a run.sh apply/suspend/resume is in progress) — skipping to avoid a mid-apply collision"
   exit 0
 fi
+# DEDUP CONCURRENT AUTO-SUSPEND BUILDS (layer 1). The idle Monitoring alert AND the uptime-cap cron
+# publish to ONE Pub/Sub topic (see auto-suspend.tf), so two builds can start seconds apart. The
+# human-lock check above can't catch that: the state lock isn't ACQUIRED until the far-later suspend
+# step (step 4), so BOTH builds' guards see a free lock, both proceed, and the second dies with
+# "Error acquiring the state lock" once the first grabs it for a multi-minute GKE+SQL destroy (the
+# exact failure that motivated this). Fix at the source: if another auto-suspend build for this env
+# started BEFORE this one, defer to it (clean no-op) so only the single earliest build proceeds.
+# Needs the repo (for the shared helper) — clone it now, idempotently (the same guarded clone the
+# deploy-in-flight check below uses; prepare reuses this checkout).
+[ -d /workspace/repo ] || git clone --depth 1 --branch "$_REPO_BRANCH" "https://github.com/$_REPO_SLUG.git" /workspace/repo
+# shellcheck source=infra/lib/posix/lock-contention.sh
+. /workspace/repo/infra/lib/posix/lock-contention.sh
+if ds_older_autosuspend_build_running "$_REGION" "$_PROJECT_ID" "$_TRIGGER_NAME" "$_BUILD_ID"; then
+  echo "an earlier auto-suspend build is already in flight — deferring to it (no-op) so the two don't race the state lock"
+  exit 0
+fi
 AGE=$(( $(date -u +%s) - $(date -u -d "$CREATED" +%s) ))
 # (a) Hard uptime cap — suspend regardless of traffic. Checked first: _MAX_UPTIME >=
 # _IDLE_WINDOW (enforced by variable validation), so this never conflicts with the grace below.
