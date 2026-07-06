@@ -30,7 +30,6 @@ fi
 # Serial fallback: no `parallel`, or BATS_JOBS=1. Correct, just slower — surface why so a dev who
 # wants the speedup knows the one thing to install.
 if [[ "$jobs" != "1" ]]; then
-  # shellcheck disable=SC2016  # backticks are literal prose, not command substitution
-  printf '» GNU `parallel` not found — running bats serially. `brew install parallel` for ~3x faster infra tests.\n' >&2
+  printf "» GNU 'parallel' not found — running bats serially. Run 'brew install parallel' for ~3x faster infra tests.\n" >&2
 fi
 exec "$bats" --recursive infra

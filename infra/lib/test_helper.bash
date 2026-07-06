@@ -15,16 +15,12 @@
 
 _HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${_HELPER_DIR}/../.." && pwd)"   # infra/lib/ → repo root (2 up)
-# RUN_SH is consumed by the .bats files that `load` this helper (not here) — export it so shellcheck
-# does not flag it unused and so it survives into the test's environment.
-# shellcheck disable=SC2034
-RUN_SH="${REPO_ROOT}/infra/run/gcp/run.sh"
-# shellcheck disable=SC2034
-SUSPEND_SH="${REPO_ROOT}/infra/run/gcp/lib/suspend.sh"
-# shellcheck disable=SC2034
-GKE_SH="${REPO_ROOT}/infra/run/gcp/lib/gke.sh"
-# shellcheck disable=SC2034
-COMMON_SH="${REPO_ROOT}/infra/lib/common.sh"
+# These paths are consumed by the .bats files that `load` this helper (not here) — export marks them
+# used for shellcheck and lets them survive into each test's environment.
+export RUN_SH="${REPO_ROOT}/infra/run/gcp/run.sh"
+export SUSPEND_SH="${REPO_ROOT}/infra/run/gcp/lib/suspend.sh"
+export GKE_SH="${REPO_ROOT}/infra/run/gcp/lib/gke.sh"
+export COMMON_SH="${REPO_ROOT}/infra/lib/common.sh"
 
 load "${REPO_ROOT}/node_modules/bats-support/load.bash"
 load "${REPO_ROOT}/node_modules/bats-assert/load.bash"

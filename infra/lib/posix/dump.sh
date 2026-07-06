@@ -36,7 +36,9 @@ _DEVSTASH_POSIX_DUMP_SH=1
 # abort (NEVER destroy an un-dumped instance).
 ds_export_and_verify_dump() {
   _dsevd_instance="$1"; _dsevd_uri="$2"; _dsevd_db="$3"; _dsevd_project="$4"
-  DS_DUMP_SIZE_BYTES=""
+  # export: the verified size is consumed by the sourcing caller (db.sh logs it), not here — mark it
+  # used for shellcheck at the first assignment so the later real assignment needs no disable.
+  export DS_DUMP_SIZE_BYTES=""
   _dsevd_attempt=1
   while [ "$_dsevd_attempt" -le 2 ]; do
     echo "Exporting Cloud SQL '$_dsevd_instance' -> $_dsevd_uri (server-side pg_dump, attempt $_dsevd_attempt/2)" >&2
@@ -48,8 +50,7 @@ ds_export_and_verify_dump() {
       '' | *[!0-9]*) : ;;  # missing / non-numeric → fall through to delete + retry
       *)
         if [ "$_dsevd_size" -gt 0 ]; then
-          # shellcheck disable=SC2034  # consumed by the sourcing caller (db.sh logs it), not here
-          DS_DUMP_SIZE_BYTES="$_dsevd_size"
+          DS_DUMP_SIZE_BYTES="$_dsevd_size"   # exported at first assignment above
           return 0
         fi
         ;;

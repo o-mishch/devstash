@@ -92,7 +92,7 @@ set -euo pipefail
 # bearing exits from common.sh) uses exit code 1 too, but those already print their own message
 # and reason; the trap's extra one line is harmless there and invaluable everywhere else. Self-
 # contained (raw ANSI, bash builtins only) so it works even before common.sh is sourced below.
-# shellcheck disable=SC2154  # rc IS assigned (rc=$?) and used ("$rc") within this trap string; shellcheck can't see across the trap boundary.
+rc=0  # pre-declared so the ERR trap's `rc=$?` reads as an in-scope assignment (no SC2154 across the trap-string boundary)
 trap 'rc=$?; printf "\n\033[0;31m✖ run.sh FAILED\033[0m — %s:%d\n    command: %s\n    exit code: %d\n" "${BASH_SOURCE[0]}" "$LINENO" "$BASH_COMMAND" "$rc" >&2' ERR
 
 # Interrupt-safe abort: when tofu is mid-apply, a Ctrl-C at the terminal is delivered to the whole
@@ -109,7 +109,6 @@ trap 'rc=$?; printf "\n\033[0;31m✖ run.sh FAILED\033[0m — %s:%d\n    command
 # not ours to send. Best-effort and self-contained (bash builtins only). This does not
 # fire for the backgrounded overlap apply (a subshell in its own right); that path's join surfaces
 # the child's status normally.
-# shellcheck disable=SC2154
 trap 'printf "\n\033[0;33m  ! Interrupt received — letting the in-flight OpenTofu op finish its graceful shutdown and persist state.\033[0m\n    \033[0;33mPress Ctrl-C AGAIN only if you must force-exit (this can strand a half-created resource — recover by re-running the same command).\033[0m\n" >&2' INT TERM
 cd "$(dirname "${BASH_SOURCE[0]}")/../../.."   # repo root
 
@@ -380,8 +379,8 @@ ensure_tfvars() {
   PROJECT_ID="$(tfvar project_id)"; [[ -n "${PROJECT_ID:-}" ]] || die "project_id not set in $TFVARS"
   REGION="$(tfvar region)";         REGION="${REGION:-us-central1}"
   ENVIRONMENT="$(tfvar environment)"; ENVIRONMENT="${ENVIRONMENT:-dev}"
-  # shellcheck disable=SC2034  # read by the sourced lib/suspend.sh (shared scope), not here
-  APP_DOMAIN="$(tfvar app_domain)"
+  # export: read by the sourced lib/suspend.sh (shared scope), so mark it used for shellcheck.
+  export APP_DOMAIN="$(tfvar app_domain)"
   # GCS bucket names are global. Deriving the backend bucket from the globally unique
   # project ID avoids collisions; STATE_BUCKET remains an explicit escape hatch for an
   # existing backend. backend.tf is intentionally partial and receives this at init.
@@ -1092,9 +1091,9 @@ _apply_ar_push_target() {
 # is unset (deploy couldn't confirm the run id) — nothing to cancel.
 _arm_ci_cancel_trap() {
   local phase="$1"   # "up" or "resume" — only used in the warning message
+  local rc=0         # pre-declared so the trap's `rc=$?` reads as an in-scope assignment (no SC2154)
   [[ -n "${DEPLOY_RUN_ID:-}" ]] || return 0
-  # shellcheck disable=SC2064,SC2154  # expand DEPLOY_RUN_ID + phase NOW (fixed values); rc IS
-  # assigned (rc=$?) and read within the trap string — shellcheck can't see across the trap boundary.
+  # shellcheck disable=SC2064  # DELIBERATE: expand DEPLOY_RUN_ID + phase NOW (fixed at arm time), so the trap captures the run to cancel even if the vars change later.
   trap "rc=\$?; [[ \$rc -ne 0 ]] && { gh run cancel '$DEPLOY_RUN_ID' >/dev/null 2>&1 || true; warn '$phase failed — cancelled pre-dispatched CI run $DEPLOY_RUN_ID'; }" EXIT
 }
 

@@ -26,7 +26,7 @@ set -euo pipefail
 # mid-`up`) would otherwise abort with no clue where; this turns each death into an actionable
 # report (failing command + exit code + file:line). Self-contained (raw ANSI, bash builtins) so
 # it works even before common.sh is sourced below.
-# shellcheck disable=SC2154  # rc IS assigned (rc=$?) and used ("$rc") within this trap string; shellcheck can't see across the trap boundary.
+rc=0  # pre-declared so the ERR trap's `rc=$?` reads as an in-scope assignment (no SC2154 across the trap-string boundary)
 trap 'rc=$?; printf "\n\033[0;31m✖ local/run.sh FAILED\033[0m — %s:%d\n    command: %s\n    exit code: %d\n" "${BASH_SOURCE[0]}" "$LINENO" "$BASH_COMMAND" "$rc" >&2' ERR
 cd "$(dirname "$0")/../../.."   # repo root
 

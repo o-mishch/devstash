@@ -72,8 +72,11 @@ cleanup_builds() {
   ids="$(_ongoing_autosuspend_build_ids)"
   if [[ -n "$ids" ]]; then
     log "Cancelling in-flight auto-suspend Cloud Builds: ${ids//$'\n'/ }"
-    # shellcheck disable=SC2086 # word-splitting is intended: one arg per build id.
-    gcloud builds cancel $ids --region="$REGION" --project="$PROJECT_ID" --quiet \
+    # Split the newline-list into a real array so the ids expand as separate args WITHOUT relying on
+    # unquoted word-splitting (each id passed once, one batch cancel call — same call as before).
+    local -a id_args
+    mapfile -t id_args <<< "$ids"
+    gcloud builds cancel "${id_args[@]}" --region="$REGION" --project="$PROJECT_ID" --quiet \
       || warn "build cancel returned non-zero (some may have finished mid-cancel) — continuing"
   fi
   log "Deleting Cloud Build staging bucket gs://${PROJECT_ID}_cloudbuild"

@@ -84,6 +84,38 @@ JSON"
   _stub_ar 1 tok-abc '{"permissions":["artifactregistry.repositories.uploadArtifacts"]}'
   AR_WAIT_ATTEMPTS=2 AR_WAIT_GAP=0 run ds_ar_wait us-central1 proj-x devstash
   assert_failure
+  # The per-attempt message must render with the FORWARDED repo_id + gap (regression guard for the
+  # move from a nested closure to _ds_ar_wait_msg's poll_until `::`-group args $3=repo_id, $4=gap).
+  assert_output --partial "Artifact Registry 'devstash' not writable yet (attempt 1/2)"
+  assert_output --partial "waiting 0s"
+}
+
+# ── poll_until — the shared bounded poll (dot form + -m message hook with forwarded msg_args) ──
+# The -m `::`-group is what lets a module-scope message fn (e.g. _ds_ar_wait_msg) receive per-wait
+# context without closing over caller locals; assert the forwarding + backward-compatible dot form.
+@test "poll_until: -m forwards the :: msg_args group verbatim to the message fn (attempt, max, then args)" {
+  _mfn() { echo "MSG a=$1 m=$2 repo=$3 gap=$4"; }
+  # A predicate that fails the first 2 calls then succeeds, so the message fires exactly twice.
+  _n=0; _pred() { _n=$((_n + 1)); [ "$_n" -ge 3 ]; }
+  run poll_until -m _mfn :: my-repo 15 :: 5 0 -- _pred
+  assert_success
+  assert_line --index 0 "MSG a=1 m=5 repo=my-repo gap=15"
+  assert_line --index 1 "MSG a=2 m=5 repo=my-repo gap=15"
+}
+
+@test "poll_until: bare -m with no :: group calls the fn with just attempt/max (empty args, no set -u error)" {
+  _mfn() { echo "attempt=$1/$2 extra=[${3:-none}]"; }
+  _n=0; _pred() { _n=$((_n + 1)); [ "$_n" -ge 2 ]; }
+  run poll_until -m _mfn 3 0 -- _pred
+  assert_success
+  assert_output "attempt=1/3 extra=[none]"
+}
+
+@test "poll_until: dot form (no -m) is unchanged — prints a dot per failed attempt, returns 1 on timeout" {
+  _pred() { false; }   # never succeeds → exhausts the 3-attempt budget
+  run poll_until 3 0 -- _pred
+  assert_failure
+  assert_output ".."   # 2 dots: printed after attempts 1 and 2, not after the final give-up
 }
 
 # ── fmt_dur / stage / _ts_tag — the resume narration primitives ──

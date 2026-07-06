@@ -235,18 +235,30 @@ read_secret() {
   printf -v "$_out" '%s' "$_val"
 }
 
-# poll_until [-m <msg_fn>] <max_attempts> <sleep_secs> -- <cmd…>: run <cmd> repeatedly until it
-# exits 0 or <max_attempts> is reached, printing a dot per attempt. Returns 0 on success, 1 on
-# timeout. The caller prints its own trailing newline + success/failure message so the wording
+# poll_until [-m <msg_fn> [msg_arg…] ::] <max_attempts> <sleep_secs> -- <cmd…>: run <cmd> repeatedly
+# until it exits 0 or <max_attempts> is reached, printing a dot per attempt. Returns 0 on success, 1
+# on timeout. The caller prints its own trailing newline + success/failure message so the wording
 # stays specific to what was being waited on. Pass a quiet predicate (e.g. a small helper that
 # redirects its own noisy command) so only the progress dots reach the terminal.
-# -m <msg_fn>: instead of a dot, call `<msg_fn> <attempt> <max_attempts>` after each failed
-# attempt — for callers that want a per-attempt diagnostic line (e.g. "not writable yet
-# (attempt N/M) — …") instead of the bare dot.
+# -m <msg_fn> [msg_arg…] ::: instead of a dot, call `<msg_fn> <attempt> <max_attempts> [msg_arg…]`
+# after each failed attempt — for callers that want a per-attempt diagnostic line (e.g. "not
+# writable yet (attempt N/M) — …") instead of the bare dot. When msg_args are supplied they are
+# terminated by a literal `::` and forwarded verbatim (numbers included), so the caller can bind
+# per-wait context (a repo id, a gap) into a module-scope message function WITHOUT closing over its
+# locals — keeping the message fn top-level and free of the SC2317/SC2329 nested-callback warning.
+# Bare `-m <msg_fn>` with no msg_args needs no `::`. The <max_attempts> <sleep_secs> -- <cmd…> tail
+# is unchanged, so every existing dot-only caller keeps working verbatim. `::` is the reserved group
+# delimiter — a literal `::` cannot itself be forwarded as a msg_arg (no current caller needs to).
 poll_until() {
-  local msg_fn=""
+  local msg_fn="" msg_args=()
   if [[ "${1:-}" == "-m" ]]; then
     msg_fn="$2"; shift 2
+    # A `::` right after <msg_fn> opens an explicit msg_args group closed by the next `::`.
+    if [[ "${1:-}" == "::" ]]; then
+      shift
+      while [[ $# -gt 0 && "$1" != "::" ]]; do msg_args+=("$1"); shift; done
+      [[ "${1:-}" == "::" ]] && shift
+    fi
   fi
   local attempts="$1" gap="$2"; shift 2
   [[ "${1:-}" == "--" ]] && shift
@@ -255,7 +267,9 @@ poll_until() {
     i=$((i + 1))
     [[ $i -lt $attempts ]] || return 1
     if [[ -n "$msg_fn" ]]; then
-      "$msg_fn" "$i" "$attempts"
+      # ${msg_args[@]+"${msg_args[@]}"} expands to nothing (not an unbound-var error) when the array
+      # is empty under `set -u` on bash 3.2 — the bare "${msg_args[@]}" form errors there.
+      "$msg_fn" "$i" "$attempts" ${msg_args[@]+"${msg_args[@]}"}
     else
       printf '.'
     fi
@@ -329,13 +343,13 @@ ds_health_ok() {
 # an image is a single edit shared by every script that sources this library (the builder in
 # build-push.sh). The deep-suspend path no longer needs this list: it deletes the whole
 # Artifact Registry repo rather than looping individual images.
-# shellcheck disable=SC2034  # consumed by scripts that source this library, not here
-DEVSTASH_IMAGES=(web migrate)
+# export marks it as consumed outside this file (the sourcing CI scripts) so shellcheck sees a use.
+export DEVSTASH_IMAGES=(web migrate)
 
 # The k8s namespace every CI script targets (base kustomize; matches settings.yaml). Declared
 # once so a namespace rename is a single edit instead of updating each script's local `NS=`.
-# shellcheck disable=SC2034  # consumed by scripts that source this library, not here
-DEVSTASH_NS=devstash
+# export marks it as consumed outside this file (the sourcing CI scripts) so shellcheck sees a use.
+export DEVSTASH_NS=devstash
 
 # ds_image_base <region> <project> <repo>: the Artifact Registry repo path that every
 # devstash image hangs off (e.g. us-central1-docker.pkg.dev/<project>/devstash). Kept here
@@ -456,6 +470,11 @@ ds_ar_writable() {
     "$url" 2>/dev/null | grep -q 'artifactregistry.repositories.uploadArtifacts'
 }
 
+# poll_until message hook for ds_ar_wait — kept at module scope (not nested in ds_ar_wait) so it is
+# reachable-by-name to shellcheck and needs no SC2317/SC2329 disable; repo_id and gap arrive as
+# forwarded msg_args ($3,$4) rather than closed-over locals. Mirrors check-env-active.sh's _cluster_wait_msg.
+_ds_ar_wait_msg() { echo "Artifact Registry '$3' not writable yet (attempt $1/$2) — repo/IAM binding still propagating to the registry; waiting ${4}s…"; }
+
 # ds_ar_wait <region> <project> <repo>: BLOCK until ds_ar_writable is true, bounded by
 # AR_WAIT_ATTEMPTS (default 40) × AR_WAIT_GAP secs (default 15) ≈ 10 min. Returns 0 the moment the
 # deployer SA can push, 1 on timeout. Single source of the bounded AR-writable wait — the poll
@@ -471,9 +490,7 @@ ds_ar_writable() {
 ds_ar_wait() {
   local region="$1" project="$2" repo_id="$3"
   local attempts="${AR_WAIT_ATTEMPTS:-40}" gap="${AR_WAIT_GAP:-15}"
-  # shellcheck disable=SC2317,SC2329  # invoked indirectly by poll_until via the -m message hook
-  _ds_ar_wait_msg() { echo "Artifact Registry '$repo_id' not writable yet (attempt $1/$2) — repo/IAM binding still propagating to the registry; waiting ${gap}s…"; }
-  poll_until -m _ds_ar_wait_msg "$attempts" "$gap" -- ds_ar_writable "$region" "$project" "$repo_id"
+  poll_until -m _ds_ar_wait_msg :: "$repo_id" "$gap" :: "$attempts" "$gap" -- ds_ar_writable "$region" "$project" "$repo_id"
 }
 
 # ds_dump_job_diagnostics <namespace> <job-name>: best-effort logs + describe for a failed/timed-out

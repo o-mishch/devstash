@@ -34,7 +34,9 @@ echo "Cancelling in-flight Cloud Builds (excluding this build $_BUILD_ID)"
 IDS="$(gcloud builds list --region="$_REGION" --project="$_PROJECT_ID" --ongoing \
          --filter="id!=$_BUILD_ID" --format='value(id)' 2>/dev/null || true)"
 if [ -n "$IDS" ]; then
-  # shellcheck disable=SC2086 # word-splitting is intended: pass each id as its own argument.
+  # shellcheck disable=SC2086 # IRREDUCIBLE in POSIX sh: intentional word-split of the id list into
+  # one arg per id for a single batch cancel. No array (POSIX has none) or `set -- $IDS` avoids the
+  # split — shellcheck flags it wherever it happens; a per-id loop would change 1 call into N.
   gcloud builds cancel $IDS --region="$_REGION" --project="$_PROJECT_ID" --quiet \
     || echo "build cancel returned non-zero (some may have finished mid-cancel) — continuing"
 else
