@@ -53,6 +53,35 @@
 # Env overrides (otherwise read from terraform.tfvars / auto-detected):
 #   BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX   billing account to link (else first open one)
 #   AUTO_APPROVE=1                         skip the confirmation before `tofu apply`/`destroy`
+
+# ── Require a modern bash (>= 4.3), re-exec under one if the caller's is too old ──────────────
+# macOS still ships bash 3.2 as /bin/bash, and the docs invoke this as `bash infra/run/gcp/run.sh`,
+# so the caller's shell can be 3.2. This script uses `wait -n -p VAR` (fail-fast join that also
+# reports WHICH job finished, over the parallel restore + operator installs — see
+# gke.sh:ensure_operators). `wait -n` needs bash >= 4.3 and the `-p` flag needs bash >= 5.1, so we
+# require >= 5.1. Rather than code around 3.2 forever, re-exec under the first modern bash we can
+# find (Homebrew installs one at /opt/homebrew/bin/bash on Apple Silicon or /usr/local/bin/bash on
+# Intel; `brew install bash`). The exported sentinel makes this fire AT MOST once, so a genuinely
+# missing modern bash fails with a clear message instead of looping. This runs before `set -euo
+# pipefail` (a bare test, no pipe) and before any sourcing, so it is the very first thing the script
+# does. Canonical "restart bash if old" idiom (Limoncelli): guard on BASH_VERSINFO, export a
+# one-shot flag, exec the newer bash.
+if [[ "${BASH_VERSINFO[0]}" -lt 5 || ( "${BASH_VERSINFO[0]}" -eq 5 && "${BASH_VERSINFO[1]}" -lt 1 ) ]]; then
+  if [[ -z "${DEVSTASH_BASH_REEXEC:-}" ]]; then
+    export DEVSTASH_BASH_REEXEC=1
+    for _newer_bash in /opt/homebrew/bin/bash /usr/local/bin/bash /opt/local/bin/bash; do
+      if [[ -x "$_newer_bash" ]]; then exec "$_newer_bash" "$0" "$@"; fi
+    done
+    # Nothing hard-coded found — try PATH as a last resort (may still be the old one; the guard
+    # below re-checks after this exec and fails cleanly rather than looping, since the flag is set).
+    _path_bash="$(command -v bash || true)"
+    [[ -n "$_path_bash" ]] && exec "$_path_bash" "$0" "$@"
+  fi
+  printf 'error: this script needs bash >= 5.1 (found %s). Install a modern bash: brew install bash\n' \
+    "${BASH_VERSION}" >&2
+  exit 1
+fi
+
 set -euo pipefail
 # Fail LOUD, never silently. Under `set -e` any un-guarded non-zero command aborts the whole
 # script — historically with NO message (e.g. a reconcile gcloud call fed a bad arg would exit
@@ -460,7 +489,7 @@ apply() {
 _apply_and_wire() {
   apply
   wait_for_cluster
-  eso
+  ensure_operators   # ESO ‖ Reloader in parallel (was serial eso→reloader) — see gke.sh
   secrets
   dns_hint
   update_dns
@@ -621,6 +650,40 @@ _predispatch_ci_build() {
   deploy provision   # sets DEPLOY_RUN_ID
 }
 
+# _apply_ci_identity: apply ONLY the WIF pool/provider + deployer SA + its principalSet binding —
+# the CI build's SOLE auth prerequisites (WORKLOAD_IDENTITY_PROVIDER / DEPLOYER_SA). This exists so
+# a FIRST-EVER / post-down bring-up (no tofu outputs yet) can still overlap the image build with
+# the ~11-min Cloud SQL create, the same way the outputs-present branches already do — instead of
+# leaving `deploy` a serial manual step behind the full apply.
+#
+# WHY THIS IS SAFE (a targeted apply is normally discouraged as a partial graph): the four resource
+# addresses below reference ONLY string literals + var.project_id/var.github_* (verified against
+# modules/iam/main.tf) — never var.app_secrets (= module.cloudsql/memorystore outputs),
+# var.gke_node_sa_email, var.binauthz_*, or var.artifact_registry_*. So `-target` walks a ~1-min
+# subgraph that pulls in ZERO cloudsql/gke/memorystore resources. The secret-VERSION that reads
+# those slow outputs is a DEPENDENT of the module, not a dependency of the WIF provider, so it is
+# excluded here and applied by the full `apply` that follows. That second apply carries NO -target,
+# applies the COMPLETE graph, and reconciles everything — so the final state is whole and
+# consistent. This step only reorders WHEN the WIF identity lands so `secrets` can push it and CI
+# can start. -auto-approve because it is an internal staging apply, not the reviewed main plan.
+#
+# init + the autosuspend-lock coordination mirror apply() — this runs BEFORE it, so it cannot rely
+# on apply() having initialised the backend or serialised against the idle-suspend build.
+_apply_ci_identity() {
+  ensure_tfvars
+  if ! gcloud storage buckets describe "gs://$STATE_BUCKET" >/dev/null 2>&1; then
+    die "State bucket gs://$STATE_BUCKET not found — run 'bootstrap' first to create it."
+  fi
+  wait_for_no_autosuspend_build
+  log "Applying CI auth identity only (WIF + deployer SA) so the image build can start now"
+  tofu_ init -backend-config="bucket=$STATE_BUCKET"
+  tofu_ apply -auto-approve -lock-timeout=120s \
+    -target=module.iam.google_iam_workload_identity_pool.github \
+    -target=module.iam.google_iam_workload_identity_pool_provider.github \
+    -target=module.iam.google_service_account.deployer \
+    -target=module.iam.google_service_account_iam_member.github_wif
+}
+
 # _arm_ci_cancel_trap: install the EXIT trap that cancels the pre-dispatched CI run if the caller
 # exits early before handing ownership to its own watch/return. Both up() and resume() call `apply`
 # after pre-dispatch, and apply()'s internal `die` (exit 1) means a plain `if ! apply` could never
@@ -673,9 +736,11 @@ _watch_ci_run() {
 # infra command, so it returns as soon as infra is wired and prints `gh run watch <id>` for the
 # background build (per-case decision — a bare `apply` should not turn into a long deploy-and-wait).
 # The cancel trap still reaps the orphaned run if apply itself dies before the handoff. When the
-# outputs are ABSENT (a first-ever apply before any provision), there is nothing to authenticate a
-# CI build against, so fall back to the plain serial _apply_and_wire with the deploy left manual —
-# mirroring up()'s two branches. Gating on OUTPUTS (not stale GitHub secrets) matches up()/resume().
+# outputs are ABSENT (a first-ever apply before any provision), the build's only auth prerequisites
+# (WIF provider + deployer SA) still have no dependency on Cloud SQL, so that branch applies JUST
+# those first (_apply_ci_identity, ~1 min), then pre-dispatches and overlaps the full apply — the
+# same overlap as above, no longer a serial "deploy is a manual next step". Gating on OUTPUTS (not
+# stale GitHub secrets) matches up()/resume().
 _apply_with_overlap() {
   if _tf_outputs_present; then
     log "Tofu outputs present — pre-dispatching deploy so its build overlaps apply"
@@ -688,11 +753,19 @@ _apply_with_overlap() {
     echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
     return 0
   fi
-  # First-ever apply (no tofu outputs yet): serial order, app deploy stays a manual next step.
-  _apply_and_wire
-  log "Infra applied. Next:"
-  echo "  bash infra/run/gcp/run.sh deploy   # build + migrate + roll out the app"
-  echo "  bash infra/run/gcp/run.sh smoke    # wait for CI + verify health endpoint"
+  # First-ever apply (no tofu outputs yet): apply the WIF identity first so the build overlaps the
+  # full apply below, exactly like the outputs-present branch. _apply_ci_identity applies a
+  # Cloud-SQL-free -target subgraph; _apply_and_wire then applies the complete graph (no -target)
+  # and re-runs `secrets` idempotently once the full outputs exist, so the final state is consistent.
+  log "No tofu outputs (first-ever apply) — applying WIF identity first so the build overlaps apply"
+  _apply_ci_identity             # ~1 min: WIF provider + deployer SA now exist
+  _predispatch_ci_build          # secrets (identity outputs readable now) → deploy provision; sets DEPLOY_RUN_ID
+  _arm_ci_cancel_trap apply      # cancel the run if apply dies before the handoff below
+  _apply_and_wire                # full apply: Cloud SQL + GKE + secret-version, in parallel with the build
+  trap - EXIT   # infra is wired; the run now owns its own success/failure — stop cancelling it
+  log "Infra applied and the app deploy is building/rolling out in parallel. Follow it:"
+  [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
+  echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
 }
 
 # verify-secrets: list expected Secret Manager secrets and flag any that are missing.
@@ -960,13 +1033,15 @@ down() {
 
 # up: full bring-up — bootstrap → apply → cluster-side wiring → DNS. Like `resume`, it PRE-
 # DISPATCHES the deploy-gke workflow (whose cluster-independent build-push job then builds +
-# pushes WHILE `apply` provisions Cloud SQL ~10 min + the control plane) — but ONLY when the tofu
-# outputs `secrets` reads already exist (_tf_outputs_present). On a first-ever `up`, or an `up`
-# after a `down` erased the outputs, they do NOT, so `secrets` cannot push WIF/DEPLOYER_SA and a
-# pre-dispatched CI run would fail at auth (worse: pre-2026-07 it pushed the #26991 warning box);
-# there we keep the serial order and leave `deploy` as a printed manual next step. Gating on the
-# OUTPUTS (not stale GitHub secrets, which can outlive the `down` that erased the outputs) mirrors
-# resume(). Unlike `resume`, `up` also runs `bootstrap` (project/billing/state/APIs), no DB restore.
+# pushes WHILE `apply` provisions Cloud SQL ~10 min + the control plane). When the tofu outputs
+# `secrets` reads already exist (_tf_outputs_present), it pre-dispatches straight away. On a first-
+# ever `up`, or an `up` after a `down` erased the outputs, they do NOT — but the build's only real
+# prerequisites (WIF provider + deployer SA) have no dependency on Cloud SQL, so that branch now
+# applies JUST those first (_apply_ci_identity, ~1 min), pushes secrets, pre-dispatches, THEN runs
+# the full apply in parallel — the same overlap, no longer a serial "deploy is a manual next step".
+# Gating on the OUTPUTS (not stale GitHub secrets, which can outlive the `down` that erased the
+# outputs) mirrors resume(). Unlike `resume`, `up` also runs `bootstrap` (project/billing/state/
+# APIs), no DB restore.
 up() {
   preflight
   bootstrap
@@ -979,7 +1054,7 @@ up() {
     _arm_ci_cancel_trap up         # cancel the run if anything below dies before the handoff
     apply
     wait_for_cluster
-    eso
+    ensure_operators   # ESO ‖ Reloader in parallel (was serial eso→reloader) — see gke.sh
     trap - EXIT   # cluster is up; the run now owns its own success/failure — stop cancelling it
     dns_hint; update_dns
     log "Infra up and the app deploy is building/rolling out in parallel. Follow it:"
@@ -987,15 +1062,23 @@ up() {
     echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
     return 0
   fi
-  # First-ever bring-up, or an `up` after a `down` (no tofu outputs yet): serial order, app deploy
-  # stays manual. _apply_and_wire runs the apply→wait→eso→secrets→dns tail (shared with `apply`).
-  _apply_and_wire
-  log "Bootstrap + infra done. Next:"
-  echo "  1. If the DNS A-record above was not set automatically (creds missing),"
-  echo "     add it by hand, then wait for the cert to go Active."
-  echo "  2. bash infra/run/gcp/run.sh verify-secrets  # confirm all SM secrets exist + ESO synced"
-  echo "  3. bash infra/run/gcp/run.sh deploy          # build + migrate + roll out the app"
-  echo "  4. bash infra/run/gcp/run.sh smoke           # wait for CI + verify health endpoint"
+  # First-ever bring-up, or an `up` after a `down` (no tofu outputs yet). The tofu outputs
+  # `secrets` needs don't exist, so we can't pre-dispatch CI straight away — but the build's ONLY
+  # real prerequisites (WIF + deployer SA) have no dependency on the ~11-min Cloud SQL create. So
+  # apply JUST that identity first (_apply_ci_identity, ~1 min), push secrets, pre-dispatch the
+  # build, then run the full apply→wait→eso→secrets→dns tail in parallel — the same overlap the
+  # outputs-present branch above gets. _apply_and_wire re-runs `secrets` (idempotent) once the full
+  # outputs exist, so the DB/binauthz/AR values omitted by the identity-only apply land then.
+  log "No tofu outputs (first-ever / post-down) — applying WIF identity first so the build overlaps apply"
+  _apply_ci_identity             # ~1 min: WIF provider + deployer SA now exist
+  _predispatch_ci_build          # secrets (identity outputs readable now) → deploy provision; sets DEPLOY_RUN_ID
+  _arm_ci_cancel_trap up         # cancel the run if anything below dies before the handoff
+  _apply_and_wire                # full apply: Cloud SQL + GKE + secret-version, in parallel with the build
+  trap - EXIT   # infra is wired; the run now owns its own success/failure — stop cancelling it
+  log "Infra up and the app deploy is building/rolling out in parallel. Follow it:"
+  [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
+  echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
+  echo "  (If the DNS A-record was not set automatically — creds missing — add it by hand.)"
 }
 
 # ── dispatch ───────────────────────────────────────────────────────────────

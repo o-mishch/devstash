@@ -10,60 +10,52 @@
 # LOGS it and exits 0 so the build proceeds to the destroy step and tears down whatever remains
 # (e.g. a GKE cluster the failed run never reached). The data-safety gate (export + non-empty
 # verify, with one delete-empty + retry) applies only when the instance still EXISTS: an
-# instance-present export that never verifies exits non-zero and fails the build.
-# SIBLING: this is the same absent-skip + export/verify/retry gate run.sh's dump_db() runs on the
-# laptop path (infra/run/gcp/run.sh). Different execution model (Cloud Build container vs. local
-# shell) so it can't be shared code — if you change the rules here, change them there too.
+# instance-present export that never verifies exits non-zero and fails the build. The gate + prune
+# logic is now SHARED with run.sh's dump_db() via infra/lib/posix/dump.sh (see below), so the two
+# can no longer drift; only the caller-specific instance gating (this absent-skip vs. the laptop
+# path's start-if-STOPPED) stays per-file.
+#
+# The export→verify→retry gate and the version-prune are NOT reimplemented here anymore: they are
+# the SHARED POSIX helpers ds_export_and_verify_dump + ds_prune_dump_versions in
+# infra/lib/posix/dump.sh, the ONE source of truth this step and run.sh's dump_db() (bash) both use.
+# Step 2 (prepare) git-cloned the repo into /workspace/repo, so this step (3) `.`-sources the helper
+# from there. Everything the helper needs is passed as an ARGUMENT — a git-cloned file is NOT
+# processed by Cloud Build $_VAR substitution, so the helper reads only its positional args while
+# this inline step maps the $_VAR substitutions onto them (same discipline as the python3 helpers).
 set -eu
 [ -f /workspace/SUSPEND ] || { echo "not idle — skipping DB export"; exit 0; }
 
+# shellcheck source=infra/lib/posix/dump.sh
+. /workspace/repo/infra/lib/posix/dump.sh
+
 DUMP_URI="gs://$_DB_DUMPS_BUCKET/$_DB_DUMP_OBJECT"
 
-# Absent instance → already destroyed by a prior suspend; skip and let the build continue.
+# Absent instance → already destroyed by a prior suspend; skip and let the build continue. This
+# absent-skip stays here (not in the shared helper): the laptop path's dump_db() adds a
+# start-if-STOPPED step this unattended path deliberately omits, so the "instance present?" gating
+# differs per caller — only the export/verify/prune primitives are shared.
 STATE="$(gcloud sql instances describe "$_DB_INSTANCE" --project="$_PROJECT_ID" --format='value(state)' 2>/dev/null || true)"
 if [ -z "$STATE" ]; then
   echo "Cloud SQL instance $_DB_INSTANCE not found — already destroyed by a prior suspend; skipping dump and continuing teardown"
-else
-  # Instance present → data-safety gate: export + verify non-empty, with ONE delete-empty + retry.
-  # gcloud sql export can leave a 0-byte object on a transient failure; re-verifying against that
-  # stale object would falsely pass a later run, so the retry deletes it first, then re-exports.
   VERIFIED=""
-  for ATTEMPT in 1 2; do
-    echo "Exporting Cloud SQL $_DB_INSTANCE -> $DUMP_URI (attempt $ATTEMPT/2)"
-    gcloud sql export sql "$_DB_INSTANCE" "$DUMP_URI" --database=devstash --project="$_PROJECT_ID" \
-      || echo "gcloud sql export failed (attempt $ATTEMPT)"
-    SIZE="$(gcloud storage objects describe "$DUMP_URI" --format='value(size)' 2>/dev/null || true)"
-    case "$SIZE" in
-      ''|*[!0-9]*) : ;;  # missing / non-numeric → fall through to delete + retry
-      *) if [ "$SIZE" -gt 0 ]; then VERIFIED="$SIZE"; break; fi ;;
-    esac
-    echo "dump missing/empty (size='$SIZE') — deleting partial object before retry"
-    gcloud storage rm "$DUMP_URI" --quiet 2>/dev/null || true
-  done
-  [ -n "$VERIFIED" ] || { echo "could not produce a non-empty dump after retry — ABORTING before any destroy"; exit 1; }
-  echo "dump verified ($VERIFIED bytes) — safe to destroy the instance"
+else
+  # Instance present → data-safety gate via the shared helper: export + verify non-empty, with ONE
+  # delete-empty + retry. On success DS_DUMP_SIZE_BYTES holds the verified size; a non-zero return
+  # means it could not produce a non-empty dump, so ABORT before any destroy.
+  if ds_export_and_verify_dump "$_DB_INSTANCE" "$DUMP_URI" devstash "$_PROJECT_ID"; then
+    VERIFIED="$DS_DUMP_SIZE_BYTES"
+    echo "dump verified ($VERIFIED bytes) — safe to destroy the instance"
+  else
+    echo "could not produce a non-empty dump after retry — ABORTING before any destroy"
+    exit 1
+  fi
 fi
 
-# SYNCHRONOUS version cap — mirror of gcs_prune_versions() (infra/lib/common.sh) that the laptop
-# path runs, reimplemented in POSIX sh because this Cloud Build step cannot source that file (see
-# header). Force the dump history down to $_DB_DUMP_KEEP noncurrent + the live one (= KEEP+1 total)
-# the instant the dump lands, instead of waiting for the bucket's ~daily lifecycle sweep. Generation
-# numbers increase monotonically, so a reverse sort is newest-first; keep the first KEEP+1 and delete
-# the rest by explicit #generation URL (never touches the live dump as long as KEEP+1 >= 1). Wrapped
-# so a prune failure never fails the build — the verified dump is already safe and the lifecycle rule
-# backstops anything left behind.
-prune_dump_versions() {
-  KEEP_TOTAL=$(( ${_DB_DUMP_KEEP:-2} + 1 ))
-  URI="gs://$_DB_DUMPS_BUCKET/$_DB_DUMP_OBJECT"
-  gcloud storage ls -a "$URI" 2>/dev/null | grep '#[0-9]' | sort -r | awk -v keep="$KEEP_TOTAL" 'NR > keep' \
-    | while IFS= read -r gen; do
-        [ -n "$gen" ] || continue
-        gcloud storage rm "$gen" --quiet 2>/dev/null || echo "could not delete $gen (leaving for lifecycle backstop)"
-      done
-  echo "dump history pruned to newest $KEEP_TOTAL"
-}
 # Only prune when this run actually produced a verified dump — the absent-instance skip writes
-# nothing, so there is no new generation to cap (and the ls would just no-op anyway).
+# nothing, so there is no new generation to cap. keep-total = $_DB_DUMP_KEEP noncurrent + the live
+# one. Best-effort: a prune failure never fails the build (the verified dump is already safe and the
+# bucket lifecycle rule backstops anything left behind).
 if [ -n "${VERIFIED:-}" ]; then
-  prune_dump_versions || echo "dump prune failed (non-fatal — lifecycle rule backstops it)"
+  ds_prune_dump_versions "$DUMP_URI" "$(( ${_DB_DUMP_KEEP:-2} + 1 ))" \
+    || echo "dump prune failed (non-fatal — lifecycle rule backstops it)"
 fi

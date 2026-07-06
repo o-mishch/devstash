@@ -16,7 +16,9 @@
 #   AUTH_GITHUB_ID, AUTH_GOOGLE_ID, STRIPE_PUBLISHABLE_KEY,
 #   STRIPE_PRICE_ID_MONTHLY, STRIPE_PRICE_ID_YEARLY
 #   ARMOR_ENABLED  — "true" attaches the Cloud Armor policy; anything else (incl. unset,
-#                    the dev $0 default) injects an empty securityPolicy = no edge WAF.
+#                    the dev $0 default) leaves armorPolicyName empty. render-manifests.sh then
+#                    DELETES the GCPBackendPolicy securityPolicy field post-render (an empty value
+#                    is NOT "no policy" to GKE — it makes a malformed URL that fails the Gateway).
 set -euo pipefail
 
 cd infra/k8s/overlays/gcp
@@ -35,7 +37,7 @@ cd infra/k8s/overlays/gcp
 # change. Hardcoding them here is an accepted tradeoff. WHEN TO UPDATE: if you rename
 # `var.environment` in terraform.tfvars (e.g. "dev" → "prod"), update BOTH literals below
 # AND the CLUSTER env var at the top of deploy-gke.yml to match. Mismatch = the Gateway loses
-# its static IP + the GCPBackendPolicy gets no WAF policy — silent kubectl apply success.
+# its static IP + the GCPBackendPolicy points at the wrong WAF policy.
 # s3Bucket follows the same "derive, don't read Terraform state" approach: module.gcs
 # .bucket_name's naming formula is "${project_id}-${name_prefix}-uploads"
 # (modules/gcs/main.tf) — deterministic from GCP_PROJECT_ID, so no Secret Manager round-trip is

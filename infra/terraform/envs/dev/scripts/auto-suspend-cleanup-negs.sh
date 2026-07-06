@@ -26,46 +26,21 @@
 #
 # Best-effort throughout: every failure is logged and swallowed — the env is already at ~$0, so a
 # cleanup miss must never fail the suspend build.
+#
+# The reap loops are NOT reimplemented here anymore: they are the SHARED POSIX helper
+# ds_reap_leaked_negs in infra/lib/posix/reap-negs.sh, the ONE source of truth this step and run.sh's
+# cleanup_leaked_negs() (bash) both use. Step 2 (prepare) git-cloned the repo into /workspace/repo,
+# so this step (6) `.`-sources the helper from there and passes $_VPC/$_PROJECT_ID as ARGUMENTS (a
+# git-cloned file is not processed by Cloud Build $_VAR substitution — same discipline as the python3
+# helpers). No VPC-existence guard here: this step runs AFTER the tofu suspend when the cluster is
+# already gone, so every NEG still on our VPC is by definition a leaked orphan (the laptop `down`
+# path guards because it can run while the cluster is still live — see suspend.sh).
 set -eu
 [ -f /workspace/SUSPEND ] || { echo "not idle — skipping NEG cleanup"; exit 0; }
 
-# 1 — Delete leaked zonal NEGs on our VPC. `list` returns name + zone basename; a NEG delete takes
-# ONE name + its zone, so iterate. The --filter is server-side and scoped to $_VPC (self_link
-# substring match via ':') so only our network's NEGs are ever listed. No matches → the loop body
-# never runs → clean no-op. Read into a var first so a `list` hiccup doesn't abort under `set -e`.
-echo "Reaping leaked GKE NEGs on $_VPC (orphaned by cluster teardown)"
-NEGS="$(gcloud compute network-endpoint-groups list --project="$_PROJECT_ID" \
-          --filter="network:$_VPC" --format='value(name,zone.basename())' 2>/dev/null || true)"
-if [ -n "$NEGS" ]; then
-  # Tab-separated name<TAB>zone per line. IFS split per line, then positional read of the two cols.
-  echo "$NEGS" | while IFS='	' read -r NEG_NAME NEG_ZONE; do
-    [ -n "$NEG_NAME" ] || continue
-    echo "  deleting NEG $NEG_NAME ($NEG_ZONE)"
-    gcloud compute network-endpoint-groups delete "$NEG_NAME" --zone="$NEG_ZONE" \
-      --project="$_PROJECT_ID" --quiet \
-      || echo "  NEG $NEG_NAME delete returned non-zero (already gone / in use) — continuing"
-  done
-else
-  echo "no leaked NEGs on $_VPC — nothing to reap"
-fi
+# shellcheck source=infra/lib/posix/reap-negs.sh
+. /workspace/repo/infra/lib/posix/reap-negs.sh
 
-# 2 — Delete stray GKE-created firewall rules on our VPC. GKE leaves these behind by the same
-# controller-shutdown race; like NEGs they are harmless while suspended but block the VPC delete at
-# `down`. Terraform does not manage them (GKE auto-creates them), so deleting them causes no state
-# drift. Scoped to $_VPC AND the k8s- name prefix GKE uses, so only GKE's own auto-rules match —
-# never a hand-authored or Terraform-managed rule.
-echo "Reaping stray GKE firewall rules on $_VPC"
-FW="$(gcloud compute firewall-rules list --project="$_PROJECT_ID" \
-        --filter="network:$_VPC AND name:(gke-* OR k8s-*)" --format='value(name)' 2>/dev/null || true)"
-if [ -n "$FW" ]; then
-  echo "$FW" | while IFS= read -r FW_NAME; do
-    [ -n "$FW_NAME" ] || continue
-    echo "  deleting firewall rule $FW_NAME"
-    gcloud compute firewall-rules delete "$FW_NAME" --project="$_PROJECT_ID" --quiet \
-      || echo "  firewall $FW_NAME delete returned non-zero (already gone) — continuing"
-  done
-else
-  echo "no stray GKE firewall rules on $_VPC — nothing to reap"
-fi
+ds_reap_leaked_negs "$_VPC" "$_PROJECT_ID"
 
 echo "NEG/firewall cleanup complete — leaked GKE networking reaped so a future 'down' stays clean"

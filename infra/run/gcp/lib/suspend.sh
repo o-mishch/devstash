@@ -11,13 +11,19 @@
 # Depends on (provided by run.sh / db.sh / dns.sh in the shared scope):
 #   globals   TF_DIR, PROJECT_ID, REGION, APP_DOMAIN
 #   helpers   log/ok/warn/die (infra/lib/common.sh), tf_out, ensure_tfvars
-#   run.sh core steps   apply, eso, deploy, wait_for_cluster
+#   run.sh core steps   apply, deploy, wait_for_cluster; ensure_operators (gke.sh)
 #   db.sh    dump_db, restore_db
 #   dns.sh   update_dns
 #
 # Source-guard: sourcing twice is a harmless no-op.
 [[ -n "${_DEVSTASH_GCP_SUSPEND_SH:-}" ]] && return 0
 _DEVSTASH_GCP_SUSPEND_SH=1
+
+# The NEG/firewall reap loops are SHARED (identical logic, POSIX-sh) with the unattended Cloud Build
+# cleanup step (scripts/auto-suspend-cleanup-negs.sh) via infra/lib/posix/reap-negs.sh — the ONE
+# source of truth for both runtimes. bash sources POSIX sh transparently.
+# shellcheck source=infra/lib/posix/reap-negs.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../../lib/posix/reap-negs.sh"
 
 # active.auto.tfvars is auto-loaded by OpenTofu (*.auto.tfvars) and is gitignored.
 # Persisting the toggles here makes the suspended/active state STICKY: a plain
@@ -91,37 +97,14 @@ cleanup_builds() {
 cleanup_leaked_negs() {
   local vpc="devstash-${ENVIRONMENT}-vpc"
   # Only bother if the VPC still exists — a completed `down` already removed it (nothing to reap).
+  # This gate is caller-specific and stays here: the `down` path can reach this while the cluster
+  # (and an in-use NEG) is still live, so it must not attempt the reap against an already-gone VPC.
+  # The Cloud Build step (which runs AFTER the cluster is destroyed) needs no such guard.
   gcloud compute networks describe "$vpc" --project="$PROJECT_ID" >/dev/null 2>&1 || return 0
-  log "Reaping leaked GKE NEGs on $vpc (orphaned by cluster teardown)"
-  # Server-side --filter scoped to our VPC (self_link substring match via ':'); name + zone basename
-  # per line so each delete gets its one name + zone. Read into a var first so a `list` hiccup
-  # doesn't trip `set -e`. No matches → the loop body never runs → clean no-op.
-  local negs
-  negs="$(gcloud compute network-endpoint-groups list --project="$PROJECT_ID" \
-            --filter="network:$vpc" --format='value(name,zone.basename())' 2>/dev/null || true)"
-  if [[ -n "$negs" ]]; then
-    local neg_name neg_zone
-    while IFS=$'\t' read -r neg_name neg_zone; do
-      [[ -n "$neg_name" ]] || continue
-      gcloud compute network-endpoint-groups delete "$neg_name" --zone="$neg_zone" \
-        --project="$PROJECT_ID" --quiet \
-        || warn "NEG $neg_name delete returned non-zero (already gone / in use) — continuing"
-    done <<< "$negs"
-  fi
-  # Stray GKE firewall rules leak by the same race and also block the VPC delete at `down`. Scoped
-  # to our VPC AND the gke-/k8s- name prefix GKE uses, so only GKE's own auto-rules match — never a
-  # hand-authored or Terraform-managed rule. Not TF-managed, so deleting them causes no state drift.
-  local fw
-  fw="$(gcloud compute firewall-rules list --project="$PROJECT_ID" \
-          --filter="network:$vpc AND name:(gke-* OR k8s-*)" --format='value(name)' 2>/dev/null || true)"
-  if [[ -n "$fw" ]]; then
-    local fw_name
-    while IFS= read -r fw_name; do
-      [[ -n "$fw_name" ]] || continue
-      gcloud compute firewall-rules delete "$fw_name" --project="$PROJECT_ID" --quiet \
-        || warn "firewall $fw_name delete returned non-zero (already gone) — continuing"
-    done <<< "$fw"
-  fi
+  # ds_reap_leaked_negs (infra/lib/posix/reap-negs.sh) — the SAME VPC-scoped NEG + gke-*/k8s-*
+  # firewall reap the Cloud Build cleanup step runs, single-sourced. Best-effort inside (each delete
+  # tolerates already-gone / in-use); progress goes to stderr.
+  ds_reap_leaked_negs "$vpc" "$PROJECT_ID"
 }
 
 # suspend: drive the environment to true ~$0. DUMPS Cloud SQL to GCS and verifies the
@@ -151,24 +134,28 @@ suspend() {
 # cluster-wait(up to several min) back to back; overlapped they cost max() of the two, saving
 # min() — typically 1-3 min per resume. Mirrors infra/ci/ensure-operators.sh's &/wait join.
 #
-# restore_db runs in the BACKGROUND: it may `die` (exit) on import failure, which in a
-# backgrounded subshell only kills that subshell — the parent `wait` below captures its
-# non-zero status and we re-raise it via `die`, so a failed restore still aborts resume (the
-# instance would be up but empty). wait_for_cluster runs in the FOREGROUND: it is the shared-
-# scope poll that must NOT be subshelled (it relies on run.sh helpers + prints progress), and
-# keeping it in the parent means its own `die`-on-timeout still aborts directly. restore output
-# is prefixed [restore] so it stays attributable while it interleaves with the poll's dots.
-_restore_and_wait_cluster() {
-  local restore_status=0
-  # Prefix the backgrounded restore's merged output so it stays readable alongside the poll.
+# _restore_and_wire_cluster: three-way overlap on resume — the DB restore, the ESO install, and
+# the Reloader install all run concurrently, joined once. All three are mutually independent:
+# restore is a `gcloud sql import` (touches NO kubeconfig), and the two operator installs read the
+# shared kubeconfig without switching context (see ensure_operators). Previously the restore
+# overlapped only the control-plane poll, and eso()→reloader() then ran serially AFTER it; folding
+# the operators in hides the whole restore (~1-3 min) under the longer operator install (~3-4 min
+# on a cold cluster) instead of paying them back-to-back.
+#
+# ORDERING: background the restore first, FOREGROUND wait_for_cluster (the shared-scope poll that
+# must not be subshelled — it uses run.sh helpers + prints progress, and its die-on-timeout must
+# abort directly), THEN ensure_operators — which fetches cluster creds ONCE (use_cluster, in the
+# parent — concurrent get-credentials would corrupt the kubeconfig) and backgrounds the two
+# installs, joining the restore PID alongside them. restore_db may `die` in its backgrounded
+# subshell (import failure); that only kills the subshell, so ensure_operators' join captures its
+# non-zero status and re-raises — a failed restore still aborts resume (instance up but empty). A
+# best-effort skip (no dump / fresh env) exits 0, a no-op join. Output is [restore]-prefixed so it
+# stays attributable while it interleaves with the poll dots + the [eso]/[reloader] install lines.
+_restore_and_wire_cluster() {
   { restore_db 2>&1 | sed -e 's/^/[restore] /'; exit "${PIPESTATUS[0]}"; } &
   local restore_pid=$!
   wait_for_cluster
-  # Join on the restore regardless of order; capture its status without letting the `wait`
-  # itself trip `set -e`, then re-raise a real failure (a backgrounded `die` cannot propagate
-  # on its own). A best-effort skip (no dump / fresh env) exits 0, so this is a no-op then.
-  wait "$restore_pid" || restore_status=$?
-  [[ "$restore_status" -eq 0 ]] || die "DB restore failed (exit $restore_status) — instance is up but empty; re-run 'run.sh resume' (restore is retry-safe)"
+  ensure_operators "$restore_pid"   # eso ‖ reloader ‖ (restore, joined) — see gke.sh
 }
 
 # resume: bring the environment back from a deep-suspended state. Recreates compute AND
@@ -204,24 +191,27 @@ resume() {
     _predispatch_ci_build          # sets DEPLOY_RUN_ID; runs secrets (outputs readable now) + deploy provision
     _arm_ci_cancel_trap resume     # cancel the run if anything below dies before the handoff
     apply        # Cloud SQL (~10 min) + control plane build here, in parallel with CI's build-push
-    # Overlap the DB restore with the control-plane readiness poll (both independent — see
-    # _restore_and_wait_cluster). Both must complete before eso/deploy touch the cluster + DB.
-    _restore_and_wait_cluster
-    eso
+    # Three-way overlap: DB restore ‖ ESO install ‖ Reloader install, all joined once (see
+    # _restore_and_wire_cluster). All must complete before deploy touches the cluster + DB.
+    _restore_and_wire_cluster
     log "CI build+push has been running in parallel with apply; its cluster-gated deploy job proceeds now that the cluster + secrets are live"
   else
-    # SERIAL path — no outputs (post-down / first-ever). apply must run BEFORE secrets so the
-    # outputs exist to push; only THEN can CI be dispatched (nothing is pre-dispatched, so there
-    # is no cancel trap to arm — apply's own `die` aborts cleanly on failure with nothing orphaned).
-    warn "No tofu outputs (downed / first-ever env) — applying FIRST, then secrets + deploy (no pre-dispatch overlap)"
-    apply        # recreate the infra + repopulate outputs
-    secrets      # outputs now exist — push CI auth secrets + public config (would have pushed a warning box pre-apply)
-    # Overlap the DB restore with the control-plane readiness poll (both independent — see
-    # _restore_and_wait_cluster). `secrets` stays ahead of it: it must land before `deploy
-    # provision` below, and it is a fast GitHub push not worth folding into the overlap.
-    _restore_and_wait_cluster
-    eso
-    deploy provision   # dispatch the deploy now that the cluster + secrets are live; sets DEPLOY_RUN_ID
+    # OVERLAP path — no outputs (post-down / first-ever). The build's ONLY auth prerequisites (WIF
+    # provider + deployer SA) have no dependency on the ~10-min Cloud SQL create, so apply JUST
+    # those first (_apply_ci_identity, ~1 min — run.sh), push secrets, and pre-dispatch the build
+    # so it overlaps the full apply below — the same overlap the outputs-present branch gets. This
+    # replaces the old strictly-serial "apply → secrets → deploy" that left the build waiting out
+    # the whole rebuild. _apply_ci_identity applies a Cloud-SQL-free -target subgraph; the full
+    # apply that follows carries no -target and reconciles the complete graph (incl. the DB/AR/
+    # binauthz secret values omitted by the identity-only apply), so the final state is consistent.
+    warn "No tofu outputs (downed / first-ever env) — applying WIF identity first so the build overlaps apply"
+    _apply_ci_identity             # ~1 min: WIF provider + deployer SA now exist
+    _predispatch_ci_build          # secrets (identity outputs readable now) → deploy provision; sets DEPLOY_RUN_ID
+    _arm_ci_cancel_trap resume     # cancel the run if anything below dies before the handoff
+    apply        # recreate the rest (Cloud SQL ~10 min + control plane), in parallel with CI's build-push
+    # Three-way overlap: DB restore ‖ ESO install ‖ Reloader install, all joined once (see
+    # _restore_and_wire_cluster). All must complete before deploy touches the cluster + DB.
+    _restore_and_wire_cluster
   fi
   update_dns
 

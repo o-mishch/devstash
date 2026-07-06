@@ -31,9 +31,10 @@ dns_hint() {
   echo "  Cert status:      bash infra/run/gcp/run.sh status   # shows the Certificate Manager managed.state"
   warn "Do NOT repoint the apex/www (those serve prod on Vercel) — use the subdomain only."
   warn "Also do §7c (Stripe webhook) + §7d (OAuth redirect URIs) in 08-gcp-bootstrap.md."
-  warn "FIRST-TIME ONLY: the Google-managed cert provisions once (~15-60 min) after the one-time"
-  warn "DNS-auth CNAME is added (tofu output dns_authorization_cname_*). After that it persists"
-  warn "across every suspend/resume — resume no longer waits on a cert."
+  warn "FIRST-TIME ONLY: the Google-managed cert provisions once (~15-60 min) after the DNS-auth"
+  warn "CNAME resolves. That CNAME is asserted automatically by update_dns (self-healing) — no"
+  warn "manual step. Once provisioned it persists across every suspend/resume — resume never"
+  warn "waits on a cert."
 }
 
 # spaceship_api: single Spaceship DNS API entrypoint — owns the host, auth headers, and the
@@ -141,6 +142,58 @@ update_dns() {
   fi
 
   ok "DNS A-record updated ($domain → $ip). Allow a few minutes for propagation + cert."
+
+  # Self-heal the one-time cert DNS-authorization CNAME. Historically this was a MANUAL
+  # step (see certmanager.tf) — if an operator skipped it the Google-managed cert never
+  # provisions and HTTPS is dead (no peer certificate). Asserting it here on every
+  # apply/resume makes the step idempotent + self-healing, and re-asserts the correct
+  # target if the dns_authorization resource is ever recreated with a fresh token.
+  ensure_cert_cname "$root" "$key" "$secret"
+}
+
+# ensure_cert_cname: idempotently upsert the Certificate Manager DNS-authorization CNAME
+# into the Spaceship zone from the tofu outputs. Args: zone root (e.g. devstash.one) plus
+# the already-resolved Spaceship API key/secret (spaceship_api reads $key/$secret from scope).
+#
+# PERMANENCE (cloud.google.com/certificate-manager/docs/dns-authorizations): this CNAME is
+# required not only for first issuance but for every ~60-day renewal — Certificate Manager
+# revalidates domain control before each renewal. Deleting it breaks renewal and eventually
+# HTTPS. So this record is UPSERTED and never pruned; update_dns's A-record prune only
+# matches `type == "A"`, so it can never touch this CNAME. It must also be the ONLY record
+# for its name (no competing TXT/CNAME) — a plain PUT upsert by (type,name) guarantees that.
+ensure_cert_cname() {
+  local root="$1" key="$2" secret="$3" record target name existing have code
+  record="$(tf_out dns_authorization_cname_record)"   # e.g. _acme-challenge.gke.devstash.one.
+  target="$(tf_out dns_authorization_cname_target)"    # e.g. <uuid>.<n>.authorize.certificatemanager.goog.
+  if [[ -z "$record" || "$record" == "null" || -z "$target" || "$target" == "null" ]]; then
+    warn "cert DNS-auth CNAME outputs unavailable — skipping (run 'apply' to surface them)"
+    return 0
+  fi
+  # Spaceship names are relative to the zone root: strip the trailing dot and the ".$root"
+  # suffix. "_acme-challenge.gke.devstash.one." → "_acme-challenge.gke".
+  name="${record%.}"; name="${name%".$root"}"
+
+  # Skip the write if the correct CNAME already exists (avoids a needless API call on the
+  # common resume path where the record is long-since in place). Match by (name,cname).
+  existing="$(spaceship_api GET "${root}?take=500&skip=0")"
+  have="$(printf '%s' "$existing" \
+    | jq -r --arg n "$name" --arg t "$target" \
+        'any(.items[]?; .type == "CNAME" and .name == $n and (.cname == $t or .cname == ($t + "."))) // false' \
+    2>/dev/null || printf 'false')"
+  if [[ "$have" == "true" ]]; then
+    ok "Cert DNS-auth CNAME already present ($name → $target)"
+    return 0
+  fi
+
+  log "Asserting cert DNS-auth CNAME: $name → $target"
+  local put_body="{\"force\":true,\"items\":[{\"type\":\"CNAME\",\"name\":\"${name}\",\"cname\":\"${target}\",\"ttl\":300}]}"
+  code="$(spaceship_api PUT "$root" "$put_body")"
+  if [[ "$code" =~ ^2 ]]; then
+    ok "Cert DNS-auth CNAME asserted — Google provisions/renews the cert once it resolves (~15-60 min first time)."
+  else
+    warn "Spaceship API returned HTTP ${code:-000} for the cert CNAME — add it manually:"
+    warn "  $record  CNAME  $target"
+  fi
 }
 
 # set-dns-creds: store the Spaceship DNS API key + secret in Secret Manager so resume

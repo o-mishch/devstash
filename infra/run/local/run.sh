@@ -71,6 +71,13 @@ preflight() {
   need jq      "brew install jq"
 }
 
+# require_kind_cluster: die unless the local `devstash` kind cluster exists. Both `deploy` and
+# `status` gate on this so they fail with a clear "run 'up' first" instead of a cryptic kubectl
+# error against a missing cluster. Single-sourced so the cluster name + message stay in one place.
+require_kind_cluster() {
+  kind get clusters | grep -qx devstash || die "no kind cluster — run 'up' first"
+}
+
 # deep_health_check: print the deep health-check body (for the human to read, unlike gcp/run.sh's
 # silent _app_healthy poll-loop gate) AND warn if it doesn't actually report healthy. WHY the
 # warn: HTTP 200 alone doesn't mean healthy — the same footgun _app_healthy (gcp/run.sh) guards
@@ -273,7 +280,7 @@ up() {
 # Backing services are assumed to be running (use `up` first).
 deploy() {
   preflight
-  kind get clusters | grep -qx devstash || die "no kind cluster — run 'up' first"
+  require_kind_cluster
   require_kube_context "kind-devstash" "run: kubectl config use-context kind-devstash"
 
   build_and_load
@@ -294,7 +301,7 @@ deploy() {
 }
 
 status() {
-  kind get clusters | grep -qx devstash || die "no kind cluster — run 'up' first"
+  require_kind_cluster
   log "workloads (ns: $NS)"
   kubectl -n "$NS" get deploy,statefulset,job,svc,pdb,hpa 2>/dev/null || true
   log "app pods"

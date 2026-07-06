@@ -22,11 +22,16 @@
 #
 # GOOGLE-MANAGED + DNS AUTHORIZATION (keyless — matches the stack's no-exported-credentials
 # posture): no PEM/key material is ever handled. Google issues and auto-renews the cert once a
-# one-time CNAME (emitted as the dns_authorization_cname_* outputs) exists in the Spaceship DNS
-# zone. Because the app's domain is on Spaceship (not Cloud DNS), that CNAME is added ONCE by the
-# operator — see infra/docs/08-gcp-bootstrap.md. After it resolves, the cert provisions and then
-# persists forever (DNS-auth certs renew automatically as long as the CNAME stays in place),
-# independent of any suspend/resume of the cluster.
+# CNAME (emitted as the dns_authorization_cname_* outputs) exists in the Spaceship DNS zone.
+# Because the app's domain is on Spaceship (not Cloud DNS), that CNAME cannot be managed by the
+# hashicorp/google provider. The namecheap/spaceship provider exists but (as of v0.5.5) its
+# record validator rejects known-after-apply values — and this CNAME's target is a reference to
+# the dns_authorization resource above — so it cannot manage it either. Instead run.sh's
+# update_dns (lib/dns.sh → ensure_cert_cname) asserts it idempotently on every apply/resume from
+# these outputs, so it self-heals and needs no manual step. After it
+# resolves, the cert provisions and then persists forever — DNS-auth certs renew automatically as
+# long as the CNAME stays in place (which update_dns guarantees; it is upserted, never pruned),
+# independent of any suspend/resume of the cluster. See infra/docs/08-gcp-bootstrap.md §7.
 
 # DNS authorization — Google emits a CNAME target the operator adds to the Spaceship zone once.
 # The domain is fixed at plan time (var.app_domain), so this is stable across applies.

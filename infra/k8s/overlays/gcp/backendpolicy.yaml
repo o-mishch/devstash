@@ -20,7 +20,12 @@ spec:
   default:
     # Cloud Armor WAF + rate limiting. Whole value injected from settings.yaml.data.armorPolicyName
     # by the kustomize replacement — EMPTY in the dev $0 posture (armor_enabled=false → no policy),
-    # set to devstash-dev-armor when ARMOR_ENABLED=true (prod). An empty string attaches no policy.
+    # set to devstash-dev-armor when ARMOR_ENABLED=true (prod). NOTE: GKE does NOT treat an empty
+    # securityPolicy as "no policy" — it builds ".../securityPolicies/<name>" with an empty name,
+    # the API rejects it as malformed, and the WHOLE Gateway fails to program (site unreachable).
+    # So render-manifests.sh DELETES this field post-render when it is empty (the real "no policy"
+    # form). Keep this placeholder so the kustomize replacement target exists; the empty value
+    # never reaches the cluster.
     securityPolicy: ARMOR_POLICY_NAME
     # GKE NEG scale-down: 60s backend drain, paired with the 120s preStop + 210s pod grace in
     # base/deployment.yaml (TREAT AS ONE UNIT — keep the three in sync).

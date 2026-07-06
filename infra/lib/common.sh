@@ -312,11 +312,15 @@ gcs_prune_versions() {
   local count
   count="$(printf '%s\n' "$stale" | grep -c . || true)"
   log "Pruning $count superseded version(s) at ${prefix} (keeping newest $keep per object)"
-  # Delete each stale generation by its explicit #<generation> URL. --quiet suppresses the
-  # interactive confirm; per-URL failures are tolerated (best-effort — lifecycle is the backstop).
-  printf '%s\n' "$stale" | while IFS= read -r url; do
-    [[ -n "$url" ]] || continue
-    gcloud storage rm "$url" --quiet 2>/dev/null || warn "could not delete $url (leaving for lifecycle backstop)"
-  done
+  # Delete every stale generation in ONE gcloud invocation via -I (read the explicit #<generation>
+  # URLs from stdin) instead of one `gcloud storage rm` per URL. A per-URL loop paid the ~1-2s
+  # gcloud/Python startup + auth load N times over (47 versions ⇒ ~60-90s of pure spawn latency);
+  # a single stdin-fed call loads auth once and deletes in parallel internally, so this drops to a
+  # few seconds. -c (continue-on-error) preserves the best-effort contract — a partial failure is
+  # non-fatal and whatever is left behind is reclaimed by the bucket's lifecycle backstop; --quiet
+  # suppresses the interactive confirm. Each URL is an explicit #<generation>, so this can never
+  # touch the live object as long as <keep> >= 1.
+  printf '%s\n' "$stale" | gcloud storage rm -I -c --quiet 2>/dev/null \
+    || warn "some versions could not be deleted at ${prefix} (leaving for lifecycle backstop)"
   ok "history pruned to newest $keep at ${prefix}"
 }

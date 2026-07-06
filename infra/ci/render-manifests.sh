@@ -9,3 +9,12 @@ set -euo pipefail
 
 cd infra/k8s/overlays/gcp
 kubectl kustomize . > /tmp/rendered.yaml
+
+# Drop an EMPTY GCPBackendPolicy securityPolicy. When ARMOR_ENABLED != true, inject-settings
+# leaves armorPolicyName="" and the kustomize replacement writes securityPolicy: "" — but GKE
+# does NOT read that as "no policy". It builds the Cloud Armor URL ".../securityPolicies/<name>"
+# with an empty name, the API rejects it as malformed, and the ENTIRE Gateway fails to program
+# (Programmed=False), so the LB serves no backend and the site is unreachable. Deleting the field
+# when empty is the documented "no policy attached" form; a non-empty value (prod armor) is left
+# intact. yq '// ""' treats an absent field as empty too, so this is idempotent.
+yq -i 'select(.kind == "GCPBackendPolicy" and (.spec.default.securityPolicy // "") == "") |= del(.spec.default.securityPolicy)' /tmp/rendered.yaml

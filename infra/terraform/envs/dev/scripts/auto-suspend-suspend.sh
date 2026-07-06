@@ -26,20 +26,20 @@ tofu init -input=false -backend-config="bucket=$_STATE_BUCKET"
 # `state list` check (tofu state rm on an absent address exits non-zero), so once purged — or on
 # a clean env that was never stranded — this is a no-op. ONLY when the repo is genuinely ABSENT
 # in GCP (the exact stranded signature); if the repo exists these are legitimately managed.
-# SIBLING: mirrors reconcile.sh branch 4 — different execution model (Cloud Build container vs.
-# local bash, can't share code), so if the addresses/logic change there, change them here too.
+# The three module addresses are SHARED with reconcile.sh branch 4 via the committed data file
+# infra/lib/ar-iam-member-addresses.txt, read here from the /workspace/repo clone step 2 (prepare)
+# made — so the byte-exact addresses can no longer drift between this POSIX-sh reconcile and the bash
+# one. Only the surrounding logic legitimately differs per runtime (raw `tofu state` here vs.
+# reconcile.sh's tofu_/_reconcile_in_state/die). Skip blank + `#`-comment lines.
 if ! gcloud artifacts repositories describe devstash \
      --location="$_REGION" --project="$_PROJECT_ID" >/dev/null 2>&1; then
-  for _ar_addr in \
-    'module.iam.google_artifact_registry_repository_iam_member.node_artifact_registry_reader[0]' \
-    'module.iam.google_artifact_registry_repository_iam_member.custom_node_artifact_registry_reader[0]' \
-    'module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry[0]'
-  do
+  while IFS= read -r _ar_addr; do
+    case "$_ar_addr" in '' | \#*) continue ;; esac
     if tofu state list "$_ar_addr" 2>/dev/null | grep -qxF "$_ar_addr"; then
       echo "Reconcile: repo 'devstash' is gone but $_ar_addr is still in state (stranded by a pre-fix suspend) — removing from state so this apply is not re-wedged by a 403"
       tofu state rm -lock-timeout=120s "$_ar_addr"
     fi
-  done
+  done < /workspace/repo/infra/lib/ar-iam-member-addresses.txt
 fi
 
 # -lock-timeout=120s: the guard (step 1) checked the state lock was free, but steps 2-4 (clone,

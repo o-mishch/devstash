@@ -50,6 +50,15 @@ use_cluster_soft() {
 # CI installers share it too; upgrade_helm below still calls it to freshen both repos before
 # querying latest versions.
 
+# _wait_eso_webhook: block until ESO's validating webhook Deployment is rolled out. The Helm
+# chart's own --wait covers the ESO Deployments, but CR-admission ALSO needs this webhook live
+# before the overlay's SecretStore is accepted — so both the serial eso() and the parallel
+# ensure_operators() run this same belt-and-suspenders wait after the install. Single-sourced so
+# the namespace/deploy-name/timeout can't drift between the two install paths.
+_wait_eso_webhook() {
+  kubectl -n external-secrets rollout status deploy/external-secrets-webhook --timeout=3m
+}
+
 # External Secrets Operator — required ONCE per cluster before any `kubectl apply -k`,
 # because the gcp overlay ships SecretStore/ExternalSecret CRs whose CRDs ESO installs.
 # Without it, CI's apply fails ("no matches for kind SecretStore") and pods never get
@@ -66,9 +75,7 @@ eso() {
   # Helm). run.sh only adds the cluster-cred fetch above and the webhook wait below; the
   # install itself never diverges from CI again.
   infra/ci/ensure-eso.sh
-  # Belt-and-suspenders: the chart's --wait covers the Deployments, but CR-admission
-  # also needs the validating webhook live before the overlay's SecretStore is accepted.
-  kubectl -n external-secrets rollout status deploy/external-secrets-webhook --timeout=3m
+  _wait_eso_webhook   # CR-admission needs the validating webhook live before SecretStore is accepted
   ok "ESO installed; SecretStore/ExternalSecret CRDs available"
 
   reloader
@@ -88,6 +95,70 @@ reloader() {
   # chart, --version, --set, and the failure policy (HELM_FAILURE_POLICY) shared with CI.
   infra/ci/ensure-reloader.sh
   ok "Stakater Reloader installed; Deployment auto-restarts on secret rotation"
+}
+
+# ensure_operators: install ESO + Reloader CONCURRENTLY (the two are fully independent —
+# different releases, namespaces, no shared state; see infra/ci/ensure-operators.sh, which does
+# the same for the CI deploy job). run.sh's serial eso()→reloader() ran them back-to-back; this
+# overlaps them, saving the shorter install's duration on a cold cluster. It is the bring-up
+# path's replacement for calling eso() (which chains reloader()); the standalone `run.sh eso`/
+# `reloader` commands still use the serial functions above.
+#
+# KUBECONFIG SAFETY: use_cluster (which runs `gcloud … get-credentials`, MUTATING the shared
+# kubeconfig + current-context) is called ONCE HERE, in the parent, BEFORE any backgrounding.
+# Concurrent get-credentials calls corrupt the central kubeconfig or flip the context out from
+# under each other (documented GKE/CI race), so it must never run inside the backgrounded installs
+# — the ensure-*.sh scripts deliberately do NOT fetch creds; they inherit the context set here.
+# The two backgrounded helm installs then only READ that kubeconfig (no context switch), the same
+# safe pattern CI's ensure-operators.sh already runs in production.
+#
+# EXTRA OVERLAP: any PID passed as an argument (e.g. a backgrounded DB restore from resume()) is
+# joined alongside the two installs, so an independent long task can overlap the operator install
+# under one join instead of a second serial wait. restore output is already prefixed by the caller;
+# the two installs are prefixed here so all three stay readable.
+#
+# FAIL-FAST JOIN: `wait -n` returns as soon as the FIRST of the tracked jobs exits, with THAT job's
+# status — so a failed restore or install aborts the bring-up immediately instead of waiting out the
+# others. On failure the survivors are killed (else a half-finished helm install would keep running
+# detached after we `die`) — the documented `wait -n` caveat. On success we consume all jobs so none
+# is orphaned. `wait -n` needs bash >= 4.3; run.sh's top-of-file guard re-execs under a modern bash,
+# so it is always available here.
+ensure_operators() {
+  local extra_pids=("$@")   # optional already-backgrounded PIDs to join with the installs
+  use_cluster               # ONCE, in the parent — sets kubeconfig + context before backgrounding
+  log "Installing External Secrets Operator ‖ Stakater Reloader (parallel)"
+  local _prefix; _prefix() { sed -e "s/^/[$1] /"; }
+  { infra/ci/ensure-eso.sh 2>&1 | _prefix eso; exit "${PIPESTATUS[0]}"; } &
+  local eso_pid=$!
+  { infra/ci/ensure-reloader.sh 2>&1 | _prefix reloader; exit "${PIPESTATUS[0]}"; } &
+  local reloader_pid=$!
+  # Track every job; `wait -n -p` reports WHICH pid finished so we can drop it from the pending set
+  # and, on failure, kill only the ones still running. -p needs bash >= 5.1 (guaranteed by the
+  # re-exec); the pending array shrinks by one each iteration until all have exited cleanly.
+  local pending=("$eso_pid" "$reloader_pid" ${extra_pids[@]+"${extra_pids[@]}"})
+  local finished rc
+  while [[ "${#pending[@]}" -gt 0 ]]; do
+    finished=""; rc=0
+    wait -n -p finished "${pending[@]}" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+      # A tracked job failed — kill any still-running siblings before aborting so nothing is left
+      # compiling/installing detached, then die. `kill` on an already-exited pid is a harmless no-op.
+      local p
+      for p in "${pending[@]}"; do [[ "$p" != "$finished" ]] && kill "$p" 2>/dev/null || true; done
+      die "operator/restore overlap failed (a joined job exited $rc) — re-run the bring-up (all steps are retry-safe)"
+    fi
+    # Drop the just-finished pid from the pending set. If -p reported nothing (shouldn't on >=5.1),
+    # fall back to clearing all — every tracked job has exited 0 by then anyway.
+    if [[ -n "$finished" ]]; then
+      local kept=() p
+      for p in "${pending[@]}"; do [[ "$p" != "$finished" ]] && kept+=("$p"); done
+      pending=(${kept[@]+"${kept[@]}"})
+    else
+      pending=()
+    fi
+  done
+  _wait_eso_webhook   # same belt-and-suspenders webhook wait eso() does — see the helper above
+  ok "ESO + Reloader installed; SecretStore/ExternalSecret CRDs available"
 }
 
 # upgrade-helm: bump ESO and Reloader to their latest published Helm chart versions.

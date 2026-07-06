@@ -42,6 +42,39 @@ reconcile_state() {
   # three reconcile branches below.
   _reconcile_in_state() { tofu_ state list "$1" 2>/dev/null | grep -qxF "$1"; }
 
+  # _reconcile_adopt <state-addr> <import-id> <label> [fatal] [quiet-import]: run the
+  # import → ok / already-managed-warn / (fatal ? die) sequence the DB, bucket, and quota
+  # branches all repeat verbatim. The import is idempotent: a stale/locked state read right
+  # after `init` could miss an address that import then reports as already-managed, so that
+  # outcome is treated as success (the "already managed — skipped" warn) and only a genuinely-
+  # still-absent address afterwards is fatal.
+  #   fatal        (default 1) — die if the import fails AND the address is still absent. Pass 0
+  #                for the quota case, where a genuinely-absent preference is a normal plan CREATE
+  #                (no 409), so a failed import is NOT fatal — only the create path decides.
+  #   quiet-import (default 0) — pass 1 to swallow the import's stderr (the quota case: its
+  #                describe/import can be noisy when the preference is simply absent).
+  # The per-resource PRESENCE check (each differs — a gcloud describe, or none for the quota) and
+  # the "why this resource is a singleton" rationale stay at each call site; only this uniform
+  # tail is shared. Mirrors the import tail of _reconcile_adopt_wif (which keeps its own
+  # undelete/poll-for-ACTIVE prelude and then falls through to this same shape).
+  _reconcile_adopt() {
+    local addr="$1" import_id="$2" label="$3" fatal="${4:-1}" quiet="${5:-0}"
+    log "Reconcile: importing $label into state (created by a prior apply that did not persist state)"
+    local imported=1
+    if [[ "$quiet" == 1 ]]; then
+      tofu_ import -lock-timeout=120s "$addr" "$import_id" 2>/dev/null || imported=0
+    else
+      tofu_ import -lock-timeout=120s "$addr" "$import_id" || imported=0
+    fi
+    if [[ "$imported" == 1 ]]; then
+      ok "$label adopted into state"
+    elif _reconcile_in_state "$addr"; then
+      warn "$label was already managed in state — import skipped"
+    elif [[ "$fatal" == 1 ]]; then
+      die "failed to import $addr — resolve manually, then re-run apply"
+    fi
+  }
+
   # 1. Adopt an untracked-but-existing Cloud SQL database. The presence check filters state
   # by the exact address (authoritative — no whole-list grep) so it can't be fooled by an
   # unrelated line. The import is idempotent: a stale/locked state read right after `init`
@@ -61,15 +94,11 @@ reconcile_state() {
     inst="$(tf_out db_instance_name)"
     if [[ -n "$inst" ]] && gcloud sql databases describe "$DB_NAME" \
          --instance="$inst" --project="$PROJECT_ID" >/dev/null 2>&1; then
-      log "Reconcile: importing existing Cloud SQL database '$DB_NAME' into state (abandoned by a prior db-active toggle)"
-      if tofu_ import -lock-timeout=120s "$db_addr" \
-           "projects/$PROJECT_ID/instances/$inst/databases/$DB_NAME"; then
-        ok "database '$DB_NAME' adopted into state"
-      elif _reconcile_in_state "$db_addr"; then
-        warn "database '$DB_NAME' was already managed in state — import skipped"
-      else
-        die "failed to import $db_addr — resolve manually, then re-run apply"
-      fi
+      # Abandoned by a prior db-active toggle (the ABANDON deletion policy dropped it from state
+      # without dropping the physical database) — adopt it instead of colliding on recreate.
+      _reconcile_adopt "$db_addr" \
+        "projects/$PROJECT_ID/instances/$inst/databases/$DB_NAME" \
+        "Cloud SQL database '$DB_NAME'"
     fi
   fi
 
@@ -106,6 +135,20 @@ reconcile_state() {
   #      and the name stays reserved the whole time — so a re-create 409s AND a plain import
   #      would adopt a DELETED resource that the ACTIVE config immediately wants to replace.
   #      Undelete first (idempotent; no-op if already ACTIVE), THEN import pool and provider.
+  #   d. The three REGIONAL SINGLETONS a partial apply most often strands — the Cloud SQL
+  #      instance (devstash-<env>-pg), the GKE cluster (devstash-<env>-gke), and the Valkey
+  #      Memorystore instance (devstash-<env>-valkey). Each name is a per-(project,region)
+  #      singleton with no alternate to fall back to, so a create 409s exactly as observed when
+  #      CI created them but was cancelled before persisting state. All three are count-gated
+  #      (SQL on db_active, GKE+Valkey on environment_active), so like the DB-database branch
+  #      they are imported ONLY when their config exists (count=1) — otherwise the import target
+  #      has no configuration and `tofu import` errors. The SQL instance additionally may be
+  #      mid-creation (state PENDING_CREATE) when a resume races the prior apply's in-flight
+  #      create; importing then is racy, so it waits for RUNNABLE first (like WIF's poll-for-
+  #      ACTIVE prelude). Import forms per the provider docs:
+  #        SQL    "<project>/<name>"
+  #        GKE    "projects/<project>/locations/<region>/clusters/<name>"
+  #        Valkey "projects/<project>/locations/<region>/instances/<instance_id>"
   #
   #      The deployer-SA impersonation binding (modules/iam google_service_account_iam_member
   #      .github_wif — roles/iam.workloadIdentityUser for the pool's principalSet) is NOT adopted
@@ -123,14 +166,7 @@ reconcile_state() {
   local bucket_name="${PROJECT_ID}-devstash-${ENVIRONMENT}-db-dumps"
   if ! _reconcile_in_state "$bucket_addr" \
      && gcloud storage buckets describe "gs://$bucket_name" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    log "Reconcile: importing existing GCS bucket '$bucket_name' into state (created by a prior apply that did not persist state)"
-    if tofu_ import -lock-timeout=120s "$bucket_addr" "$PROJECT_ID/$bucket_name"; then
-      ok "bucket '$bucket_name' adopted into state"
-    elif _reconcile_in_state "$bucket_addr"; then
-      warn "bucket '$bucket_name' was already managed in state — import skipped"
-    else
-      die "failed to import $bucket_addr — resolve manually, then re-run apply"
-    fi
+    _reconcile_adopt "$bucket_addr" "$PROJECT_ID/$bucket_name" "GCS bucket '$bucket_name'"
   fi
 
   local quota_addr='google_cloud_quotas_quota_preference.compute_ssd_total_gb'
@@ -140,14 +176,66 @@ reconcile_state() {
   # installed). The import itself is the probe — it fails cleanly if the preference is absent,
   # and we only treat a genuinely-still-absent address afterwards as fatal.
   if ! _reconcile_in_state "$quota_addr"; then
-    log "Reconcile: importing quota preference '$quota_id' into state (created by a prior apply that did not persist state)"
-    if tofu_ import -lock-timeout=120s "$quota_addr" "$quota_name" 2>/dev/null; then
-      ok "quota preference '$quota_id' adopted into state"
-    elif _reconcile_in_state "$quota_addr"; then
-      warn "quota preference '$quota_id' was already managed in state — import skipped"
+    # Non-fatal + quiet import: a genuinely-absent preference ⇒ the plan CREATEs it normally
+    # (no 409), so a failed import here is NOT fatal — only the create path decides; and the
+    # describe/import is silenced because the Cloud Quotas describe needs the `alpha` component
+    # (not always installed), so the probe is the import itself.
+    _reconcile_adopt "$quota_addr" "$quota_name" "quota preference '$quota_id'" 0 1
+  fi
+
+  # d. Adopt the three regional singletons a partial/cancelled apply most often strands: the Cloud
+  # SQL instance, the GKE cluster, and the Valkey Memorystore instance. Each is count-gated, so —
+  # exactly like the DB-database branch above — import only when its config exists (count=1); a
+  # suspend legitimately wants them gone and their count→0 config has no import target. `environment
+  # _active` gates GKE + Valkey; `db_active` (already read above) gates the SQL instance.
+  local env_active
+  env_active="$(sed -nE 's/^[[:space:]]*environment_active[[:space:]]*=[[:space:]]*(true|false).*/\1/p' \
+    "$TF_DIR/active.auto.tfvars" 2>/dev/null | head -1)"
+
+  # Cloud SQL instance. Gated on db_active. May be mid-creation (PENDING_CREATE) when a resume
+  # races the prior apply's in-flight create — importing then is racy, so wait for RUNNABLE first.
+  local sql_addr='module.cloudsql.google_sql_database_instance.postgres[0]'
+  local sql_name="devstash-${ENVIRONMENT}-pg"
+  if [[ "$db_active" != "false" ]] && ! _reconcile_in_state "$sql_addr"; then
+    local sql_state
+    sql_state="$(gcloud sql instances describe "$sql_name" --project="$PROJECT_ID" \
+      --format='value(state)' 2>/dev/null || true)"
+    if [[ -n "$sql_state" ]]; then
+      # Poll for RUNNABLE up to ~10 min (Cloud SQL create is slow). `_` = bounded countdown only.
+      if [[ "$sql_state" != "RUNNABLE" ]]; then
+        warn "Reconcile: Cloud SQL '$sql_name' exists but is $sql_state — waiting for RUNNABLE before import"
+        local _
+        for _ in $(seq 1 60); do
+          [[ "$(gcloud sql instances describe "$sql_name" --project="$PROJECT_ID" \
+            --format='value(state)' 2>/dev/null || true)" == "RUNNABLE" ]] && break
+          sleep 10
+        done
+      fi
+      _reconcile_adopt "$sql_addr" "$PROJECT_ID/$sql_name" "Cloud SQL instance '$sql_name'"
     fi
-    # Genuinely absent in GCP ⇒ import fails and address stays untracked ⇒ the plan CREATEs it
-    # normally (no 409). So a failed import here is NOT fatal — only the create path decides.
+  fi
+
+  # GKE cluster. Gated on environment_active (via cluster_active in main.tf).
+  local gke_addr='module.gke.google_container_cluster.primary[0]'
+  local gke_name="devstash-${ENVIRONMENT}-gke"
+  if [[ "$env_active" != "false" ]] && ! _reconcile_in_state "$gke_addr" \
+     && gcloud container clusters describe "$gke_name" --region="$REGION" \
+          --project="$PROJECT_ID" >/dev/null 2>&1; then
+    _reconcile_adopt "$gke_addr" \
+      "projects/$PROJECT_ID/locations/$REGION/clusters/$gke_name" \
+      "GKE cluster '$gke_name'"
+  fi
+
+  # Valkey Memorystore instance. The whole module is count-gated on environment_active, so the
+  # resource address carries the module index [0]. instance_id = "${name_prefix}-valkey".
+  local valkey_addr='module.memorystore[0].google_memorystore_instance.cache'
+  local valkey_name="devstash-${ENVIRONMENT}-valkey"
+  if [[ "$env_active" != "false" ]] && ! _reconcile_in_state "$valkey_addr" \
+     && gcloud memorystore instances describe "$valkey_name" --location="$REGION" \
+          --project="$PROJECT_ID" >/dev/null 2>&1; then
+    _reconcile_adopt "$valkey_addr" \
+      "projects/$PROJECT_ID/locations/$REGION/instances/$valkey_name" \
+      "Valkey instance '$valkey_name'"
   fi
 
   local wif_pool_addr='module.iam.google_iam_workload_identity_pool.github'
@@ -183,12 +271,9 @@ reconcile_state() {
         sleep 5
       done
     fi
-    log "Reconcile: importing existing WIF resource '$import_id' into state (created by a prior apply that did not persist state)"
-    if tofu_ import -lock-timeout=120s "$addr" "$import_id"; then
-      ok "WIF resource '$import_id' adopted into state"
-    elif ! _reconcile_in_state "$addr"; then
-      die "failed to import $addr — resolve manually, then re-run apply"
-    fi
+    # Shared import tail (import → ok / already-managed-warn / die) — the WIF-specific work is the
+    # undelete + poll-for-ACTIVE prelude above; the adoption itself is the same as every other branch.
+    _reconcile_adopt "$addr" "$import_id" "WIF resource '$import_id'"
   }
   # Pool first, then its child provider (the provider's import id nests under the pool).
   _reconcile_adopt_wif "$wif_pool_addr" "$wif_pool_name" \
@@ -211,24 +296,24 @@ reconcile_state() {
   # exists (normal active env) these are legitimately managed and must NOT be removed. Self-disabling:
   # once purged (or on a clean env where they were never stranded) the state-list check finds nothing.
   #
-  # SIBLING: the unattended auto-suspend runs the same reconcile in POSIX sh before its apply
-  # (envs/dev/scripts/auto-suspend-suspend.sh) — different execution model (Cloud Build container,
-  # can't source this file), so if these addresses/logic change, change them there too.
+  # The three module addresses live in infra/lib/ar-iam-member-addresses.txt — SHARED with the
+  # unattended auto-suspend's POSIX-sh reconcile (envs/dev/scripts/auto-suspend-suspend.sh), which
+  # reads the SAME file from its /workspace/repo clone. Extracting the byte-exact addresses to that
+  # data file is what keeps the two reconcilers from drifting on them (the surrounding logic legitimately
+  # differs: bash uses tofu_/_reconcile_in_state/die here, the sh step uses raw `tofu state`).
   local ar_repo_id='devstash' # mirrors modules/artifact-registry local.repository_id
   if ! gcloud artifacts repositories describe "$ar_repo_id" \
        --location="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    local ar_iam_addrs=(
-      'module.iam.google_artifact_registry_repository_iam_member.node_artifact_registry_reader[0]'
-      'module.iam.google_artifact_registry_repository_iam_member.custom_node_artifact_registry_reader[0]'
-      'module.iam.google_artifact_registry_repository_iam_member.deployer_artifact_registry[0]'
-    )
+    local ar_addrs_file; ar_addrs_file="$(dirname "${BASH_SOURCE[0]}")/../../../lib/ar-iam-member-addresses.txt"
     local ar_addr
-    for ar_addr in "${ar_iam_addrs[@]}"; do
+    # Read the shared list, skipping blank + `#`-comment lines.
+    while IFS= read -r ar_addr; do
+      [[ -z "$ar_addr" || "$ar_addr" == \#* ]] && continue
       if _reconcile_in_state "$ar_addr"; then
         warn "Reconcile: repo '$ar_repo_id' is gone but $ar_addr is still in state (stranded by a pre-fix suspend) — removing from state so the next apply is not re-wedged by a 403"
         tofu_ state rm -lock-timeout=120s "$ar_addr" \
           || die "failed to state-rm $ar_addr — resolve manually, then re-run apply"
       fi
-    done
+    done < "$ar_addrs_file"
   fi
 }

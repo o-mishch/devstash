@@ -15,6 +15,13 @@
 [[ -n "${_DEVSTASH_GCP_DB_SH:-}" ]] && return 0
 _DEVSTASH_GCP_DB_SH=1
 
+# The export→verify→retry gate and the GCS version-prune are SHARED (identical logic, POSIX-sh) with
+# the unattended Cloud Build dump step (scripts/auto-suspend-dump.sh) via infra/lib/posix/dump.sh —
+# the ONE source of truth for both runtimes. bash sources POSIX sh transparently. This replaces the
+# hand-mirrored copy db.sh used to keep in sync with the Cloud Build path.
+# shellcheck source=infra/lib/posix/dump.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../../lib/posix/dump.sh"
+
 # resolve_dump_target: read the three GCS-dump coordinates from tofu output and set the
 # shared globals DUMP_INSTANCE + DUMP_URI. Returns non-zero (setting nothing) if any output
 # is empty — the normal case for a not-yet-applied env. Callers decide the severity of that
@@ -38,32 +45,15 @@ resolve_dump_target() {
 _sql_runnable() {
   [[ "$(gcloud sql instances describe "$1" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null)" == "RUNNABLE" ]]
 }
-# _export_and_verify_dump: server-side export + non-empty verify, with ONE retry that first
-# deletes an empty/partial dump object. `gcloud sql export` can leave a 0-byte object behind on
-# a transient failure; re-exporting over it would be verified against that stale empty object, so
-# the retry removes it first, then re-exports and re-verifies. Returns 0 once a non-empty dump is
-# confirmed (setting the shared DUMP_SIZE_KIB for the caller's log) and non-zero if it still
-# cannot — the caller (dump_db) turns that into the data-safety abort. Progress goes to the
-# terminal via log/warn (stdout), so it is NOT run in a command substitution.
-# SIBLING: auto-suspend-dump.sh runs this same export → verify → (delete-empty + retry) sequence
-# on the Cloud Build path — keep the two in sync.
+# _export_and_verify_dump: thin wrapper over ds_export_and_verify_dump (infra/lib/posix/dump.sh) —
+# the shared export → verify → (delete-empty + retry) gate, single-sourced with the Cloud Build
+# dump step. Maps db.sh's globals onto the helper's positional args and translates the returned
+# byte size into DUMP_SIZE_KIB for the caller's log. Returns non-zero (which dump_db turns into the
+# data-safety abort) iff a non-empty dump could not be produced after the retry.
 _export_and_verify_dump() {
-  local attempt size
   DUMP_SIZE_KIB=""
-  for attempt in 1 2; do
-    log "Exporting Cloud SQL '$DUMP_INSTANCE' → $DUMP_URI (server-side pg_dump, attempt $attempt/2)"
-    gcloud sql export sql "$DUMP_INSTANCE" "$DUMP_URI" --database="$DB_NAME" --project="$PROJECT_ID" \
-      || warn "gcloud sql export failed (attempt $attempt)"
-    size="$(gcloud storage objects describe "$DUMP_URI" --format='value(size)' 2>/dev/null || true)"
-    if [[ "$size" =~ ^[0-9]+$ && "$size" -gt 0 ]]; then
-      DUMP_SIZE_KIB="$((size / 1024))"
-      return 0
-    fi
-    warn "dump $DUMP_URI missing or empty (size='${size:-none}')"
-    # Delete the empty/partial object so the retry re-verifies against a fresh export, not stale bytes.
-    gcloud storage rm "$DUMP_URI" --quiet 2>/dev/null || true
-  done
-  return 1
+  ds_export_and_verify_dump "$DUMP_INSTANCE" "$DUMP_URI" "$DB_NAME" "$PROJECT_ID" || return 1
+  DUMP_SIZE_KIB="$((DS_DUMP_SIZE_BYTES / 1024))"
 }
 dump_db() {
   local state
@@ -109,7 +99,10 @@ dump_db() {
   local keep_noncurrent
   keep_noncurrent="$(tf_out db_dump_keep_versions)"
   [[ "$keep_noncurrent" =~ ^[0-9]+$ ]] || keep_noncurrent=2
-  gcs_prune_versions "$DUMP_URI" "$((keep_noncurrent + 1))"
+  # ds_prune_dump_versions (infra/lib/posix/dump.sh) — the SAME prune the Cloud Build dump step runs,
+  # single-sourced. keep-total = noncurrent + 1 (the live dump just written); keep >= 1 always
+  # retains the live object. Best-effort: never fails the suspend (the verified dump is already safe).
+  ds_prune_dump_versions "$DUMP_URI" "$((keep_noncurrent + 1))"
 }
 
 # restore_db: import the latest GCS dump into the freshly-recreated Cloud SQL instance on

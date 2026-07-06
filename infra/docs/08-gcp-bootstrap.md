@@ -622,15 +622,18 @@ dig +short gke.devstash.one          # має повернути IP Gateway
 nslookup gke.devstash.one
 ```
 
-**Крок 3b — ОДНОРАЗОВО: DNS-authorization CNAME для Certificate Manager.** TLS тепер видає
+**Крок 3b — DNS-authorization CNAME для Certificate Manager (АВТОМАТИЧНО).** TLS тепер видає
 **Certificate Manager** (project-scoped, `certmanager.tf`) — Google-managed cert із DNS
 authorization. Він провіжиниться раз, а далі **переживає будь-який suspend/resume** (не
-cluster-CRD), тож resume більше НЕ чекає на cert. Для видачі треба додати один CNAME у зону
-Spaceship (окремо від A-запису вище):
+cluster-CRD), тож resume більше НЕ чекає на cert. DNS-auth CNAME **асертиться автоматично** на
+кожному `apply`/`resume` (`update_dns` → `ensure_cert_cname` у `lib/dns.sh`) з tofu-виводів —
+крок самовідновлюється, ручної дії не треба. CNAME **upsert-иться і НІКОЛИ не видаляється** — він
+потрібен не лише для першої видачі, а й для кожного ~60-денного продовження cert.
 ```bash
+# Перевірити, що CNAME на місці (за потреби додати вручну — той самий запис, що асертить tooling):
 tofu -chdir=infra/terraform/envs/dev output -raw dns_authorization_cname_record   # Host (ліва частина)
 tofu -chdir=infra/terraform/envs/dev output -raw dns_authorization_cname_target   # Value (CNAME target)
-# Додай у Spaceship:  Type=CNAME  Host=<record>  Value=<target>  TTL=5 min
+# Spaceship:  Type=CNAME  Host=<record>  Value=<target>  TTL=5 min
 ```
 
 **Крок 4 — дочекатися Certificate Manager cert** (провіжиниться після того, як CNAME вище
@@ -1059,9 +1062,11 @@ CLI цього репо. Роби їх у такому порядку:
 1. Візьми IP: `tofu -chdir=infra/terraform/envs/dev output -raw ingress_ip_address`.
 2. У дашборді реєстратора (Spaceship для `devstash.one`) додай **A-запис**: Host=`gke`,
    Value=IP, TTL=5 хв. **Apex і `www` не чіпай** — вони на Vercel.
-3. **Одноразово** додай **CNAME** для Certificate Manager DNS-authorization:
-   Host=`tofu output -raw dns_authorization_cname_record`,
-   Value=`tofu output -raw dns_authorization_cname_target`, TTL=5 хв.
+3. **CNAME** для Certificate Manager DNS-authorization асертиться **автоматично** (`update_dns` →
+   `ensure_cert_cname`) на кожному `apply`/`resume` — ручної дії не треба. Для перевірки/ручного
+   додавання: Host=`tofu output -raw dns_authorization_cname_record`,
+   Value=`tofu output -raw dns_authorization_cname_target`, TTL=5 хв. Ніколи не видаляй його —
+   він потрібен і для продовження cert.
 4. Перевір: `dig +short gke.devstash.one` має повернути A-IP.
 5. Дочекайся cert (ОДИН раз; далі переживає suspend/resume):
    `gcloud certificate-manager certificates describe devstash-dev-cert --format='value(managed.state)'`
