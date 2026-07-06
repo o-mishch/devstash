@@ -160,6 +160,24 @@ suspend() {
 # The provisioning marker still spans the ENTIRE apply: mark_provisioning fires in _apply_plan and
 # clear_provisioning (after the IAM cooldown) at the tail of the backgrounded _apply_exec — so
 # backgrounding the exec does not widen the auto-suspend race window.
+#
+# WHY devstash-app-config CANNOT BE FRONT-LOADED (a recurring question): resume pre-dispatches the
+# deploy BEFORE this apply runs, and the deploy's ESO step needs an ENABLED app-config version. It is
+# tempting to enable that version early — the way _apply_ar_push_target / _apply_ci_identity pull the
+# AR repo + WIF identity forward with `-target` so the build has them at dispatch time. It does not
+# work for app-config: the blob (google_secret_manager_secret_version.app_config, modules/iam) is
+# computed from database-url/database-ca-cert (module.cloudsql, the ~10-min create this driver
+# overlaps), redis-url/redis-ca-cert (module.memorystore), the app-SA HMAC key, and depends_on
+# module.gke — i.e. it depends on the SLOWEST resources in the whole apply. A -target pull-forward
+# would either fail on null Cloud SQL outputs or push an INCOMPLETE blob missing the infra keys (the
+# same partial state wait-secrets-sync.sh already classifies as suspended/mid-resume). And writing it
+# out-of-band from secrets() via `gcloud secrets versions add` would fork the write-only,
+# Terraform-owned version into a second writer — reintroducing the version churn + destroyed-latest
+# outage the write-only design fixed (see modules/iam/main.tf). So the enabled version INHERENTLY
+# lands mid-apply, AFTER dispatch. The deploy does not race it because the CI enabled-version gate
+# (infra/ci/check-secret-version.sh) blocks the ESO step until this apply enables it. Only the secret
+# SHELL is guaranteed early (prevent_destroy, survives suspend); its CONTENTS must wait for the infra
+# they describe.
 _apply_and_wire_cluster_overlapped() {
   stage "apply → applying (Cloud SQL ~10m + control plane), pre-dispatched CI build overlapping"
   _apply_plan                       # foreground: init → reconcile → plan → CONFIRM (review gate)

@@ -37,6 +37,16 @@
 # positively confirm the source blob is missing one of the expected infra properties. If every
 # expected property IS present yet ESO still failed, the timeout fails the step loudly.
 #
+# A blob that is EMPTY / inaccessible (no ENABLED version at all) is ALSO a loud failure, NOT a
+# benign parked state. The "always one enabled version" invariant above means an empty read can
+# only come from a real fault — the secret was never created, IAM/WI access is broken, or a
+# Terraform apply DISABLED the previous version without an enabled replacement. That last case is
+# the disable-old-then-add-new race: the write-only version resource does the disable and the add
+# as two API operations, so a deploy landing between them sees zero enabled versions. The CI
+# enabled-version preflight gate (infra/ci/check-secret-version.sh) now blocks the deploy before
+# this step whenever that gap is open, so reaching an empty blob here is an unexpected fault that
+# must fail the build rather than silently pass it (which previously masked a full outage).
+#
 # The blob is read to inspect WHICH keys exist, never to print their values — we test key presence
 # with `jq 'has(...)'` and emit only key NAMES, so no secret material reaches the CI log.
 #
@@ -71,12 +81,19 @@ echo "ExternalSecret '$ES' did not become Ready within the timeout — inspectin
 blob="$(ds_access_secret_blob "$SM_SECRET" "$GCP_PROJECT_ID")"
 
 if [ -z "$blob" ]; then
-  # No accessible enabled version at all — the secret was never created, or IAM access is broken.
-  # Rare (Terraform keeps one enabled version at all times), but treat a missing source as the
-  # benign parked state per the warn-and-finish directive rather than failing the build.
-  echo "::warning::Could not read any enabled version of '$SM_SECRET' (missing or inaccessible) — treating as a suspended/parked env and finishing without failing the build. Downstream migrate + rollout steps self-skip. Repopulate with: bash infra/run/gcp/run.sh resume."
+  # No accessible ENABLED version at all. This is NOT the benign suspend/parked state — a
+  # suspend only OMITS the redis-*/database-* PROPERTIES from a still-populated blob (handled
+  # by the missing-infra-property branch below); it never leaves the secret with zero enabled
+  # versions. By construction devstash-app-config ALWAYS has one enabled latest version (the
+  # write-only + deletion_policy=DISABLE design in modules/iam/main.tf), so an empty read means
+  # a genuine fault: the secret was never created, IAM/Workload-Identity access is broken, or a
+  # Terraform apply disabled the previous version WITHOUT an enabled replacement (the
+  # disable-old-then-add-new race — see the CI enabled-version preflight gate that now blocks the
+  # deploy before it reaches this step). Swallowing it as a warning turned that outage into a
+  # green build; fail loudly instead so the real problem surfaces.
+  echo "::error::'$SM_SECRET' has no accessible ENABLED version (empty or inaccessible) — this is a real fault, not a suspended env (suspend omits properties, never the whole secret). ESO cannot sync '$ES'. Check the secret has an enabled version (gcloud secrets versions list $SM_SECRET) and that Workload Identity access is intact. Recover with: bash infra/run/gcp/run.sh resume." >&2
   echo "synced=false" >> "$GITHUB_OUTPUT"
-  exit 0
+  exit 1
 fi
 
 # Collect the infra keys that are absent from the blob. `jq 'has($k)'` tests key presence only —
