@@ -186,12 +186,19 @@ suspend() {
 # SHELL is guaranteed early (prevent_destroy, survives suspend); its CONTENTS must wait for the infra
 # they describe.
 _apply_and_wire_cluster_overlapped() {
+  # Snapshot BEFORE apply runs: was Cloud SQL already there? A genuine post-suspend resume finds
+  # nothing (dump_db._apply_plan/_exec below is what (re)creates the instance); resume re-run
+  # against an env that's already up finds it already describable. restore_db uses this to refuse
+  # importing the (older, by definition) GCS dump over an already-live database — see its header.
+  local was_already_live=false
+  resolve_dump_target 2>/dev/null && _sql_instance_exists "$DUMP_INSTANCE" && was_already_live=true || true
+
   stage "apply → applying (Cloud SQL ~10m + control plane), pre-dispatched CI build overlapping"
   _apply_plan                       # foreground: init → reconcile → plan → CONFIRM (review gate)
   _apply_exec                       # foreground: no local operator install left to overlap it with
   wait_for_cluster                  # control plane up ~5-7 min in, mid-apply
   stage "restore DB from GCS dump (Cloud SQL runnable now that apply finished)"
-  restore_db                        # serial: Cloud SQL is RUNNABLE now (apply finished)
+  restore_db "$was_already_live"    # serial: Cloud SQL is RUNNABLE now (apply finished)
                                     # A restore failure aborts resume via restore_db's own die + set -e
 }
 

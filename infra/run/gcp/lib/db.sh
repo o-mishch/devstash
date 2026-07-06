@@ -45,6 +45,12 @@ resolve_dump_target() {
 _sql_runnable() {
   [[ "$(gcloud sql instances describe "$1" --project="$PROJECT_ID" --format='value(state)' 2>/dev/null)" == "RUNNABLE" ]]
 }
+# _sql_instance_exists <instance>: 0 iff <instance> is describable at all, regardless of state.
+# Used by resume's overlap driver to snapshot "did Cloud SQL already exist BEFORE this apply ran"
+# — see restore_db's "already-live" guard below for why that snapshot matters.
+_sql_instance_exists() {
+  gcloud sql instances describe "$1" --project="$PROJECT_ID" >/dev/null 2>&1
+}
 # _export_and_verify_dump: thin wrapper over ds_export_and_verify_dump (infra/lib/posix/dump.sh) —
 # the shared export → verify → (delete-empty + retry) gate, single-sourced with the Cloud Build
 # dump step. Maps db.sh's globals onto the helper's positional args and translates the returned
@@ -105,22 +111,40 @@ dump_db() {
   ds_prune_dump_versions "$DUMP_URI" "$((keep_noncurrent + 1))"
 }
 
-# restore_db: import the latest GCS dump into the freshly-recreated Cloud SQL instance on
-# resume. Best-effort: on a first-ever bring-up there is no dump, so it skips and lets the
-# CI Prisma migrations create the schema. The dump includes the _prisma_migrations table,
-# so when a dump IS restored the CI migrate step is a no-op.
+# restore_db <was-already-live>: import the latest GCS dump into the freshly-recreated Cloud SQL
+# instance on resume. Best-effort: on a first-ever bring-up there is no dump, so it skips and lets
+# the CI Prisma migrations create the schema. The dump includes the _prisma_migrations table, so
+# when a dump IS restored the CI migrate step is a no-op.
 #
-# CLEAN TARGET before every import: drop and recreate the logical database first, so the import
-# always lands in an empty schema. `gcloud sql import` (pg_restore/psql) is NOT idempotent — a
-# retry after a partially-completed import (network blip, timeout) hits "relation already
-# exists" and can never re-import cleanly. Terraform recreates the instance with an EMPTY
-# devstash database on resume, so the first try is clean anyway; the drop+recreate makes a
-# SECOND try equally clean with no manual `gcloud sql databases delete` dance. Ordering is safe:
-# restore_db runs after apply (instance RUNNABLE) and before deploy, and the drop+recreate
-# happens before any app/migrate pod can connect, so nothing is holding a connection.
+# <was-already-live> ("true"/"false", default "false"): whether the Cloud SQL instance was ALREADY
+# describable (any state) BEFORE this resume's apply ran — the caller snapshots this via
+# _sql_instance_exists BEFORE _apply_plan/_apply_exec. When "true", `resume` is being re-run
+# against an env that was never actually suspended (or a prior resume already brought it up) — the
+# instance already holds whatever the app has written since the LAST real suspend, which is newer
+# than the GCS dump by definition (dump_db only runs from suspend()). Importing the old dump here
+# would silently drop that live data. CONFIRMED LIVE 2026-07-06: two `resume` calls run back to
+# back overwrote a signed-in user's items each time — every dump taken afterward showed a
+# freshly-recreated user with zero items, because restore_db kept re-importing the prior dump over
+# an already-live database instead of skipping. Skip (warn, do not import) when true; the
+# unconditional drop+recreate+import below is safe ONLY on a genuine post-suspend restore.
+#
+# CLEAN TARGET before every import (genuine restores only): drop and recreate the logical database
+# first, so the import always lands in an empty schema. `gcloud sql import` (pg_restore/psql) is
+# NOT idempotent — a retry after a partially-completed import (network blip, timeout) hits
+# "relation already exists" and can never re-import cleanly. Terraform recreates the instance with
+# an EMPTY devstash database on a genuine resume, so the first try is clean anyway; the
+# drop+recreate makes a SECOND try equally clean with no manual `gcloud sql databases delete`
+# dance. Ordering is safe: restore_db runs after apply (instance RUNNABLE) and before deploy, and
+# the drop+recreate happens before any app/migrate pod can connect, so nothing is holding a
+# connection.
 restore_db() {
+  local was_already_live="${1:-false}"
   ensure_tfvars
   resolve_dump_target || { warn "no instance / dump bucket / object resolved — skipping restore"; return 0; }
+  if [[ "$was_already_live" == "true" ]]; then
+    warn "Cloud SQL instance '$DUMP_INSTANCE' already existed before this resume's apply ran — this resume is being re-run against an env that was never suspended. Skipping restore so live data written since the last real suspend is NOT overwritten by the older GCS dump."
+    return 0
+  fi
   if ! gcloud storage objects describe "$DUMP_URI" >/dev/null 2>&1; then
     warn "no dump at $DUMP_URI — fresh database; CI migrations will create the schema"
     return 0
