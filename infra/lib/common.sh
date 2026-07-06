@@ -225,6 +225,42 @@ ds_cluster_present() {
   [[ -n "$found" ]]
 }
 
+# ds_ar_writable <region> <project> <repo>: 0 iff the Artifact Registry repo EXISTS and its IAM
+# policy grants the CALLING identity (the WIF-federated deployer SA in CI) a role that carries
+# artifactregistry.repositories.uploadArtifacts — i.e. the push will authorize. Guards the
+# resume/first-apply RACE: run.sh PRE-DISPATCHES deploy-gke so build-push overlaps `tofu apply`,
+# but the repo AND the deployer's repo-scoped repoAdmin binding are count=environment_active —
+# destroyed on suspend, RECREATED partway through that still-running apply. Pushing before the
+# binding lands (or before it propagates to the registry data plane) is the exact
+# "denied: ...uploadArtifacts" failure this probe polls away. Checks, in order:
+#   1. repo describe succeeds       — the repo has been recreated (else 404 → not yet),
+#   2. its IAM policy lists our SA against roles/artifactregistry.{repoAdmin,writer,admin}
+#      — the write binding has been applied (a bare repo with no binding still can't push).
+# gcloud has no `test-iam-permissions` for artifacts, so we read the policy and match our own
+# member. `gcloud config get account` is the identity gcloud will mint the push token for (the
+# impersonated deployer SA under WIF), so matching it against the policy is faithful to the push.
+# All failures are swallowed to a non-zero return so the CALLER's poll loop retries rather than
+# aborting under set -e — same tolerant-probe contract as check-env-active.sh wraps ds_cluster_present.
+# A brief settle after this returns true still guards raw data-plane propagation (see build-push.sh).
+ds_ar_writable() {
+  # repo_id (not `repo`): a lowercase `repo` local would make shellcheck -x, following this source
+  # into the CI scripts, flag every uppercase $REPO env use (prune-registry.sh, build-push.sh) as a
+  # possible-misspelling SC2153 — those are legit workflow-provided vars, so keep the name distinct.
+  local region="$1" project="$2" repo_id="$3" account members
+  gcloud artifacts repositories describe "$repo_id" \
+    --project "$project" --location "$region" >/dev/null 2>&1 || return 1
+  account="$(gcloud config get-value account 2>/dev/null)" || return 1
+  [[ -n "$account" ]] || return 1
+  # Bindings that include uploadArtifacts. writer/repoAdmin are the scoped grants this repo uses;
+  # admin is included for completeness (a project-wide artifactregistry.admin would also authorize).
+  members="$(gcloud artifacts repositories get-iam-policy "$repo_id" \
+    --project "$project" --location "$region" \
+    --flatten='bindings[].members' \
+    --filter='bindings.role:(roles/artifactregistry.repoAdmin OR roles/artifactregistry.writer OR roles/artifactregistry.admin)' \
+    --format='value(bindings.members)' 2>/dev/null)" || return 1
+  printf '%s\n' "$members" | grep -qxF "serviceAccount:$account"
+}
+
 # ds_dump_job_diagnostics <namespace> <job-name>: best-effort logs + describe for a failed/timed-out
 # Job, printed right before the caller exits 1. Kept here so the two identical dumps inside
 # run-migrations.sh (Failed condition vs. deadline exceeded) can't drift from each other.

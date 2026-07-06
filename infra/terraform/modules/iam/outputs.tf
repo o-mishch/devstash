@@ -6,6 +6,12 @@ output "deployer_service_account_email" {
   value = google_service_account.deployer.email
 }
 
+# The on-demand suspend/resume identity — this is the value for the GitHub secret
+# LIFECYCLE_DEPLOYER_SA consumed by google-github-actions/auth in infra-lifecycle.yml.
+output "lifecycle_deployer_service_account_email" {
+  value = google_service_account.lifecycle_deployer.email
+}
+
 # Full provider resource name — this is the value for the GitHub secret
 # WORKLOAD_IDENTITY_PROVIDER consumed by google-github-actions/auth.
 # Format: projects/<num>/locations/global/workloadIdentityPools/github-actions/providers/github

@@ -1,0 +1,94 @@
+# On-demand SUSPEND / RESUME of the GCP showcase environment, fired from the GitHub UI
+# (Actions → Run workflow, or the GitHub mobile app). This is the MANUAL control only —
+# the unattended, event-driven auto-suspend stays in Cloud Build (auto-suspend.tf); it must
+# run without GitHub in the loop. See context/history.md / infra/docs for the full rationale.
+#
+# It authenticates to GCP via Workload Identity Federation as the dedicated
+# `lifecycle-deployer` SA (modules/iam) — a broad-but-bounded identity that can run the full
+# `tofu apply` but deliberately CANNOT rewrite project IAM. Consequence, by design: project
+# IAM must already be converged (committed main == state) before you click; if you changed
+# IAM, run a local `run.sh apply` as owner first. Same operator-converges-first rule as
+# auto-suspend.
+#
+# The long resume (~10-15 min) is well under the 6h job limit. All shell lives in
+# infra/ci/lifecycle-dispatch.sh (which drives run.sh) — nothing multi-line is inlined here.
+name: infra-lifecycle
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Bring the environment up (resume) or park it at ~$0 (suspend).'
+        required: true
+        type: choice
+        default: resume
+        options:
+          - resume
+          - suspend
+
+# Never run two lifecycle ops (or a lifecycle op and its opposite) at once — they mutate the
+# same tofu state + external DNS. cancel-in-progress: false so a running suspend/resume is
+# NEVER interrupted mid-teardown/-provision (GitHub cancellation would not stop an in-flight
+# tofu apply cleanly); a newer dispatch waits its turn. Also serialise against deploy-gke's
+# own apply path by keeping this in its own group but never cancelling.
+concurrency:
+  group: infra-lifecycle
+  cancel-in-progress: false
+
+# Default read-only. The job needs id-token (WIF OIDC) + contents:read (checkout). Writing
+# repo secrets and dispatching deploy-gke is done with the fine-grained PAT (GH_TOKEN below),
+# NOT the workflow GITHUB_TOKEN, which cannot write secrets.
+permissions:
+  contents: read
+
+env:
+  REGION: us-central1
+
+jobs:
+  lifecycle:
+    # WIF pins the OIDC token to refs/heads/main (iam module attribute_condition), so this
+    # only authenticates to GCP when dispatched from main — a dispatch on any other ref fails
+    # at the auth step by design. Guard here too so a non-main dispatch fails fast + clearly.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # resume blocks on the deploy-gke run it dispatches (run.sh _watch_ci_run); give the whole
+    # job generous headroom over the ~10-15 min happy path without approaching the 6h ceiling.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: request the OIDC token
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # --- GCP auth as the lifecycle-deployer SA (keyless, WIF) --------------------
+      - id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.LIFECYCLE_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      # run.sh's preflight requires kubectl + helm on PATH BEFORE the cluster exists (eso/
+      # reloader install into the fresh cluster on resume). gcloud provides itself; add the
+      # kubectl + GKE auth plugin as components, and helm via the pinned setup action. jq + yq
+      # are preinstalled on ubuntu-latest.
+      - name: Install kubectl + GKE auth plugin
+        run: gcloud components install kubectl gke-gcloud-auth-plugin --quiet
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      # --- OpenTofu (the resume/suspend apply engine) -----------------------------
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_wrapper: false # run.sh calls `tofu` directly; the wrapper would mangle its output
+
+      # --- Run the lifecycle op ---------------------------------------------------
+      # GH_TOKEN is the fine-grained PAT (Secrets=write, Actions=write) so run.sh's secrets()
+      # can `gh secret set …` and deploy can dispatch deploy-gke.yml. USE_GKE_GCLOUD_AUTH_PLUGIN
+      # is the documented flag the plugin needs when kubectl talks to GKE.
+      - name: ${{ inputs.action }} environment
+        env:
+          ACTION: ${{ inputs.action }}
+          GH_TOKEN: ${{ secrets.LIFECYCLE_GH_TOKEN }}
+          USE_GKE_GCLOUD_AUTH_PLUGIN: 'True'
+        run: ./infra/ci/lifecycle-dispatch.sh

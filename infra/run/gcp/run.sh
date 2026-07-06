@@ -229,7 +229,7 @@ require_outputs() {
 # The tofu outputs `secrets` reads to push CI's auth secrets + public config. Single-sourced so
 # the require_outputs gate in secrets() and the _tf_outputs_present predicate below can never
 # disagree on "which outputs must exist before we may push to GitHub / pre-dispatch CI".
-SECRETS_REQUIRED_OUTPUTS=(gcp_project_id deployer_service_account_email wif_provider app_domain email_from)
+SECRETS_REQUIRED_OUTPUTS=(gcp_project_id deployer_service_account_email lifecycle_deployer_service_account_email wif_provider app_domain email_from)
 
 # _tf_outputs_present: true iff EVERY output `secrets` needs is present + non-empty — i.e. the
 # state has been applied and holds live outputs. This is the real precondition for pre-dispatching
@@ -525,6 +525,7 @@ secrets() {
   # `$(…)` bodies below would only kill the subshell and let `gh … --body ""` prompt interactively.
   require_outputs "${SECRETS_REQUIRED_OUTPUTS[@]}"
   gh secret set DEPLOYER_SA               --body "$(tf_out deployer_service_account_email)"
+  gh secret set LIFECYCLE_DEPLOYER_SA     --body "$(tf_out lifecycle_deployer_service_account_email)"
   gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tf_out wif_provider)"
   # GCP_PROJECT_ID is a GitHub *variable*, not a secret. A project ID is not sensitive (it
   # appears in every image ref, IAM binding, and URL), and — critically — GitHub DROPS any
@@ -567,9 +568,9 @@ secrets() {
   gh_var_set_or_clear BINAUTHZ_KMS_KEYRING "$keyring"
   gh_var_set_or_clear BINAUTHZ_KMS_KEY     "$key"
   if [[ -n "$attestor" ]]; then
-    ok "DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; GCP_PROJECT_ID / APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS / BINAUTHZ_* set as variables"
+    ok "DEPLOYER_SA / LIFECYCLE_DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; GCP_PROJECT_ID / APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS / BINAUTHZ_* set as variables"
   else
-    ok "DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; GCP_PROJECT_ID / APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS set as variables (Binary Authorization disabled — BINAUTHZ_* cleared)"
+    ok "DEPLOYER_SA / LIFECYCLE_DEPLOYER_SA / WORKLOAD_IDENTITY_PROVIDER set as secrets; GCP_PROJECT_ID / APP_DOMAIN / EMAIL_FROM / ENABLE_GITHUB_ATTESTATIONS set as variables (Binary Authorization disabled — BINAUTHZ_* cleared)"
   fi
 
   _verify_pushed_secrets
@@ -588,7 +589,7 @@ _verify_pushed_secrets() {
   # `gh secret list` only lists secrets. Verify it with: gh variable list
   local names missing=0
   names="$(gh secret list --json name -q '.[].name')"
-  count_missing "$names" DEPLOYER_SA WORKLOAD_IDENTITY_PROVIDER || missing=$?
+  count_missing "$names" DEPLOYER_SA LIFECYCLE_DEPLOYER_SA WORKLOAD_IDENTITY_PROVIDER || missing=$?
   [[ $missing -eq 0 ]] || die "$missing secret(s) not confirmed in GitHub — re-run 'secrets'"
   # Separately verify the variables — gh variable list exits 0 even if empty, so a
   # per-variable value fetch is the only reliable presence check.

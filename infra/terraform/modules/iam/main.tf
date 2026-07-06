@@ -417,3 +417,84 @@ resource "google_service_account_iam_member" "github_wif" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
 }
+
+# --- Lifecycle-deployer service account: on-demand resume / suspend from GitHub UI ---
+# The identity for the MANUAL, GitHub-Actions-driven suspend/resume button
+# (.github/workflows/infra-lifecycle.yml → infra/ci/lifecycle-dispatch.sh → run.sh).
+# Distinct from `deployer` because a FULL `tofu apply` — recreating GKE, Memorystore,
+# Cloud NAT/Armor, Cloud SQL, and the repo-scoped AR IAM members — needs far broader
+# rights than `deployer`'s deploy-only container.admin. Distinct from the auto-suspend
+# `lifecycle` SA (envs/dev/auto-suspend.tf) because that one is a Cloud Build identity
+# scoped to the unattended deep-suspend; this one is the GitHub-Actions federated
+# identity for the operator-triggered button. The two intentionally hold the SAME role
+# posture (see lifecycle_deployer_roles below) so the manual and unattended paths have
+# identical blast radius.
+resource "google_service_account" "lifecycle_deployer" {
+  account_id   = "devstash-lifecycle-deployer"
+  display_name = "DevStash on-demand suspend/resume (GitHub Actions)"
+}
+
+locals {
+  # Mirror of the auto-suspend `lifecycle` SA's role set (envs/dev/auto-suspend.tf
+  # lifecycle_roles) — the full suspend/resume apply touches the same GCP surface, so
+  # the two identities carry the same broad-but-bounded roles. DELIBERATELY OMITS
+  # roles/resourcemanager.projectIamAdmin: this SA must NOT be able to rewrite project
+  # IAM (the escalation the whole least-privilege split exists to avoid). Consequence,
+  # accepted by design: project-IAM state must already be converged (committed main ==
+  # state) before the button is clicked, so the refresh-only apply finds zero project-IAM
+  # diff to write — the SAME operator-converges-first rule that governs auto-suspend
+  # (see the extended note in auto-suspend.tf).
+  #
+  # NOTE on the two project-level ADMIN roles below (storage.admin, artifactregistry.admin):
+  # the auto-suspend SA reaches these same surfaces with narrow, resource-scoped CUSTOM roles
+  # (auto-suspend.tf lifecycle_ar_deleter, lifecycle_db_dumps_iam, lifecycle_staging_deleter,
+  # plus bucket-scoped lifecycle_state / lifecycle_db_dumps members) precisely because it runs
+  # UNATTENDED on every idle tick — there, minimising standing blast radius is worth the extra
+  # custom-role machinery. This SA is the OPERATOR-triggered button (WIF-fenced to a main-ref
+  # dispatch, only you can fire it), so it takes the two predefined admin roles instead: fewer
+  # moving parts, and the marginal blast radius over the custom roles is bounded to storage +
+  # Artifact Registry, not project IAM. Revisit if this identity ever becomes non-interactive.
+  lifecycle_deployer_roles = [
+    "roles/container.admin",
+    "roles/memorystore.admin",
+    "roles/compute.networkAdmin",
+    "roles/compute.securityAdmin",
+    "roles/cloudsql.admin",
+    "roles/secretmanager.secretVersionManager",
+    "roles/secretmanager.secretAccessor",
+    "roles/secretmanager.viewer",
+    "roles/monitoring.viewer",
+    "roles/browser",
+    "roles/cloudkms.viewer",
+    "roles/logging.logWriter",
+    "roles/cloudbuild.builds.editor",
+    "roles/serviceusage.serviceUsageConsumer",
+    # storage.admin: the resume apply reads/writes the tofu STATE bucket and the DB-dumps
+    # bucket (restore_db imports the GCS dump), and the suspend cleanup deletes the
+    # _cloudbuild staging bucket. Covers all three (get/create/delete + object + setIamPolicy).
+    "roles/storage.admin",
+    # artifactregistry.admin: the resume apply RECREATES the Artifact Registry repo AND its
+    # repo-scoped IAM members (google_artifact_registry_repository_iam_member — deployer
+    # repoAdmin + node readers), and suspend DESTROYS them. That needs repositories.{create,
+    # delete,get,getIamPolicy,setIamPolicy} — NOT covered by container.admin (which is GKE).
+    # The auto-suspend SA gets exactly these via the lifecycle_ar_deleter custom role; this
+    # SA takes the predefined admin per the operator-convenience note above.
+    "roles/artifactregistry.admin",
+  ]
+}
+
+resource "google_project_iam_member" "lifecycle_deployer" {
+  for_each = toset(local.lifecycle_deployer_roles)
+  project  = var.project_id
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.lifecycle_deployer.email}"
+}
+
+# Same WIF pool/provider as the deployer above — so the SAME attribute_condition
+# (repo + owner-id + refs/heads/main + ref_type==branch) fences this identity too. Only
+# a workflow_dispatch on `main` of THIS repo can exchange a token and impersonate this SA.
+resource "google_service_account_iam_member" "lifecycle_deployer_github_wif" {
+  service_account_id = google_service_account.lifecycle_deployer.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repository}"
+}

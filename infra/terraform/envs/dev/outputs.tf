@@ -66,10 +66,17 @@ output "deployer_service_account_email" {
   value = module.iam.deployer_service_account_email
 }
 
+# The on-demand suspend/resume identity for infra-lifecycle.yml. Copy into the repo secret
+# LIFECYCLE_DEPLOYER_SA (see the Category 4 note below).
+output "lifecycle_deployer_service_account_email" {
+  value = module.iam.lifecycle_deployer_service_account_email
+}
+
 # --- GitHub Actions secrets (Category 4) ----------------------------------
 # After `tofu apply`, copy these into the repo's secrets:
 #   gh secret set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
 #   gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_email)"
+#   gh secret set LIFECYCLE_DEPLOYER_SA --body "$(tofu output -raw lifecycle_deployer_service_account_email)"
 #   gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 #
 # And these repo VARIABLES (non-secret — attestor/KMS resource names, not credentials)
