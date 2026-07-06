@@ -206,6 +206,7 @@ locals {
     "_DB_DUMPS_BUCKET=$_DB_DUMPS_BUCKET",
     "_DB_DUMP_OBJECT=$_DB_DUMP_OBJECT",
     "_DB_DUMP_KEEP=$_DB_DUMP_KEEP",
+    "_VPC=$_VPC",
     # Cloud Build's own build id (built-in $BUILD_ID substitution) — step 5 excludes it when
     # cancelling in-flight builds so the suspend build never cancels itself, and the guard/suspend
     # lock-contention layers exclude it when checking for OTHER ongoing auto-suspend builds.

@@ -341,6 +341,19 @@ resource "google_project_iam_member" "deployer_vulnerability_viewer" {
   member  = "serviceAccount:${google_service_account.deployer.email}"
 }
 
+# secretmanager.viewer lets the deploy job's check-secret-version.sh gate (infra/ci/
+# check-secret-version.sh) list devstash-app-config's versions and see their ENABLED/DISABLED
+# state — it never reads secret payloads (that's ESO's job via the app SA's secretAccessor
+# above). Without this, ds_newest_enabled_secret_version's `gcloud secrets versions list` 403s
+# for the deployer SA; the helper tolerates the error by returning empty (indistinguishable from
+# "genuinely no enabled version"), so the gate exhausted its full poll window and failed even
+# with a valid enabled version already live — confirmed live 2026-07-06 (run 28813891695).
+resource "google_project_iam_member" "deployer_secret_viewer" {
+  project = var.project_id
+  role    = "roles/secretmanager.viewer"
+  member  = "serviceAccount:${google_service_account.deployer.email}"
+}
+
 # GKE IAM roles can only be granted on the project, not directly on a cluster
 # (`google_container_cluster_iam_member` is not a Google provider resource).
 #
