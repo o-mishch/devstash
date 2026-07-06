@@ -20,6 +20,7 @@ REPO_ROOT="$(cd "${_HELPER_DIR}/../.." && pwd)"   # infra/lib/ → repo root (2 
 export RUN_SH="${REPO_ROOT}/infra/run/gcp/run.sh"
 export SUSPEND_SH="${REPO_ROOT}/infra/run/gcp/lib/suspend.sh"
 export GKE_SH="${REPO_ROOT}/infra/run/gcp/lib/gke.sh"
+export RECONCILE_SH="${REPO_ROOT}/infra/run/gcp/lib/reconcile.sh"
 export COMMON_SH="${REPO_ROOT}/infra/lib/common.sh"
 
 load "${REPO_ROOT}/node_modules/bats-support/load.bash"

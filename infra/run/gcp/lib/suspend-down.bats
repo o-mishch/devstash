@@ -235,8 +235,10 @@ _stub_state_show() {
   tofu_locked_() { return 1; }
   run _restore_protected_secrets
   assert_success
-  assert_output --partial "manual: tofu import module.iam.google_secret_manager_secret.app_config proj/devstash-app-config"
-  assert_output --partial "manual: tofu import google_secret_manager_secret.ops_config proj/devstash-ops-config"
+  # _reimport_or_warn reconstructs the manual command from the SAME addr+id it imported, with the id
+  # quoted (the app_access id contains spaces, so all are quoted uniformly) — no drift possible.
+  assert_output --partial 'manual: tofu import module.iam.google_secret_manager_secret.app_config "proj/devstash-app-config"'
+  assert_output --partial 'manual: tofu import google_secret_manager_secret.ops_config "proj/devstash-ops-config"'
 }
 
 # ── _reap_stranded_router ────────────────────────────────────────────────────────────────────────
@@ -425,4 +427,40 @@ _stub_destroy_sequence() {
   local rc=$?
   [[ $rc -eq 0 ]] || fail "down() exited $rc instead of 0 — a secrets-restore probe returning non-zero must not abort the whole teardown. Output was: $out"
   [[ "$out" == *"destroyed."* ]] || fail "down() did not reach its final success message — it likely died silently mid-restore. Output was: $out"
+}
+
+# ── _resume_bringup: the CI-overlapped tail shared by resume's two branches. Extracted so the
+# only per-branch difference — which pre-apply staging step runs — is a passed-in function name.
+# Drive it with all four collaborators stubbed to log their call, and assert the ORDER: pre-apply
+# first, then predispatch → arm-trap → the joined apply/restore driver. resume itself is otherwise
+# untested, so this pins the seam its two branches share. ──
+@test "_resume_bringup: runs the passed pre-apply first, then predispatch → arm-trap → apply-driver" {
+  local calls="${BATS_TEST_TMPDIR}/bringup-calls"; : > "$calls"
+  # shellcheck disable=SC2317
+  _apply_ar_push_target() { echo "pre:ar" >> "$calls"; }
+  # shellcheck disable=SC2317
+  _apply_ci_identity() { echo "pre:identity" >> "$calls"; }
+  # shellcheck disable=SC2317
+  _predispatch_ci_build() { echo "predispatch" >> "$calls"; }
+  # shellcheck disable=SC2317
+  _arm_ci_cancel_trap() { echo "arm:$1" >> "$calls"; }
+  # shellcheck disable=SC2317
+  _apply_and_wire_cluster_overlapped() { echo "apply-driver" >> "$calls"; }
+
+  # Fast branch → the AR-only pre-apply.
+  _resume_bringup _apply_ar_push_target
+  run cat "$calls"
+  assert_line --index 0 "pre:ar"
+  assert_line --index 1 "predispatch"
+  assert_line --index 2 "arm:resume"
+  assert_line --index 3 "apply-driver"
+
+  # Overlap branch → the full WIF-identity pre-apply, same tail order.
+  : > "$calls"
+  _resume_bringup _apply_ci_identity
+  run cat "$calls"
+  assert_line --index 0 "pre:identity"
+  assert_line --index 1 "predispatch"
+  assert_line --index 2 "arm:resume"
+  assert_line --index 3 "apply-driver"
 }

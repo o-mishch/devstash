@@ -54,6 +54,13 @@
 # Env overrides (otherwise read from terraform.tfvars / auto-detected):
 #   BILLING_ACCOUNT=XXXXXX-XXXXXX-XXXXXX   billing account to link (else first open one)
 #   AUTO_APPROVE=1                         skip the confirmation before `tofu apply`/`destroy`
+#   FORCE_REPROVISION_ON_CONFLICT=1        on a 409 "already exists", unattended runs DESTROY the
+#                                          live resource and let apply recreate it, instead of the
+#                                          default (adopt/import it). DANGEROUS in automation — it
+#                                          can wipe a live resource — so it is OFF by default and
+#                                          only ever consulted on the non-interactive path; an
+#                                          interactive operator is always asked adopt/recreate/abort
+#                                          regardless of this flag. See _apply_with_conflict_recovery.
 
 # ── Require a modern bash (>= 4.3), re-exec under one if the caller's is too old ──────────────
 # macOS still ships bash 3.2 as /bin/bash, and the docs invoke this as `bash infra/run/gcp/run.sh`,
@@ -514,6 +521,91 @@ wait_for_no_autosuspend_build() {
 #      recoverable from a prior state generation — the safety net that makes this acceptable.
 # Returns 0 when the lock is released (or was already gone); non-zero when the operator declines,
 # so tofu_locked_ re-propagates the original acquire failure unchanged.
+# Each holder-probe below reports its verdict by SETTING two globals (not echoing) so its human
+# log/ok/warn lines still flow to the terminal instead of being swallowed by a command substitution:
+#   PROBE_IDENTIFIED  0|1  — did this probe positively identify its holder category?
+#   PROBE_ALIVE       set0 | set1 | keep  — its assignment to holder_alive (keep = leave untouched).
+# The orchestrator ORs PROBE_IDENTIFIED across the probes and applies the PROBE_ALIVE assignments IN
+# ORDER, reproducing the original inline code's sequential "each block may set holder_alive, later
+# blocks win" semantics EXACTLY. This split lets each probe be driven directly from bats; the folding
+# invariant (unidentified/alive ⇒ AUTO_APPROVE refuses) is unchanged and pinned by state-lock.bats's
+# end-to-end `unlock` tests.
+
+# _probe_holder_build: is an ongoing auto-suspend Cloud Build the likely lock holder? Offers to
+# cancel it. set0 iff cancelled (confirmed dead); keep if present-but-not-cancelled or absent.
+_probe_holder_build() {
+  PROBE_IDENTIFIED=0 PROBE_ALIVE=keep
+  local build_id; build_id="$(_ongoing_autosuspend_build_ids | head -1)"
+  [[ -n "$build_id" ]] || return 0
+  PROBE_IDENTIFIED=1
+  warn "An auto-suspend Cloud Build ($build_id) is QUEUED/WORKING — it very likely holds this lock."
+  if confirm "Cancel Cloud Build $build_id?"; then
+    if gcloud builds cancel "$build_id" --region="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
+      ok "cancelled Cloud Build $build_id"; PROBE_ALIVE=set0; return 0
+    fi
+    warn "could not cancel build $build_id (may have already finished)"
+  fi
+}
+
+# _probe_holder_gh_run <deploy-run-id>: is the pre-dispatched deploy-gke GH Actions run holding the
+# lock? A gh probe FAILURE (auth/network) is treated as "potentially alive" (keep), NOT as finished
+# — conflating the two would let a transient gh error read as confirmed-dead. set0 iff cancelled or
+# already finished; keep if in_progress-not-cancelled or the probe itself failed.
+_probe_holder_gh_run() {
+  PROBE_IDENTIFIED=0 PROBE_ALIVE=keep
+  local deploy_run_id="${1:-}"
+  [[ -n "$deploy_run_id" ]] || return 0
+  local gh_rc=0 gh_status
+  gh_status="$(gh run view "$deploy_run_id" --json status --jq '.status' 2>/dev/null)" || gh_rc=$?
+  if (( gh_rc != 0 )); then
+    warn "could not query status of GitHub Actions run $deploy_run_id (gh exited $gh_rc) — treating as potentially alive."
+    PROBE_IDENTIFIED=1; return 0
+  fi
+  PROBE_IDENTIFIED=1
+  if [[ "$gh_status" == "in_progress" || "$gh_status" == "queued" ]]; then
+    warn "Pre-dispatched deploy-gke run $deploy_run_id is $gh_status."
+    if confirm "Cancel GitHub Actions run $deploy_run_id?"; then
+      if gh run cancel "$deploy_run_id" >/dev/null 2>&1; then
+        ok "cancelled run $deploy_run_id"; PROBE_ALIVE=set0; return 0
+      fi
+      warn "could not cancel run $deploy_run_id"
+    fi
+    return 0
+  fi
+  PROBE_ALIVE=set0  # finished/other terminal status → confirmed not holding the lock
+}
+
+# _probe_holder_local_pid <host>: only when the lock was taken on THIS machine — probe (and offer to
+# kill) any live local tofu/terraform PID. set0 if the host matches but no live PID exists (confirmed
+# dead); set1 if a PID survives or the operator declines to kill it; keep on a foreign host.
+_probe_holder_local_pid() {
+  PROBE_IDENTIFIED=0 PROBE_ALIVE=keep
+  local host="${1:-}"
+  [[ -n "$host" && "$host" == "$(hostname)" ]] || return 0
+  PROBE_IDENTIFIED=1
+  PROBE_ALIVE=set0   # host matches but no live tofu/terraform PID found → confirmed dead by default
+  local pids pid; pids="$(pgrep -f "(tofu|terraform).*${TF_DIR}" 2>/dev/null || true)"
+  for pid in $pids; do
+    # kill -0: probe liveness without signalling. A stale lock's PID is usually already gone.
+    if kill -0 "$pid" 2>/dev/null; then
+      warn "A local tofu/terraform process (PID $pid) is still alive and may hold this lock."
+      if confirm "Kill local process $pid?"; then
+        kill "$pid" 2>/dev/null || true; sleep 1
+        if kill -0 "$pid" 2>/dev/null && confirm "PID $pid survived SIGTERM — SIGKILL it?"; then
+          kill -9 "$pid" 2>/dev/null || true
+        fi
+        if kill -0 "$pid" 2>/dev/null; then
+          warn "PID $pid still alive"; PROBE_ALIVE=set1
+        else
+          ok "killed PID $pid"
+        fi
+      else
+        PROBE_ALIVE=set1
+      fi
+    fi
+  done
+}
+
 _recover_state_lock() {
   local base="gs://$STATE_BUCKET/$STATE_PREFIX" workspace="default"
   local json; json="$(read_tflock "$base" "$workspace")"
@@ -535,74 +627,26 @@ _recover_state_lock() {
   # that itself failed rather than cleanly reporting "not running"), we have confirmed NOTHING
   # dead — the lock's actual holder was simply never inspected. Treating unidentified as "dead"
   # would let AUTO_APPROVE=1 force-unlock a possibly-live holder unattended, exactly the
-  # concurrent-writer risk this feature exists to prevent. Each branch flips this to 0 only when
+  # concurrent-writer risk this feature exists to prevent. Each probe flips this to 0 only when
   # it POSITIVELY confirms its category is dead/absent/killed; any probe failure or decline to
-  # kill leaves it at 1.
-  local holder_alive=1 holder_identified=0
-
-  # ── Contending CI: ongoing auto-suspend Cloud Build ──────────────────────────────────────
-  local build_id; build_id="$(_ongoing_autosuspend_build_ids | head -1)"
-  if [[ -n "$build_id" ]]; then
-    holder_identified=1
-    warn "An auto-suspend Cloud Build ($build_id) is QUEUED/WORKING — it very likely holds this lock."
-    if confirm "Cancel Cloud Build $build_id?"; then
-      if gcloud builds cancel "$build_id" --region="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
-        ok "cancelled Cloud Build $build_id"; holder_alive=0
-      else
-        warn "could not cancel build $build_id (may have already finished)"
-      fi
-    fi
-  fi
-
-  # ── Contending CI: the pre-dispatched deploy-gke GitHub Actions run ───────────────────────
-  if [[ -n "${DEPLOY_RUN_ID:-}" ]]; then
-    local gh_rc=0 gh_status
-    gh_status="$(gh run view "$DEPLOY_RUN_ID" --json status --jq '.status' 2>/dev/null)" || gh_rc=$?
-    if (( gh_rc != 0 )); then
-      # `gh` itself failed (auth/network/API hiccup) — NOT the same as "the run has finished".
-      # Conflating the two would let a transient gh error read as "holder confirmed dead".
-      warn "could not query status of GitHub Actions run $DEPLOY_RUN_ID (gh exited $gh_rc) — treating as potentially alive."
-      holder_identified=1
-    elif [[ "$gh_status" == "in_progress" || "$gh_status" == "queued" ]]; then
-      holder_identified=1
-      warn "Pre-dispatched deploy-gke run $DEPLOY_RUN_ID is $gh_status."
-      if confirm "Cancel GitHub Actions run $DEPLOY_RUN_ID?"; then
-        if gh run cancel "$DEPLOY_RUN_ID" >/dev/null 2>&1; then
-          ok "cancelled run $DEPLOY_RUN_ID"; holder_alive=0
-        else
-          warn "could not cancel run $DEPLOY_RUN_ID"
-        fi
-      fi
-    else
-      holder_identified=1; holder_alive=0
-    fi
-  fi
-
-  # ── Local tofu/terraform PID (only when the lock was taken on THIS machine) ───────────────
-  if [[ -n "$host" && "$host" == "$(hostname)" ]]; then
-    holder_identified=1
-    local pids pid; pids="$(pgrep -f "(tofu|terraform).*${TF_DIR}" 2>/dev/null || true)"
-    [[ -z "$pids" ]] && holder_alive=0   # host matches but no live tofu/terraform PID found.
-    for pid in $pids; do
-      # kill -0: probe liveness without signalling. A stale lock's PID is usually already gone.
-      if kill -0 "$pid" 2>/dev/null; then
-        warn "A local tofu/terraform process (PID $pid) is still alive and may hold this lock."
-        if confirm "Kill local process $pid?"; then
-          kill "$pid" 2>/dev/null || true; sleep 1
-          if kill -0 "$pid" 2>/dev/null && confirm "PID $pid survived SIGTERM — SIGKILL it?"; then
-            kill -9 "$pid" 2>/dev/null || true
-          fi
-          if kill -0 "$pid" 2>/dev/null; then
-            warn "PID $pid still alive"; holder_alive=1
-          else
-            ok "killed PID $pid"
-          fi
-        else
-          holder_alive=1
-        fi
-      fi
-    done
-  fi
+  # kill leaves it at 1 (a `keep` assignment).
+  local holder_alive=1 holder_identified=0 probe
+  # Fold the three probes in order (build → deploy run → local PID) so the last positive assignment
+  # wins, mirroring the original inline sequence exactly. Each probe sets PROBE_IDENTIFIED/PROBE_ALIVE
+  # (its human log lines print normally); we OR identified and apply the alive assignment per probe.
+  for probe in \
+    "_probe_holder_build" \
+    "_probe_holder_gh_run ${DEPLOY_RUN_ID:-}" \
+    "_probe_holder_local_pid $host"; do
+    PROBE_IDENTIFIED=0 PROBE_ALIVE=keep
+    $probe
+    (( PROBE_IDENTIFIED )) && holder_identified=1
+    case "$PROBE_ALIVE" in
+      set0) holder_alive=0 ;;
+      set1) holder_alive=1 ;;
+      keep) : ;;
+    esac
+  done
 
   # No probe could identify ANY holder category (foreign host, no DEPLOY_RUN_ID, no local PID
   # match) — the lock's owner was never inspected, not confirmed dead. Surface this so the
@@ -934,6 +978,26 @@ _verify_pushed_secrets() {
 
 # dns_hint / update_dns / spaceship_api / set_dns_creds live in lib/dns.sh (sourced above).
 
+# _latest_deploy_run_id: echo the database ID of the most recent deploy-gke.yml run, or nothing.
+# Single-sources the `gh run list … -q '.[0].databaseId'` incantation used by deploy() (both the
+# before-dispatch snapshot and the after-dispatch poll) and smoke(). Tolerant (`2>/dev/null || true`)
+# so a bare command-substitution assignment can't trip `set -e`; callers that need a hard result
+# gate on the empty string themselves (smoke does).
+_latest_deploy_run_id() {
+  gh run list --workflow deploy-gke.yml --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true
+}
+
+# _print_parallel_deploy_hint <infra-word>: the "infra is wired, the deploy is building in parallel,
+# here's how to follow it" hand-off block printed identically by up()'s and _apply_with_overlap()'s
+# two branches (only the verb differs — "up" vs "applied"). Reads DEPLOY_RUN_ID (may be unset if the
+# run ID couldn't be confirmed). Callers that also want the DNS-by-hand note (up's first-ever branch)
+# print it themselves after this.
+_print_parallel_deploy_hint() {
+  log "Infra $1 and the app deploy is building/rolling out in parallel. Follow it:"
+  [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
+  echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
+}
+
 # deploy: dispatch the deploy-gke.yml GitHub Actions workflow via `gh workflow run`.
 # The workflow builds the container, pushes to Artifact Registry, runs DB migrations,
 # and rolls out the new image to GKE. Follow progress with `gh run watch`.
@@ -954,7 +1018,7 @@ deploy() {
   local reason="${1:-}"
   log "Triggering the deploy-gke CI workflow (build web+migrate → push → apply -k → migrate Job → rollout)"
   local before_id
-  before_id="$(gh run list --workflow deploy-gke.yml --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
+  before_id="$(_latest_deploy_run_id)"
   if [[ "$reason" == "provision" ]]; then
     gh workflow run deploy-gke.yml -f reason=provision
   else
@@ -963,7 +1027,7 @@ deploy() {
   DEPLOY_RUN_ID=""
   _new_run_appeared() {
     local id
-    id="$(gh run list --workflow deploy-gke.yml --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)"
+    id="$(_latest_deploy_run_id)"
     [[ -n "$id" && "$id" != "$before_id" ]] && DEPLOY_RUN_ID="$id"
   }
   poll_until 12 5 -- _new_run_appeared \
@@ -1087,6 +1151,15 @@ _staging_apply() {
   wait_for_no_autosuspend_build
   log "Staging apply: $label — planning the pre-apply subgraph so its diff is shown before it mutates GCP"
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
+  # Heal state↔cloud drift BEFORE the targeted plan. The staging subgraph front-loads exactly the
+  # globally-unique singletons that a partial teardown most often strands (the WIF pool + AR repo):
+  # left live in GCP but dropped from state, a bare `tofu plan` tries to CREATE them and the apply
+  # dies with a 409 "already exists" (observed on a post-`down` `up` where the -exclude-multiflag
+  # destroy had silently no-op'd, leaving both alive). reconcile_state adopts/undeletes them into
+  # state so the staging plan sees them as already-managed. It is self-disabling + idempotent, so
+  # running it here AND again inside the later full apply (_apply_plan) is harmless. RECONCILE_REPLACE
+  # (only the PSC subnet, never in this subgraph) is deliberately not folded into the -target plan.
+  reconcile_state
   _clear_staging_plan
   # Plan the -target subgraph to a file, then apply that file — no -auto-approve of an unseen diff.
   tofu_locked_ plan -lock-timeout=120s "$@" -out="$STAGING_PLAN_FILE"
@@ -1222,9 +1295,7 @@ _apply_with_overlap() {
     _arm_ci_cancel_trap apply      # cancel the run if apply dies before the handoff below
     _apply_and_wire
     trap - EXIT   # infra is wired; the run now owns its own success/failure — stop cancelling it
-    log "Infra applied and the app deploy is building/rolling out in parallel. Follow it:"
-    [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
-    echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
+    _print_parallel_deploy_hint applied
     return 0
   fi
   # First-ever apply (no tofu outputs yet): apply the WIF identity first so the build overlaps the
@@ -1237,9 +1308,7 @@ _apply_with_overlap() {
   _arm_ci_cancel_trap apply      # cancel the run if apply dies before the handoff below
   _apply_and_wire                # full apply: Cloud SQL + GKE + secret-version, in parallel with the build
   trap - EXIT   # infra is wired; the run now owns its own success/failure — stop cancelling it
-  log "Infra applied and the app deploy is building/rolling out in parallel. Follow it:"
-  [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
-  echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
+  _print_parallel_deploy_hint applied
 }
 
 # verify-secrets: list expected Secret Manager secrets and flag any that are missing.
@@ -1372,7 +1441,7 @@ smoke() {
   # Pin to the most recent deploy-gke.yml run so we don't accidentally watch a
   # different workflow that fired around the same time.
   local run_id
-  run_id="$(gh run list --workflow deploy-gke.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+  run_id="$(_latest_deploy_run_id)"
   [[ -n "$run_id" ]] || { warn "no deploy-gke workflow runs found"; return 1; }
   gh run watch "$run_id" --exit-status || { warn "CI workflow failed — check: gh run view $run_id"; return 1; }
   ok "CI run $run_id completed successfully"
@@ -1432,9 +1501,7 @@ up() {
     # local install here would race CI's install against the same Helm release.
     trap - EXIT   # cluster is up; the run now owns its own success/failure — stop cancelling it
     dns_hint; update_dns
-    log "Infra up and the app deploy is building/rolling out in parallel. Follow it:"
-    [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
-    echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
+    _print_parallel_deploy_hint up
     return 0
   fi
   # First-ever bring-up, or an `up` after a `down` (no tofu outputs yet). The tofu outputs
@@ -1450,9 +1517,7 @@ up() {
   _arm_ci_cancel_trap up         # cancel the run if anything below dies before the handoff
   _apply_and_wire                # full apply: Cloud SQL + GKE + secret-version, in parallel with the build
   trap - EXIT   # infra is wired; the run now owns its own success/failure — stop cancelling it
-  log "Infra up and the app deploy is building/rolling out in parallel. Follow it:"
-  [[ -n "${DEPLOY_RUN_ID:-}" ]] && echo "  gh run watch $DEPLOY_RUN_ID   # build → migrate → rollout"
-  echo "  bash infra/run/gcp/run.sh smoke   # wait for CI + verify health endpoint"
+  _print_parallel_deploy_hint up
   echo "  (If the DNS A-record was not set automatically — creds missing — add it by hand.)"
 }
 

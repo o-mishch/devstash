@@ -202,6 +202,25 @@ _apply_and_wire_cluster_overlapped() {
                                     # A restore failure aborts resume via restore_db's own die + set -e
 }
 
+# _resume_bringup <pre-apply-fn>: the CI-overlapped bring-up tail shared verbatim by resume's two
+# branches — the ONLY thing that differs between them is the pre-apply staging step passed in
+# ($1 = _apply_ar_push_target on the fast/outputs-present path, _apply_ci_identity on the overlap/
+# post-down path). After that: pre-dispatch CI (secrets refresh → deploy provision; sets
+# DEPLOY_RUN_ID), arm the cancel trap so an early exit reaps the orphaned run, then run the joined
+# apply ‖ ESO ‖ Reloader ‖ restore driver. Everything must complete before deploy touches cluster+DB.
+# Kept in resume's own shell (no subshell) so _arm_ci_cancel_trap's EXIT trap and the narration span
+# both stay owned by resume — see the span/trap rationale in resume() below.
+_resume_bringup() {
+  local pre_apply_fn="$1"
+  "$pre_apply_fn"                 # branch-specific staging apply (AR-only vs full WIF identity)
+  _predispatch_ci_build          # sets DEPLOY_RUN_ID; runs secrets (outputs readable now) + deploy provision
+  _arm_ci_cancel_trap resume     # cancel the run if anything below dies before the handoff
+  # apply (Cloud SQL ~10 min + control plane) runs in parallel with CI's build-push AND, inside this
+  # driver, with the ESO ‖ Reloader install (started the instant the control plane responds, mid-apply)
+  # + the Cloud-SQL-gated DB restore. All joined once — see _apply_and_wire_cluster_overlapped.
+  _apply_and_wire_cluster_overlapped
+}
+
 # resume: bring the environment back from a deep-suspended state. Recreates compute AND
 # the Cloud SQL instance, RESTORES the DB from the latest GCS dump, reinstalls the
 # in-cluster operators (ESO + Reloader, gone with the old cluster), redeploys the app, and
@@ -244,41 +263,27 @@ resume() {
   #     overlap on a path that is already a from-scratch multi-minute rebuild. `resume` thus handles
   #     both a suspended and a downed env instead of corrupting GitHub on the latter.
   if _tf_outputs_present; then
-    # FAST path — outputs present (post-suspend). Pre-dispatch CI (secrets refresh → deploy
-    # provision) so build-push overlaps apply, arm the cancel trap so an early exit reaps the
-    # orphaned run. Both single-sourced in run.sh, shared with up()'s outputs-present branch.
+    # FAST path — outputs present (post-suspend). suspend keeps the SAs/WIF/static vars, so every
+    # output is readable now; pre-dispatch CI so build-push overlaps apply (shared with up()'s
+    # outputs-present branch). The pre-apply here is the two-target AR-only staging apply: the AR
+    # repo + deployer repoAdmin binding are count=environment_active (destroyed on suspend), so
+    # recreate JUST those (~1 min) BEFORE pre-dispatching, else the build reaches the registry before
+    # the binding lands and burns minutes in build-push.sh's ds_ar_writable poll (seen to attempt
+    # 29/40, past the step's 8m retry). Identity itself survives the suspend, so this is NOT the full
+    # _apply_ci_identity the post-down branch needs.
     log "Tofu outputs present (suspended env) — pre-dispatching CI so its build overlaps apply"
-    # The AR repo + deployer repoAdmin binding are count=environment_active — destroyed on suspend,
-    # so recreate JUST those (~1 min) BEFORE pre-dispatching, else the build reaches the registry
-    # before the binding lands and burns minutes in build-push.sh's ds_ar_writable poll (seen to
-    # attempt 29/40, past the step's 8m retry). Identity itself survives the suspend, so this is the
-    # two-target AR-only pre-apply, not the full _apply_ci_identity the post-down branch needs.
-    _apply_ar_push_target          # ~1 min: AR repo + push binding exist before the build is dispatched
-    _predispatch_ci_build          # sets DEPLOY_RUN_ID; runs secrets (outputs readable now) + deploy provision
-    _arm_ci_cancel_trap resume     # cancel the run if anything below dies before the handoff
-    # apply (Cloud SQL ~10 min + control plane) runs in parallel with CI's build-push AND, inside
-    # this driver, with the ESO ‖ Reloader install (started the instant the control plane responds,
-    # mid-apply) + the Cloud-SQL-gated DB restore. All joined once — see
-    # _apply_and_wire_cluster_overlapped. Everything must complete before deploy touches cluster + DB.
-    _apply_and_wire_cluster_overlapped
+    _resume_bringup _apply_ar_push_target
     log "CI build+push has been running in parallel with apply; its cluster-gated deploy job proceeds now that the cluster + secrets are live"
   else
     # OVERLAP path — no outputs (post-down / first-ever). The build's ONLY auth prerequisites (WIF
-    # provider + deployer SA) have no dependency on the ~10-min Cloud SQL create, so apply JUST
-    # those first (_apply_ci_identity, ~1 min — run.sh), push secrets, and pre-dispatch the build
-    # so it overlaps the full apply below — the same overlap the outputs-present branch gets. This
-    # replaces the old strictly-serial "apply → secrets → deploy" that left the build waiting out
-    # the whole rebuild. _apply_ci_identity applies a Cloud-SQL-free -target subgraph; the full
-    # apply that follows carries no -target and reconciles the complete graph (incl. the DB/AR/
-    # binauthz secret values omitted by the identity-only apply), so the final state is consistent.
+    # provider + deployer SA) have no dependency on the ~10-min Cloud SQL create, so the pre-apply
+    # here is the full _apply_ci_identity (~1 min — a Cloud-SQL-free -target subgraph), then the same
+    # overlap the outputs-present branch gets. This replaces the old strictly-serial "apply → secrets
+    # → deploy" that left the build waiting out the whole rebuild. The full apply inside
+    # _resume_bringup carries no -target and reconciles the complete graph (incl. the DB/AR/binauthz
+    # secret values omitted by the identity-only apply), so the final state is consistent.
     warn "No tofu outputs (downed / first-ever env) — applying WIF identity first so the build overlaps apply"
-    _apply_ci_identity             # ~1 min: WIF provider + deployer SA now exist
-    _predispatch_ci_build          # secrets (identity outputs readable now) → deploy provision; sets DEPLOY_RUN_ID
-    _arm_ci_cancel_trap resume     # cancel the run if anything below dies before the handoff
-    # apply (Cloud SQL ~10 min + control plane) runs in parallel with CI's build-push AND, inside
-    # this driver, with the ESO ‖ Reloader install + the Cloud-SQL-gated DB restore, all joined once
-    # (see _apply_and_wire_cluster_overlapped). All must complete before deploy touches cluster + DB.
-    _apply_and_wire_cluster_overlapped
+    _resume_bringup _apply_ci_identity
   fi
   stage "re-point DNS at the new ingress IP"
   update_dns
@@ -445,6 +450,18 @@ _shelve_protected_secrets() {
   done
 }
 
+# _reimport_or_warn <addr> <id> <label>: `tofu import <addr> <id>`, and on failure warn with the
+# exact manual `tofu import` command reconstructed from the SAME addr+id — so the recovery hint can
+# never drift from what was actually attempted (the hazard when the import and its warn were two
+# hand-kept-in-sync copies of the address). Best-effort by contract: never dies — the caller
+# (`_restore_protected_secrets`) restores Terraform bookkeeping for objects that are already safe on
+# the GCP side, so a failed re-import is a warn-and-continue, not a teardown-aborting error.
+_reimport_or_warn() {
+  local addr="$1" id="$2" label="$3"
+  tofu_locked_ import "$addr" "$id" \
+    || warn "could not re-import $label — manual: tofu import $addr \"$id\""
+}
+
 # _restore_protected_secrets: re-import the two secret containers + their newest ENABLED version +
 # app_config's IAM-member, so a subsequent `up`/`resume` manages them instead of re-creating (and
 # colliding 409 with) them. Best-effort per resource — a failed re-import warns with the exact
@@ -454,44 +471,39 @@ _restore_protected_secrets() {
   local app_config_id="devstash-app-config" ops_config_id="devstash-ops-config"
   local app_config_ver ops_config_ver app_sa
   # newest ENABLED version only — re-importing an arbitrary version could pull in a disabled one.
-  # `|| true` is REQUIRED under this script's `set -euo pipefail`: a secret that genuinely does not
-  # exist yet (a first-ever `down` before any `up` ever ran, or one deleted out-of-band) makes
-  # `gcloud` exit non-zero, and a bare assignment would trip `set -e` and kill the WHOLE script
-  # right here — silently, with no error message, potentially after the real destroy already
-  # succeeded. Same footgun `_reconcile_deletion_protection` and reconcile.sh's PSC-subnet-purpose
-  # read already document and guard against.
-  app_config_ver="$(gcloud secrets versions list "$app_config_id" --project="$PROJECT_ID" \
-    --filter='state:enabled' --sort-by='~createTime' --limit=1 --format='value(name)' 2>/dev/null || true)"
-  ops_config_ver="$(gcloud secrets versions list "$ops_config_id" --project="$PROJECT_ID" \
-    --filter='state:enabled' --sort-by='~createTime' --limit=1 --format='value(name)' 2>/dev/null || true)"
+  # ds_newest_enabled_secret_version (posix/secrets.sh, sourced via common.sh) single-sources the
+  # `--filter=state:ENABLED --sort-by=~createTime --limit=1` incantation AND the trailing `|| true`
+  # that is REQUIRED under this script's `set -euo pipefail`: a secret that genuinely does not exist
+  # yet (a first-ever `down` before any `up` ever ran, or one deleted out-of-band) makes `gcloud`
+  # exit non-zero, and a bare assignment would trip `set -e` and kill the WHOLE script silently,
+  # potentially after the real destroy already succeeded. The split declaration above keeps the
+  # command-substitution off the `local` line so its exit status can't mask under `set -e`.
+  app_config_ver="$(ds_newest_enabled_secret_version "$app_config_id" "$PROJECT_ID")"
+  ops_config_ver="$(ds_newest_enabled_secret_version "$ops_config_id" "$PROJECT_ID")"
 
   log "Restoring app_config + ops_config into Terraform state (GCP objects were never touched)"
-  tofu_locked_ import module.iam.google_secret_manager_secret.app_config \
-    "$PROJECT_ID/$app_config_id" \
-    || warn "could not re-import the app_config secret — manual: tofu import module.iam.google_secret_manager_secret.app_config $PROJECT_ID/$app_config_id"
+  _reimport_or_warn module.iam.google_secret_manager_secret.app_config \
+    "$PROJECT_ID/$app_config_id" "the app_config secret"
   if [[ -n "$app_config_ver" ]]; then
-    tofu_locked_ import module.iam.google_secret_manager_secret_version.app_config \
-      "projects/$PROJECT_ID/secrets/$app_config_id/versions/$app_config_ver" \
-      || warn "could not re-import the app_config secret version — manual: tofu import module.iam.google_secret_manager_secret_version.app_config projects/$PROJECT_ID/secrets/$app_config_id/versions/$app_config_ver"
+    _reimport_or_warn module.iam.google_secret_manager_secret_version.app_config \
+      "projects/$PROJECT_ID/secrets/$app_config_id/versions/$app_config_ver" "the app_config secret version"
   else
     warn "app_config has no ENABLED version to re-import (unexpected — check gcloud secrets versions list $app_config_id)"
   fi
   # app_access's member is deterministic from the app SA's email (module.iam's own naming).
   app_sa="$(tf_out app_service_account_email)"
   if [[ -n "$app_sa" ]]; then
-    tofu_locked_ import module.iam.google_secret_manager_secret_iam_member.app_access \
+    _reimport_or_warn module.iam.google_secret_manager_secret_iam_member.app_access \
       "projects/$PROJECT_ID/secrets/$app_config_id roles/secretmanager.secretAccessor serviceAccount:$app_sa" \
-      || warn "could not re-import the app_access IAM binding — manual: tofu import module.iam.google_secret_manager_secret_iam_member.app_access \"projects/$PROJECT_ID/secrets/$app_config_id roles/secretmanager.secretAccessor serviceAccount:$app_sa\""
+      "the app_access IAM binding"
   else
     warn "no app_service_account_email output yet (post-down, expected until the next apply) — app_access IAM-member re-import deferred to that apply"
   fi
-  tofu_locked_ import google_secret_manager_secret.ops_config \
-    "$PROJECT_ID/$ops_config_id" \
-    || warn "could not re-import the ops_config secret — manual: tofu import google_secret_manager_secret.ops_config $PROJECT_ID/$ops_config_id"
+  _reimport_or_warn google_secret_manager_secret.ops_config \
+    "$PROJECT_ID/$ops_config_id" "the ops_config secret"
   if [[ -n "$ops_config_ver" ]]; then
-    tofu_locked_ import 'google_secret_manager_secret_version.ops_config[0]' \
-      "projects/$PROJECT_ID/secrets/$ops_config_id/versions/$ops_config_ver" \
-      || warn "could not re-import the ops_config secret version — manual: tofu import 'google_secret_manager_secret_version.ops_config[0]' projects/$PROJECT_ID/secrets/$ops_config_id/versions/$ops_config_ver"
+    _reimport_or_warn 'google_secret_manager_secret_version.ops_config[0]' \
+      "projects/$PROJECT_ID/secrets/$ops_config_id/versions/$ops_config_ver" "the ops_config secret version"
   else
     warn "ops_config has no ENABLED version to re-import (fine if Spaceship DNS creds were never configured)"
   fi
@@ -516,6 +528,35 @@ _reap_stranded_router() {
   warn "Reconcile: Cloud Router '$router' exists in GCP but is untracked in state — deleting it directly so the VPC delete isn't blocked"
   gcloud compute routers delete "$router" --region="$REGION" --project="$PROJECT_ID" --quiet \
     || warn "could not delete stranded router $router — the VPC destroy below may fail on it"
+}
+
+# _down_destroy_with_psc_retry: run the real `tofu destroy` (NO `-exclude` — see
+# _shelve_protected_secrets' doc for why) in a bounded retry loop. The ONLY failure this retries is
+# the Memorystore PSC service-connection-policy 400 "still has N PSC Connections associated with it"
+# — GCP's async detach lagging a few minutes behind the Memorystore instance's own completed destroy
+# (see _psc_connections_still_attached), and only after the operator confirms via
+# _handle_psc_destroy_block (never a silent auto-retry of a destructive command). Every OTHER failure
+# restores the shelved secrets into state (else a partial destroy leaves them permanently untracked)
+# and `die`s — which exits the whole script, so the caller's post-destroy steps never run on failure,
+# exactly as before this was extracted. Returns 0 only on a clean destroy.
+_down_destroy_with_psc_retry() {
+  local destroy_out destroy_rc attempt=0
+  while :; do
+    attempt=$((attempt + 1))
+    destroy_rc=0
+    destroy_out="$(tofu_locked_ destroy -auto-approve -refresh=false 2>&1)" || destroy_rc=$?
+    printf '%s\n' "$destroy_out"
+    [[ $destroy_rc -eq 0 ]] && return 0
+    if _psc_connections_still_attached "$destroy_out" && _handle_psc_destroy_block "$destroy_out"; then
+      log "Retrying the destroy (attempt $((attempt + 1)))..."
+      continue
+    fi
+    # Restore the shelved secrets into state even on failure — otherwise a partial/aborted
+    # destroy leaves them permanently untracked (GCP objects are fine; only Terraform's
+    # bookkeeping would drift) until someone notices and re-imports by hand.
+    _restore_protected_secrets
+    die "tofu destroy failed — resolve the error above, then re-run 'down' (it is safe to re-run; already-destroyed resources are skipped)"
+  done
 }
 
 # force_release_psa: after `tofu destroy`, reclaim the leftover PSA plumbing GCP holds past the
@@ -603,31 +644,10 @@ down() {
     # EVERYTHING left in state (the two secrets are already shelved OUT of state, above — there is
     # no partial-state risk to guard against).
     #
-    # NO `-exclude` here — see _shelve_protected_secrets' doc above down(). Wrapped in a bounded
-    # retry loop (not a plain call): the Memorystore PSC service-connection-policy can 400 with
-    # "still has N PSC Connections associated with it" for a few minutes after the Memorystore
-    # instance's OWN destroy already completed — GCP's async detach lagging behind, not a real
-    # conflict (see _psc_connections_still_attached doc above). Every OTHER destroy failure
-    # propagates immediately via `die` — this loop exists for that one known-transient signature
-    # only, and it only RETRIES after the operator confirms via _handle_psc_destroy_block (no
-    # silent auto-retry of a destructive command).
-    local destroy_out destroy_rc attempt=0
-    while :; do
-      attempt=$((attempt + 1))
-      destroy_rc=0
-      destroy_out="$(tofu_locked_ destroy -auto-approve -refresh=false 2>&1)" || destroy_rc=$?
-      printf '%s\n' "$destroy_out"
-      [[ $destroy_rc -eq 0 ]] && break
-      if _psc_connections_still_attached "$destroy_out" && _handle_psc_destroy_block "$destroy_out"; then
-        log "Retrying the destroy (attempt $((attempt + 1)))..."
-        continue
-      fi
-      # Restore the shelved secrets into state even on failure — otherwise a partial/aborted
-      # destroy leaves them permanently untracked (GCP objects are fine; only Terraform's
-      # bookkeeping would drift) until someone notices and re-imports by hand.
-      _restore_protected_secrets
-      die "tofu destroy failed — resolve the error above, then re-run 'down' (it is safe to re-run; already-destroyed resources are skipped)"
-    done
+    # NO `-exclude` here — see _shelve_protected_secrets' doc above down(). The real destroy runs in
+    # a bounded, operator-confirmed retry loop for the one known-transient PSC-detach lag; every other
+    # failure restores the shelved secrets and dies. See _down_destroy_with_psc_retry.
+    _down_destroy_with_psc_retry
     # A leftover Cloud Router+NAT untracked in state (an out-of-band artifact of an earlier
     # partial teardown cycle) blocks the VPC delete with "network resource is already being used
     # by .../routers/<name>" — reap it the same way cleanup_leaked_negs reaps leaked NEGs.

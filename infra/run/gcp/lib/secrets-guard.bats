@@ -148,16 +148,24 @@ _gate_present() {
 # ordering statically: _apply_ar_push_target appears before _predispatch_ci_build in resume()'s
 # outputs-present branch. Guards the exact regression that made the push poll to attempt 29/40.
 @test "resume fast path recreates the AR push target before pre-dispatching the build" {
-  local resume_block ar_line predispatch_line
+  # The shared bring-up tail was extracted into _resume_bringup, so the ordering now lives in TWO
+  # places: (a) resume()'s fast branch passes _apply_ar_push_target as the pre-apply, and (b)
+  # _resume_bringup runs that pre-apply BEFORE _predispatch_ci_build. Assert both — together they
+  # preserve the original "recreate AR push target before dispatching the build" guarantee.
+  local resume_block bringup_block preapply_line predispatch_line
   resume_block="$(awk '/^resume\(\)/,/^}/' "$SUSPEND_SH")"
-  # Match the CALL lines (leading whitespace then the bare function name), not the comments that
-  # also mention these names — a `# … run.sh:_predispatch_ci_build` note precedes the real calls.
-  ar_line="$(echo "$resume_block" | grep -nE '^[[:space:]]+_apply_ar_push_target([[:space:]]|$)' | head -1 | cut -d: -f1)"
-  predispatch_line="$(echo "$resume_block" | grep -nE '^[[:space:]]+_predispatch_ci_build([[:space:]]|$)' | head -1 | cut -d: -f1)"
-  [[ -n "$ar_line" ]] || fail "resume() never calls _apply_ar_push_target"
-  [[ -n "$predispatch_line" ]] || fail "resume() never calls _predispatch_ci_build"
-  (( ar_line < predispatch_line )) \
-    || fail "_apply_ar_push_target ($ar_line) must precede _predispatch_ci_build ($predispatch_line) in resume()"
+  echo "$resume_block" | grep -qE '^[[:space:]]+_resume_bringup[[:space:]]+_apply_ar_push_target([[:space:]]|$)' \
+    || fail "resume()'s fast path no longer passes _apply_ar_push_target to _resume_bringup"
+
+  bringup_block="$(awk '/^_resume_bringup\(\)/,/^}/' "$SUSPEND_SH")"
+  # The pre-apply is invoked via the passed function-name variable ("$pre_apply_fn"); assert it runs
+  # before _predispatch_ci_build in the shared tail.
+  preapply_line="$(echo "$bringup_block" | grep -nE '^[[:space:]]+"\$pre_apply_fn"' | head -1 | cut -d: -f1)"
+  predispatch_line="$(echo "$bringup_block" | grep -nE '^[[:space:]]+_predispatch_ci_build([[:space:]]|$)' | head -1 | cut -d: -f1)"
+  [[ -n "$preapply_line" ]] || fail "_resume_bringup never invokes the passed pre-apply function"
+  [[ -n "$predispatch_line" ]] || fail "_resume_bringup never calls _predispatch_ci_build"
+  (( preapply_line < predispatch_line )) \
+    || fail "the pre-apply ($preapply_line) must precede _predispatch_ci_build ($predispatch_line) in _resume_bringup"
 }
 
 # Recreating the repo/binding is not enough: the repo IAM → registry data-plane propagation can lag

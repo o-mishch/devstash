@@ -272,3 +272,114 @@ _fake_collaborators() {
   refute_output --partial "parse error"
   unstub tofu
 }
+
+# ── PROBE UNITS: the three holder probes _recover_state_lock folds. Each was extracted from that
+# function's body so it can be driven directly here (source run.sh — its dispatch guard keeps main
+# from running — set the run.sh globals, stub collaborators, call the probe, assert the PROBE_*
+# verdict globals). The end-to-end `unlock` tests above remain the integration regression net; these
+# pin each probe's own verdict logic in isolation. ──
+_load_probes() {
+  export PROJECT_ID=proj REGION=us-central1 ENVIRONMENT=dev STATE_BUCKET=proj-tfstate-dev TF_DIR=/tmp/tf
+  source "$RUN_SH"
+  AUTO_APPROVE=1  # confirm() auto-yes so the cancel/kill paths run without stdin
+  # shellcheck disable=SC2317  # collaborators invoked indirectly via the probe under test
+  log() { :; }
+  # shellcheck disable=SC2317
+  ok() { :; }
+  # shellcheck disable=SC2317
+  warn() { :; }
+}
+
+@test "_probe_holder_build: no ongoing build → not identified, alive kept" {
+  _load_probes
+  # shellcheck disable=SC2317
+  _ongoing_autosuspend_build_ids() { :; }  # no build ids
+  _probe_holder_build
+  [ "$PROBE_IDENTIFIED" -eq 0 ]
+  [ "$PROBE_ALIVE" = keep ]
+}
+
+@test "_probe_holder_build: ongoing build cancelled → identified + confirmed dead (set0)" {
+  _load_probes
+  # shellcheck disable=SC2317
+  _ongoing_autosuspend_build_ids() { echo b123; }
+  # shellcheck disable=SC2317
+  gcloud() { return 0; }  # cancel succeeds
+  _probe_holder_build
+  [ "$PROBE_IDENTIFIED" -eq 1 ]
+  [ "$PROBE_ALIVE" = set0 ]
+}
+
+@test "_probe_holder_build: ongoing build, cancel fails → identified but alive kept" {
+  _load_probes
+  # shellcheck disable=SC2317
+  _ongoing_autosuspend_build_ids() { echo b123; }
+  # shellcheck disable=SC2317
+  gcloud() { return 1; }  # cancel fails (may have already finished)
+  _probe_holder_build
+  [ "$PROBE_IDENTIFIED" -eq 1 ]
+  [ "$PROBE_ALIVE" = keep ]
+}
+
+@test "_probe_holder_gh_run: unset run id → not identified, alive kept" {
+  _load_probes
+  _probe_holder_gh_run ""
+  [ "$PROBE_IDENTIFIED" -eq 0 ]
+  [ "$PROBE_ALIVE" = keep ]
+}
+
+@test "_probe_holder_gh_run: gh probe FAILS → identified, alive kept (potentially alive, not dead)" {
+  _load_probes
+  # shellcheck disable=SC2317
+  gh() { return 1; }  # gh run view itself errors (auth/network) — NOT the same as "finished"
+  _probe_holder_gh_run 999
+  [ "$PROBE_IDENTIFIED" -eq 1 ]
+  [ "$PROBE_ALIVE" = keep ]
+}
+
+@test "_probe_holder_gh_run: run finished → identified + confirmed dead (set0)" {
+  _load_probes
+  # shellcheck disable=SC2317
+  gh() { echo completed; }  # a terminal status, not in_progress/queued
+  _probe_holder_gh_run 999
+  [ "$PROBE_IDENTIFIED" -eq 1 ]
+  [ "$PROBE_ALIVE" = set0 ]
+}
+
+@test "_probe_holder_gh_run: in_progress + cancel ok → identified + set0" {
+  _load_probes
+  # The probe calls `gh run view` (→ status) then `gh run cancel`; dispatch on $2.
+  # shellcheck disable=SC2317
+  gh() { case "$2" in view) echo in_progress ;; cancel) return 0 ;; esac; }
+  _probe_holder_gh_run 999
+  [ "$PROBE_IDENTIFIED" -eq 1 ]
+  [ "$PROBE_ALIVE" = set0 ]
+}
+
+@test "_probe_holder_local_pid: foreign host → not identified, alive kept" {
+  _load_probes
+  _probe_holder_local_pid "some-other-host.invalid"
+  [ "$PROBE_IDENTIFIED" -eq 0 ]
+  [ "$PROBE_ALIVE" = keep ]
+}
+
+@test "_probe_holder_local_pid: matching host, no live PID → identified + confirmed dead (set0)" {
+  _load_probes
+  # shellcheck disable=SC2317
+  pgrep() { :; }  # no matching tofu/terraform PID
+  _probe_holder_local_pid "$(hostname)"
+  [ "$PROBE_IDENTIFIED" -eq 1 ]
+  [ "$PROBE_ALIVE" = set0 ]
+}
+
+@test "_probe_holder_local_pid: matching host, live PID declined → identified + still alive (set1)" {
+  _load_probes
+  # A PID that is genuinely alive: use this shell's own PID, which kill -0 confirms.
+  # shellcheck disable=SC2317
+  pgrep() { echo "$$"; }
+  # shellcheck disable=SC2317
+  confirm() { return 1; }  # decline to kill → holder stays alive
+  _probe_holder_local_pid "$(hostname)"
+  [ "$PROBE_IDENTIFIED" -eq 1 ]
+  [ "$PROBE_ALIVE" = set1 ]
+}
