@@ -110,13 +110,26 @@ ds_force_unlock_if_dead() {
   fi
 
   # No sibling build is ongoing, yet the lock persists → it is orphaned (a build crashed mid-apply
-  # without releasing it). Break it by its own ID (never a guessed value) and signal retry. The
-  # env is at risk of staying up-billing until the lock clears, so recovering here is the win.
-  _ful_id="$(echo "$_ful_json" | python3 "$_ful_lock_id_py" 2>/dev/null || true)"
-  if [ -z "$_ful_id" ]; then
+  # without releasing it). Break it and signal retry. The env is at risk of staying up-billing until
+  # the lock clears, so recovering here is the win.
+  #
+  # CRITICAL — force-unlock by the GCS OBJECT GENERATION, not the .tflock JSON "ID". For the gcs
+  # backend `tofu force-unlock` takes the numeric object generation (the value tofu prints as `ID:`
+  # in its acquire-error box); the JSON "ID" is an internal UUID that GCS rejects with "Lock ID
+  # should be numerical value" — silently leaving an orphaned lock in place (a real incident). We
+  # still parse the JSON ID first, purely as a guard that the object is a well-formed lock (not a
+  # truncated/foreign blob) before we break it, then unlock by the generation.
+  _ful_uuid="$(echo "$_ful_json" | python3 "$_ful_lock_id_py" 2>/dev/null || true)"
+  if [ -z "$_ful_uuid" ]; then
     echo "could not parse the lock ID from $_ful_lock — refusing to force-unlock blind" >&2
     return 1
   fi
-  echo "state lock $_ful_id is orphaned (no auto-suspend build is running) — force-unlocking and retrying" >&2
-  tofu force-unlock -force "$_ful_id"
+  _ful_gen="$(gcloud storage objects describe "$_ful_lock" --project="$_ful_project" \
+    --format='value(generation)' 2>/dev/null || true)"
+  if [ -z "$_ful_gen" ]; then
+    echo "could not read the generation of $_ful_lock — refusing to force-unlock blind" >&2
+    return 1
+  fi
+  echo "state lock (id $_ful_uuid, generation $_ful_gen) is orphaned (no auto-suspend build is running) — force-unlocking and retrying" >&2
+  tofu force-unlock -force "$_ful_gen"
 }

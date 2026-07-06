@@ -32,6 +32,7 @@
 #   bash infra/run/gcp/run.sh update-dns     re-point the gke.* A-record at the current ingress IP (Spaceship API)
 #   bash infra/run/gcp/run.sh set-dns-creds  store Spaceship DNS API key/secret in Secret Manager
 #   bash infra/run/gcp/run.sh down           tofu destroy (tear everything down, incl. Cloud SQL)
+#   bash infra/run/gcp/run.sh unlock         interactively inspect + release a stuck OpenTofu state lock
 #
 # SUSPEND/RESUME (on-demand showcase, true ~$0 while idle):
 #   `suspend` first DUMPS Cloud SQL to the GCS db-dumps bucket (`gcloud sql export`) and
@@ -183,6 +184,46 @@ tfvar() {
 }
 
 tofu_() { tofu -chdir="$TF_DIR" "$@"; }
+
+# tofu_locked_ <tofu-args…>: this script's binding of common.sh's generic tofu_locked to GCP's
+# own invoker (tofu_) and interactive recovery (_recover_state_lock, below). AUTO_APPROVE=1 makes
+# _recover_state_lock non-interactive (it releases a confirmed-dead lock and otherwise refuses),
+# preserving the old fail-fast behavior in CI.
+tofu_locked_() { tofu_locked _recover_state_lock -- tofu_ "$@"; }
+
+# _plan_with_refresh_fallback <plan-args…>: run `tofu_locked_ plan <args>`, and if it aborts during
+# the REFRESH phase because a state-tracked resource was deleted out-of-band in GCP (a 404 the
+# provider surfaces as "... does not exist" / "was not found" / "Error 404"), retry the SAME plan
+# once with -refresh=false so the plan proceeds against state alone (the stale entry then plans as a
+# clean destroy). This is the belt-and-suspenders companion to reconcile_state's targeted
+# state-rm branches (which proactively heal the drift signatures we KNOW — AR-IAM, Cloud SQL): the
+# reconcile branches remove the stranded entry BEFORE the plan so this fallback normally never
+# fires, but it catches any OTHER out-of-band-deleted resource we haven't enumerated, so a single
+# missing component can never wedge apply/suspend the way the live 2026-07-06 Cloud SQL drift did.
+#
+# WHY only on the refresh-404 signature (not blanket -refresh=false): a refreshless plan trusts
+# state over reality, so it can miss genuine drift. We pay that cost ONLY when a refresh is
+# provably impossible (the resource is gone), never on a healthy plan. WHY a retry, not a
+# pre-emptive -refresh=false: the normal refreshing plan is correct in the common case and must
+# stay the default; we degrade only when it actually fails for this specific reason.
+_plan_with_refresh_fallback() {
+  local out rc=0
+  # Capture combined output so we can inspect the failure reason. `set -e` would abort on the
+  # non-zero plan, so guard with `|| rc=$?` and re-emit the captured output to the operator.
+  out="$(tofu_locked_ plan "$@" 2>&1)" || rc=$?
+  printf '%s\n' "$out"
+  [[ $rc -eq 0 ]] && return 0
+  # Refresh-time out-of-band-deletion signature. The provider phrases a vanished-resource 404 a few
+  # ways across resource types; match the common ones. Only retry when the error is THIS — any other
+  # plan failure (syntax, auth, a real conflict) must propagate unchanged.
+  if printf '%s' "$out" | grep -qiE 'does not exist|was not found|Error 404|instanceDoesNotExist|resourceNotFound'; then
+    warn "Plan hit a refresh-time 404 — a state-tracked resource was deleted out-of-band in GCP."
+    warn "Retrying the plan with -refresh=false (plans against state alone; the stale entry plans as a destroy)."
+    tofu_locked_ plan -refresh=false "$@"
+    return $?
+  fi
+  return "$rc"
+}
 
 # tf_out <output-name> [fallback]: soft-read a tofu output, returning [fallback] (default
 # empty) when the output is absent — the normal case for a suspended or not-yet-applied env.
@@ -336,6 +377,14 @@ ensure_tfvars() {
   fi
 }
 
+# Guard: the GCS state bucket must exist before `tofu init` can initialise the remote backend.
+# If `bootstrap` was skipped, init fails with a cryptic "bucket not found" error — check
+# explicitly so the message is actionable. Optional $1 overrides the default die message.
+require_state_bucket() {
+  gcloud storage buckets describe "gs://$STATE_BUCKET" >/dev/null 2>&1 \
+    || die "${1:-State bucket gs://$STATE_BUCKET not found — run 'bootstrap' first to create it.}"
+}
+
 # ── steps ──────────────────────────────────────────────────────────────────
 # bootstrap (+ _bootstrap_* steps) lives in lib/bootstrap.sh; reconcile_state (+ its nested
 # _reconcile_* helpers) lives in lib/reconcile.sh — both sourced above and sharing this scope.
@@ -378,6 +427,169 @@ wait_for_no_autosuspend_build() {
     warn "auto-suspend build $id ($trigger) is running and holds the state lock — waiting for it to finish before applying…"
     sleep 20
   done
+}
+
+# _recover_state_lock: guided, interactive recovery for a STUCK OpenTofu state lock — the missing
+# counterpart to the preventive wait_for_no_autosuspend_build + -lock-timeout above. Called by
+# tofu_locked_ when a tofu op fails to acquire the lock, and directly by the `unlock` command.
+#
+# Flow (each destructive step is a separate confirm; AUTO_APPROVE=1 skips prompts and only
+# proceeds to release when the holder is confirmed DEAD — never force-breaks a live lock unattended):
+#   1. Read the .tflock JSON from GCS and print who holds it + how old it is (describe_lock).
+#      Empty ⇒ already released (the orphaned-then-reaped case) ⇒ success, retry will proceed.
+#   2. Identify + probe liveness of the likely holder:
+#        • a QUEUED/WORKING auto-suspend Cloud Build (_ongoing_autosuspend_build_ids), and
+#        • the pre-dispatched deploy-gke GH Actions run (DEPLOY_RUN_ID), and
+#        • a local `tofu`/`terraform` PID when the lock's host == this machine.
+#   3. Offer to kill each identified offender (gh run cancel / gcloud builds cancel / kill).
+#   4. If NOTHING was confirmed dead/killed — including when no holder category could even be
+#      identified (foreign host, no matching CI run, or a gh/gcloud probe failure) — require an
+#      extra "release anyway? this can corrupt state" confirm before releasing. Under
+#      AUTO_APPROVE=1 this gate REFUSES outright rather than auto-answering yes.
+#   5. Release via `tofu force-unlock -force <ID>` (a 404 = object already gone = success). The
+#      state bucket has versioning on (_bootstrap_state_bucket), so a mistaken release is
+#      recoverable from a prior state generation — the safety net that makes this acceptable.
+# Returns 0 when the lock is released (or was already gone); non-zero when the operator declines,
+# so tofu_locked_ re-propagates the original acquire failure unchanged.
+_recover_state_lock() {
+  local base="gs://$STATE_BUCKET/$STATE_PREFIX" workspace="default"
+  local json; json="$(read_tflock "$base" "$workspace")"
+  if [[ -z "$json" ]]; then
+    ok "No .tflock object present — the lock is already released (nothing to recover)."
+    return 0
+  fi
+  describe_lock "$json"
+  # The GCS backend force-unlocks by the .tflock OBJECT GENERATION (a numeric value), NOT the UUID
+  # in the JSON "ID" field — passing that UUID fails with "Lock ID should be numerical value". Read
+  # the generation here for the release; the JSON "ID" is display-only (already shown by describe_lock).
+  local unlock_id who host
+  unlock_id="$(tflock_generation "$base" "$workspace")"
+  who="$(tflock_field "$json" Who "")"; host="${who##*@}"
+
+  # holder_alive: set when we identify a holder we did NOT kill and that looks (or might be)
+  # alive. Starts at 1 — "unknown, assume alive" — NOT 0: if none of the three probes below can
+  # positively identify a category (a foreign host with no matching CI run, or a gh/gcloud probe
+  # that itself failed rather than cleanly reporting "not running"), we have confirmed NOTHING
+  # dead — the lock's actual holder was simply never inspected. Treating unidentified as "dead"
+  # would let AUTO_APPROVE=1 force-unlock a possibly-live holder unattended, exactly the
+  # concurrent-writer risk this feature exists to prevent. Each branch flips this to 0 only when
+  # it POSITIVELY confirms its category is dead/absent/killed; any probe failure or decline to
+  # kill leaves it at 1.
+  local holder_alive=1 holder_identified=0
+
+  # ── Contending CI: ongoing auto-suspend Cloud Build ──────────────────────────────────────
+  local build_id; build_id="$(_ongoing_autosuspend_build_ids | head -1)"
+  if [[ -n "$build_id" ]]; then
+    holder_identified=1
+    warn "An auto-suspend Cloud Build ($build_id) is QUEUED/WORKING — it very likely holds this lock."
+    if confirm "Cancel Cloud Build $build_id?"; then
+      if gcloud builds cancel "$build_id" --region="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
+        ok "cancelled Cloud Build $build_id"; holder_alive=0
+      else
+        warn "could not cancel build $build_id (may have already finished)"
+      fi
+    fi
+  fi
+
+  # ── Contending CI: the pre-dispatched deploy-gke GitHub Actions run ───────────────────────
+  if [[ -n "${DEPLOY_RUN_ID:-}" ]]; then
+    local gh_rc=0 gh_status
+    gh_status="$(gh run view "$DEPLOY_RUN_ID" --json status --jq '.status' 2>/dev/null)" || gh_rc=$?
+    if (( gh_rc != 0 )); then
+      # `gh` itself failed (auth/network/API hiccup) — NOT the same as "the run has finished".
+      # Conflating the two would let a transient gh error read as "holder confirmed dead".
+      warn "could not query status of GitHub Actions run $DEPLOY_RUN_ID (gh exited $gh_rc) — treating as potentially alive."
+      holder_identified=1
+    elif [[ "$gh_status" == "in_progress" || "$gh_status" == "queued" ]]; then
+      holder_identified=1
+      warn "Pre-dispatched deploy-gke run $DEPLOY_RUN_ID is $gh_status."
+      if confirm "Cancel GitHub Actions run $DEPLOY_RUN_ID?"; then
+        if gh run cancel "$DEPLOY_RUN_ID" >/dev/null 2>&1; then
+          ok "cancelled run $DEPLOY_RUN_ID"; holder_alive=0
+        else
+          warn "could not cancel run $DEPLOY_RUN_ID"
+        fi
+      fi
+    else
+      holder_identified=1; holder_alive=0
+    fi
+  fi
+
+  # ── Local tofu/terraform PID (only when the lock was taken on THIS machine) ───────────────
+  if [[ -n "$host" && "$host" == "$(hostname)" ]]; then
+    holder_identified=1
+    local pids pid; pids="$(pgrep -f "(tofu|terraform).*${TF_DIR}" 2>/dev/null || true)"
+    [[ -z "$pids" ]] && holder_alive=0   # host matches but no live tofu/terraform PID found.
+    for pid in $pids; do
+      # kill -0: probe liveness without signalling. A stale lock's PID is usually already gone.
+      if kill -0 "$pid" 2>/dev/null; then
+        warn "A local tofu/terraform process (PID $pid) is still alive and may hold this lock."
+        if confirm "Kill local process $pid?"; then
+          kill "$pid" 2>/dev/null || true; sleep 1
+          if kill -0 "$pid" 2>/dev/null && confirm "PID $pid survived SIGTERM — SIGKILL it?"; then
+            kill -9 "$pid" 2>/dev/null || true
+          fi
+          if kill -0 "$pid" 2>/dev/null; then
+            warn "PID $pid still alive"; holder_alive=1
+          else
+            ok "killed PID $pid"
+          fi
+        else
+          holder_alive=1
+        fi
+      fi
+    done
+  fi
+
+  # No probe could identify ANY holder category (foreign host, no DEPLOY_RUN_ID, no local PID
+  # match) — the lock's owner was never inspected, not confirmed dead. Surface this so the
+  # operator understands why the stronger "release anyway?" gate below is firing.
+  if (( ! holder_identified )); then
+    warn "Could not identify the lock holder (no ongoing CI build/run, and Who's host doesn't match this machine) — cannot confirm it is dead."
+  fi
+
+  # ── Release ──────────────────────────────────────────────────────────────────────────────
+  # AUTO_APPROVE=1 makes `confirm` return 0 unconditionally (see common.sh), which is correct for
+  # the "confirmed dead" gate below but must NOT apply to the "release anyway?" gate — that gate
+  # exists specifically to stop an unattended release of a lock we could NOT confirm is dead. So
+  # under AUTO_APPROVE, a live/unidentified holder refuses outright instead of asking a prompt
+  # that would auto-answer yes.
+  if (( holder_alive )); then
+    warn "The lock holder still looks ALIVE (or could not be confirmed dead). Releasing now can corrupt state (two writers)."
+    if [[ "${AUTO_APPROVE:-}" == "1" ]]; then
+      warn "AUTO_APPROVE=1 refuses to force-unlock a holder that was not confirmed dead — aborting recovery."
+      return 1
+    fi
+    confirm "Release the state lock ANYWAY?" || { warn "left the lock in place — aborting recovery."; return 1; }
+  else
+    confirm "Release the state lock now?" || { warn "left the lock in place — aborting recovery."; return 1; }
+  fi
+  [[ -n "$unlock_id" ]] || { warn "could not read the .tflock object generation — cannot force-unlock; delete ${base}${workspace}.tflock manually."; return 1; }
+  # Do NOT swallow force-unlock's stderr: its message is the whole diagnostic when a release fails
+  # (e.g. a wrong-ID rejection), and hiding it turns a fixable error into a silent "still locked".
+  if tofu_ force-unlock -force "$unlock_id"; then
+    ok "state lock (generation $unlock_id) released (bucket versioning is the recovery net if this was in error)."
+    return 0
+  fi
+  # force-unlock fails-with-404 when the .tflock vanished between our read and the release (already
+  # reaped) — treat a now-absent object as success regardless of the exit above.
+  if [[ -z "$(tflock_generation "$base" "$workspace")" ]]; then
+    ok "lock object already gone — treating as released."
+    return 0
+  fi
+  warn "force-unlock failed and the lock object still exists — inspect ${base}${workspace}.tflock manually."
+  return 1
+}
+
+# unlock: the explicit `run.sh unlock` entry point — run the interactive lock recovery on demand
+# without kicking off a full apply/resume. Needs tfvars (for STATE_BUCKET/PROJECT_ID/REGION) and an
+# initialised backend before `tofu force-unlock` can address the remote lock. force-unlock itself
+# does NOT contend for the lock, so this uses plain tofu_ init and calls the recovery directly.
+unlock() {
+  ensure_tfvars
+  require_state_bucket "State bucket gs://$STATE_BUCKET not found — nothing to unlock."
+  tofu_ init -backend-config="bucket=$STATE_BUCKET"
+  _recover_state_lock
 }
 
 # mark_provisioning / clear_provisioning: a GCS marker object read by auto-suspend-guard.sh's
@@ -424,12 +636,7 @@ apply() {
   # regenerate a fresh plan below against current state + tfvars. A leftover plan from a
   # prior run must never be applied — it could no longer match reality.
   _clear_plan_file
-  # Guard: the GCS state bucket must exist before `tofu init` can initialise the
-  # remote backend. If `bootstrap` was skipped, the init fails with a cryptic
-  # "bucket not found" error. Check explicitly so the message is actionable.
-  if ! gcloud storage buckets describe "gs://$STATE_BUCKET" >/dev/null 2>&1; then
-    die "State bucket gs://$STATE_BUCKET not found — run 'bootstrap' first to create it."
-  fi
+  require_state_bucket
   # Serialise against the scheduled idle auto-suspend build BEFORE touching state — they share
   # one lock and would otherwise collide mid-apply (see wait_for_no_autosuspend_build). Only
   # mark ourselves as provisioning AFTER this clears (not before): marking earlier would leave
@@ -451,9 +658,9 @@ apply() {
   # targets are folded into THIS plan so the replacement is reviewed before it mutates GCP.
   # -lock-timeout: wait (don't instantly fail) if the lock is briefly held — covers the
   # residual window where an auto-suspend build starts just after the pre-check above cleared.
-  tofu_ plan -lock-timeout=120s ${RECONCILE_REPLACE[@]+"${RECONCILE_REPLACE[@]}"} -out="$PLAN_FILE"
+  _plan_with_refresh_fallback -lock-timeout=120s ${RECONCILE_REPLACE[@]+"${RECONCILE_REPLACE[@]}"} -out="$PLAN_FILE"
   if confirm "Apply this plan? (review the resource changes above)"; then
-    if tofu_ apply -lock-timeout=120s "$PLAN_FILE"; then
+    if tofu_locked_ apply -lock-timeout=120s "$PLAN_FILE"; then
       _clear_plan_file
       # Force the state history down to STATE_KEEP_VERSIONS the instant the write lands, rather
       # than waiting for the bucket's ~daily lifecycle sweep. Best-effort (never aborts apply):
@@ -668,13 +875,15 @@ _predispatch_ci_build() {
   deploy provision   # sets DEPLOY_RUN_ID
 }
 
-# _apply_ci_identity: apply ONLY the WIF pool/provider + deployer SA + its principalSet binding —
-# the CI build's SOLE auth prerequisites (WORKLOAD_IDENTITY_PROVIDER / DEPLOYER_SA). This exists so
-# a FIRST-EVER / post-down bring-up (no tofu outputs yet) can still overlap the image build with
+# _apply_ci_identity: apply ONLY the WIF pool/provider + the deployer + lifecycle-deployer SAs and
+# their principalSet bindings — the CI build's SOLE auth prerequisites (WORKLOAD_IDENTITY_PROVIDER /
+# DEPLOYER_SA / LIFECYCLE_DEPLOYER_SA — the full SECRETS_REQUIRED_OUTPUTS set _tf_outputs_present
+# checks, minus the static app_domain/email_from vars which need no apply). This exists so a
+# FIRST-EVER / post-down bring-up (no tofu outputs yet) can still overlap the image build with
 # the ~11-min Cloud SQL create, the same way the outputs-present branches already do — instead of
 # leaving `deploy` a serial manual step behind the full apply.
 #
-# WHY THIS IS SAFE (a targeted apply is normally discouraged as a partial graph): the four resource
+# WHY THIS IS SAFE (a targeted apply is normally discouraged as a partial graph): the six resource
 # addresses below reference ONLY string literals + var.project_id/var.github_* (verified against
 # modules/iam/main.tf) — never var.app_secrets (= module.cloudsql/memorystore outputs),
 # var.gke_node_sa_email, var.binauthz_*, or var.artifact_registry_*. So `-target` walks a ~1-min
@@ -685,21 +894,28 @@ _predispatch_ci_build() {
 # consistent. This step only reorders WHEN the WIF identity lands so `secrets` can push it and CI
 # can start. -auto-approve because it is an internal staging apply, not the reviewed main plan.
 #
+# KEEP IN SYNC WITH SECRETS_REQUIRED_OUTPUTS: every output that predicate checks must have its
+# backing resource targeted here, or the first-ever/post-down path loops forever — _apply_ci_identity
+# "succeeds" with no changes, but _tf_outputs_present still fails on the untargeted output, so
+# _apply_with_overlap's first-ever branch keeps re-entering this function instead of reaching
+# _apply_and_wire's full (untargeted) apply. Hit live 2026-07-06: lifecycle_deployer_service_account_email
+# was added to SECRETS_REQUIRED_OUTPUTS without adding its two resources here.
+#
 # init + the autosuspend-lock coordination mirror apply() — this runs BEFORE it, so it cannot rely
 # on apply() having initialised the backend or serialised against the idle-suspend build.
 _apply_ci_identity() {
   ensure_tfvars
-  if ! gcloud storage buckets describe "gs://$STATE_BUCKET" >/dev/null 2>&1; then
-    die "State bucket gs://$STATE_BUCKET not found — run 'bootstrap' first to create it."
-  fi
+  require_state_bucket
   wait_for_no_autosuspend_build
   log "Applying CI auth identity only (WIF + deployer SA) so the image build can start now"
   tofu_ init -backend-config="bucket=$STATE_BUCKET"
-  tofu_ apply -auto-approve -lock-timeout=120s \
+  tofu_locked_ apply -auto-approve -lock-timeout=120s \
     -target=module.iam.google_iam_workload_identity_pool.github \
     -target=module.iam.google_iam_workload_identity_pool_provider.github \
     -target=module.iam.google_service_account.deployer \
-    -target=module.iam.google_service_account_iam_member.github_wif
+    -target=module.iam.google_service_account_iam_member.github_wif \
+    -target=module.iam.google_service_account.lifecycle_deployer \
+    -target=module.iam.google_service_account_iam_member.lifecycle_deployer_github_wif
 }
 
 # _arm_ci_cancel_trap: install the EXIT trap that cancels the pre-dispatched CI run if the caller
@@ -1027,5 +1243,6 @@ case "$CMD" in
   update-dns)      ensure_tfvars; update_dns ;;
   set-dns-creds)   set_dns_creds ;;
   down)            down ;;
-  *) die "unknown command '$CMD' — one of: up | bootstrap | apply | eso | reloader | secrets | verify-secrets | rotate-secret | upgrade-helm | deploy | smoke | status | logs | suspend | resume | dump-db | restore-db | update-dns | set-dns-creds | down" ;;
+  unlock)          unlock ;;
+  *) die "unknown command '$CMD' — one of: up | bootstrap | apply | eso | reloader | secrets | verify-secrets | rotate-secret | upgrade-helm | deploy | smoke | status | logs | suspend | resume | dump-db | restore-db | update-dns | set-dns-creds | down | unlock" ;;
 esac

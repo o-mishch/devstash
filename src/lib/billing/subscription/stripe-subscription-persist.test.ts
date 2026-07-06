@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { anyOf } from '@/test/matchers'
+
 const {
   mockUpdateSubscriptionState,
   mockUpdateUserStripeSubscription,
@@ -173,7 +175,7 @@ describe('applySubscriptionStateWithBackfill', () => {
       customerId: 'cus_1',
       subscriptionUserId: undefined,
     })
-    expect(mockUpdateUserStripeSubscription).toHaveBeenCalledWith('user-2', expect.any(Object))
+    expect(mockUpdateUserStripeSubscription).toHaveBeenCalledWith('user-2', anyOf(Object))
   })
 
   it('writes explicit null currentPeriodEnd when clearing period data', async () => {

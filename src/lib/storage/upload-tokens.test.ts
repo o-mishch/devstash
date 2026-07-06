@@ -1,5 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
+import { anyOf } from '@/test/matchers'
+
 vi.mock('@/lib/infra/redis', () => ({
   getRedis: vi.fn(),
 }))
@@ -234,6 +236,6 @@ describe('sweepExpiredUploads', () => {
     await sweepExpiredUploads()
     expect(redis.scan).toHaveBeenCalledTimes(2)
     expect(redis.scan).toHaveBeenNthCalledWith(1, 0, expect.objectContaining({ match: 'pending_upload:*' }))
-    expect(redis.scan).toHaveBeenNthCalledWith(2, 42, expect.any(Object))
+    expect(redis.scan).toHaveBeenNthCalledWith(2, 42, anyOf(Object))
   })
 })

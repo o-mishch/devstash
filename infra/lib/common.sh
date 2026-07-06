@@ -43,6 +43,135 @@ confirm() {
   done
 }
 
+# ── OpenTofu/Terraform state-lock primitives (GCS backend) ──────────────────
+# The GCS backend stores a held lock as a JSON object at <prefix>/<workspace>.tflock next to
+# the state, created with an if-generation-match:0 precondition. Its fields mirror the
+# "Error acquiring the state lock" box: ID, Operation, Who (user@host), Version, Created, Info,
+# Path. These three helpers let the orchestrators inspect a stuck lock and drive an interactive
+# recovery (see run.sh:_recover_state_lock) instead of dying on the raw error. Cloud-specific
+# reads live here alongside the other gcloud helpers (gcs_prune_versions, ds_access_secret_blob).
+
+# is_lock_error <captured-tofu-output>: 0 iff the text is a state-lock-acquire failure. Kept as
+# the single source of the trigger string so the wrapper and any caller match it identically.
+is_lock_error() { printf '%s' "$1" | grep -q 'Error acquiring the state lock'; }
+
+# read_tflock <gs://bucket/prefix/> <workspace>: echo the raw .tflock JSON, or empty if the
+# object is gone (404 → lock already released, the common orphaned-then-reaped case). Best-effort:
+# any read error yields empty so the caller treats it as "no lock to inspect". <prefix/> must end
+# in a slash (STATE_PREFIX already does); <workspace> is the tofu workspace (default).
+read_tflock() {
+  local base="$1" workspace="$2"
+  gcloud storage cat "${base}${workspace}.tflock" 2>/dev/null || true
+}
+
+# tflock_generation <gs://bucket/prefix/> <workspace>: echo the GCS object GENERATION of the
+# .tflock, or empty if the object is gone. CRITICAL: for the GCS backend, `tofu force-unlock` takes
+# the numeric object generation — NOT the UUID in the .tflock JSON's "ID" field. tofu prints that
+# generation as `ID:` in its own "Error acquiring the state lock" box, and force-unlock rejects the
+# JSON UUID with "Lock ID should be numerical value". So the release path MUST address the lock by
+# this generation. (The JSON "ID" remains the right value for the human-facing lock summary only.)
+# Best-effort: any read error / 404 yields empty so the caller treats it as "no lock to release".
+tflock_generation() {
+  local base="$1" workspace="$2"
+  gcloud storage objects describe "${base}${workspace}.tflock" \
+    --format='value(generation)' 2>/dev/null || true
+}
+
+# tflock_field <tflock-json> <key> [fallback]: extract one field from a .tflock JSON object,
+# tolerating malformed/non-JSON input — `read_tflock` is explicitly best-effort and can surface a
+# truncated read or a corrupted object, and under this repo's `set -euo pipefail` an unguarded
+# `jq -r` failing on non-JSON would otherwise abort the ENTIRE calling script (a plain `x=$(…)`
+# assignment on its own line is NOT protected from `set -e` the way `local x=$(…)` looks like it
+# should be). Single-sourced so every .tflock field read (describe_lock here, the holder-identity
+# read in run.sh's _recover_state_lock) shares one crash-proof extraction instead of repeating an
+# unguarded `jq -r '.Foo // "?"'` pipeline at each call site.
+tflock_field() {
+  local json="$1" key="$2" fallback="${3:-?}"
+  printf '%s' "$json" | jq -r --arg k "$key" --arg fb "$fallback" '.[$k] // $fb' 2>/dev/null \
+    || printf '%s' "$fallback"
+}
+
+# describe_lock <tflock-json>: print the human-facing lock summary (ID/Who/Operation/age) to
+# stderr so the operator sees exactly what they are about to break. Age is derived from the
+# RFC3339 Created field — `date -j -f` (macOS/BSD) with a `date -d` (GNU/Linux CI) fallback,
+# and if neither parses the raw timestamp is shown rather than erroring. No-op on empty input.
+describe_lock() {
+  local json="$1"
+  [[ -n "$json" ]] || return 0
+  local id who op created
+  id="$(tflock_field "$json" ID)"
+  who="$(tflock_field "$json" Who)"
+  op="$(tflock_field "$json" Operation)"
+  created="$(tflock_field "$json" Created "")"
+  local age="unknown age" created_epoch now_epoch
+  if [[ -n "$created" ]]; then
+    # Strip fractional seconds/zone the BSD parser can't take; both date dialects accept the rest.
+    local trimmed="${created%%.*}"; trimmed="${trimmed%Z}"
+    created_epoch="$(date -j -f '%Y-%m-%dT%H:%M:%S' "$trimmed" +%s 2>/dev/null \
+      || date -d "$created" +%s 2>/dev/null || true)"
+    now_epoch="$(date +%s)"
+    if [[ -n "$created_epoch" ]]; then
+      local secs=$(( now_epoch - created_epoch ))
+      (( secs < 0 )) && secs=0
+      if   (( secs < 3600 ));  then age="$(( secs / 60 ))m ago"
+      elif (( secs < 86400 )); then age="$(( secs / 3600 ))h ago"
+      else age="$(( secs / 86400 ))d ago"; fi
+    else
+      age="$created"
+    fi
+  fi
+  warn "State lock held:"
+  warn "  ID:        $id"
+  warn "  Who:       $who"
+  warn "  Operation: $op"
+  warn "  Created:   ${created:-?} (${age})"
+}
+
+# _tofu_attempt <invoker> <args…>: run one tofu attempt, streaming output live via `tee` while
+# capturing it so the caller can inspect it afterward. Sets the global _TOFU_ATTEMPT_OUTPUT to the
+# captured text and returns the real exit code (PIPESTATUS[0], not tee's). Internal to tofu_locked —
+# not part of this file's public helper surface.
+_tofu_attempt() {
+  local invoker="$1"; shift
+  local tmp rc
+  tmp="$(mktemp)"
+  "$invoker" "$@" 2>&1 | tee "$tmp"
+  rc="${PIPESTATUS[0]}"
+  _TOFU_ATTEMPT_OUTPUT="$(cat "$tmp")"
+  rm -f "$tmp"
+  return "$rc"
+}
+
+# tofu_locked <recover-fn> -- <tofu-invoker> <tofu-args…>: run a lock-contending tofu op
+# (plan/apply/destroy) and, if it fails specifically because it could not acquire the state lock,
+# call <recover-fn> (the caller's interactive/guided recovery, e.g. run.sh's _recover_state_lock)
+# and retry the op EXACTLY ONCE. Any non-lock failure — or a second lock failure after a recovery
+# attempt — is re-propagated unchanged so `set -e`/`die` semantics are identical to a bare
+# <tofu-invoker> call. Generic over the invoker (not hardcoded to `tofu_`) and the recovery
+# callback (not hardcoded to GCP's `_recover_state_lock`) so this stays cloud-agnostic here in
+# common.sh alongside the other lock primitives, while run.sh/suspend.sh supply their own.
+tofu_locked() {
+  local recover_fn="$1"; shift
+  [[ "${1:-}" == "--" ]] && shift
+  local invoker="$1"; shift
+  local rc=0
+  _tofu_attempt "$invoker" "$@" || rc=$?
+  if (( rc == 0 )); then
+    return 0
+  fi
+  if is_lock_error "$_TOFU_ATTEMPT_OUTPUT"; then
+    warn "OpenTofu could not acquire the state lock."
+    if "$recover_fn"; then
+      log "State lock cleared — retrying: ${invoker} ${*}"
+      rc=0
+      _tofu_attempt "$invoker" "$@" || rc=$?
+      return "$rc"
+    fi
+    return "$rc"
+  fi
+  return "$rc"
+}
+
 # read_secret <prompt> <out-var-name>: read a credential into the named variable WITHOUT echoing
 # it — a hidden `read -s` prompt on a tty, or a plain line from stdin when piped (automation).
 # Single-sources the "never let a secret reach shell history or the process list" input idiom that
@@ -58,19 +187,30 @@ read_secret() {
   printf -v "$_out" '%s' "$_val"
 }
 
-# poll_until <max_attempts> <sleep_secs> -- <cmd…>: run <cmd> repeatedly until it exits 0 or
-# <max_attempts> is reached, printing a dot per attempt. Returns 0 on success, 1 on timeout.
-# The caller prints its own trailing newline + success/failure message so the wording stays
-# specific to what was being waited on. Pass a quiet predicate (e.g. a small helper that
+# poll_until [-m <msg_fn>] <max_attempts> <sleep_secs> -- <cmd…>: run <cmd> repeatedly until it
+# exits 0 or <max_attempts> is reached, printing a dot per attempt. Returns 0 on success, 1 on
+# timeout. The caller prints its own trailing newline + success/failure message so the wording
+# stays specific to what was being waited on. Pass a quiet predicate (e.g. a small helper that
 # redirects its own noisy command) so only the progress dots reach the terminal.
+# -m <msg_fn>: instead of a dot, call `<msg_fn> <attempt> <max_attempts>` after each failed
+# attempt — for callers that want a per-attempt diagnostic line (e.g. "not writable yet
+# (attempt N/M) — …") instead of the bare dot.
 poll_until() {
+  local msg_fn=""
+  if [[ "${1:-}" == "-m" ]]; then
+    msg_fn="$2"; shift 2
+  fi
   local attempts="$1" gap="$2"; shift 2
   [[ "${1:-}" == "--" ]] && shift
   local i=0
   until "$@"; do
     i=$((i + 1))
     [[ $i -lt $attempts ]] || return 1
-    printf '.'
+    if [[ -n "$msg_fn" ]]; then
+      "$msg_fn" "$i" "$attempts"
+    else
+      printf '.'
+    fi
     sleep "$gap"
   done
 }

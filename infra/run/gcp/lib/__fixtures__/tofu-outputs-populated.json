@@ -1,0 +1,8 @@
+{
+  "gcp_project_id": { "value": "proj-x" },
+  "deployer_service_account_email": { "value": "dep@proj.iam" },
+  "lifecycle_deployer_service_account_email": { "value": "lifecycle@proj.iam" },
+  "wif_provider": { "value": "projects/1/locations/global/workloadIdentityPools/p/providers/gh" },
+  "app_domain": { "value": "devstash.example" },
+  "email_from": { "value": "DevStash <no-reply@devstash.example>" }
+}

@@ -312,4 +312,38 @@ reconcile_state() {
   local ar_addrs_file; ar_addrs_file="$(dirname "${BASH_SOURCE[0]}")/../../../lib/ar-iam-member-addresses.txt"
   ds_purge_stranded_ar_iam "$ar_repo_id" "$REGION" "$PROJECT_ID" "$ar_addrs_file" \
     || die "failed to purge stranded AR-IAM member(s) from state — resolve manually, then re-run apply"
+
+  # 5. Drop STRANDED Cloud SQL state entries when the instance is GONE in GCP. If the instance was
+  # deleted out-of-band (a partial/interrupted suspend, a manual `gcloud sql instances delete`, or a
+  # resume that died mid-teardown) but its state entries survive, EVERY subsequent plan's refresh
+  # reads them against the API, 404s ("The Cloud SQL instance does not exist"), and aborts before any
+  # work — wedging apply AND suspend alike (hit live 2026-07-06: GKE back up, SQL gone, every apply/
+  # suspend plan 404'd on google_sql_database/google_sql_user whose parent instance was absent). The
+  # database + app-user are COUNT-gated children of the instance; with the instance gone there is
+  # nothing to destroy through the API (deletion_policy=ABANDON on the database anyway), so purge all
+  # three from state. Harmless: resume (db_active=true) recreates the instance + database + user, then
+  # run.sh restores the GCS dump into it. Leaves (database, user) are removed BEFORE the instance,
+  # mirroring Terraform's own destroy order.
+  #
+  # ONLY when the instance is genuinely ABSENT in GCP — the exact stranded-state signature (an
+  # empty `gcloud sql instances describe`). On a normal active env the instance EXISTS, the describe
+  # returns a state, and these entries are legitimately managed and MUST NOT be removed. Self-
+  # disabling: once purged (or on a clean env) the state-list check below finds nothing. Distinct
+  # from branch 1/3d above, which ADOPT an untracked-but-EXISTING instance; this is the inverse —
+  # a TRACKED-but-GONE instance. The two never both fire (present XOR absent).
+  local sql_purge_name="devstash-${ENVIRONMENT}-pg"
+  if ! gcloud sql instances describe "$sql_purge_name" --project="$PROJECT_ID" \
+       --format='value(state)' >/dev/null 2>&1; then
+    local sql_stranded_addr
+    for sql_stranded_addr in \
+      'module.cloudsql.google_sql_user.app[0]' \
+      'module.cloudsql.google_sql_database.devstash[0]' \
+      'module.cloudsql.google_sql_database_instance.postgres[0]'; do
+      if _reconcile_in_state "$sql_stranded_addr"; then
+        warn "Reconcile: Cloud SQL instance '$sql_purge_name' is absent in GCP but '$sql_stranded_addr' is still in state — purging the stranded entry"
+        tofu_ state rm "$sql_stranded_addr" \
+          || die "failed to purge stranded Cloud SQL entry '$sql_stranded_addr' from state — resolve manually, then re-run apply"
+      fi
+    done
+  fi
 }

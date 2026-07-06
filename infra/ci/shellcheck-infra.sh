@@ -19,9 +19,12 @@ cd "$REPO_ROOT"
 
 # NUL-delimited so paths with spaces survive; sort for deterministic, reviewable output. A
 # read-loop (not `mapfile -d`) keeps this runnable on macOS bash 3.2 as well as the CI runner.
+# Includes *.bash (the bats test_helper) as well as *.sh; *.bats files are NOT shellcheckable
+# (the @test "…" { syntax is not valid shell) so they are deliberately excluded — bats' own parser
+# plus a passing `npm run test:infra` validate them instead.
 scripts=()
 while IFS= read -r -d '' f; do scripts+=("$f"); done \
-  < <(find infra -name '*.sh' -type f -print0 | sort -z)
+  < <(find infra \( -name '*.sh' -o -name '*.bash' \) -type f -print0 | sort -z)
 [[ ${#scripts[@]} -gt 0 ]] || { echo "no infra shell scripts found — nothing to check" >&2; exit 1; }
 
 echo "Shellchecking ${#scripts[@]} infra scripts at error severity..."

@@ -15,6 +15,8 @@ description: Infra YAML conventions for DevStash — keep shell logic out of man
 
 # Infrastructure YAML
 
+> This doc is YAML-only. Testing the extracted shell scripts (bats-core + bats-mock, `test_helper`, fixtures) is covered in `infra-shell.md`.
+
 ## No inline scripts in YAML
 
 **Rule:** Shell/command logic embedded in a YAML file must be **at most 2 lines**. Anything longer belongs in a standalone script file that the YAML calls by path.

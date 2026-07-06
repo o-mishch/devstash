@@ -46,16 +46,11 @@ BAKE_FILE="$(dirname "${BASH_SOURCE[0]}")/docker-bake.hcl"
 #   as the cluster wait, covering IAM apply + propagation without ever outliving the job's 15m cap.
 ar_attempts="${AR_WAIT_ATTEMPTS:-40}"
 ar_gap="${AR_WAIT_GAP:-15}"
-i=0
-while ! ds_ar_writable "$REGION" "$GCP_PROJECT_ID" "$REPO"; do
-  i=$((i + 1))
-  if [ "$i" -ge "$ar_attempts" ]; then
-    echo "::error::Artifact Registry '$REPO' not writable by the deployer SA after ~$((ar_attempts * ar_gap))s (repo missing or repoAdmin/writer binding not applied). A resume apply may still be recreating it, or project-IAM state is unconverged — see modules/iam deployer_artifact_registry."
-    exit 1
-  fi
-  echo "Artifact Registry '$REPO' not writable yet (attempt $i/$ar_attempts) — a resume apply may be recreating the repo/IAM binding; waiting ${ar_gap}s…"
-  sleep "$ar_gap"
-done
+_ar_wait_msg() { echo "Artifact Registry '$REPO' not writable yet (attempt $1/$2) — a resume apply may be recreating the repo/IAM binding; waiting ${ar_gap}s…"; }
+if ! poll_until -m _ar_wait_msg "$ar_attempts" "$ar_gap" -- ds_ar_writable "$REGION" "$GCP_PROJECT_ID" "$REPO"; then
+  echo "::error::Artifact Registry '$REPO' not writable by the deployer SA after ~$((ar_attempts * ar_gap))s (repo missing or repoAdmin/writer binding not applied). A resume apply may still be recreating it, or project-IAM state is unconverged — see modules/iam deployer_artifact_registry."
+  exit 1
+fi
 # The IAM policy can read back present a beat before it propagates to the registry data plane
 # (the token exchange the push does). A short settle absorbs that residual gap without a full retry.
 echo "Artifact Registry '$REPO' is writable — proceeding to build + push."

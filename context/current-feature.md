@@ -1,5 +1,7 @@
 # Current Feature
 
+<!-- One-line feature name. -->
+
 ## Status
 Not Started
 

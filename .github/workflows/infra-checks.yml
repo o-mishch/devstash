@@ -1,12 +1,12 @@
 # PR-level infra shell gate. Runs the SAME static analysis + tests the maintainer runs by hand
-# (shellcheck over the infra shell scripts, plus the self-contained secrets-guard test), but on
-# PULL REQUESTS so a regression in the run.sh/suspend.sh orchestration — a reintroduced empty-body
-# `gh secret set` hang, a lost outputs-present gate, or any new shellcheck error — is caught BEFORE
-# it reaches main. Mirrors migration-safety.yml: same paths-scoped, fork-safe, no-cloud-auth shape.
+# (shellcheck over the infra shell scripts, plus the bats test suite), but on PULL REQUESTS so a
+# regression in the run.sh/suspend.sh orchestration — a reintroduced empty-body `gh secret set`
+# hang, a lost outputs-present gate, a broken state-lock recovery, or any new shellcheck error — is
+# caught BEFORE it reaches main. Mirrors migration-safety.yml: paths-scoped, fork-safe, no-cloud-auth.
 # Make this a REQUIRED status check in branch protection for main.
 #
 # SECURITY: PRs from forks run untrusted code, so this job is minimal — contents: read only, NO
-# id-token / cloud auth (nothing here needs GCP; the secrets-guard test stubs `tofu`/`gh` on PATH),
+# id-token / cloud auth (nothing here needs GCP; the bats tests stub `gcloud`/`tofu`/`gh` on PATH),
 # and persist-credentials: false. shellcheck runs at ERROR severity: the infra scripts carry a few
 # long-standing warning-level false positives (SC2034 sourced vars, SC2178 local-var reuse), so
 # gating on errors keeps the check meaningful without pinning the whole tree to a clean-warning bar.
@@ -15,10 +15,13 @@ name: infra-checks
 on:
   pull_request:
     branches: [main]
-    # Only gate PRs that touch infra shell — run.sh/suspend.sh orchestration, the CI scripts, or
-    # the secrets-guard test itself. Other PRs skip this workflow entirely.
+    # Only gate PRs that touch infra shell — run.sh/suspend.sh orchestration, the CI scripts, the
+    # POSIX libs, or the bats tests themselves. Other PRs skip this workflow entirely.
     paths:
       - "infra/**/*.sh"
+      - "infra/**/*.bats"
+      - "infra/**/*.bash"
+      - "infra/**/__fixtures__/**"
       - ".github/workflows/infra-checks.yml"
 
 permissions:
@@ -37,10 +40,19 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      # shellcheck + jq are preinstalled on ubuntu-latest runners; no setup step needed.
+      # shellcheck + jq + python3 are preinstalled on ubuntu-latest runners; no setup step needed.
       - name: Shellcheck infra scripts (error severity)
         run: infra/ci/shellcheck-infra.sh
-      # Black-box drives `run.sh secrets` with tofu/gh stubbed on PATH — reproduces the empty-state
-      # bug and asserts the guard + the pre-dispatch gate. Self-contained: no cloud auth.
-      - name: Secrets-guard test
-        run: bash infra/run/gcp/lib/secrets-guard.test.sh
+      # bats is an npm devDependency, so provision Node + install it (the bats CLI + bats-mock/
+      # support/assert helpers the tests load from node_modules). --ignore-scripts skips the
+      # prisma-generate postinstall (irrelevant to the shell tests, needs no DB).
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install bats toolchain
+        run: npm ci --ignore-scripts
+      # The bats suite stubs gcloud/tofu/gh/pgrep on PATH — reproduces the empty-state secrets bug,
+      # the pre-dispatch gate, state-lock recovery, and the POSIX suspend helpers. Self-contained:
+      # no cloud auth.
+      - name: Infra shell tests (bats)
+        run: npm run test:infra

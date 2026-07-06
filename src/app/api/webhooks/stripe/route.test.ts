@@ -526,7 +526,7 @@ describe('Stripe webhook route', () => {
       to: 'user@example.com',
     })
     expect(mockCancelAbandonedSubscription).toHaveBeenCalledWith('sub_incomplete')
-    expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_incomplete', expect.any(Date))
+    expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_incomplete', anyOf(Date))
   })
 
   it('clears abandoned checkout subscriptions when the session expires', async () => {
@@ -543,7 +543,7 @@ describe('Stripe webhook route', () => {
 
     expect(response.status).toBe(200)
     expect(mockCancelAbandonedSubscription).toHaveBeenCalledWith('sub_incomplete')
-    expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_incomplete', expect.any(Date))
+    expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_incomplete', anyOf(Date))
   })
 
   it('backfills the local subscription from customer.subscription.created metadata', async () => {
@@ -959,7 +959,7 @@ describe('Stripe webhook route', () => {
 
     expect(response.status).toBe(200)
     expect(mockCancelSubscriptionImmediately).toHaveBeenCalledWith('sub_123')
-    expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_123', expect.any(Date))
+    expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_123', anyOf(Date))
   })
 
   it('handles customer.updated by logging the change and ignoring DB writes because app email is the source of truth', async () => {
@@ -1107,7 +1107,7 @@ describe('Stripe webhook route', () => {
     expect(response.status).toBe(200)
     expect(mockStripeChargesRetrieve).toHaveBeenCalledWith('ch_disputed')
     expect(mockCancelSubscriptionImmediately).toHaveBeenCalledWith('sub_123')
-    expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_123', expect.any(Date))
+    expect(mockClearStripeSubscriptionBySubId).toHaveBeenCalledWith('sub_123', anyOf(Date))
   })
 
   it('sends a billing recovery email when invoice payment attempt is required', async () => {

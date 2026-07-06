@@ -499,6 +499,16 @@ jobs:
         if: steps.eso-sync.outputs.synced == 'true'
         run: infra/ci/wait-rollout.sh
 
+      # Pod-Ready (above) is NOT servable: GKE Gateway programs the LB backend (NEG attach + its
+      # own health check) on a separate path the rollout gate can't see, so the URL 502s for
+      # minutes after the rollout passes — worst on a from-scratch resume. Gate on the public URL
+      # actually reporting healthy so a green deploy means a live site. See infra/ci/wait-endpoint.sh.
+      - name: Wait for public endpoint to serve
+        if: steps.eso-sync.outputs.synced == 'true'
+        env:
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+        run: infra/ci/wait-endpoint.sh
+
       # Delete superseded image versions the instant the rollout is healthy, keeping only the
       # just-deployed digest per image — an immediate equivalent of the repository's
       # keep_count=1 cleanup policy (which otherwise runs only on Artifact Registry's ~daily

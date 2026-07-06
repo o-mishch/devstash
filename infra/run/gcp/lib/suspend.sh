@@ -329,7 +329,7 @@ down() {
     # re-entering the app + Spaceship-DNS creds by hand after every teardown is the real cost.
     # These are the ONLY prevent_destroy resources in the env — keep this list in sync if that
     # changes. Addresses: app_config lives in module.iam; ops_config is top-level in envs/dev.
-    tofu_ destroy -auto-approve -refresh=false \
+    tofu_locked_ destroy -auto-approve -refresh=false \
       -exclude=module.iam.google_secret_manager_secret.app_config \
       -exclude=google_secret_manager_secret.ops_config
     # Reclaim the PSA peering + range GCP holds past the ABANDONed connection (best-effort).

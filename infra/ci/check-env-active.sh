@@ -37,24 +37,17 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 attempts="${CLUSTER_WAIT_ATTEMPTS:-40}"
 gap="${CLUSTER_WAIT_GAP:-15}"
 
-# _cluster_present_or_retry: wraps ds_cluster_present (common.sh) with `|| true` so a transient
-# API error is treated as "not yet" for this attempt (the loop retries) instead of aborting the
-# whole script under `set -e` — a persistent failure just exhausts the window and reports
-# suspended, which is the safe skip anyway (the deploy job would fail against a missing cluster).
-_cluster_present_or_retry() { ds_cluster_present "$CLUSTER" "$GCP_PROJECT_ID" "$REGION" 2>/dev/null || true; }
+# _cluster_present_quiet: wraps ds_cluster_present (common.sh) with a stderr redirect so a
+# transient API error's noise doesn't pollute the CI log while the loop retries; `set -e` already
+# exempts an `until`-tested command, so no `|| true` is needed here.
+_cluster_present_quiet() { ds_cluster_present "$CLUSTER" "$GCP_PROJECT_ID" "$REGION" 2>/dev/null; }
+_cluster_wait_msg() { echo "GKE cluster '$CLUSTER' not listable yet (attempt $1/$2) — a resume/up may be provisioning it; waiting ${gap}s…"; }
 
-i=0
-while [ "$i" -lt "$attempts" ]; do
-  if _cluster_present_or_retry; then
-    echo "Environment active — GKE cluster '$CLUSTER' is present. Proceeding with deploy."
-    echo "suspended=false" >> "$GITHUB_OUTPUT"
-    exit 0
-  fi
-  i=$((i + 1))
-  [ "$i" -lt "$attempts" ] || break
-  echo "GKE cluster '$CLUSTER' not listable yet (attempt $i/$attempts) — a resume/up may be provisioning it; waiting ${gap}s…"
-  sleep "$gap"
-done
+if poll_until -m _cluster_wait_msg "$attempts" "$gap" -- _cluster_present_quiet; then
+  echo "Environment active — GKE cluster '$CLUSTER' is present. Proceeding with deploy."
+  echo "suspended=false" >> "$GITHUB_OUTPUT"
+  exit 0
+fi
 
 echo "::warning::Environment is suspended — GKE cluster '$CLUSTER' did not appear within ~$((attempts * gap))s. Skipping deploy: nothing is deployed and nothing fails. Bring it back with: bash infra/run/gcp/run.sh resume"
 echo "suspended=true" >> "$GITHUB_OUTPUT"
