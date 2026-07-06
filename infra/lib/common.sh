@@ -5,8 +5,12 @@
 #
 # NOT usable from infra/terraform/envs/dev/scripts/*.sh — those are Cloud Build /bin/sh
 # substitution templates ($_VAR / $$), a different dialect that runs inside a container
-# with no access to this repo file. Those scripts mirror the string below by necessity;
-# if the image path formula ever changes, update them in lockstep.
+# with no access to this repo file. Where those scripts genuinely need this library's logic
+# they git-clone the repo and `.`-source the POSIX helpers in infra/lib/posix/ (see e.g.
+# auto-suspend-prepare.sh sourcing secrets.sh) — NOT a hand-copied mirror. The image-path
+# formula (ds_image_base) has no /bin/sh consumer at all: its only callers are the bash CI
+# scripts (build-push.sh, prune-registry.sh) that source this file, and the deep-suspend path
+# deletes the whole Artifact Registry repo rather than reconstructing per-image paths.
 #
 # Source-guard: sourcing twice (e.g. run.sh sources it, then calls a CI script that also
 # sources it in the same process) is a harmless no-op.

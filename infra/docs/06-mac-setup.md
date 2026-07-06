@@ -139,6 +139,48 @@ jq --version
 yq --version
 ```
 
+## GNU-утиліти на macOS (необов'язково — для парності з Linux/CI)
+
+> Джерела звірено через websearch (офіційна формула Homebrew `coreutils`; поширений
+> рецепт «GNU tools on macOS» із додаванням `gnubin` до `PATH`), липень 2026.
+
+macOS постачається з **BSD**-версіями `sed`/`awk`/`date`/`grep`/`find`, а Linux/CI — з
+**GNU**-версіями. Прапорці й вивід подекуди різняться (класика: `sed -i` на BSD вимагає
+аргумент-суфікс, `readlink -f`/`grep -P`/`date -d` — GNU-only).
+
+**Головне: скрипти цього треку цього НЕ вимагають.** Вони написані на портативному
+перетині BSD/GNU — напр. fallback `date -j -f … || date -d …` у
+[`infra/lib/common.sh`](../lib/common.sh) і форма `sed -i.bak … && rm …bak` у
+[`infra/run/gcp/lib/gke.sh`](../run/gcp/lib/gke.sh), яка працює на обох. Тож на «голому»
+macOS усе відпрацьовує коректно **без жодних GNU-утиліт**.
+
+Встановлюйте GNU-набір, лише якщо **хочете**, щоб `sed`/`date`/`grep`/… локально
+поводилися ідентично до CI. Зробіть це одним махом через helper:
+
+```bash
+bash infra/run/local/brew-bootstrap.sh          # bash + coreutils + gnu-sed + gawk + findutils + grep
+# і додайте до ~/.zshrc блок PATH, який він друкує (або одразу):
+bash infra/run/local/brew-bootstrap.sh --path >> ~/.zshrc
+```
+
+Або вручну — встановіть формули, а PATH-блок візьміть із того самого helper (`--path`
+друкує його дослівно, тож жодної копії, яка могла б розійтися):
+
+```bash
+brew install bash coreutils gnu-sed gawk findutils grep
+# Кожен ставиться з префіксом g (gsed, gdate, …); щоб «голі» імена вказували на GNU,
+# додайте каталоги gnubin на початок PATH. Канонічний блок (з $(brew --prefix), тож
+# arch-portable — /opt/homebrew на Apple Silicon, /usr/local на Intel):
+bash infra/run/local/brew-bootstrap.sh --path
+```
+
+> ⚠️ **Ризик дрейфу (drift).** Цей PATH змінює `sed`/`awk`/`date` на GNU **лише у вашій
+> оболонці** — не в CI й не в колеги на стоковому Mac. Тож НЕ дозволяйте йому спонукати
+> писати GNU-only виклики (`sed -i` без суфікса, `readlink -f`, `grep -P`, `date -d` без
+> BSD-fallback): вони зламаються деінде, і ніщо тут їх не зловить. Скрипти мусять лишатися
+> портативними **незалежно** від цього bootstrap — це лише локальний комфорт, а не привід
+> кидати dual-dialect-ідіоми.
+
 ## GitHub CLI (`gh`)
 
 Потрібен для `run.sh secrets` (запис `GCP_PROJECT_ID` / `DEPLOYER_SA` / `WORKLOAD_IDENTITY_PROVIDER`
