@@ -368,12 +368,44 @@ gh_var_set_or_clear() {
 #      waits and may well succeed once the endpoint settles — is LEFT RUNNING, then still `die` so the
 #      local bring-up aborts loudly. A missing-cluster pre-gate failure is a real fault and DOES let the
 #      trap cancel CI (there is nothing for the build to deploy onto).
+#   4. TEARDOWN DETECTION (event-based join guard) — a KNOWN second operator can run down/auto-suspend
+#      the same env WHILE this resume waits. Then the endpoint never answers because the cluster is
+#      being DELETED, and change 3 above would wrongly leave CI running against a vanishing cluster and
+#      burn the whole ceiling first. So BEFORE the poll and on EVERY poll iteration we check the real
+#      teardown signal (ds_cluster_teardown_in_progress: status STOPPING/ERROR or an in-flight
+#      DELETE_CLUSTER op) and, on a positive, abort IMMEDIATELY — leaving the cancel-trap ARMED so the
+#      pre-dispatched deploy is reaped (a torn-down env is a real fault for this bring-up, nothing to
+#      deploy onto). This replaces "wait blindly and time out" with "stop the instant the join can
+#      never complete" (observed 2026-07-07: a resume sat the full window against a cluster another
+#      actor had started deleting).
 #
 # Distinct env from check-env-active.sh's CLUSTER_WAIT_* (that gate polls cluster LISTABILITY as a
 # suspended-vs-active decision; this polls kubectl REACHABILITY) so overriding one never moves the other.
 # Optional env:
 #   CLUSTER_REACHABLE_WAIT_ATTEMPTS (default 90) × CLUSTER_REACHABLE_WAIT_GAP secs (default 10) = ~15 min.
 _cluster_reachable() { kubectl cluster-info >/dev/null 2>&1; }
+# _abort_if_teardown_in_progress <cluster>: an EVENT-BASED join guard. A KNOWN second operator can
+# `down`/auto-suspend the same env while this resume waits for the control plane — then the endpoint
+# will NEVER answer because the cluster is being deleted, and a blind reachability poll would burn its
+# whole window against a vanishing cluster (observed 2026-07-07). ds_cluster_teardown_in_progress
+# reads the REAL teardown signal (status STOPPING/ERROR, or an in-flight DELETE_CLUSTER operation),
+# so on a positive we abort IMMEDIATELY instead of waiting. Unlike the reachability timeout this is a
+# real fault for THIS bring-up (there is nothing to deploy onto), so we LEAVE the CI cancel-trap armed
+# — the pre-dispatched deploy is reaped. Called on EVERY poll iteration (via the predicate below,
+# first action of iteration 1) so a teardown already in flight aborts before the first kubectl probe,
+# and one that STARTS mid-wait is caught on the next pass.
+_abort_if_teardown_in_progress() {
+  local cluster="$1"
+  # Empty cluster name (tofu output unavailable) → nothing to check; behave as the pre-teardown code
+  # did and let the reachability poll be the sole oracle.
+  [[ -n "$cluster" ]] || return 0
+  ds_cluster_teardown_in_progress "$cluster" "$PROJECT_ID" "$REGION" 2>/dev/null || return 0
+  die "GKE cluster '$cluster' is being TORN DOWN (status STOPPING/ERROR or a DELETE_CLUSTER operation is in flight) — another actor ran down/suspend against this env while this bring-up was waiting for the control plane. Aborting: the endpoint will never answer because the cluster is going away. This is NOT the reachability gap. The pre-dispatched deploy is cancelled (nothing to deploy onto). Re-run resume once the teardown settles."
+}
+# poll_until predicate: check the teardown signal FIRST (die-on-detect, via the guard above), then
+# probe reachability. Returning non-zero (unreachable, not torn down) lets poll_until retry as before;
+# a teardown never returns here — the guard dies straight out of the loop.
+_cluster_reachable_or_abort() { _abort_if_teardown_in_progress "$1"; _cluster_reachable; }
 # poll_until message hook — module scope (reachable-by-name to shellcheck, no SC2317/SC2329 disable);
 # the gap arrives as a forwarded msg_arg ($3), mirroring check-env-active.sh's _cluster_wait_msg.
 _cluster_reachable_wait_msg() { echo "GKE control plane not reachable yet (attempt $1/$2) — a fresh apply is ~5-7 min, a deep-suspend resume can take longer as the DNS endpoint propagates; waiting ${3}s…"; }
@@ -387,8 +419,11 @@ wait_for_cluster() {
   if [[ -n "$cluster" ]] && ! ds_cluster_present "$cluster" "$PROJECT_ID" "$REGION" 2>/dev/null; then
     die "GKE cluster '$cluster' is not listable in $REGION — it does not exist (apply never created it, or it was deleted). This is a real fault, not the reachability gap; check the GCP console and re-run apply/resume."
   fi
+  # No separate pre-gate teardown check: the poll predicate (_cluster_reachable_or_abort) runs
+  # _abort_if_teardown_in_progress FIRST on its very first iteration, before any kubectl probe — so a
+  # teardown already in flight aborts before the reachability wait begins, without a duplicate probe.
   log "Waiting for GKE cluster control plane to become reachable (fresh apply ~5-7 min; deep-suspend resume can take longer)"
-  if ! poll_until -m _cluster_reachable_wait_msg :: "$gap" :: "$attempts" "$gap" -- _cluster_reachable; then
+  if ! poll_until -m _cluster_reachable_wait_msg :: "$gap" :: "$attempts" "$gap" -- _cluster_reachable_or_abort "$cluster"; then
     # Reachability timeout ≠ CI-cancel: the cluster EXISTS (pre-gate passed) and its endpoint is just
     # still propagating, so leave the pre-dispatched deploy running (its own waits may carry it home).
     # Clear the cancel-trap BEFORE dying so the die's non-zero exit can't trip it. Same hand-off as
@@ -1170,6 +1205,12 @@ _staging_apply() {
   _clear_staging_plan
   # Plan the -target subgraph to a file, then apply that file — no -auto-approve of an unseen diff.
   tofu_locked_ plan -lock-timeout=120s "$@" -out="$STAGING_PLAN_FILE"
+  # If this subgraph targets the app-config secret version, its check block's assertion is
+  # expected to show "known after apply" here: the check reads back the SPECIFIC version this
+  # resource creates, and that version number doesn't exist yet during a targeted plan that
+  # creates/replaces it. It resolves and evaluates for real on the next plan/apply — safe to ignore.
+  [[ "$*" == *google_secret_manager_secret_version.app_config* ]] &&
+    log "Note: a 'check block assertion known after apply' warning for app_config_version_enabled is expected here — the version doesn't exist yet in this targeted plan; it validates on the next apply."
   log "Staging plan for '$label' shown above — applying it now (already authorised by the bring-up confirmation)"
   tofu_locked_ apply -lock-timeout=120s "$STAGING_PLAN_FILE"
   _clear_staging_plan
@@ -1181,14 +1222,16 @@ _apply_ci_identity() {
   # superset. Plans then applies that exact plan via _staging_apply so the diff is visible under the
   # single bring-up consent.
   #
-  # The secret-version target closes the race behind the 2026-07-07 incident: _predispatch_ci_build
-  # (called right after this function by every caller) dispatches the GitHub Actions deploy, whose
-  # "Ensure app-config has an enabled version" gate (infra/ci/check-secret-version.sh) polls for
-  # ~2 min. That gate previously raced the FULL apply (~11 min, Cloud SQL + GKE first) for the secret
-  # version — on a slow apply, or when the version didn't exist yet at all, the gate legitimately
-  # timed out. Applying it here instead means it exists+enabled BEFORE the deploy is even dispatched.
-  # Its dependency (google_storage_hmac_key.uploads → google_service_account.app) is module-local, no
-  # Cloud SQL/GKE — so it stays inside the "~1 min, no Cloud SQL" invariant this subgraph relies on.
+  # The secret-version target closes the version-bump race for the post-down / first-ever path:
+  # _predispatch_ci_build (called right after this function by every caller) dispatches the GitHub
+  # Actions deploy, whose ESO-sync step (infra/ci/wait-secrets-sync.sh) blocks on the ExternalSecret
+  # becoming Ready — which needs an ENABLED app-config version. Applying the version HERE means it
+  # exists+enabled BEFORE the deploy is even dispatched, so the ESO wait latches immediately instead
+  # of waiting out the apply. This works on THIS path only because the post-down subgraph creates the
+  # blob from scratch; a resume's blob depends on Cloud SQL/Memorystore outputs and inherently lands
+  # mid-apply (see suspend.sh:_apply_and_wire_cluster_overlapped) — there the ESO wait's 900s timeout
+  # is what absorbs the delay. Its dependency (google_storage_hmac_key.uploads → google_service_account
+  # .app) is module-local, no Cloud SQL/GKE — so it stays inside the "~1 min, no Cloud SQL" invariant.
   _staging_apply "CI auth identity + AR push target + app-config secret (WIF + deployer SA + repo/binding + secret version)" \
     -target=module.iam.google_iam_workload_identity_pool.github \
     -target=module.iam.google_iam_workload_identity_pool_provider.github \

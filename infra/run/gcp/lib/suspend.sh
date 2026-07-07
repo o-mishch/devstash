@@ -181,10 +181,12 @@ suspend() {
 # out-of-band from secrets() via `gcloud secrets versions add` would fork the write-only,
 # Terraform-owned version into a second writer — reintroducing the version churn + destroyed-latest
 # outage the write-only design fixed (see modules/iam/main.tf). So the enabled version INHERENTLY
-# lands mid-apply, AFTER dispatch. The deploy does not race it because the CI enabled-version gate
-# (infra/ci/check-secret-version.sh) blocks the ESO step until this apply enables it. Only the secret
-# SHELL is guaranteed early (prevent_destroy, survives suspend); its CONTENTS must wait for the infra
-# they describe.
+# lands mid-apply, AFTER dispatch. The deploy does not race it because the CI ESO-sync step
+# (infra/ci/wait-secrets-sync.sh) blocks on the ExternalSecret becoming Ready — which requires an
+# enabled version — with a 900s timeout sized to outlast this apply's secret bump (the separate
+# enabled-version poll gate was removed 2026-07-07; Ready subsumes it). Only the secret SHELL is
+# guaranteed early (prevent_destroy, survives suspend); its CONTENTS must wait for the infra they
+# describe.
 _apply_and_wire_cluster_overlapped() {
   # Snapshot BEFORE apply runs: was Cloud SQL already there? A genuine post-suspend resume finds
   # nothing (dump_db._apply_plan/_exec below is what (re)creates the instance); resume re-run

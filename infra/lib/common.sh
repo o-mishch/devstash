@@ -427,6 +427,43 @@ ds_cluster_present() {
   [[ -n "$found" ]]
 }
 
+# ds_cluster_teardown_in_progress <cluster> <project> <region>: 0 iff <cluster> is being torn down
+# RIGHT NOW — either its top-level status is STOPPING/ERROR, or an unfinished DELETE_CLUSTER
+# operation is registered against it. A STOPPING/deleting cluster is STILL LISTABLE, so
+# ds_cluster_present alone cannot distinguish "coming up" from "being destroyed by a concurrent
+# actor" — this does. It exists because a KNOWN second operator can `down`/auto-suspend the same env
+# while a resume is still waiting for the control plane (observed 2026-07-07: a resume's reachability
+# wait sat the full window against a cluster another actor had started DELETING @15:43; the endpoint
+# would never answer because the cluster was going away). The caller (wait_for_cluster) turns a
+# positive here into an immediate loud abort instead of a blind wait — the fork learns exactly WHY it
+# cannot proceed. Both probes are wrapped so a transient gcloud error returns non-zero (NOT torn
+# down) — a blip must not be misread as a teardown and abort a healthy resume; the caller re-checks
+# each poll iteration, so a real teardown is caught on a subsequent pass. A probe that FAILS (rc≠0)
+# is warned once — a transient blip is harmless, but a PERSISTENT failure (e.g. the deployer SA
+# losing container.operations.list) would silently blind this guard for the whole wait, degrading the
+# fast-abort back to a blind timeout; the warn surfaces that in the resume log instead of hiding it.
+ds_cluster_teardown_in_progress() {
+  local cluster="$1" project="$2" region="$3" status ops
+  # STOPPING = "the cluster is being deleted"; ERROR = "unusable, will be automatically deleted"
+  # (GKE Cluster.Status proto) — both mean teardown. DEGRADED is deliberately EXCLUDED: it means
+  # "requires user action to restore full functionality", i.e. a repair-needed cluster that is NOT
+  # being deleted — treating it as teardown would falsely abort a healthy-but-degraded resume.
+  status="$(gcloud container clusters describe "$cluster" \
+    --project "$project" --region "$region" --format='value(status)' 2>/dev/null)" \
+    || warn "teardown probe: 'clusters describe $cluster' failed — status signal unavailable this pass (transient is harmless; persistent means the guard is blind — check the deployer's container.clusters.get)"
+  case "$status" in
+    STOPPING | ERROR) return 0 ;;
+  esac
+  # An in-flight DELETE issued by another actor may land before the status flips to STOPPING, so also
+  # look for an unfinished DELETE_CLUSTER operation targeting this exact cluster.
+  ops="$(gcloud container operations list \
+    --project "$project" --location "$region" \
+    --filter="operationType=DELETE_CLUSTER AND status!=DONE AND targetLink~/clusters/${cluster}\$" \
+    --format='value(name)' 2>/dev/null)" \
+    || warn "teardown probe: 'operations list' for $cluster failed — DELETE-op signal unavailable this pass (transient is harmless; persistent means the guard is blind — check the deployer's container.operations.list)"
+  [[ -n "$ops" ]]
+}
+
 # ds_ar_writable <region> <project> <repo>: 0 iff the Artifact Registry repo EXISTS and the CALLER
 # (the WIF-federated deployer SA in CI) actually holds artifactregistry.repositories.uploadArtifacts
 # on it — i.e. the push will authorize. Guards the resume/first-apply RACE: run.sh PRE-DISPATCHES
@@ -487,6 +524,14 @@ _ds_ar_wait_msg() { echo "Artifact Registry '$3' not writable yet (attempt $1/$2
 # them as plain step output, run.sh as ordinary stdout — while the callers add their own tagged
 # framing around it. The 10-min envelope covers the IAM apply + registry-data-plane propagation tail
 # without outliving CI's 15m job cap or a resume.
+#
+# WHY THIS ONE STAYS A POLL (unlike the secret + teardown joins, converted 2026-07-07 to the
+# ExternalSecret Ready condition and the DELETE_CLUSTER-operation signal respectively): IAM policy →
+# Artifact Registry data-plane propagation is EVENTUALLY CONSISTENT with NO event, operation, or
+# condition to block on — GCP exposes nothing that fires when "the deployer SA can now push". The
+# race is already minimised by ORDERING (run.sh's _wait_ar_push_ready applies the binding and runs
+# this wait BEFORE dispatching CI, so CI's own gate usually passes on attempt 1); the residual poll
+# is the irreducible propagation lag. Do not fake an event here — poll is the honest primitive.
 ds_ar_wait() {
   local region="$1" project="$2" repo_id="$3"
   local attempts="${AR_WAIT_ATTEMPTS:-40}" gap="${AR_WAIT_GAP:-15}"

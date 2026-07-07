@@ -90,6 +90,56 @@ JSON"
   assert_output --partial "waiting 0s"
 }
 
+# ── ds_cluster_teardown_in_progress — the event-based teardown signal wait_for_cluster aborts on.
+# Two positive signals (status STOPPING/ERROR, or an in-flight DELETE_CLUSTER op) and the RUNNING
+# negative. `describe --format=value(status)` prints the status; `operations list` prints op names
+# (empty = none in flight). A transient gcloud error must read as NOT-torn-down (return 1), not abort.
+#
+# _stub_gke_state <status> <delete-ops>: describe echoes <status>; operations list echoes <delete-ops>
+# (newline-separated op names, empty = none). Any other gcloud subcommand is a no-op success.
+_stub_gke_state() {
+  local status="$1" delete_ops="$2"
+  fake_cmd gcloud "
+    if [[ \"\$1 \$2\" == 'container clusters' && \"\$3\" == describe ]]; then printf '%s' '${status}'; exit 0; fi
+    if [[ \"\$1 \$2\" == 'container operations' && \"\$3\" == list ]]; then printf '%s' '${delete_ops}'; exit 0; fi
+    exit 0"
+}
+
+@test "ds_cluster_teardown_in_progress: status STOPPING → teardown detected (0)" {
+  _stub_gke_state STOPPING ""
+  run ds_cluster_teardown_in_progress devstash-dev-gke proj-x us-central1
+  assert_success
+}
+
+@test "ds_cluster_teardown_in_progress: status ERROR → teardown detected (0)" {
+  _stub_gke_state ERROR ""
+  run ds_cluster_teardown_in_progress devstash-dev-gke proj-x us-central1
+  assert_success
+}
+
+@test "ds_cluster_teardown_in_progress: RUNNING with no delete op → not torn down (1)" {
+  _stub_gke_state RUNNING ""
+  run ds_cluster_teardown_in_progress devstash-dev-gke proj-x us-central1
+  assert_failure
+}
+
+@test "ds_cluster_teardown_in_progress: RUNNING but an in-flight DELETE_CLUSTER op → teardown detected (0)" {
+  # A concurrent actor's DELETE can land before the status flips — the op-list branch catches it.
+  _stub_gke_state RUNNING "operation-1783438990524-5e20f915"
+  run ds_cluster_teardown_in_progress devstash-dev-gke proj-x us-central1
+  assert_success
+}
+
+@test "ds_cluster_teardown_in_progress: probe error reads as NOT torn down (1) but WARNS so a persistent blindness is visible" {
+  # Both probes error; empty output → RUNNING-equivalent, so a blip never aborts a healthy resume (the
+  # caller re-checks each poll iteration). But the failure is WARNED (not silently swallowed) so a
+  # PERSISTENT auth failure that blinds the guard for the whole wait shows up in the resume log.
+  fake_cmd gcloud "exit 1"
+  run ds_cluster_teardown_in_progress devstash-dev-gke proj-x us-central1
+  assert_failure
+  assert_output --partial "teardown probe"
+}
+
 # ── poll_until — the shared bounded poll (dot form + -m message hook with forwarded msg_args) ──
 # The -m `::`-group is what lets a module-scope message fn (e.g. _ds_ar_wait_msg) receive per-wait
 # context without closing over caller locals; assert the forwarding + backward-compatible dot form.

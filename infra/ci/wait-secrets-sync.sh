@@ -28,6 +28,18 @@
 # positively confirm ESO's own failure event names a missing infra property. If the failure event
 # says anything else (or there is no failure event at all), the timeout fails the step loudly.
 #
+# THIS IS THE SOLE SECRET-READINESS JOIN (the separate check-secret-version.sh enabled-version gate
+# was removed 2026-07-07). The ExternalSecret's `Ready=True` condition is a real Kubernetes event
+# that becomes true EXACTLY when ESO has read an ENABLED devstash-app-config version and materialized
+# devstash-secrets — so "Ready" already implies "an enabled version exists". Waiting on that
+# condition (the `kubectl wait --for=condition=Ready` below) is an event-based join, not a poll of
+# Secret Manager. The old enabled-version gate polled a fixed 5-min window and RACED a resume apply
+# whose disable-old→add-new secret bump legitimately took ~13 min (the apply computes the blob from
+# Cloud SQL/Memorystore outputs, so it lands mid-apply — it cannot be front-loaded); the gate lost
+# and failed the deploy. Since Ready subsumes the enabled-version check and its failure branches
+# below already fail loudly on a genuinely broken/empty secret, the gate was redundant. The wait
+# timeout is sized (below) to outlast that worst-case apply so this join never loses the same race.
+#
 # A sync failure that is NOT explained by a missing infra property (see below) is a real fault
 # and must fail the build rather than silently pass it (which previously masked a full outage).
 #
@@ -51,17 +63,22 @@ NS="$DEVSTASH_NS"
 ES=devstash-secrets
 SM_SECRET=devstash-app-config
 
-# Nudge ESO to reconcile NOW instead of waiting out its refreshInterval (1h). The previous step
-# (check-secret-version.sh) only guarantees Secret Manager HAS an enabled version — it says
-# nothing about whether ESO's controller already latched onto a stale/disabled version from an
-# earlier reconcile and is sitting on its poll interval before trying again. Annotating the
+# Nudge ESO to reconcile NOW instead of waiting out its refreshInterval (1h). Even once Secret
+# Manager HAS an enabled version, ESO's controller may have latched onto a stale/disabled version
+# from an earlier reconcile and be sitting on its poll interval before trying again. Annotating the
 # ExternalSecret changes its metadata, which the controller watches and reconciles on
 # immediately (documented force-sync pattern: https://external-secrets.io/latest/introduction/faq/).
 # Best-effort: on a first-ever bring-up the resource may not exist yet, so a failure here is fine —
 # the kubectl wait below still runs and reports the real state.
 kubectl -n "$NS" annotate "externalsecret/$ES" "force-sync=$(date +%s)" --overwrite >/dev/null 2>&1 || true
 
-if kubectl -n "$NS" wait --for=condition=Ready "externalsecret/$ES" --timeout=180s; then
+# --timeout=900s (15 min): this is now the ONLY wait for the secret, so it must outlast the
+# worst-case producer — a resume `tofu apply` whose Cloud-SQL/Memorystore-derived app-config blob
+# lands its enabled version ~13 min in (observed 2026-07-07). The old 180s was safe only because a
+# separate 5-min enabled-version gate ran first; with that gate removed, 180s would time out before
+# a legitimately-slow apply enables the version. This is a condition-wait on the real Ready event
+# (returns the instant ESO syncs), not a fixed sleep — the ceiling only bounds a genuinely stuck sync.
+if kubectl -n "$NS" wait --for=condition=Ready "externalsecret/$ES" --timeout=900s; then
   echo "ExternalSecret '$ES' is Ready — secrets synced."
   echo "synced=true" >> "$GITHUB_OUTPUT"
   exit 0
@@ -77,8 +94,9 @@ echo "ExternalSecret '$ES' did not become Ready within the timeout — inspectin
 # separate object that coexists until its TTL expires. Without sorting + taking only the newest,
 # a stale benign Event from an earlier resolved period could still satisfy the "does not exist in
 # secret" grep below even while a concurrent, unrelated real fault is the CURRENT failure — exactly
-# the kind of stale-signal-masks-a-live-outage bug this script exists to prevent (see the
-# disable-old-then-add-new race in check-secret-version.sh's header).
+# the kind of stale-signal-masks-a-live-outage bug this script exists to prevent (the write-only
+# Terraform version bump disables the old version then adds the new one as two separate Secret
+# Manager operations, so a reconcile can momentarily see a disabled/absent version).
 #
 # stderr is captured (not discarded) and rc checked explicitly: a kubectl failure (RBAC denial, API
 # server unreachable, transient network error) must not be folded into "no event found" — both
@@ -108,13 +126,13 @@ if printf '%s' "$events" | grep -q 'does not exist in secret'; then
   exit 0
 fi
 
-# ESO latched onto a DISABLED version from a reconcile that ran before check-secret-version.sh's
-# gate passed, and the force-sync annotation above (sent once, at the top of this script) didn't
-# land in time to flip it within the 180s wait. Retry the nudge + wait ONCE — a bounded best-effort
-# second chance, not a proven fix: it only helps if Secret Manager's enabled-version state changed
-# in the interim (the gate's pass was itself racing a slower version-bump propagation to ESO); if
-# the underlying cause is IAM/Workload Identity being fully broken, this costs 60s of CI time before
-# an identical failure. Cannot turn a real fault into a false pass either way — it still requires
+# ESO latched onto a DISABLED version from a reconcile that ran before the apply enabled the new
+# version, and the force-sync annotation above (sent once, at the top of this script) didn't land in
+# time to flip it within the 900s wait. Retry the nudge + wait ONCE — a bounded best-effort second
+# chance, not a proven fix: it only helps if Secret Manager's enabled-version state changed in the
+# interim (the earlier miss was itself racing a slower version-bump propagation to ESO); if the
+# underlying cause is IAM/Workload Identity being fully broken, this costs 60s of CI time before an
+# identical failure. Cannot turn a real fault into a false pass either way — it still requires
 # `kubectl wait --for=condition=Ready` to observe Ready. A second miss after the re-nudge fails loudly.
 if printf '%s' "$events" | grep -q 'is in DISABLED state'; then
   echo "'$ES' is stuck on a DISABLED secret version — re-nudging ESO and retrying once…"

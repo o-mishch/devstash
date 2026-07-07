@@ -106,3 +106,84 @@ setup() {
   assert_failure
   [ "$(spy_call_count kubectl)" -eq 5 ]
 }
+
+# ── 4. event-based teardown detection ─────────────────────────────────────────────────────────────
+# A KNOWN second operator can down/auto-suspend the same env mid-resume. ds_cluster_teardown_in_progress
+# reads the real teardown signal (status STOPPING/ERROR or an in-flight DELETE_CLUSTER op); on a
+# positive wait_for_cluster must ABORT IMMEDIATELY — not burn the reachability window against a
+# vanishing cluster — and (unlike the reachability timeout) LEAVE the CI cancel-trap armed so the
+# pre-dispatched deploy is reaped. The check runs as the poll predicate's first action each iteration,
+# so a teardown already in flight aborts before the first kubectl probe. The gcloud stub answers
+# clusters-list (present) + clusters-describe (status) + operations-list (delete ops).
+
+@test "wait_for_cluster: teardown already in flight (status STOPPING) → aborts before polling kubectl" {
+  spy_cmd gcloud '
+    case "$*" in
+      *"clusters list"*) echo devstash-dev-gke ;;
+      *"clusters describe"*) echo STOPPING ;;
+      *"operations list"*) : ;;
+      *) : ;;
+    esac'
+  spy_cmd kubectl ':'   # reachable if ever probed — but teardown must short-circuit before any probe
+  run wait_for_cluster
+  assert_failure
+  assert_output --partial "being TORN DOWN"
+  assert_output --partial "another actor"
+  # Abort happens at the pre-gate, before the reachability poll runs at all.
+  [ "$(spy_call_count kubectl)" -eq 0 ]
+}
+
+@test "wait_for_cluster: an in-flight DELETE_CLUSTER op (status still RUNNING) → aborts as teardown" {
+  spy_cmd gcloud '
+    case "$*" in
+      *"clusters list"*) echo devstash-dev-gke ;;
+      *"clusters describe"*) echo RUNNING ;;
+      *"operations list"*) echo operation-1783438990524-5e20f915 ;;
+      *) : ;;
+    esac'
+  spy_cmd kubectl ':'
+  run wait_for_cluster
+  assert_failure
+  assert_output --partial "being TORN DOWN"
+  [ "$(spy_call_count kubectl)" -eq 0 ]
+}
+
+@test "wait_for_cluster: teardown abort LEAVES the CI cancel-trap intact (torn-down env → cancel CI)" {
+  spy_cmd gcloud '
+    case "$*" in
+      *"clusters list"*) echo devstash-dev-gke ;;
+      *"clusters describe"*) echo STOPPING ;;
+      *"operations list"*) : ;;
+      *) : ;;
+    esac'
+  spy_cmd kubectl ':'
+  # Same sentinel-trap technique as the pre-gate/absent-cluster tests: a teardown is a real fault for
+  # THIS bring-up, so the trap must remain armed (fire on exit) to reap the pre-dispatched deploy.
+  run bash -c '
+    source "'"$RUN_SH"'"
+    trap "echo TRAP_STILL_ARMED" EXIT
+    wait_for_cluster
+  '
+  assert_failure
+  assert_output --partial "being TORN DOWN"
+  assert_output --partial "TRAP_STILL_ARMED"
+}
+
+@test "wait_for_cluster: teardown that STARTS mid-poll (RUNNING then STOPPING) → aborts on the next iteration" {
+  # First describe says RUNNING (kubectl unreachable → poll continues); a state file flips it to
+  # STOPPING so the NEXT iteration's teardown check trips. Proves the per-iteration guard, not just
+  # the pre-gate, catches a teardown that begins after the wait started.
+  local flip="${BATS_TEST_TMPDIR}/flip"
+  : > "$flip"
+  spy_cmd gcloud '
+    case "$*" in
+      *"clusters list"*) echo devstash-dev-gke ;;
+      *"clusters describe"*) if [[ -s "'"$flip"'" ]]; then echo STOPPING; else echo RUNNING; echo x > "'"$flip"'"; fi ;;
+      *"operations list"*) : ;;
+      *) : ;;
+    esac'
+  spy_cmd kubectl 'exit 1'   # never reachable → the loop relies on the teardown check to stop it
+  CLUSTER_REACHABLE_WAIT_ATTEMPTS=10 CLUSTER_REACHABLE_WAIT_GAP=0 run wait_for_cluster
+  assert_failure
+  assert_output --partial "being TORN DOWN"
+}

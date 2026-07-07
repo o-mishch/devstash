@@ -340,15 +340,77 @@ jobs:
           subject-digest: ${{ steps.build-push.outputs.migrate_digest }}
           push-to-registry: true
 
-  # ---- Deploy to GKE (cluster-gated; consumes build-push's digests) ----------
+  # ---- Render manifests (cluster-INDEPENDENT; overlaps the apply) -------------
+  # inject-settings.sh + render-manifests.sh need NO cluster and NO secret — they only mutate the
+  # overlay's settings.yaml from repo vars + build-push's image digests and run `kubectl kustomize`
+  # (client-side templating, zero API calls). They used to run INSIDE the `deploy` job, wedged after
+  # get-credentials/reachability, so they didn't start until run.sh's ~10-min apply was done — pure
+  # serial tail. Pulled into their own job (needs build-push for the digests, same main+build gate)
+  # so the render OVERLAPS the apply alongside build-push, and the rendered manifest crosses to
+  # `deploy` as an artifact. deploy's critical path then holds only genuinely cluster/secret-dependent
+  # steps. (The build already overlapped the apply; this moves the other cluster-independent work off
+  # the serial path too — see the parallel-stream discussion in infra/docs/04-cicd.md.)
+  render:
+    needs: [gate, build-push]
+    if: github.ref == 'refs/heads/main' && needs.gate.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    # Client-side work only (yq inject + `kubectl kustomize` + artifact upload) — seconds in practice.
+    # Capped because `deploy` blocks on this job (needs: render); a wedged runner (e.g. a stuck upload)
+    # must fail fast rather than hold deploy for the 6-hour default.
+    timeout-minutes: 10
+    # Same image coordinates the deploy job reconstructs, needed by inject-settings.sh to pin the
+    # Deployment/migrate images to THIS build's immutable digests before kustomize renders.
+    env:
+      IMAGE_URI:      ${{ needs.build-push.outputs.image_uri }}
+      WEB_DIGEST:     ${{ needs.build-push.outputs.web_digest }}
+      MIGRATE_DIGEST: ${{ needs.build-push.outputs.migrate_digest }}
+      MIGRATE_IMAGE:  ${{ needs.build-push.outputs.migrate_image }}@${{ needs.build-push.outputs.migrate_digest }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Inject per-environment values into the overlay's settings.yaml (Kustomize replacements fan
+      # them out into the SA annotation, HTTPRoute host, Gateway cert-map/static-IP, NEXTAUTH_URL,
+      # and the image pins). Same env contract as before — see the deploy job's former inline step.
+      - name: Inject environment values
+        env:
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
+          AUTH_GITHUB_ID: ${{ vars.AUTH_GITHUB_ID }}
+          AUTH_GOOGLE_ID: ${{ vars.AUTH_GOOGLE_ID }}
+          STRIPE_PUBLISHABLE_KEY: ${{ vars.STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_PRICE_ID_MONTHLY: ${{ vars.STRIPE_PRICE_ID_MONTHLY }}
+          STRIPE_PRICE_ID_YEARLY: ${{ vars.STRIPE_PRICE_ID_YEARLY }}
+          ARMOR_ENABLED: ${{ vars.ARMOR_ENABLED }}
+        run: infra/ci/inject-settings.sh
+
+      # Render the overlay ONCE to /tmp/rendered.yaml (client-side `kubectl kustomize` + the empty-
+      # securityPolicy strip). apply-infra.sh and rollout-web.sh in `deploy` both consume ONLY this
+      # file, so shipping it as the artifact is sufficient — settings.yaml need not travel.
+      - name: Render manifests
+        run: infra/ci/render-manifests.sh
+
+      # Hand the rendered manifest to the cluster-gated `deploy` job (a fresh runner with no shared
+      # filesystem). deploy downloads it back to /tmp/rendered.yaml, the path its scripts expect.
+      - name: Upload rendered manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rendered-manifest
+          path: /tmp/rendered.yaml
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---- Deploy to GKE (cluster-gated; consumes build-push's digests + render's manifest) ------
   # Split from build-push so the build above can overlap infra provisioning. This job keeps
-  # the original preflight/suspended gate: it does the cluster-side work (get-creds → inject
-  # settings → ESO/Reloader → apply-infra → migrate → rollout → prune → scan), all of which
-  # need a live cluster + synced secrets (which in turn need Cloud SQL). Runs on a FRESH
-  # runner, so it re-checks-out, re-auths to GCP, and reconstructs the image env vars from
-  # build-push's job outputs (build-push wrote them to $GITHUB_ENV, which is same-job only).
+  # the original preflight/suspended gate: it does the ONLY-cluster-side work (get-creds →
+  # ESO/Reloader → apply-infra → migrate → rollout → prune → scan), all of which need a live
+  # cluster + synced secrets (which in turn need Cloud SQL). The cluster-INDEPENDENT inject +
+  # render moved to the `render` job (overlaps the apply); this job downloads render's artifact
+  # instead. Runs on a FRESH runner, so it re-checks-out, re-auths to GCP, and reconstructs the
+  # image env vars from build-push's job outputs (build-push wrote them to $GITHUB_ENV, same-job only).
   deploy:
-    needs: [build-push, preflight] # digests from build-push + the suspended check
+    needs: [build-push, render, preflight] # digests from build-push + rendered manifest + suspended check
     # Two guards. (1) main-only — same WIF ref pin as build-push. (2) Skip entirely when
     # preflight found the environment suspended — no deploy against a missing cluster (the
     # job shows as skipped, with preflight's warning). build-push may still have run; its
@@ -425,40 +487,15 @@ jobs:
       - name: Verify control plane reachable (DNS endpoint)
         run: infra/ci/verify-control-plane.sh
 
-      # Inject the real per-environment values into the overlay's single
-      # source of truth (settings.yaml). Kustomize `replacements` fan these
-      # out into the Workload-Identity SA annotation, the HTTPRoute host, the Gateway
-      # cert-map annotation + static-IP address, and NEXTAUTH_URL. The image is separate because its
-      # digest is build output, not environment config: CI pins `images` directly to
-      # THIS build's repo + immutable registry digest (not :latest),
-      # so the rendered Deployment is reproducible and the migrate→rollout gate
-      # below is real. `yq` is preinstalled on ubuntu-latest runners.
-      - name: Inject environment values
-        env:
-          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
-          EMAIL_FROM: ${{ vars.EMAIL_FROM }}
-          # Non-secret app config promoted out of Secret Manager. OPTIONAL GitHub Actions
-          # repo vars: if unset they fall back to the committed settings.yaml value (see the
-          # `env(X) // .data.field` yq below), so a fresh checkout deploys correctly without
-          # them. Set them only to override the committed default per-environment.
-          AUTH_GITHUB_ID: ${{ vars.AUTH_GITHUB_ID }}
-          AUTH_GOOGLE_ID: ${{ vars.AUTH_GOOGLE_ID }}
-          STRIPE_PUBLISHABLE_KEY: ${{ vars.STRIPE_PUBLISHABLE_KEY }}
-          STRIPE_PRICE_ID_MONTHLY: ${{ vars.STRIPE_PRICE_ID_MONTHLY }}
-          STRIPE_PRICE_ID_YEARLY: ${{ vars.STRIPE_PRICE_ID_YEARLY }}
-          # "true" attaches the Cloud Armor policy; unset (dev $0 default) → no edge WAF.
-          # run.sh set-repo-secrets sets/clears this from the Terraform armor_enabled state.
-          ARMOR_ENABLED: ${{ vars.ARMOR_ENABLED }}
-        run: infra/ci/inject-settings.sh
-
-      # Render the overlay ONCE to /tmp/rendered.yaml; the infra apply and the
-      # post-migration rollout below both consume that same render (real migrate→rollout
-      # gate, not the old :latest race). See infra/ci/render-manifests.sh. This is
-      # cluster-independent CPU-only work (inject-settings mutated settings.yaml above,
-      # kustomize renders it), so it runs BEFORE the operator install — off the critical
-      # path — instead of being wedged between two cluster operations.
-      - name: Render manifests
-        run: infra/ci/render-manifests.sh
+      # Pull the manifest rendered by the parallel `render` job (which overlapped the apply) down to
+      # /tmp/rendered.yaml — the exact path apply-infra.sh and rollout-web.sh read. inject-settings +
+      # render-manifests no longer run here: they are cluster-independent CPU work and were moved to
+      # `render` so they overlap the apply instead of serializing behind get-credentials/reachability.
+      - name: Download rendered manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rendered-manifest
+          path: /tmp
 
       # The overlay ships an ESO SecretStore + ExternalSecret (Secret Manager →
       # devstash-secrets) and web Deployment secret-reload annotations, so BOTH External
@@ -479,34 +516,18 @@ jobs:
       - name: Apply infra (everything except the web Deployment)
         run: infra/ci/apply-infra.sh
 
-      # Gate on devstash-app-config having an ENABLED version BEFORE the ESO wait, to close the
-      # version-bump race: the write-only Terraform version resource disables the old version and
-      # adds the new one as two separate operations, leaving a brief gap with zero enabled
-      # versions. A deploy landing in that gap used to read an empty blob and finish green with the
-      # app broken. run.sh now applies this secret version as part of its identity pre-apply
-      # (before dispatching this workflow) on a first-ever/post-down up, closing the race for that
-      # case; a resume's secret content depends on Cloud SQL/Memorystore outputs, so it can only be
-      # applied as part of the full apply and can still race this gate. 50×6s=5min (vs. the default
-      # 20×6s=2min) gives that full apply (~11 min worst case, but this step runs well after
-      # preflight/build-push/apply-infra already consumed several minutes of it) more realistic
-      # headroom, within the job's 45-min budget. Fails loudly if no enabled version appears within
-      # that window (a real fault, not a parked env). See infra/ci/check-secret-version.sh.
-      - name: Ensure app-config has an enabled version (gate)
-        env:
-          SECRET_VERSION_WAIT_ATTEMPTS: "50"
-          SECRET_VERSION_WAIT_GAP: "6"
-        run: infra/ci/check-secret-version.sh
-
       - name: Wait for secrets to sync (ESO)
-        # devstash-secrets is materialized by External Secrets Operator from
-        # Secret Manager. Both the migrate Job and the web pods need it, so block
-        # until the ExternalSecret reports Ready before running anything against
-        # the database. The source blob (devstash-app-config) always has an enabled
-        # version (the preceding gate guarantees it), but its infra keys
-        # (redis-*/database-*) are omitted while the env is suspended / mid-resume —
-        # ESO can't sync then. When the script finds those properties missing it
-        # warns, sets synced=false, and finishes without failing; a blob with every
-        # property that still won't sync — or an empty blob — fails loudly. The
+        # devstash-secrets is materialized by External Secrets Operator from Secret Manager. Both the
+        # migrate Job and the web pods need it, so block until the ExternalSecret reports Ready before
+        # running anything against the database. This ONE event-based wait is the sole secret-readiness
+        # join (the separate enabled-version gate was removed 2026-07-07): the ExternalSecret's
+        # Ready=True condition becomes true exactly when ESO has read an ENABLED devstash-app-config
+        # version and synced it, so Ready already implies an enabled version exists. The source blob's
+        # infra keys (redis-*/database-*) are omitted while the env is suspended / mid-resume — ESO
+        # can't sync then. When the script finds those properties missing it warns, sets synced=false,
+        # and finishes without failing; a blob with every property that still won't sync — or an empty
+        # blob, or no enabled version at all — fails loudly. The wait timeout (900s, in the script) is
+        # sized to outlast a resume apply's ~13-min secret bump so this join never races-and-loses. The
         # migrate + rollout steps below gate on synced=true.
         id: eso-sync
         run: infra/ci/wait-secrets-sync.sh
