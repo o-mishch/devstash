@@ -72,7 +72,29 @@ fi
 # reading ESO's own sync-failure Events instead of the Secret Manager payload (see header).
 echo "ExternalSecret '$ES' did not become Ready within the timeout — inspecting its sync-failure events…"
 
-events="$(kubectl -n "$NS" get events --field-selector "involvedObject.name=$ES,reason=UpdateFailed" -o jsonpath='{.items[*].message}' 2>/dev/null || true)"
+# --sort-by=.lastTimestamp + take only the LAST item: repeated identical failures aggregate onto
+# one Event object (count/lastTimestamp bump in place), but a DIFFERENT failure reason creates a
+# separate object that coexists until its TTL expires. Without sorting + taking only the newest,
+# a stale benign Event from an earlier resolved period could still satisfy the "does not exist in
+# secret" grep below even while a concurrent, unrelated real fault is the CURRENT failure — exactly
+# the kind of stale-signal-masks-a-live-outage bug this script exists to prevent (see the
+# disable-old-then-add-new race in check-secret-version.sh's header).
+#
+# stderr is captured (not discarded) and rc checked explicitly: a kubectl failure (RBAC denial, API
+# server unreachable, transient network error) must not be folded into "no event found" — both
+# currently fail the build either way, but conflating them would hide the real cause from whoever
+# is debugging, and would become a live bug the moment the no-event branch is ever loosened.
+errfile="$(mktemp)"
+rc=0
+events="$(kubectl -n "$NS" get events --field-selector "involvedObject.name=$ES,reason=UpdateFailed" --sort-by=.lastTimestamp -o jsonpath='{.items[-1:].message}' 2>"$errfile")" || rc=$?
+kubectl_err="$(cat "$errfile")"
+rm -f "$errfile"
+
+if [ "$rc" -ne 0 ]; then
+  echo "'$ES': kubectl get events failed (rc=$rc) — this is a real error, not a suspended/mid-resume env. Failing the step." >&2
+  printf '%s\n' "$kubectl_err" >&2
+  exit 1
+fi
 
 if [ -z "$events" ]; then
   echo "'$ES' has no UpdateFailed events — this is a real error, not a suspended/mid-resume env. Failing the step." >&2
@@ -88,9 +110,12 @@ fi
 
 # ESO latched onto a DISABLED version from a reconcile that ran before check-secret-version.sh's
 # gate passed, and the force-sync annotation above (sent once, at the top of this script) didn't
-# land in time to flip it within the 180s wait. Retry the nudge + wait ONCE — this is the same
-# transient version-bump gap the gate exists for, just observed from ESO's side instead of Secret
-# Manager's. A second miss after an explicit re-nudge is no longer transient; fail loudly.
+# land in time to flip it within the 180s wait. Retry the nudge + wait ONCE — a bounded best-effort
+# second chance, not a proven fix: it only helps if Secret Manager's enabled-version state changed
+# in the interim (the gate's pass was itself racing a slower version-bump propagation to ESO); if
+# the underlying cause is IAM/Workload Identity being fully broken, this costs 60s of CI time before
+# an identical failure. Cannot turn a real fault into a false pass either way — it still requires
+# `kubectl wait --for=condition=Ready` to observe Ready. A second miss after the re-nudge fails loudly.
 if printf '%s' "$events" | grep -q 'is in DISABLED state'; then
   echo "'$ES' is stuck on a DISABLED secret version — re-nudging ESO and retrying once…"
   kubectl -n "$NS" annotate "externalsecret/$ES" "force-sync=$(date +%s)" --overwrite >/dev/null 2>&1 || true

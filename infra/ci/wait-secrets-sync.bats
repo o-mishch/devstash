@@ -19,15 +19,27 @@ setup() {
   : > "$GITHUB_OUTPUT"
 }
 
-# _stub_kubectl <events-message>: `wait` always fails (timeout path). `get events` echoes
-# <events-message> as the sole UpdateFailed event's .message (empty means no matching event).
-# `describe` is a no-op fallback.
+# _stub_kubectl <events-message> [events-rc]: `wait` always fails (timeout path). `get events`
+# is spied (so tests can assert its exact argv, e.g. the --field-selector/--sort-by/-o flags).
+# On success (default events-rc=0) <events-message> is the sole UpdateFailed event's .message on
+# stdout (empty means no matching event). On a non-zero events-rc, <events-message> instead goes
+# to STDERR — matching real kubectl, which writes its error text there — simulating a genuine
+# kubectl failure (RBAC denial, API server unreachable). `describe` is a no-op fallback.
 _stub_kubectl() {
-  local msg="$1"
-  fake_cmd kubectl "
+  local msg="$1" events_rc="${2:-0}"
+  spy_cmd kubectl "
     if [[ \"\$*\" == *' wait '* ]]; then exit 1; fi
-    if [[ \"\$*\" == *'get events'* ]]; then printf '%s' '${msg}'; exit 0; fi
+    if [[ \"\$*\" == *'get events'* ]]; then
+      if [[ ${events_rc} -ne 0 ]]; then printf '%s' '${msg}' >&2; else printf '%s' '${msg}'; fi
+      exit ${events_rc}
+    fi
     exit 0"
+}
+
+@test "wait-secrets-sync: queries UpdateFailed events for the right object, sorted newest-first" {
+  _stub_kubectl ""
+  run bash "$SCRIPT"
+  assert_spy_called_with kubectl "get" "events" "involvedObject.name=devstash-secrets,reason=UpdateFailed" "--sort-by=.lastTimestamp" "-o" "jsonpath={.items[-1:].message}"
 }
 
 @test "wait-secrets-sync: no UpdateFailed event → fails loudly, synced=false" {
@@ -37,6 +49,14 @@ _stub_kubectl() {
   assert_output --partial "real error"
   run cat "$GITHUB_OUTPUT"
   refute_output --partial "synced=true"
+}
+
+@test "wait-secrets-sync: kubectl get events itself fails → fails loudly with the kubectl error surfaced" {
+  _stub_kubectl "connection refused" 1
+  run bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "kubectl get events failed"
+  assert_output --partial "connection refused"
 }
 
 @test "wait-secrets-sync: UpdateFailed event names a missing infra property → warns, exits 0, synced=false" {
