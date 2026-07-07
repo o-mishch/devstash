@@ -389,8 +389,9 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
-      # Trivy (end-of-job) pulls the images by digest from Artifact Registry, so this runner
-      # must be authenticated to it too (build-push's docker-configure did not carry over).
+      # prune-registry.sh (end-of-job) deletes images via gcloud/docker manifest inspect
+      # against Artifact Registry, so this runner must be authenticated to it too
+      # (build-push's docker-configure did not carry over to this fresh runner).
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
@@ -548,10 +549,49 @@ jobs:
         # build-push's job outputs) — the build-push STEP no longer runs in this job.
         run: infra/ci/prune-registry.sh
 
-      # Vulnerability scans (warn-only). Moved to the end of the deployment workflow
-      # so that the web app rollout begins and completes earlier, reducing time-to-live.
-      # Docker is authenticated to Artifact Registry; Trivy pulls the images by digest.
+  # ---- Vulnerability scan (warn-only, non-blocking) ---------------------------
+  # Runs in PARALLEL with preflight/deploy — needs only build-push's pushed digests, not a
+  # live cluster, so there is no reason to sit behind the rollout. This also means a scan
+  # never blocks or delays deploy, and deploy's success/failure never depends on Trivy.
+  #
+  # continue-on-error at both the STEP and JOB level: Trivy's `exit-code: '0'` only covers
+  # vulnerabilities it actually finds — a FATAL scan-setup error (transient Artifact Registry
+  # auth/read blip, e.g. "Repository ... not found" seen on run 28830926800) still exits
+  # non-zero and would otherwise fail the job regardless of exit-code. This scan is
+  # informational; it must never fail the build.
+  vulnerability-scan:
+    needs: [build-push]
+    if: github.ref == 'refs/heads/main' && needs.build-push.result == 'success'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      IMAGE_URI:      ${{ needs.build-push.outputs.image_uri }}
+      WEB_DIGEST:     ${{ needs.build-push.outputs.web_digest }}
+      MIGRATE_IMAGE:  ${{ needs.build-push.outputs.migrate_image }}@${{ needs.build-push.outputs.migrate_digest }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: request OIDC token
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # Trivy pulls the images by digest from Artifact Registry.
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
       - name: Scan web image for vulnerabilities
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_URI }}@${{ env.WEB_DIGEST }}
@@ -564,6 +604,7 @@ jobs:
           trivyignores: .github/.trivyignore.yaml
 
       - name: Scan migrate image for vulnerabilities
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.MIGRATE_IMAGE }}
