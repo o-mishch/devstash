@@ -1,12 +1,14 @@
 #!/usr/bin/env bats
 # Tests for wait-secrets-sync.sh's post-timeout classification — the branch that decides whether a
 # not-Ready ExternalSecret is a benign suspended/parked env (warn, exit 0, synced=false) or a real
-# fault (fail loudly, exit 1). The regression under test: an EMPTY source blob (no ENABLED version)
-# must now FAIL the build instead of silently finishing green (which previously masked an outage).
+# fault (fail loudly, exit 1). The regression under test: reaching this branch must classify by
+# ESO's own `reason=UpdateFailed` Kubernetes Event, NOT by reading devstash-app-config's payload
+# directly — the deployer SA that runs this script only holds secretmanager.viewer (list/metadata),
+# not secretAccessor, so a payload read always comes back empty regardless of the secret's real state.
 #
-# We drive the whole script with `run bash <script>` against stubbed kubectl + gcloud. kubectl
-# `wait` is stubbed to FAIL (timeout) so every test exercises the classification tail; the `describe`
-# fallback is a no-op. gcloud serves the blob read (ds_access_secret_blob → versions list + access).
+# We drive the whole script with `run bash <script>` against a stubbed kubectl. `wait` always fails
+# (drives every test into the classification tail); `get events` serves the UpdateFailed event
+# message under test; `describe` is a no-op fallback for the no-event branch.
 
 setup() {
   load "${BATS_TEST_DIRNAME}/../lib/test_helper"
@@ -17,37 +19,28 @@ setup() {
   : > "$GITHUB_OUTPUT"
 }
 
-# _stub_eso <blob-json>: kubectl wait always fails (drives the timeout path); gcloud serves
-# <blob-json> as the app-config payload. An EMPTY <blob-json> makes `versions list` echo nothing,
-# so ds_newest_enabled_secret_version resolves empty and ds_access_secret_blob returns "" — the
-# no-enabled-version state. A non-empty blob makes list echo a version name and access echo the blob.
-_stub_eso() {
-  local blob="$1"
+# _stub_kubectl <events-message>: `wait` always fails (timeout path). `get events` echoes
+# <events-message> as the sole UpdateFailed event's .message (empty means no matching event).
+# `describe` is a no-op fallback.
+_stub_kubectl() {
+  local msg="$1"
   fake_cmd kubectl "
     if [[ \"\$*\" == *' wait '* ]]; then exit 1; fi
-    exit 0"
-  fake_cmd gcloud "
-    if [[ \"\$1\" == secrets && \"\$2\" == versions && \"\$3\" == list ]]; then printf '%s' '${blob:+projects/p/secrets/devstash-app-config/versions/9}'; exit 0; fi
-    if [[ \"\$1\" == secrets && \"\$2\" == versions && \"\$3\" == access ]]; then cat <<'JSON'
-${blob}
-JSON
-      exit 0
-    fi
+    if [[ \"\$*\" == *'get events'* ]]; then printf '%s' '${msg}'; exit 0; fi
     exit 0"
 }
 
-@test "wait-secrets-sync: empty blob (no enabled version) → fails loudly, synced=false" {
-  _stub_eso ""
+@test "wait-secrets-sync: no UpdateFailed event → fails loudly, synced=false" {
+  _stub_kubectl ""
   run bash "$SCRIPT"
   assert_failure
-  assert_output --partial "no accessible ENABLED version"
+  assert_output --partial "real error"
   run cat "$GITHUB_OUTPUT"
-  assert_output --partial "synced=false"
+  refute_output --partial "synced=true"
 }
 
-@test "wait-secrets-sync: blob missing infra keys (suspended env) → warns, exits 0, synced=false" {
-  # A populated blob with third-party keys but WITHOUT the redis-*/database-* infra props.
-  _stub_eso '{"auth-secret":"x","s3-secret":"y"}'
+@test "wait-secrets-sync: UpdateFailed event names a missing infra property → warns, exits 0, synced=false" {
+  _stub_kubectl 'key redis-url does not exist in secret devstash-app-config'
   run bash "$SCRIPT"
   assert_success
   assert_output --partial "::warning::"
@@ -55,10 +48,29 @@ JSON
   assert_output --partial "synced=false"
 }
 
-@test "wait-secrets-sync: fully-populated blob that still won't sync → fails loudly (real error)" {
-  # Every INFRA_KEY present, yet the ExternalSecret never went Ready → a genuine ESO fault.
-  _stub_eso '{"redis-url":"r","redis-ca-cert":"c","database-url":"d","direct-url":"u","database-ca-cert":"a"}'
+@test "wait-secrets-sync: UpdateFailed event for another reason → fails loudly (real error)" {
+  _stub_kubectl 'unable to access Secret from SecretManager Client: rpc error: code = PermissionDenied'
   run bash "$SCRIPT"
   assert_failure
   assert_output --partial "real error"
+}
+
+@test "wait-secrets-sync: stuck on DISABLED version → re-nudges and succeeds on retry" {
+  fake_cmd kubectl "
+    if [[ \"\$*\" == *' wait '* && \"\$*\" == *'--timeout=60s'* ]]; then exit 0; fi
+    if [[ \"\$*\" == *' wait '* ]]; then exit 1; fi
+    if [[ \"\$*\" == *'get events'* ]]; then printf '%s' 'Secret Version [projects/1/secrets/devstash-app-config/versions/2] is in DISABLED state'; exit 0; fi
+    exit 0"
+  run bash "$SCRIPT"
+  assert_success
+  assert_output --partial "Ready after the retry"
+  run cat "$GITHUB_OUTPUT"
+  assert_output --partial "synced=true"
+}
+
+@test "wait-secrets-sync: stuck on DISABLED version → still stuck after retry, fails loudly" {
+  _stub_kubectl 'Secret Version [projects/1/secrets/devstash-app-config/versions/2] is in DISABLED state'
+  run bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "still stuck on a DISABLED version"
 }
