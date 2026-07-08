@@ -219,3 +219,80 @@ _stub_gke_state() {
   # Total is unset too — a stray post-span stage falls back to "?" rather than leaking the old 6.
   run stage "orphan"; assert_output --partial "[stage 1/?] orphan"
 }
+
+# --- is_network_error: SIGNATURE-gated transient-transport classifier ---------------------------
+# Locks the exact strings a broken uplink emits (observed live during a `suspend` mid-destroy) so
+# tofu_locked retries ONLY these, and never a real provider/quota/permission error.
+
+@test "is_network_error: 'write: broken pipe' → matches (0)" {
+  run is_network_error 'Error waiting for deleting GKE cluster: write tcp ...->...:443: write: broken pipe'
+  assert_success
+}
+
+@test "is_network_error: 'http2: client connection lost' → matches (0)" {
+  run is_network_error 'Failed to upload state ...: Post ...: http2: client connection lost'
+  assert_success
+}
+
+@test "is_network_error: 'Failed to upload state' → matches (0) — un-persisted state is retryable" {
+  run is_network_error 'Error: Failed to upload state to gs://bucket/gke/dev/default.tfstate'
+  assert_success
+}
+
+@test "is_network_error: a real provider error (quota/permission) does NOT match (1) — fails loudly first try" {
+  run is_network_error 'Error: googleapi: Error 403: Permission denied on resource, forbidden'
+  assert_failure
+}
+
+@test "is_network_error: a resource-level 'Error waiting ... timeout' is NOT a transport drop (1)" {
+  # Anchored to i/o timeout / Client.Timeout, not a bare 'timeout', so a slow-op failure that is a
+  # genuine provider timeout still fails loudly rather than being retried as a network blip.
+  run is_network_error 'Error: Error waiting for Creating Instance: timeout while waiting for state to become RUNNABLE'
+  assert_failure
+}
+
+# --- tofu_locked: bounded network retry ---------------------------------------------------------
+# A fake invoker whose success/failure is driven by a per-test counter file. On a "fail" turn it
+# prints a network signature to stdout (captured by _tofu_attempt into _TOFU_ATTEMPT_OUTPUT) and
+# returns non-zero; after <fail_count> turns it prints ok and returns 0. _recover_state_lock is a
+# no-op here — the network branch must NOT call it (nothing to recover from a transport blip).
+_net_invoker_setup() {
+  COUNTER="$BATS_TEST_TMPDIR/net_calls"; : > "$COUNTER"
+  FAIL_TURNS="$1"
+  _recover_state_lock() { echo "RECOVER-CALLED" >> "$BATS_TEST_TMPDIR/recover"; return 1; }
+  fake_invoker() {
+    local n; n="$(wc -l < "$COUNTER" | tr -d ' ')"; echo x >> "$COUNTER"
+    if (( n < FAIL_TURNS )); then
+      echo 'Error: Failed to upload state ...: http2: client connection lost'; return 1
+    fi
+    echo 'Apply complete!'; return 0
+  }
+}
+
+@test "tofu_locked: retries a transient network drop and succeeds on the next attempt" {
+  _net_invoker_setup 1
+  TOFU_NETWORK_RETRY_GAP=0 TOFU_NETWORK_RETRIES=3 run tofu_locked _recover_state_lock -- fake_invoker destroy -auto-approve
+  assert_success
+  assert_output --partial 'transient network drop'
+  assert_output --partial 'succeeded after network retry 1/3'
+  # 2 invocations total (1 failed + 1 success); recover_fn never touched.
+  assert_equal "$(wc -l < "$COUNTER" | tr -d ' ')" 2
+  [ ! -f "$BATS_TEST_TMPDIR/recover" ]
+}
+
+@test "tofu_locked: gives up after TOFU_NETWORK_RETRIES and re-propagates the failure (bounded)" {
+  _net_invoker_setup 99   # never succeeds
+  TOFU_NETWORK_RETRY_GAP=0 TOFU_NETWORK_RETRIES=2 run tofu_locked _recover_state_lock -- fake_invoker destroy -auto-approve
+  assert_failure
+  # 1 initial + 2 retries = 3 invocations, then it stops (does not spin forever).
+  assert_equal "$(wc -l < "$COUNTER" | tr -d ' ')" 3
+}
+
+@test "tofu_locked: a non-network, non-lock failure is NOT retried (fails loudly on the first attempt)" {
+  COUNTER="$BATS_TEST_TMPDIR/net_calls"; : > "$COUNTER"
+  _recover_state_lock() { return 1; }
+  fake_invoker() { echo x >> "$COUNTER"; echo 'Error: googleapi: Error 403: Permission denied'; return 1; }
+  TOFU_NETWORK_RETRY_GAP=0 TOFU_NETWORK_RETRIES=3 run tofu_locked _recover_state_lock -- fake_invoker apply
+  assert_failure
+  assert_equal "$(wc -l < "$COUNTER" | tr -d ' ')" 1
+}

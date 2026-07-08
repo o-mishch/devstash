@@ -103,6 +103,22 @@ confirm() {
 # the single source of the trigger string so the wrapper and any caller match it identically.
 is_lock_error() { printf '%s' "$1" | grep -q 'Error acquiring the state lock'; }
 
+# is_network_error <captured-tofu-output>: 0 iff the failure is a TRANSPORT drop between this
+# machine and Google's APIs, NOT a provider/logic error. Observed live during a `suspend` when the
+# local uplink blipped mid-destroy: `tofu` had already issued the deletes (Cloud SQL destroyed
+# fine, GKE/valkey deletes kept running server-side) but its long-poll of the delete operations and
+# — critically — its state upload both died with `write: broken pipe` / `http2: client connection
+# lost`, so it exited non-zero with drifted, un-uploaded state. Every one of these is safe to retry:
+# the GCP operations are idempotent (a re-refresh sees the now-gone resources) and the state re-
+# uploads on the next attempt. Matched by SIGNATURE only — the transport strings Go's net/http2 and
+# the GCS uploader emit — never a blanket "any error retries" (mirrors the -refresh=false fallback
+# rule: heal the one known signature, never widen it, so a real provider/quota/permission error
+# still fails loudly on the first attempt). Anchored to the strings, not a bare "timeout", so a
+# resource-level "Error waiting for ... timeout" (a real slow-op failure) does NOT match.
+is_network_error() {
+  printf '%s' "$1" | grep -qE 'broken pipe|http2: client connection lost|connection reset by peer|Client\.Timeout|i/o timeout|unexpected EOF|TLS handshake timeout|Failed to (save|upload) state'
+}
+
 # read_tflock <gs://bucket/prefix/> <workspace>: echo the raw .tflock JSON, or empty if the
 # object is gone (404 → lock already released, the common orphaned-then-reaped case). Best-effort:
 # any read error yields empty so the caller treats it as "no lock to inspect". <prefix/> must end
@@ -190,14 +206,30 @@ _tofu_attempt() {
   return "$rc"
 }
 
+# How many times tofu_locked re-attempts a run that died on a TRANSIENT NETWORK signature (see
+# is_network_error), and how long it waits between attempts. Overridable via env for CI/tests.
+# Bounded so a genuinely-down uplink still terminates (it does not spin forever): after
+# TOFU_NETWORK_RETRIES failed retries the last real error is re-propagated and the op fails loudly.
+: "${TOFU_NETWORK_RETRIES:=3}"
+: "${TOFU_NETWORK_RETRY_GAP:=15}"
+
 # tofu_locked <recover-fn> -- <tofu-invoker> <tofu-args…>: run a lock-contending tofu op
-# (plan/apply/destroy) and, if it fails specifically because it could not acquire the state lock,
-# call <recover-fn> (the caller's interactive/guided recovery, e.g. run.sh's _recover_state_lock)
-# and retry the op EXACTLY ONCE. Any non-lock failure — or a second lock failure after a recovery
-# attempt — is re-propagated unchanged so `set -e`/`die` semantics are identical to a bare
-# <tofu-invoker> call. Generic over the invoker (not hardcoded to `tofu_`) and the recovery
-# callback (not hardcoded to GCP's `_recover_state_lock`) so this stays cloud-agnostic here in
-# common.sh alongside the other lock primitives, while run.sh/suspend.sh supply their own.
+# (plan/apply/destroy) with two targeted, SIGNATURE-GATED recoveries; any other failure is
+# re-propagated unchanged so `set -e`/`die` semantics match a bare <tofu-invoker> call.
+#
+#   1. State-lock failure  → call <recover-fn> (the caller's guided recovery, e.g. run.sh's
+#      _recover_state_lock) and retry the op EXACTLY ONCE.
+#   2. Transient network drop (is_network_error — broken pipe / http2 connection lost / failed
+#      state upload) → retry up to TOFU_NETWORK_RETRIES times with a TOFU_NETWORK_RETRY_GAP backoff,
+#      NO recover-fn (nothing to recover — the transport just blipped). This is the `suspend`/`down`
+#      case where tofu had already issued idempotent deletes but its long-poll + state upload died
+#      with the uplink; a re-run re-refreshes the now-gone resources and re-uploads state. Bounded
+#      so a persistently-down network still terminates with the real error, and gated to the network
+#      signature so a real provider/quota/permission error still fails on the FIRST attempt.
+#
+# Generic over the invoker (not hardcoded to `tofu_`) and the recovery callback (not hardcoded to
+# GCP's `_recover_state_lock`) so this stays cloud-agnostic here in common.sh alongside the other
+# lock primitives, while run.sh/suspend.sh supply their own.
 tofu_locked() {
   local recover_fn="$1"; shift
   [[ "${1:-}" == "--" ]] && shift
@@ -217,6 +249,22 @@ tofu_locked() {
     fi
     return "$rc"
   fi
+  # Transient network drop: retry the SAME op a bounded number of times. Each retry re-runs tofu
+  # from scratch, so it re-refreshes (reconciling any resource GCP finished deleting while we were
+  # disconnected) and re-attempts the state upload. Only enters this branch on the network
+  # signature — every other rc is returned below untouched, on the first attempt.
+  local net_try=0
+  while is_network_error "$_TOFU_ATTEMPT_OUTPUT" && (( net_try < TOFU_NETWORK_RETRIES )); do
+    net_try=$((net_try + 1))
+    warn "OpenTofu hit a transient network drop (broken pipe / connection lost / state-upload failure) — the GCP operations are idempotent and state re-uploads on retry. Waiting ${TOFU_NETWORK_RETRY_GAP}s, then retry ${net_try}/${TOFU_NETWORK_RETRIES}: ${invoker} ${*}"
+    sleep "$TOFU_NETWORK_RETRY_GAP"
+    rc=0
+    _tofu_attempt "$invoker" "$@" || rc=$?
+    if (( rc == 0 )); then
+      log "OpenTofu succeeded after network retry ${net_try}/${TOFU_NETWORK_RETRIES}."
+      return 0
+    fi
+  done
   return "$rc"
 }
 
