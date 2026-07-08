@@ -63,22 +63,45 @@ NS="$DEVSTASH_NS"
 ES=devstash-secrets
 SM_SECRET=devstash-app-config
 
-# Nudge ESO to reconcile NOW instead of waiting out its refreshInterval (1h). Even once Secret
-# Manager HAS an enabled version, ESO's controller may have latched onto a stale/disabled version
-# from an earlier reconcile and be sitting on its poll interval before trying again. Annotating the
-# ExternalSecret changes its metadata, which the controller watches and reconciles on
-# immediately (documented force-sync pattern: https://external-secrets.io/latest/introduction/faq/).
-# Best-effort: on a first-ever bring-up the resource may not exist yet, so a failure here is fine —
-# the kubectl wait below still runs and reports the real state.
-kubectl -n "$NS" annotate "externalsecret/$ES" "force-sync=$(date +%s)" --overwrite >/dev/null 2>&1 || true
+# Overall budget (15 min) the secret sync is allowed — must outlast the worst-case producer, a
+# resume `tofu apply` whose Cloud-SQL/Memorystore-derived app-config blob lands its enabled version
+# ~13 min in (observed 2026-07-07). NUDGE_INTERVAL is how long each inner `kubectl wait` blocks
+# before we re-nudge. Both env-overridable for tests. This is the ONLY wait for the secret (the
+# separate 5-min enabled-version gate was removed 2026-07-07), so the budget must cover the slow apply.
+: "${SECRET_SYNC_TIMEOUT:=900}"
+: "${SECRET_SYNC_NUDGE_INTERVAL:=30}"
 
-# --timeout=900s (15 min): this is now the ONLY wait for the secret, so it must outlast the
-# worst-case producer — a resume `tofu apply` whose Cloud-SQL/Memorystore-derived app-config blob
-# lands its enabled version ~13 min in (observed 2026-07-07). The old 180s was safe only because a
-# separate 5-min enabled-version gate ran first; with that gate removed, 180s would time out before
-# a legitimately-slow apply enables the version. This is a condition-wait on the real Ready event
-# (returns the instant ESO syncs), not a fixed sleep — the ceiling only bounds a genuinely stuck sync.
-if kubectl -n "$NS" wait --for=condition=Ready "externalsecret/$ES" --timeout=900s; then
+# RE-NUDGE ON EVERY ITERATION, not once. ESO's refreshInterval is 1h, so once its controller
+# reconciles and reads a stale/disabled/absent version (the write-only Terraform version bump
+# disables the old version then adds the new one as two separate Secret Manager ops, so a reconcile
+# that lands in that gap sees a DISABLED-or-absent version), it FAILS and then sits IDLE for up to an
+# hour before retrying on its own. A single force-sync annotation at the top therefore only helps if
+# the enabled version already exists at that instant; if it lands seconds later (the common resume
+# race), that one nudge is wasted and a plain `kubectl wait` blocks the full budget against an idle
+# controller — self-healing only after the whole timeout expires (or, previously, needing a manual
+# `kubectl annotate` to unstick it). Instead, annotate → wait a short interval → if not Ready, re-
+# annotate and repeat: each annotation is a metadata write the controller watches and reconciles on
+# immediately (documented force-sync pattern: https://external-secrets.io/latest/introduction/faq/),
+# so ESO re-reads Secret Manager every NUDGE_INTERVAL and picks up the enabled version within one
+# interval of it appearing — no manual intervention, no burning the full budget on an idle latch.
+# Still a condition-wait on the real Ready event (returns the instant ESO syncs); the loop only
+# bounds how long we keep re-nudging before classifying the failure below.
+echo "Waiting up to ${SECRET_SYNC_TIMEOUT}s for '$ES' to sync, re-nudging ESO every ${SECRET_SYNC_NUDGE_INTERVAL}s (its 1h refreshInterval means it will not re-read a mid-bump version on its own)…"
+secret_sync_deadline=$(( $(date +%s) + SECRET_SYNC_TIMEOUT ))
+synced=false
+while :; do
+  # Best-effort annotate: on a first-ever bring-up the resource may not exist yet, so a failure here
+  # is fine — the wait below still runs and reports the real state.
+  kubectl -n "$NS" annotate "externalsecret/$ES" "force-sync=$(date +%s)" --overwrite >/dev/null 2>&1 || true
+  if kubectl -n "$NS" wait --for=condition=Ready "externalsecret/$ES" --timeout="${SECRET_SYNC_NUDGE_INTERVAL}s" >/dev/null 2>&1; then
+    synced=true
+    break
+  fi
+  # Stop once the overall budget is spent (a short final interval that would overrun is not started).
+  [ "$(date +%s)" -lt "$secret_sync_deadline" ] || break
+done
+
+if [ "$synced" = true ]; then
   echo "ExternalSecret '$ES' is Ready — secrets synced."
   echo "synced=true" >> "$GITHUB_OUTPUT"
   exit 0
@@ -126,23 +149,16 @@ if printf '%s' "$events" | grep -q 'does not exist in secret'; then
   exit 0
 fi
 
-# ESO latched onto a DISABLED version from a reconcile that ran before the apply enabled the new
-# version, and the force-sync annotation above (sent once, at the top of this script) didn't land in
-# time to flip it within the 900s wait. Retry the nudge + wait ONCE — a bounded best-effort second
-# chance, not a proven fix: it only helps if Secret Manager's enabled-version state changed in the
-# interim (the earlier miss was itself racing a slower version-bump propagation to ESO); if the
-# underlying cause is IAM/Workload Identity being fully broken, this costs 60s of CI time before an
-# identical failure. Cannot turn a real fault into a false pass either way — it still requires
-# `kubectl wait --for=condition=Ready` to observe Ready. A second miss after the re-nudge fails loudly.
+# A DISABLED-version failure that SURVIVED the re-nudge loop is now a real fault, not a transient
+# race. The loop above already re-annotated ESO every SECRET_SYNC_NUDGE_INTERVAL for the full budget,
+# so ESO re-read Secret Manager many times — the mid-bump gap (Terraform disables the old version
+# then adds the new one as two ops) heals within one interval of the enabled version appearing, and
+# the loop would have caught it. Reaching here means NO enabled version ever materialized within the
+# whole SECRET_SYNC_TIMEOUT (a stuck/failed apply that never enabled a new version, or one still
+# absent when the budget expired). Another single 60s nudge cannot fix that — surface it loudly so
+# the operator investigates the producing apply instead of the deploy silently greening or hanging.
 if printf '%s' "$events" | grep -q 'is in DISABLED state'; then
-  echo "'$ES' is stuck on a DISABLED secret version — re-nudging ESO and retrying once…"
-  kubectl -n "$NS" annotate "externalsecret/$ES" "force-sync=$(date +%s)" --overwrite >/dev/null 2>&1 || true
-  if kubectl -n "$NS" wait --for=condition=Ready "externalsecret/$ES" --timeout=60s; then
-    echo "ExternalSecret '$ES' is Ready after the retry — secrets synced."
-    echo "synced=true" >> "$GITHUB_OUTPUT"
-    exit 0
-  fi
-  echo "'$ES' is still stuck on a DISABLED version after a re-nudge — this is a real error. Failing the step." >&2
+  echo "'$ES' is stuck on a DISABLED secret version after re-nudging ESO for the full ${SECRET_SYNC_TIMEOUT}s — no ENABLED '$SM_SECRET' version materialized in time. This is a real error (the producing apply never enabled a new version), not a mid-resume race. Failing the step." >&2
   kubectl -n "$NS" describe "externalsecret/$ES" | sed -n '/Events:/,$p' >&2 || true
   exit 1
 fi

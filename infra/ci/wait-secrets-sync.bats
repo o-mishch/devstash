@@ -17,6 +17,13 @@ setup() {
   export DEVSTASH_NS=devstash
   export GITHUB_OUTPUT="${BATS_TEST_TMPDIR}/gh_output"
   : > "$GITHUB_OUTPUT"
+  # Collapse the re-nudge loop to a SINGLE iteration for the failure-classification tests: the
+  # stubbed `kubectl wait` returns instantly (no real 30s block), so a 900s budget would spin the
+  # loop thousands of times before classifying. Budget 0 = start one iteration, then the deadline
+  # check breaks and we fall through to the event classification these tests exercise. Interval kept
+  # tiny so any test that DOES let `wait` succeed returns immediately.
+  export SECRET_SYNC_TIMEOUT=0
+  export SECRET_SYNC_NUDGE_INTERVAL=1
 }
 
 # _stub_kubectl <events-message> [events-rc]: `wait` always fails (timeout path). `get events`
@@ -75,22 +82,36 @@ _stub_kubectl() {
   assert_output --partial "real error"
 }
 
-@test "wait-secrets-sync: stuck on DISABLED version → re-nudges and succeeds on retry" {
-  fake_cmd kubectl "
-    if [[ \"\$*\" == *' wait '* && \"\$*\" == *'--timeout=60s'* ]]; then exit 0; fi
-    if [[ \"\$*\" == *' wait '* ]]; then exit 1; fi
-    if [[ \"\$*\" == *'get events'* ]]; then printf '%s' 'Secret Version [projects/1/secrets/devstash-app-config/versions/2] is in DISABLED state'; exit 0; fi
+# The re-nudge loop re-annotates ESO every iteration, so a version that was DISABLED on the first
+# poll but becomes Ready on a later one is caught WITHOUT the operator having to `kubectl annotate`
+# by hand (the regression this rewrite fixes). Drive it with a counter file: `wait` fails the first
+# time, succeeds the second — proving the loop re-nudged and re-checked rather than blocking once.
+@test "wait-secrets-sync: re-nudge loop catches a version that becomes Ready on a later poll (no manual nudge)" {
+  export SECRET_SYNC_TIMEOUT=60   # allow a second iteration (budget not yet spent after the first)
+  local counter="${BATS_TEST_TMPDIR}/wait_calls"; : > "$counter"
+  spy_cmd kubectl "
+    if [[ \"\$*\" == *' wait '* ]]; then
+      n=\$(wc -l < '${counter}' | tr -d ' '); echo x >> '${counter}'
+      if [[ \$n -ge 1 ]]; then exit 0; fi   # Ready on the 2nd wait (after a re-nudge)
+      exit 1
+    fi
     exit 0"
   run bash "$SCRIPT"
   assert_success
-  assert_output --partial "Ready after the retry"
+  assert_output --partial "secrets synced"
+  # Annotated at least twice — once per loop iteration — proving the continuous re-nudge.
+  assert_spy_called_with kubectl "annotate"
   run cat "$GITHUB_OUTPUT"
   assert_output --partial "synced=true"
 }
 
-@test "wait-secrets-sync: stuck on DISABLED version → still stuck after retry, fails loudly" {
+# A DISABLED-version failure that survives the FULL budget is a real fault (no enabled version ever
+# materialized), not a transient race the loop can heal — fail loudly, do not green the deploy.
+@test "wait-secrets-sync: still DISABLED after the whole budget → fails loudly (no false pass)" {
   _stub_kubectl 'Secret Version [projects/1/secrets/devstash-app-config/versions/2] is in DISABLED state'
   run bash "$SCRIPT"
   assert_failure
-  assert_output --partial "still stuck on a DISABLED version"
+  assert_output --partial "stuck on a DISABLED secret version"
+  run cat "$GITHUB_OUTPUT"
+  refute_output --partial "synced=true"
 }
