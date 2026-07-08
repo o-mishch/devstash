@@ -21,6 +21,17 @@
 #                    is NOT "no policy" to GKE — it makes a malformed URL that fails the Gateway).
 set -euo pipefail
 
+# GCP_PROJECT_ID is REQUIRED, not optional (unlike the app-config vars below, which fall
+# back to committed defaults on empty). It fills settings.yaml's projectId AND is spliced
+# into saEmail. yq's strenv() returns "" for an unset var WITHOUT erroring under `set -u`,
+# so a caller that forgets to pass it renders projectId="" and
+# saEmail="devstash-app@.iam.gserviceaccount.com" — a malformed SA email that makes ESO's
+# SecretStore fail InvalidProviderConfig ("Invalid form of account ID"), so the
+# ExternalSecret never syncs and wait-secrets-sync.sh blocks its full timeout. That is
+# exactly what happened when the render job was split out of `deploy` without carrying this
+# var. Fail loudly here instead of emitting a poisoned manifest that stalls the deploy.
+: "${GCP_PROJECT_ID:?must be set and non-empty; an empty value renders projectId= and saEmail=devstash-app@.iam.gserviceaccount.com, which breaks the ESO SecretStore}"
+
 cd infra/k8s/overlays/gcp
 
 # ingressIpName and armorPolicyName are derived from the Terraform name_prefix

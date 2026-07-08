@@ -375,6 +375,16 @@ jobs:
       # and the image pins). Same env contract as before — see the deploy job's former inline step.
       - name: Inject environment values
         env:
+          # GCP_PROJECT_ID is REQUIRED by inject-settings.sh, not optional: it fills
+          # settings.yaml's projectId AND builds saEmail as
+          # "devstash-app@<project>.iam.gserviceaccount.com". When the render job was split
+          # out of `deploy`, this var was NOT carried over with the step — yq's strenv()
+          # returns "" for an unset var (no error under set -u), so the render silently
+          # produced projectId="" and saEmail="devstash-app@.iam.gserviceaccount.com". ESO's
+          # SecretStore then failed InvalidProviderConfig ("Invalid form of account ID"), the
+          # ExternalSecret never went Ready, and wait-secrets-sync.sh blocked its full 900s —
+          # deadlocking the resume that was watching that CI run. Must stay set here.
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           APP_DOMAIN: ${{ vars.APP_DOMAIN }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
           AUTH_GITHUB_ID: ${{ vars.AUTH_GITHUB_ID }}
@@ -394,7 +404,7 @@ jobs:
       # Hand the rendered manifest to the cluster-gated `deploy` job (a fresh runner with no shared
       # filesystem). deploy downloads it back to /tmp/rendered.yaml, the path its scripts expect.
       - name: Upload rendered manifest
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rendered-manifest
           path: /tmp/rendered.yaml
@@ -492,7 +502,7 @@ jobs:
       # render-manifests no longer run here: they are cluster-independent CPU work and were moved to
       # `render` so they overlap the apply instead of serializing behind get-credentials/reachability.
       - name: Download rendered manifest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: rendered-manifest
           path: /tmp
