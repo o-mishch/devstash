@@ -834,6 +834,17 @@ _apply_plan() {
 # failure it clears the marker and `die`s; when backgrounded its `die` only kills the subshell, so
 # the caller's `wait` captures the non-zero status and re-raises (aborting the bring-up).
 _apply_exec() {
+  # Assert the saved plan is actually on disk before applying. With `tofu -chdir=$TF_DIR` the
+  # -out plan lands at $TF_DIR/$PLAN_FILE, and apply resolves the same path — so a MISSING file here
+  # means _apply_plan's plan never persisted OR a concurrent run's _clear_plan_file (rm -f) removed
+  # it between plan and apply (both overlap-driven bring-ups and the smoke harness source this file).
+  # Without this guard `tofu apply <gone-plan>` fails with a cryptic `stat: no such file or
+  # directory` AFTER the operator already answered `y` at the confirm prompt — wasting the review and
+  # aborting mid-run. Fail early with an actionable message telling them to re-run the plan instead.
+  if [[ ! -f "$TF_DIR/$PLAN_FILE" && ! -f "$PLAN_FILE" ]]; then
+    clear_provisioning
+    die "saved plan '$PLAN_FILE' is missing (expected at $TF_DIR/$PLAN_FILE) — it never persisted or was cleared by a concurrent run between plan and apply. No GCP mutation happened. Re-run the command to regenerate and apply a fresh plan."
+  fi
   if tofu_locked_ apply -lock-timeout=120s "$PLAN_FILE"; then
     _clear_plan_file
     # Force the state history down to STATE_KEEP_VERSIONS the instant the write lands, rather
