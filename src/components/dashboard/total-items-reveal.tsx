@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'motion/react'
@@ -172,13 +172,17 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
     setOpen(true)
   }
 
+  // Reads the latest `place` (which closes over triggerRef/align/cfg.width) without needing the
+  // effect to re-run when those change — only `open` should control listener attach/detach.
+  const repositionOnResize = useEffectEvent(() => place())
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
     // Reposition on resize; close on scroll (a fixed panel would otherwise detach from the trigger).
-    const onResize = () => place()
+    const onResize = () => repositionOnResize()
     const onScroll = () => setOpen(false)
     document.addEventListener('keydown', onKey)
     window.addEventListener('resize', onResize)
@@ -188,7 +192,6 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
       window.removeEventListener('resize', onResize)
       window.removeEventListener('scroll', onScroll, true)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const container = reduceMotion ? { hidden: {}, show: {} } : cfg.container
@@ -237,6 +240,7 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
                         href={t.href}
                         prefetch={false}
                         role="menuitem"
+                        tabIndex={0}
                         onClick={() => setOpen(false)}
                         className={cn('cursor-pointer', cfg.tile)}
                         style={variant === 'neon' ? { borderColor: `${t.color}66`, boxShadow: `0 0 14px -6px ${t.color}` } : undefined}

@@ -254,6 +254,7 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
                 href={tile.href}
                 prefetch={false}
                 role="menuitem"
+                tabIndex={0}
                 aria-label={tile.label}
                 data-tile-index={i}
                 data-active={activeIndex === i}

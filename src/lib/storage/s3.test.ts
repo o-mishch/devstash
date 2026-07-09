@@ -229,7 +229,9 @@ describe('s3 utility', () => {
 
     it('throws when the object has no body', async () => {
       mockSend.mockResolvedValueOnce({ Body: undefined })
-      await expect(getTextFromS3('user/missing.txt', SPLIT_FILE_MAX_INPUT_CHARS)).rejects.toThrow()
+      await expect(getTextFromS3('user/missing.txt', SPLIT_FILE_MAX_INPUT_CHARS)).rejects.toThrow(
+        'returned no body',
+      )
     })
   })
 })

@@ -1147,4 +1147,6 @@ main()
     console.error(e)
     process.exit(1)
   })
-  .finally(() => prisma.$disconnect())
+  .finally(() => {
+    void prisma.$disconnect().catch((e) => console.error('disconnect failed', e))
+  })

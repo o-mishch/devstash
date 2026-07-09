@@ -65,7 +65,7 @@ Other services (`next-auth`, `resend`, `stripe`, etc.) are mocked with `vi.mock(
 
 ## Lint: type-aware + Vitest rules apply to tests
 
-Test files are **not** exempt from linting. `eslint.config.mjs` runs `typescript-eslint recommendedTypeChecked` (error level) here too, plus `@vitest/eslint-plugin`'s recommended rules (`valid-expect`, `no-focused-tests`, `no-disabled-tests`, correct hook usage, …).
+Test files are **not** exempt from linting. `.oxlintrc.json` applies the same type-aware `typescript/*` rules (error level) here too, plus oxlint's native `vitest/*` plugin (`valid-expect`, `no-focused-tests`, `no-disabled-tests`, correct hook usage, …).
 
 - **Typed asymmetric matchers.** Vitest types `expect.objectContaining`, `arrayContaining`, `stringContaining`, `anything`, `expect.any` as `(expected: any) => any`, which trips `no-unsafe-*`. Use the typed wrappers in `src/test/matchers.ts` (`objectContaining`, `arrayContaining`, `stringContaining`, `anything`, `anyOf(Ctor)`, plus a typed `readJson<T>()`) inside `toEqual(...)` / `toHaveBeenCalledWith(...)` instead of `expect.*` directly.
 - **No `any` in specs.** Type mocked return values and parsed JSON explicitly (`readJson<T>()` for response bodies); don't let `any` flow from `vi.fn()` results or `res.json()` into assertions.

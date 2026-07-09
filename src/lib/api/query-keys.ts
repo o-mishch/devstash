@@ -22,9 +22,10 @@ import type { FetchItemsQuery, ItemsPage } from '@/types/item'
 // `init` varies per call (pagination cursor, source tab, …), so exact-key invalidation can't reach every
 // variant. For those, use the `*Matches` predicates below, which match by `[method, path]` prefix.
 
-// Synthetic params for the search-results slot in the items namespace. JSON-valid so the predicate-based
-// items updaters parse and safely ignore it (there is no 'search' branch); no list view ever requests it.
-const SEARCH_SLOT_PARAMS: FetchItemsQuery = { type: 'search' } as unknown as FetchItemsQuery
+// Synthetic params for the search-results slot in the items namespace. Deliberately NOT a real
+// FetchItemsQuery variant (there is no 'search' branch) — it only ever flows into JSON.stringify
+// below to produce a stable, distinguishable cache-key string, so it doesn't need that type at all.
+const SEARCH_SLOT_PARAMS = { type: 'search' } as const
 
 export const queryKeys = {
   items: {

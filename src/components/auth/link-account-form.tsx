@@ -22,7 +22,7 @@ export function LinkAccountForm({ action, providerLabel }: LinkAccountFormProps)
 
   return (
     <form action={formAction} className="space-y-4" suppressHydrationWarning>
-      <AuthFormField id="password" name="password" label="Your DevStash password" type="password" placeholder="••••••••" autoComplete="current-password" autoFocus required />
+      <AuthFormField id="password" name="password" label="Your DevStash password" type="password" placeholder="••••••••" autoComplete="current-password" required />
 
       <SubmitButton className="w-full" isPending={isPending}>
         Link {providerLabel} account

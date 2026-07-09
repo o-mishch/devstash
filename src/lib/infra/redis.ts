@@ -20,7 +20,7 @@ export function getRedis(): Redis | null {
     // is never resolved on the Vercel/Upstash path — only loaded when REDIS_URL is set.
     // Mirrors the @prisma/adapter-pg gate in db-local.ts. A sync require (not `await
     // import`) is required because getRedis() has synchronous callers.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // oxlint-disable-next-line typescript/no-require-imports
     const { getTcpRedis } = require('./redis-tcp') as typeof import('@/lib/infra/redis-tcp')
     return getTcpRedis()
   }
@@ -30,7 +30,7 @@ export function getRedis(): Redis | null {
     // (REDIS_URL) path — only loaded here, on the Vercel/Upstash default. This is what lets
     // next.config trace-exclude @upstash/redis from the self-hosted image. Mirrors the
     // node-redis require above.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // oxlint-disable-next-line typescript/no-require-imports
     const { Redis } = require('@upstash/redis') as typeof import('@upstash/redis')
     // 5s timeout per call — generous enough for serverless cold-start DNS+TLS overhead
     // while still preventing hung connections. `cache: 'no-store'` opts out of Next.js's

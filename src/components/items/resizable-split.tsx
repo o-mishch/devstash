@@ -106,6 +106,11 @@ export function ResizableSplit({
       </div>
       <div
         ref={separatorRef}
+        // This is an interactive, keyboard-resizable window splitter (WAI-ARIA APG "separator
+        // (focusable)" pattern), with a visual line rendered via a nested child div. <hr> is a void
+        // element — it can't hold that child — and native <hr> semantics don't cover a draggable,
+        // keyboard-adjustable divider carrying aria-valuenow/min/max.
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         role="separator"
         aria-orientation="vertical"
         aria-label={ariaLabel}

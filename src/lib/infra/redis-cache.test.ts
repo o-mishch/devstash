@@ -1,17 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// vi.hoisted so the mock factory (hoisted to the top) can reference mockLoggerChild directly —
+// avoids ever reading `logger.child` as a bare property later, which trips unbound-method (the real
+// Logger['child'] is a class-instance method, even though the mock itself never uses `this`).
+const { mockLoggerChild } = vi.hoisted(() => ({ mockLoggerChild: vi.fn() }))
+
 vi.mock('@/lib/infra/redis', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/infra/redis')>()
   return { ...actual, getRedis: vi.fn() }
 })
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: vi.fn() },
+  logger: { child: mockLoggerChild },
 }))
 
 import { makeRedisCache } from './redis-cache'
 import { getRedis } from '@/lib/infra/redis'
-import { logger } from '@/lib/infra/pino'
 
 const mockLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 const mockRedis = { get: vi.fn(), set: vi.fn(), del: vi.fn() }
@@ -22,8 +26,7 @@ function makeCache<T = string>(overrides?: Partial<Parameters<typeof makeRedisCa
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- mock reference, not a detached call
-  vi.mocked(logger.child).mockReturnValue(mockLog as never)
+  mockLoggerChild.mockReturnValue(mockLog)
   vi.mocked(getRedis).mockReturnValue(mockRedis as never)
 })
 

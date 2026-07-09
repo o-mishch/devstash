@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, type MouseEvent, type TouchEvent } from 'react'
+import { useCallback, useEffect, useRef, type MouseEvent, type TouchEvent } from 'react'
 
 interface UseEditorHeaderDragOptions {
   active: boolean
@@ -47,25 +47,31 @@ export function useEditorHeaderDrag({
     onDragOffsetRef.current = onDragOffset
   })
 
-  const resetDrag = () => {
+  const resetDrag = useCallback(() => {
     dragOffsetRef.current = 0
     onDragOffsetRef.current?.(0)
-  }
+  }, [])
 
-  const applyDrag = (clientY: number) => {
-    const raw = clientY - startYRef.current
-    const offset = direction === 'down' ? Math.max(0, raw) : raw
-    dragOffsetRef.current = offset
-    if (direction === 'down') onDragOffsetRef.current?.(offset)
-  }
+  const applyDrag = useCallback(
+    (clientY: number) => {
+      const raw = clientY - startYRef.current
+      const offset = direction === 'down' ? Math.max(0, raw) : raw
+      dragOffsetRef.current = offset
+      if (direction === 'down') onDragOffsetRef.current?.(offset)
+    },
+    [direction],
+  )
 
-  const shouldTrigger = (dragged: number, elapsed: number) => {
-    const velocity = Math.abs(dragged) / Math.max(1, elapsed)
-    if (direction === 'down') {
-      return dragged > thresholdPx || velocity > flickVelocity
-    }
-    return dragged < -thresholdPx || (dragged < 0 && velocity > flickVelocity)
-  }
+  const shouldTrigger = useCallback(
+    (dragged: number, elapsed: number) => {
+      const velocity = Math.abs(dragged) / Math.max(1, elapsed)
+      if (direction === 'down') {
+        return dragged > thresholdPx || velocity > flickVelocity
+      }
+      return dragged < -thresholdPx || (dragged < 0 && velocity > flickVelocity)
+    },
+    [direction, thresholdPx, flickVelocity],
+  )
 
   const finishDrag = () => {
     if (!draggingRef.current) return
@@ -134,9 +140,9 @@ export function useEditorHeaderDrag({
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
     }
-    // applyDrag/resetDrag/shouldTrigger close over stable refs and direction/threshold props.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- active toggles listener attachment only
-  }, [active, direction, thresholdPx, flickVelocity])
+    // applyDrag/shouldTrigger are useCallback-memoized on direction/thresholdPx/flickVelocity, so
+    // listing them re-attaches the listeners on exactly the same changes as before, via identity.
+  }, [active, applyDrag, shouldTrigger, resetDrag])
 
   return { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel, onMouseDown, onClick }
 }

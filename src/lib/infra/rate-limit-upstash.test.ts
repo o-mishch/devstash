@@ -6,18 +6,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // vi.hoisted so the mock factory (hoisted to the top) can reference these method stubs. The
 // constructor impl lives in the factory so `new Ratelimit()` always yields the stub, regardless of
 // static vs dynamic import; per-test we only reset call history (never clearAllMocks, which would
-// wipe the factory impl).
-const { mockLimit, mockGetRemaining, mockResetUsedTokens } = vi.hoisted(() => ({
+// wipe the factory impl). mockSlidingWindow is held here (not read back off `Ratelimit.slidingWindow`
+// later) so nothing ever references it as a bare property — that trips unbound-method, since the real
+// Ratelimit.slidingWindow is a static class method even though the mock itself never uses `this`.
+const { mockLimit, mockGetRemaining, mockResetUsedTokens, mockSlidingWindow } = vi.hoisted(() => ({
   mockLimit: vi.fn(),
   mockGetRemaining: vi.fn(),
   mockResetUsedTokens: vi.fn(),
+  mockSlidingWindow: vi.fn(() => 'sliding-window'),
 }))
 
 vi.mock('@upstash/ratelimit', () => {
   const Ratelimit = vi.fn(function () {
     return { limit: mockLimit, getRemaining: mockGetRemaining, resetUsedTokens: mockResetUsedTokens }
   }) as unknown as { (): unknown; slidingWindow: ReturnType<typeof vi.fn> }
-  Ratelimit.slidingWindow = vi.fn(() => 'sliding-window')
+  Ratelimit.slidingWindow = mockSlidingWindow
   return { Ratelimit }
 })
 vi.mock('@/lib/infra/redis', () => ({ getRedis: vi.fn(() => ({})) }))
@@ -35,8 +38,7 @@ beforeEach(() => {
   mockGetRemaining.mockReset()
   mockResetUsedTokens.mockReset()
   vi.mocked(Ratelimit).mockClear()
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- mock reference, not a detached call
-  vi.mocked(Ratelimit.slidingWindow).mockClear()
+  mockSlidingWindow.mockClear()
 })
 
 describe('upstashRateLimit.check', () => {
@@ -49,15 +51,16 @@ describe('upstashRateLimit.check', () => {
     expect(result.success).toBe(true)
     expect(result.remaining).toBe(4)
     expect(result.retryAfter).toBeGreaterThanOrEqual(0)
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- mock assertion, not a detached call
-    expect(Ratelimit.slidingWindow).toHaveBeenCalledWith(5, '15 m')
+    expect(mockSlidingWindow).toHaveBeenCalledWith(5, '15 m')
     expect(vi.mocked(Ratelimit)).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'rl:login' }))
     expect(mockLimit).toHaveBeenCalledWith('u1')
   })
 
   it('rejects when Redis is unavailable (dispatcher then fails open/closed)', async () => {
     mockGetRedis.mockReturnValue(null)
-    await expect(upstashRateLimit.check('login', 'u1', { attempts: 5, window: '15 m' })).rejects.toThrow()
+    await expect(upstashRateLimit.check('login', 'u1', { attempts: 5, window: '15 m' })).rejects.toThrow(
+      'Upstash Redis unavailable',
+    )
   })
 })
 

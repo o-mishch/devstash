@@ -130,6 +130,11 @@ export function CollectionFormDialog({
   }
 
   const triggerEl = trigger ? (
+    // This wrapper only intercepts a mouse click to gate on the collection limit and capture the click
+    // point for the desktop morph animation — it never needs its own keyboard handling. Every call site
+    // passes a real, natively keyboard-accessible <button>, so Enter/Space on it already fires a native
+    // `click` event that bubbles up to this handler.
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <span onClick={(e) => {
       if (!canCreate) {
         e.preventDefault()

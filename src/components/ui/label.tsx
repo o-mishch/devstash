@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils"
 
 function Label({ className, ...props }: ComponentProps<"label">) {
   return (
+    // Generic primitive: `htmlFor` and text content are entirely supplied by each consumer
+    // (12 call sites across the app), so static analysis can't see the association here.
+    // oxlint-disable-next-line jsx-a11y/label-has-associated-control
     <label
       data-slot="label"
       className={cn(

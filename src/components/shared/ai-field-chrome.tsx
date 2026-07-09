@@ -137,21 +137,26 @@ interface AiFieldBadgeProps {
 }
 
 export function AiFieldBadge({ onClick, disabled, tooltip }: AiFieldBadgeProps) {
-  const badge = (
-    <span
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onClick={onClick && !disabled ? onClick : undefined}
-      onKeyDown={onClick && !disabled ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick() } : undefined}
-      className={cn(
-        'inline-flex h-5 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 text-[10px] font-bold uppercase tracking-wider text-primary',
-        onClick && !disabled && 'cursor-pointer hover:bg-primary/20',
-        onClick && disabled && 'cursor-not-allowed opacity-50',
-      )}
-    >
+  const badgeClassName = cn(
+    'inline-flex h-5 items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 text-[10px] font-bold uppercase tracking-wider text-primary',
+    onClick && !disabled && 'cursor-pointer hover:bg-primary/20',
+    onClick && disabled && 'cursor-not-allowed opacity-50',
+  )
+  const badgeContent = (
+    <>
       <Sparkles className="size-3" />
       AI
-    </span>
+    </>
+  )
+  // A real <button> when clickable (no nested interactive descendants, so nothing stops it) —
+  // gives native keyboard support for free instead of hand-rolling role/tabIndex/onKeyDown on a span.
+  // Plain decorative <span> when there's no action to take.
+  const badge = onClick ? (
+    <button type="button" onClick={onClick} disabled={disabled} className={badgeClassName}>
+      {badgeContent}
+    </button>
+  ) : (
+    <span className={badgeClassName}>{badgeContent}</span>
   )
 
   if (!onClick) return badge

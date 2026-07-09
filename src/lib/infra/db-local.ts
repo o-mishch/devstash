@@ -45,7 +45,7 @@ export function createLocalDbAdapter(): SqlDriverAdapterFactory | null {
   const max = resolveDbPoolMax(process.env.DB_POOL_MAX)
   // Gated, synchronous require so the local-only dep is never resolved on the Neon path
   // and `prisma` stays a sync singleton. `await import` isn't an option (sync caller).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // oxlint-disable-next-line typescript/no-require-imports
   const { PrismaPg } = require('@prisma/adapter-pg') as typeof import('@prisma/adapter-pg')
   // verify-CA when DATABASE_CA_CERT is set (Cloud SQL); undefined locally → the adapter
   // honors the URL's sslmode (disable on kind). See resolveDbSsl above.

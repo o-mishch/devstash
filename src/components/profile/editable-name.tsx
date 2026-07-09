@@ -46,6 +46,10 @@ export function EditableName({ name }: EditableNameProps) {
       {editing ? (
         <form action={formAction} className="flex min-w-0 flex-1 items-center gap-1.5">
           <input
+            // This input only renders after the user clicks edit, so autoFocus follows their
+            // explicit action rather than surprising them on page load — an accepted UX pattern
+            // despite the rule's page-load-focused warning.
+            // oxlint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             name="name"
             value={value}

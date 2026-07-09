@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, startTransition, useMemo, useEffect, type SyntheticEvent, type ReactNode, type TouchEvent } from 'react'
+import { useRef, useState, startTransition, useEffect, useEffectEvent, type SyntheticEvent, type ReactNode, type TouchEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Plus, FolderPlus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -76,11 +76,11 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
   const { openPrompt } = useUpgradePromptStore()
   const validInitialType = (initialType && PRO_ITEM_TYPE_NAMES.has(initialType) && !isPro) ? itemTypes[0]?.name : initialType
   // Captured once at mount so mid-session flag changes (canCreateItem/canCreateCollection)
-  // don't shift defaultItemType and spuriously trigger the dirty guard.
-  const defaultItemType = useMemo(
+  // don't shift defaultItemType and spuriously trigger the dirty guard. `useMemo(fn, [])` is not a
+  // reliable "run once" primitive (React may drop the cached value); a lazy useState initializer is
+  // guaranteed to run exactly once.
+  const [defaultItemType] = useState(
     () => (!canCreateItem && canCreateCollection) ? COLLECTION_TYPE_VALUE : (validInitialType || itemTypes[0]?.name || ''),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
   )
 
   const [itemType, setItemType] = useState(defaultItemType)
@@ -123,14 +123,13 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
 
   // In controlled mode (mobile), the parent changes `open` prop directly without
   // calling handleOpenChange(true), so the onOpenChange callback below never fires
-  // on open. Sync itemType whenever the dialog transitions to open.
-  // deps intentionally omitted — validInitialType/defaultItemType are captured at mount;
-  // mid-session prop changes to initialType do not shift the default once the dialog is open.
+  // on open. Sync itemType whenever the dialog transitions to open, reading the latest
+  // effectiveDefaultType at that moment without re-running this effect when it changes.
+  const syncDefaultItemType = useEffectEvent(() => {
+    setItemType(effectiveDefaultType)
+  })
   useEffect(() => {
-    if (controlledOpen) {
-      startTransition(() => setItemType(effectiveDefaultType))
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (controlledOpen) startTransition(() => syncDefaultItemType())
   }, [controlledOpen])
 
   const { open, handleOpenChange, confirmOpen, handleConfirmOpenChange, handleDiscard } = useDirtyGuard({
@@ -512,6 +511,12 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
 
   return (
     <>
+      {/* This wrapper only intercepts a mouse click to gate on the create limit and capture the click
+          point for the desktop morph animation — it never needs its own keyboard handling. Every call
+          site passes a real, natively keyboard-accessible <button> (or, in controlled-open mode, an
+          empty fragment that renders no box at all), so Enter/Space on the real trigger already fires
+          a native `click` event that bubbles up to this handler. */}
+      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <span onClick={(e) => {
         if (!canCreateItem && !canCreateCollection) {
           e.preventDefault()

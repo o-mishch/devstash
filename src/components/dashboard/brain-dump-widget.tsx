@@ -141,6 +141,11 @@ export function BrainDumpWidget({ skin, className }: BrainDumpWidgetProps) {
               <span className="text-[11px] font-medium tabular-nums text-muted-foreground">left</span>
             </span>
             <span
+              // A native <meter> is a replaced element that renders its own OS-styled gauge and
+              // ignores child content, so it can't produce this custom pip/gradient-bar visual.
+              // The shadcn <Progress> primitive isn't a fit either — it's a continuous bar only,
+              // while this widget renders discrete per-attempt pips below a 12-token limit.
+              // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
               role="meter"
               aria-valuemin={0}
               suppressHydrationWarning

@@ -68,6 +68,10 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
 
   return (
     <Card
+      // Can't be a real <button>: it wraps a nested <CopyButton> and, in the error/retry state, a
+      // reload <button> — HTML forbids nested interactive controls. Keyboard access is already
+      // handled via tabIndex + onKeyDown below.
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="button"
       tabIndex={0}
       className="card-interactive group/card relative h-full min-w-0 w-full overflow-visible p-0 ring-border focus-visible:ring-2 focus-visible:ring-ring"
