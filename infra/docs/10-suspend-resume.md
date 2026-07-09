@@ -13,10 +13,10 @@ across the stack:
 
 - **`environment_active`** — the compute switch. The event-driven auto-suspend flips only
   this. It destroys the stateless compute and *stops* (but keeps) Cloud SQL.
-- **`db_active`** — the deep-suspend switch. Only `run.sh suspend`/`resume` flips it, and
+- **`db_active`** — the deep-suspend switch. Only `devstash-infra gcp suspend`/`resume` flips it, and
   only after a verified GCS dump. It *destroys* the Cloud SQL instance for true ~$0.
 
-| Resource | Active | **Deep-suspended** (`run.sh suspend` or auto-suspend) | Why it's safe |
+| Resource | Active | **Deep-suspended** (`devstash-infra gcp suspend` or auto-suspend) | Why it's safe |
 |---|---|---|---|
 | Cloud SQL instance | running | **DUMPED to GCS, then DESTROYED** | data lives in the verified dump; resume restores it |
 | GCS `db-dumps` bucket | kept | **kept** | holds the dump; Always-Free tier (us-central1) ≈ $0 |
@@ -31,7 +31,7 @@ across the stack:
 | Global ingress IP | attached (free) | **released** | a reserved-but-idle global IP bills ~$7/mo |
 
 There is an intermediate state — **`environment_active=false` but `db_active=true`**: compute
-gone, Cloud SQL merely *stopped* (kept, ~$1.70/mo, no dump needed). Both `run.sh suspend` and
+gone, Cloud SQL merely *stopped* (kept, ~$1.70/mo, no dump needed). Both `devstash-infra gcp suspend` and
 the event-driven auto-suspend now skip past it to the full $0 deep suspend (dump + destroy).
 You only land in the intermediate state deliberately — a plain `tofu apply -var
 environment_active=false` (no `db_active`) — if you want the cheaper-but-dumpless middle
@@ -39,7 +39,7 @@ ground where the DB can restart instantly without a restore.
 
 **Safety invariant:** the Cloud SQL instance no longer relies on `deletion_protection` (it
 is torn down on every deep suspend, so it *can't* be protected — a `count→0` destroy reads
-the flag from prior state). Data safety instead comes from the dump: `run.sh suspend` runs
+the flag from prior state). Data safety instead comes from the dump: `devstash-infra gcp suspend` runs
 `gcloud sql export` to the `db-dumps` bucket and **verifies the object is non-empty before
 it sets `db_active=false`**, so a failed dump aborts the suspend with the instance intact.
 The auto-suspend path flips only `environment_active`, so it can **never** destroy the DB —
@@ -52,14 +52,14 @@ been driven to zero — every survivor now sits inside an Always-Free allowance:
 
 | Surviving residual | ~$/mo idle | How it reaches $0 |
 |---|---|---|
-| Artifact Registry image storage | **$0** | the repo is **gated on `environment_active`**, so the deep-suspend apply (both `run.sh suspend` and the unattended auto-suspend) **destroys the whole repo + its images through Terraform**; CI rebuilds+repushes on resume, so nothing is stored while idle |
+| Artifact Registry image storage | **$0** | the repo is **gated on `environment_active`**, so the deep-suspend apply (both `devstash-infra gcp suspend` and the unattended auto-suspend) **destroys the whole repo + its images through Terraform**; CI rebuilds+repushes on resume, so nothing is stored while idle |
 | Secret Manager | **$0** | the ~14 per-key secrets are **consolidated into one `devstash-app-config` JSON blob** → 1 active version (was 9), inside the 6-version free tier |
 | KMS Binary Authorization signing key | **$0** | `binauthz_enabled=false` in dev → the key (KMS has **no** free tier) is **never created**; prod sets it true for enforcement parity |
 | GCS: db-dumps + uploads + tfstate | **$0** | us-central1 Always-Free 5 GB regional tier; noncurrent versions expire via lifecycle rules |
 
 The signing pipeline is gated as a unit (`binauthz_enabled`): keyring, key, note, attestor,
 policy, the cluster enforcement block, and the deployer signing-IAM. CI self-skips when it is
-off (`infra/ci/validate-inputs.sh` treats `BINAUTHZ_*` as optional; the "Sign images" step
+off (`devstash-infra ci validate-inputs` treats `BINAUTHZ_*` as optional; the "Sign images" step
 guards on `vars.BINAUTHZ_ATTESTOR`). Backups are off in dev (`backups_enabled=false` in the
 cloudsql module) since the dump is the durability mechanism; turn them on for prod.
 
@@ -112,21 +112,21 @@ live name before restoring.
 
 ### Restoring on demand
 
-`run.sh restore-db` imports the latest dump into the **current** Cloud SQL instance without a
+`devstash-infra gcp restore-db` imports the latest dump into the **current** Cloud SQL instance without a
 full resume — this is the escape hatch if you ever end up with a freshly-created but empty
-instance (e.g. after a bare `run.sh apply` following an auto-suspend — see the footgun below).
-`run.sh dump-db` takes an ad-hoc export at any time without suspending. Both are no-ops-safe:
+instance (e.g. after a bare `devstash-infra gcp apply` following an auto-suspend — see the footgun below).
+`devstash-infra gcp dump-db` takes an ad-hoc export at any time without suspending. Both are no-ops-safe:
 `restore-db` skips cleanly if there is no dump yet, and requires the instance to exist.
 
 ## Operating it
 
 ```bash
-bash infra/run/gcp/run.sh suspend   # → ~$0: destroy compute, STOP Cloud SQL (data kept)
-bash infra/run/gcp/run.sh resume    # recreate compute, START Cloud SQL, redeploy, fix DNS
+devstash-infra gcp suspend   # → ~$0: destroy compute, STOP Cloud SQL (data kept)
+devstash-infra gcp resume    # recreate compute, START Cloud SQL, redeploy, fix DNS
 ```
 
 The chosen state is persisted to `infra/terraform/envs/dev/active.auto.tfvars` (gitignored,
-auto-loaded by OpenTofu), so a plain `tofu apply` / `run.sh apply` keeps it — it won't
+auto-loaded by OpenTofu), so a plain `tofu apply` / `devstash-infra gcp apply` keeps it — it won't
 silently revert to active.
 
 ### There is no wake-on-request
@@ -142,7 +142,7 @@ Vercel deployment.
 If you must stop a `resume`/`up`/`apply` while OpenTofu is provisioning, press **Ctrl-C
 exactly once** and wait. One interrupt is delivered to the whole foreground process group, so
 the child `tofu` does its own **graceful shutdown** — it finishes the in-flight resource
-operation and persists state before exiting. `run.sh` traps that first interrupt and
+operation and persists state before exiting. `devstash-infra` traps that first interrupt and
 deliberately does **not** tear down, precisely so tofu can finish writing state.
 
 **A second Ctrl-C tells tofu to exit immediately**, cancelling the provider mid-create. If a
@@ -151,7 +151,7 @@ state, it becomes an **orphan** — untracked, so neither a re-`apply` nor `terr
 will adopt it, and a later `suspend` (which sets `db_active=false`) cannot destroy it. Avoid
 the double Ctrl-C unless you accept manual cleanup.
 
-**Recovery from an interrupted bring-up: just re-run the SAME command** — `run.sh resume` (or
+**Recovery from an interrupted bring-up: just re-run the SAME command** — `devstash-infra gcp resume` (or
 `up`). Its `reconcile_state` step (branch 3d) detects a Cloud SQL instance / GKE cluster /
 Valkey that exists in GCP but not in state and **imports** it before planning, so the retry
 continues cleanly. Do **not** `suspend` over an interrupted resume — the DB-import branch is
@@ -177,7 +177,7 @@ spaceship_api_key    = "..."
 spaceship_api_secret = "..."
 ```
 
-Alternatives: `run.sh set-dns-creds` (hidden prompts → Secret Manager, also used to
+Alternatives: `devstash-infra gcp set-dns-creds` (hidden prompts → Secret Manager, also used to
 **rotate** without a full apply), or one-off `SPACESHIP_API_*` env vars before `resume`.
 If no creds are found, `resume` prints the IP and you set the A-record by hand. The managed
 TLS cert re-provisions after DNS resolves to the new IP (up to ~60 min).
@@ -185,7 +185,7 @@ TLS cert re-provisions after DNS resolves to the new IP (up to ~60 min).
 ## Idle guard (so a forgotten env can't drain credits)
 
 Two independent options. **Neither ever auto-resumes** — they only drive the env *down*;
-you always bring it back with `run.sh resume`.
+you always bring it back with `devstash-infra gcp resume`.
 
 ### Option A — event-driven idle auto-suspend (no scheduler, fires with your laptop off)
 
@@ -196,9 +196,9 @@ when it has served **zero requests for the idle window**. The alert publishes to
 **Pub/Sub topic**, which triggers a **Cloud Build** that first **dumps Cloud SQL to the
 `db-dumps` bucket and verifies the dump**, then runs
 `tofu apply -var environment_active=false -var db_active=false` — the same true-$0 deep
-suspend a local `run.sh suspend` does, unattended. The dump-and-verify is a separate build
+suspend a local `devstash-infra gcp suspend` does, unattended. The dump-and-verify is a separate build
 step *before* the destroy apply, and a failed/empty export fails the build so an un-dumped
-instance is never destroyed. It is **on by default** — `run.sh apply` creates it with no
+instance is never destroyed. It is **on by default** — `devstash-infra gcp apply` creates it with no
 tfvars needed. Optionally tune it (or turn it off) in `terraform.tfvars`:
 
 ```hcl
@@ -237,17 +237,17 @@ How it stays correct and least-privilege:
 **Caveat — the ingress IP is public, so scanner/bot traffic counts as "use."** If the IP is
 being scanned continuously the env may never go idle and so never auto-suspend. This only
 ever *delays* a suspend (it can't cause a wrongful one); if it matters, suspend manually
-with `run.sh suspend` or narrow access with Cloud Armor.
+with `devstash-infra gcp suspend` or narrow access with Cloud Armor.
 
 **Footgun (now sharper — reads the DB, not just compute):** an auto-suspend writes
 `environment_active=false` **and `db_active=false`** to *state*, but your local
 `active.auto.tfvars` is untouched. If it still says `db_active = true`, a later bare
-`run.sh apply` would **recreate the Cloud SQL instance EMPTY** — it recreates the instance
-but does *not* restore the dump (only `run.sh resume` does). The data isn't lost (the dump
+`devstash-infra gcp apply` would **recreate the Cloud SQL instance EMPTY** — it recreates the instance
+but does *not* restore the dump (only `devstash-infra gcp resume` does). The data isn't lost (the dump
 is safe in GCS), but you'd be staring at an empty database. **After an auto-suspend, always
-bring the env back with `run.sh resume`** — it sets both flags intentionally *and* runs the
+bring the env back with `devstash-infra gcp resume`** — it sets both flags intentionally *and* runs the
 `gcloud sql import` restore. Never use a bare `apply` to come back. If you already did and
-have an empty instance, run **`run.sh restore-db`** to import the dump into it — no need to
+have an empty instance, run **`devstash-infra gcp restore-db`** to import the dump into it — no need to
 tear down and resume. To test before merging, point `auto_suspend_repo_branch` at your
 feature branch.
 
@@ -290,7 +290,7 @@ step logging `skipping` and exiting clean — that's expected on most ticks, not
 
 ### Option B — local launchd job (simplest, no new infra, but laptop-dependent)
 
-Runs `run.sh suspend` nightly with *your* credentials (`AUTO_APPROVE=1` skips the confirm).
+Runs `devstash-infra gcp suspend` nightly with *your* credentials (`AUTO_APPROVE=1` skips the confirm).
 Only fires while your Mac is on/awake. Save as
 `~/Library/LaunchAgents/one.devstash.auto-suspend.plist` (fill in `<REPO_ROOT>`), then
 `launchctl load` it:
@@ -301,8 +301,8 @@ Only fires while your Mac is on/awake. Save as
   <key>Label</key><string>one.devstash.auto-suspend</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string><REPO_ROOT>/infra/run/gcp/run.sh</string>
+    <string><PATH_TO>/devstash-infra</string>
+    <string>gcp</string>
     <string>suspend</string>
   </array>
   <key>EnvironmentVariables</key><dict><key>AUTO_APPROVE</key><string>1</string></dict>

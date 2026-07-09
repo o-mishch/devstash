@@ -23,7 +23,7 @@ variable "activation_policy" {
 variable "instance_active" {
   type        = bool
   default     = true
-  description = "true = the Cloud SQL instance exists. false = it is DESTROYED (count-gated) for true ~$0 idle. The deep suspend (run.sh suspend) sets this false ONLY after dumping the DB to GCS; run.sh resume recreates the instance and restores the dump. Stopping (activation_policy=NEVER) keeps the disk (~$1.70/mo); destroying keeps nothing (data lives in the GCS dump instead)."
+  description = "true = the Cloud SQL instance exists. false = it is DESTROYED (count-gated) for true ~$0 idle. The deep suspend (devstash-infra gcp suspend) sets this false ONLY after dumping the DB to GCS; devstash-infra gcp resume recreates the instance and restores the dump. Stopping (activation_policy=NEVER) keeps the disk (~$1.70/mo); destroying keeps nothing (data lives in the GCS dump instead)."
 }
 variable "backups_enabled" {
   type        = bool

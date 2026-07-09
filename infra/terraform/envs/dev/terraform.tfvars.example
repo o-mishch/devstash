@@ -57,7 +57,7 @@ third_party_secrets = {
   "openai-api-key"        = "sk-..."
 }
 
-# Spaceship DNS API credentials (gke.* A-record auto-update on `run.sh resume`).
+# Spaceship DNS API credentials (gke.* A-record auto-update on `devstash-infra gcp resume`).
 # Get them in the Spaceship dashboard → API Manager. Pushed to Secret Manager by dns.tf
 # (kept separate from third_party_secrets — the app never sees them). Leave unset to
 # disable DNS automation (set the A-record via env vars or by hand instead).
@@ -70,7 +70,7 @@ third_party_secrets = {
 # `tofu apply -var environment_active=false -var db_active=false` — drives the env to true
 # ~$0 even with your laptop off, as a dedicated least-priv lifecycle SA. The build re-checks
 # idleness first (a busy env is never suspended) and a failed dump aborts before any destroy.
-# NEVER auto-resumes (use run.sh resume, which restores the dump). ~$0 (free alerting +
+# NEVER auto-resumes (use devstash-infra gcp resume, which restores the dump). ~$0 (free alerting +
 # Pub/Sub; build runs only on an actual suspend). See infra/docs/10-suspend-resume.md.
 # ON BY DEFAULT — uncomment and set false to OPT OUT of automated suspension.
 # auto_suspend_enabled             = false
@@ -133,7 +133,7 @@ third_party_secrets = {
 
 # INERT in this dev env: both GKE and Cloud SQL are torn down every suspend cycle, so
 # both hardcode deletion_protection=false and data safety is the GCS dump (not this flag).
-# Setting it here protects nothing; retained only for prod parity. `run.sh down` runs the
+# Setting it here protects nothing; retained only for prod parity. `devstash-infra gcp down` runs the
 # destroy directly with no protection-disable dance needed.
 # deletion_protection = false
 

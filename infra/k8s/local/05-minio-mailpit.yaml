@@ -69,7 +69,7 @@ spec:
       containers:
         - name: mc
           image: minio/mc:latest
-          # Script mounted from the minio-bucket-init-script ConfigMap (run.sh creates it from
+          # Script mounted from the minio-bucket-init-script ConfigMap (devstash-infra local creates it from
           # scripts/minio-bucket-init.sh via --from-file). Kept out of this manifest so it is a
           # real, shellcheckable file — see infra/.agents/rules/infra.md (no inline scripts in YAML).
           command: ['/bin/sh', '/scripts/minio-bucket-init.sh']

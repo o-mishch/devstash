@@ -6,7 +6,7 @@ output "cluster_name" {
 }
 
 # The kubeconfig file kind wrote. Empty var.kubeconfig_path → the provider's default
-# (~/.kube/config) is returned as the computed attribute; run.sh uses this to target kubectl.
+# (~/.kube/config) is returned as the computed attribute; the devstash-infra CLI uses this to target kubectl.
 output "kubeconfig_path" {
   value = try(kind_cluster.this[0].kubeconfig_path, null)
 }

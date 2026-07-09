@@ -7,11 +7,11 @@
 # `lifecycle-deployer` SA (modules/iam) — a broad-but-bounded identity that can run the full
 # `tofu apply` but deliberately CANNOT rewrite project IAM. Consequence, by design: project
 # IAM must already be converged (committed main == state) before you click; if you changed
-# IAM, run a local `run.sh apply` as owner first. Same operator-converges-first rule as
+# IAM, run a local `devstash-infra gcp apply` as owner first. Same operator-converges-first rule as
 # auto-suspend.
 #
-# The long resume (~10-15 min) is well under the 6h job limit. All shell lives in
-# infra/ci/lifecycle-dispatch.sh (which drives run.sh) — nothing multi-line is inlined here.
+# The long resume (~10-15 min) is well under the 6h job limit. The orchestration lives in the
+# devstash-infra Python CLI (`gcp resume|suspend`) — nothing multi-line is inlined here.
 name: infra-lifecycle
 
 on:
@@ -51,7 +51,7 @@ jobs:
     # at the auth step by design. Guard here too so a non-main dispatch fails fast + clearly.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # resume blocks on the deploy-gke run it dispatches (run.sh _watch_ci_run); give the whole
+    # resume blocks on the deploy-gke run it dispatches (devstash-infra gcp resume's CI-run watch); give the whole
     # job generous headroom over the ~10-15 min happy path without approaching the 6h ceiling.
     timeout-minutes: 60
     permissions:
@@ -69,7 +69,7 @@ jobs:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.LIFECYCLE_DEPLOYER_SA }}
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-      # run.sh's preflight requires kubectl + helm on PATH BEFORE the cluster exists (eso/
+      # devstash-infra's preflight requires kubectl + helm on PATH BEFORE the cluster exists (eso/
       # reloader install into the fresh cluster on resume). gcloud provides itself; add the
       # kubectl + GKE auth plugin as components, and helm via the pinned setup action. jq + yq
       # are preinstalled on ubuntu-latest.
@@ -80,15 +80,24 @@ jobs:
       # --- OpenTofu (the resume/suspend apply engine) -----------------------------
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
-          tofu_wrapper: false # run.sh calls `tofu` directly; the wrapper would mangle its output
+          tofu_wrapper: false # the CLI calls `tofu` directly; the wrapper would mangle its output
+
+      # --- devstash-infra CLI (drives the resume/suspend orchestration) -----------
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --project infra/cli
 
       # --- Run the lifecycle op ---------------------------------------------------
-      # GH_TOKEN is the fine-grained PAT (Secrets=write, Actions=write) so run.sh's secrets()
-      # can `gh secret set …` and deploy can dispatch deploy-gke.yml. USE_GKE_GCLOUD_AUTH_PLUGIN
-      # is the documented flag the plugin needs when kubectl talks to GKE.
+      # `gcp resume|suspend` IS the full orchestrator (dump → apply → restore → deploy → DNS); the
+      # `action` choice input is whitelisted to those two verbs, so it maps 1:1 to the CLI verb.
+      # AUTO_APPROVE=1 removes the only human gate (the confirm before tofu apply/destroy) so it runs
+      # headless. GH_TOKEN is the fine-grained PAT (Secrets=write, Actions=write) so the secrets push
+      # can `gh secret set …` and deploy can dispatch deploy-gke.yml. USE_GKE_GCLOUD_AUTH_PLUGIN is
+      # the flag the auth plugin needs when kubectl talks to GKE.
       - name: ${{ inputs.action }} environment
         env:
-          ACTION: ${{ inputs.action }}
           GH_TOKEN: ${{ secrets.LIFECYCLE_GH_TOKEN }}
           USE_GKE_GCLOUD_AUTH_PLUGIN: 'True'
-        run: ./infra/ci/lifecycle-dispatch.sh
+          AUTO_APPROVE: '1'
+        run: uv run --project infra/cli devstash-infra gcp ${{ inputs.action }}

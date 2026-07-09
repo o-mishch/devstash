@@ -1,8 +1,0 @@
-{
-  "ID": "ce7ace5f-ada3-25a0-f88a-a7ec9dac342d",
-  "Operation": "OperationTypePlan",
-  "Who": "ci@build-worker.invalid",
-  "Version": "1.12.3",
-  "Created": "2026-07-05T23:12:35.290906Z",
-  "Path": "gs://b/gke/dev/default.tflock"
-}

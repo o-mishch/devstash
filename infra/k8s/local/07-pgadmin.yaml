@@ -69,7 +69,7 @@ spec:
       initContainers:
         - name: seed-pgpass
           image: busybox:latest
-          # Script mounted from the pgadmin-seed-script ConfigMap (run.sh creates it from
+          # Script mounted from the pgadmin-seed-script ConfigMap (devstash-infra local creates it from
           # scripts/pgadmin-seed-pgpass.sh via --from-file). Kept out of this manifest per
           # infra/.agents/rules/infra.md (no inline scripts in YAML).
           command: ['sh', '/scripts/pgadmin-seed-pgpass.sh']

@@ -15,7 +15,7 @@ description: Infra YAML conventions for DevStash — keep shell logic out of man
 
 # Infrastructure YAML
 
-> This doc is YAML-only. Testing the extracted shell scripts (bats-core + bats-mock, `test_helper`, fixtures) is covered in `infra-shell.md`.
+> This doc is YAML-only. The infra orchestration logic now lives in the `devstash-infra` Python CLI (`infra/cli/`); its conventions + strict test gate are covered in `infra-python.md`. GitHub Actions `run:` steps invoke that CLI (`uv run --project infra/cli devstash-infra …`); Kubernetes still mounts small shell via ConfigMaps.
 
 ## No inline scripts in YAML
 
@@ -23,7 +23,7 @@ description: Infra YAML conventions for DevStash — keep shell logic out of man
 
 Applies wherever YAML carries shell: Kubernetes `command`/`args` and lifecycle hooks, GitHub Actions `run:` steps, Cloud Run job commands, init containers, and any `sh -c "..."` block.
 
-**Why:** Inline blobs are unreadable, untestable, un-lintable (shellcheck can't see them), and impossible to version meaningfully in a diff. A real file is reviewable, reusable, and shellcheck-able. This repo already keeps its shell in dedicated files — `infra/ci/*.sh`, `infra/lib/*.sh` — follow that pattern; don't reverse it by inlining.
+**Why:** Inline blobs are unreadable, untestable, un-lintable (shellcheck can't see them), and impossible to version meaningfully in a diff. A real file (or a typed CLI command) is reviewable, reusable, and testable. This repo keeps its orchestration in the `devstash-infra` CLI and its remaining shell in dedicated files (the Cloud Build shims under `infra/terraform/envs/dev/scripts/`) — follow that pattern; don't reverse it by inlining.
 
 **Threshold:** 1–2 trivial lines (e.g. `command: ["sh", "-c", "exec app --flag"]`) stay inline. A third line, a loop, a conditional, a pipe chain, or any real branching → extract.
 
@@ -32,7 +32,7 @@ Applies wherever YAML carries shell: Kubernetes `command`/`args` and lifecycle h
 - **New script:** place it next to related scripts (`infra/ci/`, `infra/lib/`, or a script dir beside the manifest), make it `#!/usr/bin/env bash` with `set -euo pipefail`, and `chmod +x`.
 - **Reference it by path** from the YAML — do not paste its contents back in.
 - **Kubernetes:** when the script must live in-cluster, mount it via a ConfigMap volume and run the mounted path; do not inline a multi-line heredoc in `args`.
-- **GitHub Actions:** a `run:` step over 2 lines calls a checked-in script (`run: ./infra/ci/foo.sh`) rather than growing an inline block.
+- **GitHub Actions:** a `run:` step over 2 lines calls the CLI (`run: uv run --project infra/cli devstash-infra ci <step>`) or a checked-in script, rather than growing an inline block.
 
 ```yaml
 # ❌ wrong — multi-line logic inlined in the manifest
@@ -47,15 +47,15 @@ command:
 ```
 
 ```yaml
-# ✅ correct — logic in infra/ci/entrypoint.sh, called by path
+# ✅ correct — logic in a checked-in script, called by path
 command: ["/scripts/entrypoint.sh"]
 # entrypoint.sh mounted via ConfigMap volume, or baked into the image
 ```
 
 ```yaml
-# ✅ correct — GitHub Actions step delegates to a checked-in script
+# ✅ correct — GitHub Actions step delegates to the checked-in CLI
 - name: Run migrations
-  run: ./infra/ci/run-migrations.sh
+  run: uv run --project infra/cli devstash-infra ci run-migrations
 ```
 
 This mirrors the standing "no inline config in scripts" convention (keep config in its own file, reference by path) — same principle, applied to shell inside YAML.

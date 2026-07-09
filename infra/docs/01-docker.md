@@ -5,8 +5,8 @@
 > застосунку Next.js. Цей рівень — фундамент, на якому стоїть усе інше.
 
 > 🎓 **Як учити (швидко).** 📚-блоки = короткий концепт для співбесіди (з джерелом);
-> ⚙️-блоки = команда `run.sh`, що інкапсулює крок. Спершу прожени руками, далі —
-> одним викликом. Образ цього рівня збирають [`infra/run/local/run.sh`](../run/local/run.sh)
+> ⚙️-блоки = команда `devstash-infra`, що інкапсулює крок. Спершу прожени руками, далі —
+> одним викликом. Образ цього рівня збирають [`devstash-infra local`](../cli/README.md)
 > (kind) і CI [`deploy-gke.yml`](../../.github/workflows/deploy-gke.yml) (GKE).
 
 ## Що ми будуємо
@@ -225,7 +225,7 @@ docker history devstash:local
 > ⚙️ **Автоматизація.** Ручний `docker build` вище — щоб зрозуміти стадії. У реальному
 > циклі обидва образи (web + migrator) збирає й вантажить у кластер один крок:
 > ```bash
-> bash infra/run/local/run.sh up   # build devstash:local + devstash-migrate:local → kind load
+> devstash-infra local up   # build devstash:local + devstash-migrate:local → kind load
 > ```
 > На GKE те саме робить CI: `docker build` обох таргетів → push в Artifact Registry →
 > deploy за digest (Рівень 4, [04-cicd.md](04-cicd.md)).

@@ -1,7 +1,7 @@
 # Cloud SQL logical-dump bucket — the durability mechanism for the deep suspend.
 #
-# On `run.sh suspend` the DB is exported here (`gcloud sql export sql`) and VERIFIED
-# before the Cloud SQL instance is destroyed (db_active=false); on `run.sh resume` the
+# On `devstash-infra gcp suspend` the DB is exported here (`gcloud sql export sql`) and VERIFIED
+# before the Cloud SQL instance is destroyed (db_active=false); on `devstash-infra gcp resume` the
 # recreated instance is restored from the latest dump (`gcloud sql import sql`). Because
 # the instance no longer keeps a disk while suspended, THIS bucket is where the data
 # lives — it must never be gated by the suspend toggle.
@@ -71,7 +71,7 @@ resource "google_storage_bucket" "db_dumps" {
 # email — a hardcoded `service-<num>@gcp-sa-cloud-sql` does not exist and the grant fails
 # with "Service account … does not exist". Gated on db_active: when the instance is
 # deep-suspended there is no SA to grant (nothing to export); the grant is recreated with
-# the fresh SA on resume. The export in run.sh suspend runs while db_active is still true,
+# the fresh SA on resume. The export in devstash-infra gcp suspend runs while db_active is still true,
 # so the binding is present exactly when a dump is taken.
 resource "google_storage_bucket_iam_member" "sql_agent_db_dumps" {
   count  = var.db_active ? 1 : 0

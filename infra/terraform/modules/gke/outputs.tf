@@ -23,7 +23,7 @@ output "workload_identity_pool" {
 # and surfaced at the root as repo variables CI's "Sign images" step reads.
 # All null when var.binauthz_enabled = false (the pipeline is not provisioned) — one()
 # collapses the count-indexed resource to a single value or null. Root consumers
-# (run.sh gh-variable set, the CI signing step) must skip when these are null/empty.
+# (devstash-infra gcp secrets, the CI signing step) must skip when these are null/empty.
 output "binauthz_attestor_name" {
   value = one(google_binary_authorization_attestor.devstash_slsa[*].name)
 }

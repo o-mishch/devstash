@@ -37,7 +37,7 @@ spec:
           port: 53
     # Cloud SQL (private IP in-VPC) and Memorystore Redis (native ioredis, no proxy).
     # Redis port split:
-    #   6379 = plain-text — used by local-run (infra/run/local) where the Redis
+    #   6379 = plain-text — used by local-run (devstash-infra local) where the Redis
     #          container exposes the default port without TLS.
     #   6378 = TLS-encrypted — Memorystore for Redis uses this fixed secure port
     #          when SERVER_AUTHENTICATION is enabled. Do not substitute the more

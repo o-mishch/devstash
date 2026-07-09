@@ -1,14 +1,14 @@
 # Ops-only credentials → ONE consolidated Secret Manager secret (devstash-ops-config).
 #
-# Today this holds the Spaceship DNS API key/secret pair used by `infra/run/gcp/run.sh resume`
+# Today this holds the Spaceship DNS API key/secret pair used by `devstash-infra gcp resume`
 # to re-point the gke.* A-record at the freshly-allocated ingress IP after a suspend (the global
 # IP is released on suspend and reallocated on resume). They are OPS creds — the application
 # never needs them — so they are deliberately kept OUT of the app blob (devstash-app-config) and
 # its app-SA secretAccessor grant. Consolidating the two former standalone secrets
 # (devstash-spaceship-api-key / -secret) into a single JSON blob mirrors the app-config design:
 # fewer secrets to inventory, and the whole ops surface is one grant. Consumers read individual
-# values with `gcloud secrets versions access latest ... | jq -r .<key>` (run.sh, the
-# auto-suspend prepare step, build-secrets-tfvars.py).
+# values with `gcloud secrets versions access ... | jq -r .<key>` (the devstash-infra CLI and
+# the auto-suspend prepare step, both via the ported secrets-blob reader).
 #
 # Same hardening as app-config (see modules/iam/main.tf for the full rationale):
 #   - secret_data_wo (write-only) — values never land in tfstate.
@@ -21,7 +21,7 @@
 # would compute count=0, drop from state, and 409 on the next local apply — keeping the
 # container ungated ends that orphan→409 cycle. If BOTH creds are empty only the version is
 # skipped (DNS can still be driven via the SPACESHIP_API_KEY / SPACESHIP_API_SECRET env vars,
-# or by hand). To rotate without a full apply, use `run.sh set-dns-creds` (writes a new version
+# or by hand). To rotate without a full apply, use `devstash-infra gcp set-dns-creds` (writes a new version
 # directly).
 
 locals {
@@ -46,7 +46,7 @@ resource "google_secret_manager_secret" "ops_config" {
 
   labels = local.common_labels
 
-  # Outlive a full `run.sh down` — same rationale as app_config (see modules/iam/main.tf):
+  # Outlive a full `devstash-infra gcp down` — same rationale as app_config (see modules/iam/main.tf):
   # ~$0 to keep, painful to re-enter the Spaceship DNS creds by hand. `down` excludes this
   # address from `tofu destroy`; prevent_destroy backstops any unfiltered destroy.
   lifecycle {

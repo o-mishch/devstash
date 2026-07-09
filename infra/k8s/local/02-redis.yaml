@@ -60,7 +60,7 @@ spec:
             - "no"
           ports:
             - { containerPort: 6379 } # Valkey (TLS)
-          # TLS material generated per `up` by run.sh (ensure_valkey_tls) into the valkey-tls
+          # TLS material generated per `up` by devstash-infra local (ensure_valkey_tls) into the valkey-tls
           # Secret — the SAME CA the app verifies against (REDIS_CA_CERT). Mounted read-only.
           volumeMounts:
             - name: tls

@@ -48,6 +48,8 @@ const eslintConfig = defineConfig([
     "src/types/openapi.ts",
     "**/.obsidian/**",
     "prisma.config.ts",
+    "**/venv/**",
+    "**/.venv/**",
   ]),
   {
     // Every AI mutation must route through `runAiMutation`/`useAiMutation` (src/hooks/use-ai-usage.ts)

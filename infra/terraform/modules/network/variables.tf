@@ -29,7 +29,7 @@ variable "armor_enabled" {
 # range). The billable edge resources — the global ingress IP, Cloud NAT + its router,
 # and the Cloud Armor policy — are created only when the environment is active. When
 # false they are destroyed so a suspended environment costs ~nothing. See
-# envs/dev/variables.tf:environment_active and infra/run/gcp/run.sh suspend/resume.
+# envs/dev/variables.tf:environment_active and devstash-infra gcp suspend/resume.
 variable "compute_active" {
   type        = bool
   default     = true

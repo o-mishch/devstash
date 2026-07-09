@@ -8,11 +8,11 @@
 # Differences from the GCP version:
 #   - No Workload Identity. The GCP job also needs no metadata init container:
 #     migrations consume the materialized Secret and connect by private IP.
-#   - Image tag is `devstash-migrate:local` (built + kind-loaded by run.sh).
+#   - Image tag is `devstash-migrate:local` (built + kind-loaded by devstash-infra local).
 #   - Credentials come from secret.local.yaml (applied via `kubectl apply -k overlays/local`), not ESO.
 #
 # Deliberately NOT in kustomization.yaml `resources` — a Job's pod template is
-# immutable, so re-running `kubectl apply -k` on an existing Job fails. run.sh
+# immutable, so re-running `kubectl apply -k` on an existing Job fails. devstash-infra local
 # applies this file directly (delete-then-apply) with `kubectl apply -f` and
 # waits for completion before rolling out the web Deployment, exactly mirroring
 # the CI pipeline in .github/workflows/deploy-gke.yml.
@@ -46,7 +46,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          # Built and kind-loaded by run.sh (`docker build --target migrator`).
+          # Built and kind-loaded by devstash-infra local (`docker build --target migrator`).
           image: devstash-migrate:local
           imagePullPolicy: Never  # always use the kind-loaded image, never pull
           env:
@@ -55,7 +55,7 @@ spec:
               value: "pg"
           envFrom:
             # devstash-secrets is materialized from overlays/local/secret.local.yaml
-            # (applied by run.sh as part of kubectl apply -k overlays/local before this job).
+            # (applied by devstash-infra local as part of kubectl apply -k overlays/local before this job).
             - secretRef:
                 name: devstash-secrets
           resources:

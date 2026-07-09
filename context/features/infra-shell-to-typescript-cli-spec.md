@@ -1,3 +1,7 @@
+> ⚠️ **SUPERSEDED (2026-07-08)** — this TypeScript plan is no longer the approach. The port was re-decided to **Python**; see [infra-shell-to-python-cli-spec.md](infra-shell-to-python-cli-spec.md) (and [../current-feature.md](../current-feature.md)). Kept for history.
+>
+> **Why superseded:** the Cloud Build auto-suspend builder (`cloud-sdk:slim`) ships `python3` but **not** node, so a Python port runs the unattended suspend steps with zero runtime install and preserves the image's digest-pin + "install nothing" invariant — whereas TypeScript would force Node onto the image (or a builder swap). Python is also the DevOps-default automation language, and the 4 existing Cloud Build helpers are already stdlib Python.
+
 # Plan: Port the infra shell layer to a typed TypeScript CLI (keep Terraform + K8s YAML)
 
 ## Context

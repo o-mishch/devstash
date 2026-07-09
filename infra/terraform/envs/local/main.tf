@@ -1,8 +1,8 @@
 # Root module for the `local` environment. Mirrors envs/dev/main.tf's module-per-resource
 # layout — but the only building block a local kind stack needs is the cluster itself. Like
-# envs/dev (which stops at the GKE cluster and lets run.sh/CI apply manifests), Terraform
+# envs/dev (which stops at the GKE cluster and lets the devstash-infra CLI/CI apply manifests), Terraform
 # here provisions the CLUSTER ONLY; the in-cluster backing services and app overlay stay in
-# kustomize and are applied by infra/run/local/run.sh.
+# kustomize and are applied by the devstash-infra CLI.
 module "kind" {
   source = "../../modules/kind"
 

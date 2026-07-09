@@ -10,8 +10,8 @@
 resource "google_sql_database_instance" "postgres" {
   # Cost toggle. Unlike the old stop-only model (activation_policy=NEVER kept the disk
   # for ~$1.70/mo), the deep suspend DESTROYS the instance for true ~$0 idle. The data
-  # is preserved out-of-band: run.sh suspend runs `gcloud sql export` to the GCS dump
-  # bucket and verifies it BEFORE flipping instance_active=false; run.sh resume recreates
+  # is preserved out-of-band: devstash-infra gcp suspend runs `gcloud sql export` to the GCS dump
+  # bucket and verifies it BEFORE flipping instance_active=false; devstash-infra gcp resume recreates
   # this instance and `gcloud sql import`s the dump. A count→0 destroy reads
   # deletion_protection from PRIOR state, so the instance must be unprotected to be
   # destroyable in a single apply (see deletion_protection below).
@@ -25,7 +25,7 @@ resource "google_sql_database_instance" "postgres" {
   # cluster: this instance is torn down and recreated on every deep suspend/resume cycle,
   # and a count→0 destroy reads deletion_protection from prior state — a protected
   # instance could not be suspended in a single apply. Data safety is NOT provided by
-  # this flag anymore; it is provided by the verified GCS dump that run.sh suspend takes
+  # this flag anymore; it is provided by the verified GCS dump that devstash-infra gcp suspend takes
   # before it ever sets instance_active=false. Do NOT re-enable protection expecting the
   # old stop-not-destroy safety — that model is gone.
   deletion_protection = false
@@ -129,7 +129,7 @@ resource "google_sql_database_instance" "postgres" {
 
     backup_configuration {
       # Backups are gated by var.backups_enabled. Off for the dev showcase: durability
-      # comes from the suspend-time GCS dump (run.sh suspend → `gcloud sql export`), not
+      # comes from the suspend-time GCS dump (devstash-infra gcp suspend → `gcloud sql export`), not
       # from Cloud SQL's own backups, so paying for daily backup storage is redundant
       # here. Keep them ON for prod (set backups_enabled = true). PITR (continuous WAL
       # archiving) can only be on when backups are on — it is forced off otherwise.
@@ -182,7 +182,7 @@ resource "google_sql_database_instance" "postgres" {
 }
 
 # Count-gated with the instance: both vanish on deep suspend and are recreated (empty)
-# on resume, at which point run.sh imports the GCS dump back into this database.
+# on resume, at which point devstash-infra imports the GCS dump back into this database.
 resource "google_sql_database" "devstash" {
   count    = var.instance_active ? 1 : 0
   name     = "devstash"

@@ -63,7 +63,7 @@ locals {
 #
 # Only APP creds live here — the app SA gets secretAccessor on this secret (below), so nothing
 # the app never uses belongs in it. OPS-only credentials (the Spaceship DNS API pair that
-# run.sh uses on resume) live in a SEPARATE consolidated secret, devstash-ops-config (see
+# the devstash-infra CLI uses on resume) live in a SEPARATE consolidated secret, devstash-ops-config (see
 # envs/dev/dns.tf), which the app SA is deliberately NOT granted — least privilege.
 resource "google_secret_manager_secret" "app_config" {
   secret_id = "devstash-app-config"
@@ -74,7 +74,7 @@ resource "google_secret_manager_secret" "app_config" {
 
   labels = var.labels
 
-  # Outlive a full `run.sh down`. Secret Manager is effectively free (2 secrets, single
+  # Outlive a full `devstash-infra gcp down`. Secret Manager is effectively free (2 secrets, single
   # version each — well inside the 6-free-version tier, ~$0/mo), and re-populating the app
   # creds blob by hand after every teardown is the real cost. `down` runs `tofu destroy`
   # with `-exclude` for this address so a normal teardown skips it cleanly; prevent_destroy
@@ -118,7 +118,7 @@ resource "google_secret_manager_secret_version" "app_config" {
 # app broken. This check surfaces the wrong state — a managed version disabled out-of-band, or an
 # apply interrupted mid-bump leaving the tracked version disabled — at plan/apply time as a
 # warning, instead of at the next deploy as a silent failure. The CI enabled-version gate
-# (infra/ci/check-secret-version.sh) is the deploy-time counterpart; this is the apply-time one.
+# (the devstash-infra CLI's app-config version-bump gate) is the deploy-time counterpart; this is the apply-time one.
 #
 # We read the SPECIFIC version this resource created (not "latest") — the `latest` data source
 # resolves to the newest ENABLED version and would happily return an OLDER enabled one, hiding the
@@ -275,7 +275,7 @@ resource "google_service_account" "deployer" {
 }
 
 # Scope image push AND post-deploy prune to this repository. repoAdmin (not writer) because
-# the deploy pipeline's final step (infra/ci/prune-registry.sh) deletes superseded image
+# the deploy pipeline's final step (devstash-infra ci prune-registry) deletes superseded image
 # versions the moment a rollout is healthy — an immediate equivalent of the repository's
 # keep_count=1 cleanup policy, which otherwise only runs on Artifact Registry's ~daily async
 # sweep. deleteArtifacts lives in repoAdmin; scope it to THIS repo only (not project-wide
@@ -341,8 +341,8 @@ resource "google_project_iam_member" "deployer_vulnerability_viewer" {
   member  = "serviceAccount:${google_service_account.deployer.email}"
 }
 
-# secretmanager.viewer lets the deploy job's check-secret-version.sh gate (infra/ci/
-# check-secret-version.sh) list devstash-app-config's versions and see their ENABLED/DISABLED
+# secretmanager.viewer lets the deploy job's app-config version-bump gate (in the devstash-infra
+# CLI) list devstash-app-config's versions and see their ENABLED/DISABLED
 # state — it never reads secret payloads (that's ESO's job via the app SA's secretAccessor
 # above). Without this, ds_newest_enabled_secret_version's `gcloud secrets versions list` 403s
 # for the deployer SA; the helper tolerates the error by returning empty (indistinguishable from
@@ -463,7 +463,7 @@ resource "google_service_account_iam_member" "github_wif" {
 
 # --- Lifecycle-deployer service account: on-demand resume / suspend from GitHub UI ---
 # The identity for the MANUAL, GitHub-Actions-driven suspend/resume button
-# (.github/workflows/infra-lifecycle.yml → infra/ci/lifecycle-dispatch.sh → run.sh).
+# (.github/workflows/infra-lifecycle.yml → devstash-infra gcp resume|suspend).
 # Distinct from `deployer` because a FULL `tofu apply` — recreating GKE, Memorystore,
 # Cloud NAT/Armor, Cloud SQL, and the repo-scoped AR IAM members — needs far broader
 # rights than `deployer`'s deploy-only container.admin. Distinct from the auto-suspend

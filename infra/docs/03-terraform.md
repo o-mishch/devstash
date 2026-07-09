@@ -6,7 +6,7 @@
 
 > 🎓 **Навчальний трек.** Концепти для співбесіди — у блоках 📚 «Ключові виписки з
 > офіційних ресурсів» і «Тези для співбесіди» нижче. Блок ⚙️ **Автоматизація**
-> вказує, яка команда `run.sh` інкапсулює крок: спершу прожени офлайн-валідацію
+> вказує, яка команда `devstash-infra` інкапсулює крок: спершу прожени офлайн-валідацію
 > руками, далі застосовуй проти GCP одним викликом. Передумови (проєкт, білінг,
 > ADC, state-бакет, API) і покроковий `tofu apply` детально розписані в
 > [08-gcp-bootstrap.md](08-gcp-bootstrap.md); тут — структура самого коду.
@@ -348,11 +348,11 @@ tofu fmt -recursive -check   # ✅ canonical formatting
 
 > ⚙️ **Автоматизація.** Офлайн-валідація вище — ручна. Реальний цикл проти GCP
 > (init з GCS-backend → plan → apply, плюс отримання kubeconfig) інкапсульовано в
-> [`infra/run/gcp/run.sh`](../run/gcp/run.sh):
+> [`devstash-infra` CLI](../cli/README.md):
 > ```bash
-> bash infra/run/gcp/run.sh bootstrap   # передумови ДО init: проєкт/білінг/ADC/state-бакет/API
-> bash infra/run/gcp/run.sh apply       # tofu init -backend-config=… → plan → apply → get-credentials
-> bash infra/run/gcp/run.sh down        # tofu destroy (deletion_protection треба зняти першим)
+> devstash-infra gcp bootstrap   # передумови ДО init: проєкт/білінг/ADC/state-бакет/API
+> devstash-infra gcp apply       # tofu init -backend-config=… → plan → apply → get-credentials
+> devstash-infra gcp down        # tofu destroy (deletion_protection треба зняти першим)
 > ```
 > `apply` завжди планує у файл і застосовує **саме цей plan** — нуль дрейфу між
 > рев'ю diff і реальною мутацією GCP. Покрокові передумови та повний порядок

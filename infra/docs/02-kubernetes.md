@@ -7,11 +7,11 @@
 
 > 🎓 **Навчальний трек.** Концепти для співбесіди зібрані у блоках 📚 «Ключові
 > виписки з офіційних ресурсів» і «Тези для співбесіди» нижче. Блок ⚙️
-> **Автоматизація** показує, яка команда `run.sh` інкапсулює ручні кроки — спершу
+> **Автоматизація** показує, яка команда `devstash-infra` інкапсулює ручні кроки — спершу
 > прожени їх руками (щоб бачити control loop наживо), далі відтворюй одним
 > викликом. Локальний стек на kind автоматизує
-> [`infra/run/local/run.sh`](../run/local/run.sh), хмарний на GKE — CI, який
-> запускає [`infra/run/gcp/run.sh`](../run/gcp/run.sh).
+> [`devstash-infra local`](../cli/README.md), хмарний на GKE — CI, який
+> запускає [`devstash-infra gcp`](../cli/README.md).
 
 ## Ментальна модель (озвучте це на співбесіді)
 
@@ -55,7 +55,7 @@ local-run/                  # FUNCTIONAL local stack (kind) — same base, with:
 │                           #   patches/service-nodeport.yaml NodePort → host :8080
 │                           #   patches/networkpolicy-local.yaml extra egress: MinIO 9000, Mailpit 1025/8025
 │                           #   03-app-secret.yaml           throwaway secrets
-└── run.sh                  # one-shot: create kind cluster → build image → migrate → rollout → verify
+(оркестратор — команда `devstash-infra local`: one-shot create kind cluster → build image → migrate → rollout → verify)
 ```
 
 → файли: [`infra/k8s/base/`](../k8s/base/)
@@ -375,14 +375,14 @@ kind delete cluster --name devstash
 > (in-cluster Postgres/Redis/MinIO/Mailpit + міграції + seed, у тому ж порядку
 > migrate→rollout, що й CI) піднімає один скрипт:
 > ```bash
-> bash infra/run/local/run.sh up       # kind → build web+migrate → migrate Job → rollout → verify
-> bash infra/run/local/run.sh deploy   # швидка ітерація: rebuild + migrate + rollout
-> bash infra/run/local/run.sh status   # стан кластера / подів / health
-> bash infra/run/local/run.sh info     # URL усіх сервісів (app, Postgres, MinIO, Mailpit…)
-> bash infra/run/local/run.sh down     # знести kind-кластер
+> devstash-infra local up       # kind → build web+migrate → migrate Job → rollout → verify
+> devstash-infra local deploy   # швидка ітерація: rebuild + migrate + rollout
+> devstash-infra local status   # стан кластера / подів / health
+> devstash-infra local info     # URL усіх сервісів (app, Postgres, MinIO, Mailpit…)
+> devstash-infra local down     # знести kind-кластер
 > ```
 > На GKE ті самі base-маніфести застосовує CI (`deploy-gke.yml`), що його тригерить
-> [`infra/run/gcp/run.sh deploy`](../run/gcp/run.sh) (Рівень 4). Детальний розбір
+> [`devstash-infra gcp deploy`](../cli/README.md) (Рівень 4). Детальний розбір
 > kind-стека — у [07-local-run.md](07-local-run.md).
 
 ## Який кластер бачить `kubectl`? (local vs GCP)
@@ -406,25 +406,25 @@ kubectl config use-context gke_<project>_us-central1_devstash-dev-gke   # GCP
 ```
 
 **Небезпека:** `gcloud container clusters get-credentials` (яку викликає
-`gcp/run.sh` через `use_cluster()`) перемикає `current-context` на GKE і
-**залишає його там**. Якщо після цього запустити `local/run.sh up` без жодних
+`devstash-infra gcp` через `use_cluster()`) перемикає `current-context` на GKE і
+**залишає його там**. Якщо після цього запустити `devstash-infra local up` без жодних
 перевірок, `kubectl apply` мовчки накотить локальний-лише стек (Postgres/Redis/MinIO)
 на справжній GKE dev-кластер — `kubectl` не має уявлення про «тип» кластера і
 ніколи не питає підтвердження.
 
-Тому обидва `run.sh` **не покладаються на пам'ять розробника** — вони самі
+Тому обидві команди `devstash-infra` **не покладаються на пам'ять розробника** — вони самі
 перевіряють контекст на вході кожної команди, що змінює кластер:
 
-- [`infra/lib/common.sh`](../lib/common.sh) — `require_kube_context(<glob>, <hint>)`,
+- [`devstash-infra` CLI](../cli/README.md) — `require_kube_context(<glob>, <hint>)`,
   спільний хелпер: помирає (`die`), якщо поточний контекст не збігається з очікуваним
-  glob-патерном. `local/run.sh` викликає його з `"kind-devstash"` на початку `up`/`deploy`.
-- [`infra/run/gcp/run.sh`](../run/gcp/run.sh) — `use_cluster()` / `use_cluster_soft()`
+  glob-патерном. `devstash-infra local` викликає його з `"kind-devstash"` на початку `up`/`deploy`.
+- [`devstash-infra gcp`](../cli/README.md) — `use_cluster()` / `use_cluster_soft()`
   виконують `get-credentials`, а потім `_kube_context_is_gke()` підтверджує, що
   контекст справді має вигляд `gke_*`, перш ніж продовжити.
 
 Практичний висновок: перед будь-яким «сирим» `kubectl` перевіряйте
 `kubectl config current-context`; а для команд із цього репозиторію користуйтеся
-`local/run.sh` / `gcp/run.sh` — вони самі гарантують правильний контекст.
+`devstash-infra local` / `devstash-infra gcp` — вони самі гарантують правильний контекст.
 
 ## Шпаргалка з налагодження (вас про це запитають)
 

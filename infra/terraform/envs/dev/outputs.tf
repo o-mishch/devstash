@@ -7,7 +7,7 @@ output "artifact_registry_url" {
 }
 
 # The STATIC repository id ("devstash") — resolves even while the repo resource is gated off
-# (deep-suspend), same as repository_url. run.sh reads this as the single source of truth for
+# (deep-suspend), same as repository_url. The devstash-infra CLI reads this as the single source of truth for
 # the AR-writable dispatch gate (_wait_ar_push_ready) instead of re-hardcoding the repo name
 # that CI already carries as deploy-gke.yml's REPO.
 output "artifact_registry_repository_id" {
@@ -39,9 +39,9 @@ output "uploads_bucket" {
   value = module.gcs.bucket_name
 }
 
-# Cloud SQL instance name + dump bucket — consumed by run.sh suspend/resume for the
+# Cloud SQL instance name + dump bucket — consumed by devstash-infra gcp suspend/resume for the
 # `gcloud sql export|import` round trip. The name is computed (not read from the resource)
-# so it is available even while deep-suspended (the instance is gone); run.sh needs it to
+# so it is available even while deep-suspended (the instance is gone); the devstash-infra CLI needs it to
 # name the export target and the import destination.
 output "db_instance_name" {
   value = local.db_instance_name
@@ -51,13 +51,13 @@ output "db_dumps_bucket" {
   value = google_storage_bucket.db_dumps.name
 }
 
-# Well-known object name of the Cloud SQL logical dump. run.sh reads this so its
+# Well-known object name of the Cloud SQL logical dump. The devstash-infra CLI reads this so its
 # suspend/resume round trip uses the exact object the auto-suspend path writes.
 output "db_dump_object" {
   value = local.db_dump_object
 }
 
-# Noncurrent-dump retention count, surfaced so run.sh's dump_db can SYNCHRONOUSLY prune the
+# Noncurrent-dump retention count, surfaced so devstash-infra's dump_db can SYNCHRONOUSLY prune the
 # dump history to the same size the async lifecycle rule (db-dumps.tf) targets — one variable,
 # two enforcement mechanisms, guaranteed not to drift. The sync prune keeps this + 1 total
 # generations (the live dump plus this many noncurrent), matching the lifecycle rule which
@@ -90,7 +90,7 @@ output "lifecycle_deployer_service_account_email" {
 # And these repo VARIABLES (non-secret — attestor/KMS resource names, not credentials)
 # consumed by the "Sign images for Binary Authorization" step. Present ONLY when
 # binauthz_enabled = true; when false these outputs are null (`tofu output -raw` errors on
-# null) and the CI signing step self-skips. `run.sh set-repo-secrets` handles both cases —
+# null) and the CI signing step self-skips. `devstash-infra gcp secrets` handles both cases —
 # prefer it over setting these by hand:
 #   gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
 #   gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
@@ -123,7 +123,7 @@ output "cert_map_name" {
   value = google_certificate_manager_certificate_map.app.name
 }
 
-# The underlying certificate resource (distinct from the map above) — run.sh `status` queries
+# The underlying certificate resource (distinct from the map above) — devstash-infra gcp `status` queries
 # this directly rather than deriving it from cert_map_name by string substitution.
 output "cert_name" {
   value = google_certificate_manager_certificate.app.name
@@ -162,7 +162,7 @@ output "armor_policy_name" {
   value = module.network.armor_policy_name
 }
 
-# Whether Cloud Armor is provisioned — read by run.sh set-repo-secrets to set/clear the
+# Whether Cloud Armor is provisioned — read by devstash-infra gcp secrets to set/clear the
 # ARMOR_ENABLED CI variable that inject-settings.sh keys the BackendConfig policy on.
 # Sourced from the var (not armor_policy_name, which is also null while suspended) so it is
 # correct regardless of environment_active.
@@ -176,5 +176,5 @@ output "armor_enabled" {
 # used by CI) and is the only way to reach the control plane from outside the VPC.
 output "get_credentials_command" {
   # Null cluster_name when suspended — interpolating it would error, so guard it.
-  value = module.gke.cluster_name == null ? "environment suspended — run `run.sh resume` first" : "gcloud container clusters get-credentials ${module.gke.cluster_name} --region ${var.region} --project ${var.project_id} --dns-endpoint"
+  value = module.gke.cluster_name == null ? "environment suspended — run `devstash-infra gcp resume` first" : "gcloud container clusters get-credentials ${module.gke.cluster_name} --region ${var.region} --project ${var.project_id} --dns-endpoint"
 }

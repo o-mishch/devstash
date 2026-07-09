@@ -5,15 +5,15 @@ kind: Kustomization
 # dashboard tools (Headlamp, pgAdmin). This is the local analog of the managed GCP services
 # (Cloud SQL / Memorystore / GCS) that Terraform provisions for the dev env; here they run
 # as in-cluster pods. It is a BASE (not an overlay): the app-under-test overlay lives in
-# infra/k8s/overlays/local/ and is applied separately by infra/run/local/run.sh.
+# infra/k8s/overlays/local/ and is applied separately by devstash-infra local.
 #
 # Render:  kubectl kustomize infra/k8s/local
-# Apply:   infra/run/local/run.sh applies this base in ORDERED SLICES (postgres → redis →
+# Apply:   devstash-infra local applies this base in ORDERED SLICES (postgres → redis →
 #          minio/mailpit → bucket-init job → dashboards), waiting for readiness between each,
 #          via `kubectl kustomize infra/k8s/local | yq 'select(...)' | kubectl apply`.
 #
 # kind-config.yaml is NOT a resource here — it is the kind cluster config (consumed by
-# infra/terraform/modules/kind via file() and by run.sh), not a Kubernetes manifest.
+# infra/terraform/modules/kind via file() and by devstash-infra local), not a Kubernetes manifest.
 #
 # NOTE: do NOT add a top-level `namespace:` field here — it stamps every rendered
 # resource including the standalone `Namespace: headlamp` object in 06-headlamp.yaml,
@@ -27,7 +27,7 @@ resources:
   - 06-headlamp.yaml
   - 07-pgadmin.yaml
 
-# The init scripts were previously turned into ConfigMaps at runtime by run.sh
+# The init scripts were previously turned into ConfigMaps at runtime by devstash-infra local
 # (`configmap_from_script`). They are now generated declaratively so `kubectl kustomize`
 # renders the complete stack. disableNameSuffixHash keeps the generated names stable
 # (minio-bucket-init-script / pgadmin-seed-script) so the static `configMap.name` volume

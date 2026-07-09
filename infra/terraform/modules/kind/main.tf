@@ -1,7 +1,7 @@
 # Local kind cluster — the local analog of modules/gke. Provisions the CLUSTER ONLY;
 # in-cluster manifests (Postgres/Redis/MinIO/pgAdmin + the app overlay) stay in kustomize
-# and are applied by infra/run/local/run.sh, exactly as envs/dev stops at the GKE
-# cluster and lets CI/run.sh apply manifests. No kubernetes_manifest here (it needs a live
+# and are applied by the devstash-infra CLI, exactly as envs/dev stops at the GKE
+# cluster and lets CI / the devstash-infra CLI apply manifests. No kubernetes_manifest here (it needs a live
 # cluster + CRDs at plan time — a documented anti-pattern).
 
 # Read the checked-in kind-config.yaml and decode it so the YAML file remains the single
@@ -34,7 +34,7 @@ resource "kind_cluster" "this" {
   count = var.cluster_active ? 1 : 0
 
   name = var.cluster_name
-  # Block until the control plane is ready so run.sh's immediately-following kubectl apply
+  # Block until the control plane is ready so devstash-infra's immediately-following kubectl apply
   # steps don't race a half-up API server (a bare `kind create cluster` already waits).
   wait_for_ready = true
   # Empty string → omit so the provider falls back to its default (~/.kube/config merge),

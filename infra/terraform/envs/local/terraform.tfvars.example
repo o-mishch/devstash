@@ -2,10 +2,10 @@
 # defaults (see variables.tf), so a local run needs NO tfvars at all — this file documents
 # the knobs. terraform.tfvars is gitignored.
 #
-# The suspend/resume toggle is NOT set here — run.sh persists it in active.auto.tfvars
+# The suspend/resume toggle is NOT set here — the devstash-infra CLI persists it in active.auto.tfvars
 # (gitignored), mirroring how envs/dev keeps environment_active in its own active.auto.tfvars.
 
-# kind cluster name. Must match what run.sh / kubectl tooling expects (default "devstash").
+# kind cluster name. Must match what devstash-infra / kubectl tooling expects (default "devstash").
 # cluster_name = "devstash"
 
 # Path to kind-config.yaml, relative to modules/kind. Default already points at the

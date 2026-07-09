@@ -39,7 +39,7 @@ resource "google_project_service" "apis" {
 # enable operation completes, but a freshly-enabled control plane can still 403 with
 # SERVICE_DISABLED for a few minutes afterward ("wait a few minutes for the action to
 # propagate to our systems and retry"). A plain depends_on cannot wait this out — we hit it
-# on the Memorystore/Valkey instance when adopting the API mid-life via `run.sh apply` (the
+# on the Memorystore/Valkey instance when adopting the API mid-life via `devstash-infra gcp apply` (the
 # bootstrap pre-enable only runs on `up`/`bootstrap`). Bridge the gap with a one-time,
 # create-only sleep so API-consuming resources (the Valkey instance) only build once the API
 # is actually usable. No-op on later applies (create-only, no triggers → never re-runs).
@@ -184,7 +184,7 @@ module "cloudsql" {
   highly_available       = var.db_highly_available
   point_in_time_recovery = var.db_point_in_time_recovery
   # Backups off for the dev showcase — durability comes from the suspend-time GCS dump
-  # (run.sh suspend → `gcloud sql export`), not Cloud SQL's own daily backups. Set true
+  # (devstash-infra gcp suspend → `gcloud sql export`), not Cloud SQL's own daily backups. Set true
   # for a prod environment.
   backups_enabled = false
   # Deep-suspend cost toggle: DESTROY the instance when db_active is false (true ~$0 idle;
@@ -273,8 +273,8 @@ module "iam" {
   # depends_on reverses on destroy, so this forces the members to be removed while the repo lives.
   artifact_registry_repository_depends_on = module.artifact_registry.repository_depends_on
   github_repository                       = var.github_repository
-  github_owner_id                 = var.github_owner_id
-  labels                          = local.common_labels
+  github_owner_id                         = var.github_owner_id
+  labels                                  = local.common_labels
 
   # Binary Authorization attestor (modules/gke) — grants the deployer SA permission
   # to sign attestations + read vulnerability findings for the CI gate. The signer +

@@ -36,7 +36,7 @@ async function createAdapter(): Promise<SqlDriverAdapterFactory> {
 
 const prisma = new PrismaClient({ adapter: await createAdapter() })
 
-// run.sh only needs the system item types (so the app can create items) — not the
+// the deploy migrate job only needs the system item types (so the app can create items) — not the
 // demo user or the 70k bulk load-test rows. SEED_ITEM_TYPES_ONLY=1 stops after them.
 const itemTypesOnly = process.env.SEED_ITEM_TYPES_ONLY === '1'
 

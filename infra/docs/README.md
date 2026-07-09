@@ -15,7 +15,7 @@
 | 07 | [Локальний запуск](07-local-run.md) | Повний робочий застосунок на kind: in-cluster Postgres, міграції, deep health | (практика) |
 | 08 | [Bootstrap GCP](08-gcp-bootstrap.md) | Що руками підготувати на cloud.google.com/free **перед** `tofu init`: проєкт, білінг, ADC, state-бакет, tfvars | (передумови deploy) |
 | 09 | [GCP hardening roadmap](09-gcp-audit.md) | Forward-looking кроки до продакшну: alerts, Binary Auth, restore-drill, prod/dev split, HA-сайзинг | (roadmap) |
-| 10 | [Suspend / Resume](10-suspend-resume.md) | On-demand showcase за ~$0: `environment_active` toggle, `run.sh suspend`/`resume`, Spaceship DNS, idle auto-suspend (Monitoring→Pub/Sub→Build) | (cost) |
+| 10 | [Suspend / Resume](10-suspend-resume.md) | On-demand showcase за ~$0: `environment_active` toggle, `devstash-infra gcp suspend`/`resume`, Spaceship DNS, idle auto-suspend (Monitoring→Pub/Sub→Build) | (cost) |
 | 11 | [Логи застосунку](11-logs.md) | Перегляд і пошук логів подів: `kubectl logs`, Logs Explorer, пошук за підрядком (`SEARCH`, `=~`, `jsonPayload.*`) | (observability) |
 
 ## Як цим користуватися
@@ -27,10 +27,10 @@
 4. **Тези для співбесіди** — що казати, коли запитають.
 
 > 🎓 **Навчальні позначки (єдині в усьому треку).** 📚-блок — короткий концепт для
-> співбесіди (з джерелом); ⚙️-блок — команда `run.sh`, що інкапсулює ручний крок.
+> співбесіди (з джерелом); ⚙️-блок — команда `devstash-infra`, що інкапсулює ручний крок.
 > Логіка: спершу прожени крок руками (щоб розуміти механіку), далі відтворюй одним
-> викликом — [`infra/run/local/run.sh`](../run/local/run.sh) (kind) і
-> [`infra/run/gcp/run.sh`](../run/gcp/run.sh) (GKE).
+> викликом — [`devstash-infra local`](../cli/README.md) (kind) і
+> [`devstash-infra gcp`](../cli/README.md) (GKE).
 
 > Легенда статусів: документ кожного шару завершується чеклістом, що віддзеркалений у майстер-плані.
 

@@ -32,7 +32,7 @@ metadata:
 spec:
   gatewayClassName: gke-l7-global-external-managed
   # Reserved global external static IP, referenced by name (injected from
-  # settings.yaml.data.ingressIpName). Released on suspend, reallocated on resume (run.sh),
+  # settings.yaml.data.ingressIpName). Released on suspend, reallocated on resume (devstash-infra gcp resume),
   # which is why DNS is re-pointed on resume — unchanged from the Ingress model.
   addresses:
     - type: NamedAddress

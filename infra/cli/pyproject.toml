@@ -1,0 +1,203 @@
+[project]
+name = "devstash-infra"
+version = "0.1.0"
+description = "Typed Python CLI porting the DevStash infra/ shell layer (OpenTofu + gcloud + kubectl lifecycle)."
+readme = "README.md"
+# Single Python floor: 3.14. The Cloud Build auto-suspend path runs cloud-sdk:slim's
+# BUNDLED Cloud SDK Python (3.14.5, located via `gcloud info`), not the image's system
+# python3 (3.13) — so the whole codebase, CLI and Cloud Build alike, targets one floor.
+# See context/features/infra-shell-to-python-cli-spec.md.
+requires-python = ">=3.14"
+dependencies = [
+    "typer>=0.12",
+    "pydantic>=2.7",
+    "structlog>=24.1",
+    "tenacity>=9.1.4",
+    "httpx>=0.28.1",
+]
+
+[project.scripts]
+devstash-infra = "devstash_infra.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-subprocess>=1.5",
+    "pytest-httpx>=0.30",
+    "mypy>=1.10",
+    "basedpyright>=1.22",
+    "ruff>=0.5",
+    "pre-commit>=3.7",
+    "types-requests>=2.32",  # stubs for the vendored `requests` (cloudbuild probes)
+]
+# gcloud's cloud-sdk:slim vendors these under lib/third_party; the cloudbuild path uses the
+# BUNDLED copies at runtime (zero install on the image — shared/third_party.py puts them on the
+# path). They are pinned here to gcloud's EXACT vendored versions so dev/CI — where they ARE
+# installed (for import + typecheck + test) — runs the same code the image runs, with no skew.
+# (kubernetes' image build is a "10.0.0-snapshot"; 10.0.0 is the closest real release.)
+vendored = [
+    "requests==2.32.3",
+    "python-hcl2==4.3.2",
+    "jsonschema==2.6.0",
+    "kubernetes==10.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/devstash_infra"]
+
+# Never install CI as the first consumer of a just-published version (cooldown).
+# uv reads this on sync/lock; keeps CI off same-day releases (supply-chain §).
+[tool.uv]
+exclude-newer = "2026-07-08T00:00:00Z"
+# Install the vendored group by default on dev/CI so pytest/mypy/pyright resolve the same
+# libraries the image provides via lib/third_party. The image itself runs zero `uv sync`.
+default-groups = ["dev", "vendored"]
+# Pin the uv TOOL version (not a dependency) so lock/resolve behavior is identical
+# for everyone — floor matches the interpreter that built uv.lock. Install method
+# (pip/pipx/standalone) is irrelevant; uv errors if it's older than this.
+required-version = ">=0.11.28"
+
+[tool.mypy]
+strict = true
+warn_unreachable = true  # not in `strict`; flags dead code (e.g. statements after an infinite loop)
+# Optional checks beyond strict (mypy error_code_list2). Verified clean on this tree.
+enable_error_code = [
+    "ignore-without-code",  # a bare `# type: ignore` is banned — must name its code (pairs with ruff PGH)
+    "truthy-bool",          # `if obj:` where obj is always truthy
+    "redundant-expr",       # always-true / always-false expressions
+    "possibly-undefined",   # a name may be unbound on some code path
+    "unused-awaitable",     # an awaitable created but never awaited
+]
+python_version = "3.14"
+files = ["src", "tests"]
+# One floor (3.14) covers the whole tree — shared/ + cloudbuild/ run on cloud-sdk:slim's
+# bundled Cloud SDK Python 3.14.5, so no separate lower-floor mypy pass is needed. The
+# stdlib-only rule for those subpackages is guarded by the import-grep + import-smoke, and
+# the pinned image's bundled-python version is guarded by scripts/check_floor_drift.py.
+
+# Type checker: basedpyright (pyright fork, stricter inference). It reads
+# [tool.pyright]; pinning typeCheckingMode="strict" keeps its noisier extra
+# defaults (reportAny, reportUnusedCallResult) off, so this is pyright-strict + below.
+# NB: reportUnnecessaryTypeIgnoreComment is intentionally NOT enabled — it conflicts
+# with running mypy alongside (mypy-only codes like [method-assign] look "unnecessary"
+# to pyright). Stale `# type: ignore` is already policed by mypy's warn_unused_ignores.
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.format]
+# MANDATORY gate — `ruff format --check` must pass in CI and pre-commit. Explicit
+# so every agent/contributor formats identically (no drift between tools/versions).
+docstring-code-format = true       # format code blocks inside docstrings too
+skip-magic-trailing-comma = false  # honor a trailing comma as "keep this exploded"
+
+[tool.ruff.lint]
+# Max-strict set. Core + security + typing/design + logging + exception hygiene +
+# the idiomatic-Python nudges that back the "improve, don't transliterate" bar.
+select = [
+    "E", "F", "I", "UP", "B", "SIM",  # core: pyflakes, isort, pyupgrade, bugbear, simplify
+    # security & correctness
+    "S",    # flake8-bandit — subprocess, secrets, hashing
+    "BLE",  # flake8-blind-except — no bare/blind `except`
+    "PLE",  # Pylint errors — real bugs (the "pylint value" without the cost)
+    "PGH",  # pygrep-hooks — ban blanket `# noqa` / `# type: ignore`
+    "RUF",  # Ruff-native lints
+    # modern / idiomatic
+    "PTH",  # pathlib over os.path (spec mandate)
+    "C4", "RET", "FURB", "FLY", "PIE", "PERF", "RSE", "FA",
+    # typing / design / encapsulation
+    "ARG",  # unused arguments
+    "FBT",  # boolean-trap (keep bools keyword-only)
+    "SLF",  # private-member access (encapsulation)
+    "TID",  # tidy imports (absolute only)
+    "N",    # pep8-naming
+    "A",    # no shadowing builtins
+    "ISC",  # implicit str concat
+    # logging (guards the structlog/stdlib redaction layer)
+    "LOG", "G",
+    # exception hygiene (pairs with exceptions-to-boundary / InfraError)
+    "TRY",
+    # tests
+    "PT",
+    # misc strict
+    "T20",  # no stray print (console modules are per-file-ignored)
+    "DTZ",  # timezone-aware datetimes
+    "ERA",  # no commented-out code
+    "D",    # pydocstyle — docstring QUALITY (see pydocstyle config: style-only, not required)
+    # Pylint refactor + warnings + conventions
+    "PLR", "PLW", "PLC",
+]
+# TC (flake8-type-checking) deliberately omitted: its only autofix is unsafe, the
+# import-time payoff is nil for a subprocess-bound CLI, and pydantic v2 needs its
+# field imports at runtime anyway. EM (flake8-errmsg) omitted too: it forces
+# exception messages into a temp variable, which fights our "plain Error with a
+# clear inline message" standard.
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # intentional typographic unicode (×, →, ·) in prose
+    "N818",    # domain-signal exceptions (Aborted, PlanRejected) subclass InfraError — suffix on the base
+    "TRY003",  # long messages in `raise` — our standard is an inline message, not a custom exc
+    "PLR2004",  # magic-value comparison — pervasive and low-signal
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915",  # complexity counts — the port mirrors inherently
+    #                                              branchy shell; restructuring risks incident-fix behavior
+    "FBT003",  # bool positional in a CALL — common in typer/pytest call sites; keep FBT001/002 for defs
+    # pydocstyle: STYLE-ONLY. We enforce docstring formatting where they exist, but do NOT
+    # require them everywhere (D100-D107 off), and keep the codebase's deliberate descriptive
+    # mood ("Returns/Builds/Blocks…", D401 off). The pep257 convention handles the mutually
+    # exclusive rule pairs (D203/D211, D212/D213).
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+    "D401",  # imperative mood — the codebase deliberately uses descriptive "Returns/Builds/Blocks…"
+    "D205",  # blank line after summary — misfires on our compact single-sentence summaries that wrap
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# proc.py is THE deliberate stdlib exec path; the CLI invokes gcloud/tofu/kubectl
+# by name (resolved via PATH, never absolute) with argv lists it constructs.
+# S603 (untrusted subprocess input) / S607 (partial executable path) are the
+# design, not a finding.
+"src/devstash_infra/shared/proc.py" = ["S603", "S607"]
+# Dev/CI helper scripts (not part of the package import graph): they legitimately
+# print human output (T20) and shell out to docker by name (S603/S607).
+"scripts/**" = ["T20", "S603", "S607"]
+# Tests: asserts are the point (S101); planted-secret fixtures for the redaction
+# scrub test trip the hardcoded-password checks (S105/S106); typed stubs take
+# unused args to match real signatures (ARG); test peers deliberately spawn a real
+# shell (S603/S607); compound asserts read fine here (PT018); shared immutable
+# argv/listing constants on test classes don't need ClassVar ceremony (RUF012).
+"tests/**" = [
+    "S101", "S105", "S106",  # asserts + planted-secret fixtures are the point
+    "ARG",                    # typed stubs match real signatures
+    "S603", "S607",           # test peers deliberately spawn a real shell
+    "PT018", "RUF012",        # compound asserts + immutable class constants read fine
+    "SLF001",                 # tests read the fakes' own private attrs
+    "PLR2004",                # magic values everywhere in assertions
+    "A002",                   # fakes mirror real signatures (e.g. `input`)
+    "N802",                   # descriptive test names embed identifiers (…_True)
+    "PLC0415",                # local imports inside a test keep it self-contained
+    "FBT001", "FBT002",       # test helpers take positional bool flags
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+# Strict runner: unknown marks/config error out, an xpass fails, and every warning
+# is promoted to an error (this is what caught the proc.py stdout-pipe leak).
+addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
+xfail_strict = true
+filterwarnings = ["error"]

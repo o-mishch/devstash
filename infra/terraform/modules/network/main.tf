@@ -52,7 +52,7 @@ resource "google_service_networking_connection" "psa" {
   reserved_peering_ranges = [google_compute_global_address.private_service_range.name]
 
   # ABANDON, not DELETE, on destroy. When the last Cloud SQL / Memorystore instance is
-  # torn down (deep suspend or `run.sh down`), GCP's servicenetworking producer keeps a
+  # torn down (deep suspend or `devstash-infra gcp down`), GCP's servicenetworking producer keeps a
   # lock on this peering for a propagation window that can last UP TO ~4 DAYS after the
   # instance is gone — during which BOTH `tofu destroy` and a manual `gcloud services
   # vpc-peerings delete` fail with "Producer services … are still using this connection"
@@ -60,7 +60,7 @@ resource "google_service_networking_connection" "psa" {
   # removePeering to deleteConnection, so a destroy that used to succeed now blocks the
   # whole teardown on this one resource. ABANDON drops the connection from Terraform state
   # WITHOUT calling deleteConnection, so the teardown never stalls; GCP reclaims the
-  # peering on its own schedule, and `run.sh down` best-effort force-deletes the leftover
+  # peering on its own schedule, and `devstash-infra gcp down` best-effort force-deletes the leftover
   # peering + reserved range afterwards. Refs: hashicorp/terraform-provider-google #16275,
   # #19908. NOTE: on a normal (non-destroy) apply this has no effect — the connection is
   # created/updated as usual; ABANDON only governs the destroy path.
@@ -117,7 +117,7 @@ resource "google_compute_global_address" "ingress_ip" {
   # Gated: an in-use global IP is free, but a RESERVED-but-idle one bills ~$7/mo — the
   # single largest line item of a suspended environment. So it is released on suspend
   # and re-allocated on resume; the resume script re-points the app's DNS A-record at
-  # the fresh address (see run.sh resume → Spaceship DNS update).
+  # the fresh address (see devstash-infra gcp resume → Spaceship DNS update).
   count = var.compute_active ? 1 : 0
   name  = "${var.name_prefix}-ip" # -> "devstash-dev-ip" (matches the overlay annotation)
 }

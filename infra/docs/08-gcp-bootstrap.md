@@ -13,13 +13,13 @@
 > - 📚 **Для співбесіди** — концепт, який стоїть за кроком (ADC, remote state,
 >   WIF, ієрархія ресурсів…) і який питають на технічних інтерв'ю, з посиланнями
 >   на першоджерела.
-> - ⚙️ **Автоматизація** — яка команда [`run.sh`](../run/gcp/run.sh) інкапсулює цей
+> - ⚙️ **Автоматизація** — яка команда [`devstash-infra`](../cli/README.md) інкапсулює цей
 >   крок, щоб після того, як зрозумів механіку руками, відтворити її одним викликом.
 > - 🔒 **Тільки вручну** — крок виконується в зовнішньому дашборді або потребує
->   значень, відомих лише тобі; `run.sh` не може його автоматизувати.
+>   значень, відомих лише тобі; `devstash-infra` не може його автоматизувати.
 >
 > Тобто: спершу прожени кроки вручну (щоб розуміти механіку), далі покладайся на
-> `run.sh`. Повний перелік підкоманд скрипта — у §9.
+> `devstash-infra`. Повний перелік підкоманд скрипта — у §9.
 
 ---
 
@@ -84,10 +84,10 @@ gcloud billing projects link project-39965ce5-4c4b-495e-8d4 --billing-account=01
 > «billing link» у `bootstrap()`. Кожен ідемпотентний: `auth list` / `projects describe` /
 > `billing projects describe` перевіряє перед діє.
 > ```bash
-> bash infra/run/gcp/run.sh bootstrap   # містить розділи 1–4
-> # Білінг-акаунт явно: BILLING_ACCOUNT=015202-D54745-ABDDC9 bash infra/run/gcp/run.sh bootstrap
+> devstash-infra gcp bootstrap   # містить розділи 1–4
+> # Білінг-акаунт явно: BILLING_ACCOUNT=015202-D54745-ABDDC9 devstash-infra gcp bootstrap
 > ```
-> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `bootstrap()`, блоки «gcloud auth login» / «project create + set» / «billing link».
+> Код: [`devstash-infra` CLI](../cli/README.md) → `bootstrap()`, блоки «gcloud auth login» / «project create + set» / «billing link».
 
 ---
 
@@ -117,9 +117,9 @@ gcloud auth application-default login
 > ⚙️ **Автоматизація:** перевіряє `gcloud auth application-default print-access-token` і
 > запускає логін лише якщо токена немає (ідемпотентно; у Cloud Shell пропускається).
 > ```bash
-> bash infra/run/gcp/run.sh bootstrap   # містить крок ADC
+> devstash-infra gcp bootstrap   # містить крок ADC
 > ```
-> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `bootstrap()`, блок «Application Default Credentials».
+> Код: [`devstash-infra` CLI](../cli/README.md) → `bootstrap()`, блок «Application Default Credentials».
 
 ---
 
@@ -163,9 +163,9 @@ gcloud storage buckets update gs://project-39965ce5-4c4b-495e-8d4-tfstate-dev --
 > реконсайлить безпеку (`--uniform-bucket-level-access --public-access-prevention --versioning`).
 > Ім'я бакета виводиться з `project_id`: `${PROJECT_ID}-tfstate-${ENVIRONMENT}`.
 > ```bash
-> bash infra/run/gcp/run.sh bootstrap   # містить крок state bucket
+> devstash-infra gcp bootstrap   # містить крок state bucket
 > ```
-> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `bootstrap()`, блок «Terraform state bucket».
+> Код: [`devstash-infra` CLI](../cli/README.md) → `bootstrap()`, блок «Terraform state bucket».
 
 ---
 
@@ -246,9 +246,9 @@ gcloud services enable \
 > ⚙️ **Автоматизація:** викликає `gcloud services enable` з явним `--project` (бо
 > `gcloud config` мутабельний між терміналами). Ідемпотентно — повторний enable безпечний.
 > ```bash
-> bash infra/run/gcp/run.sh bootstrap   # завершується enable APIs
+> devstash-infra gcp bootstrap   # завершується enable APIs
 > ```
-> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `bootstrap()`, блок «Enable APIs».
+> Код: [`devstash-infra` CLI](../cli/README.md) → `bootstrap()`, блок «Enable APIs».
 
 ---
 
@@ -305,7 +305,7 @@ third_party_secrets = {
 }
 ```
 
-> ⚠️ `run/gcp/run.sh` перевіряє наявність плейсхолдерів (`sk_...`, `whsec_...`, `re_...`,
+> ⚠️ `devstash-infra` перевіряє наявність плейсхолдерів (`sk_...`, `whsec_...`, `re_...`,
 > `openssl rand`) і **зупиниться** до `tofu apply`, якщо їх знайде. Заповни реальні значення.
 
 > 📚 **Для співбесіди — Workload Identity Federation (keyless CI).** `github_owner_id`
@@ -329,9 +329,9 @@ third_party_secrets = {
 > (копіює з `.example` якщо ні, і зупиняється), та попереджає про незаповнені
 > плейсхолдери в `third_party_secrets`. Запускається автоматично перед кожним `apply`.
 > ```bash
-> bash infra/run/gcp/run.sh apply   # ensure_tfvars() → tofu init/plan/apply (§6)
+> devstash-infra gcp apply   # ensure_tfvars() → tofu init/plan/apply (§6)
 > ```
-> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `ensure_tfvars()`.
+> Код: [`devstash-infra` CLI](../cli/README.md) → `ensure_tfvars()`.
 
 ---
 
@@ -416,12 +416,12 @@ kubectl get nodes   # має показати вузли кластера
 
 > Всі ресурси одразу — **Cloud Asset Inventory** (пошук у Console): фільтруй по типу і бачиш весь проєкт в одному місці.
 
-> ⚙️ **Автоматизація:** `apply()` у `run.sh` виконує `tofu init/plan/apply`, після чого
+> ⚙️ **Автоматизація:** `apply()` у `devstash-infra` виконує `tofu init/plan/apply`, після чого
 > прив'язує kubeconfig (`get_credentials_command`) і встановлює ESO + Reloader.
 > ```bash
-> bash infra/run/gcp/run.sh apply   # tofu init → plan → apply → get-credentials → ESO
+> devstash-infra gcp apply   # tofu init → plan → apply → get-credentials → ESO
 > ```
-> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `apply()`.
+> Код: [`devstash-infra` CLI](../cli/README.md) → `apply()`.
 
 ---
 
@@ -533,7 +533,7 @@ gh variable set APP_DOMAIN --body "$(tofu output -raw app_domain)"
 # Binary Authorization attestor/KMS — non-secret resource names read by the
 # "Sign images for Binary Authorization" CI step (deploy-gke.yml). ТІЛЬКИ якщо
 # binauthz_enabled=true (у dev за замовчуванням FALSE → ці outputs null і `-raw` впаде;
-# CI-крок сам себе пропускає). Простіше: `run.sh set-repo-secrets` робить це умовно.
+# CI-крок сам себе пропускає). Простіше: `devstash-infra gcp secrets` робить це умовно.
 if [ -n "$(tofu output -raw binauthz_attestor_name 2>/dev/null)" ]; then
   gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
   gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
@@ -571,10 +571,10 @@ gh variable get BINAUTHZ_ATTESTOR
 > (`helm … --wait --atomic`) **і** Stakater Reloader; `secrets` заливає 3 GitHub-секрети
 > + `APP_DOMAIN`; `dns_hint` друкує готовий рядок A-запису.
 > ```bash
-> bash infra/run/gcp/run.sh eso       # ESO + Reloader (раз на кластер, розділ 7.0)
-> bash infra/run/gcp/run.sh secrets   # gh-секрети з tofu output (розділ 7.1)
+> devstash-infra gcp eso       # ESO + Reloader (раз на кластер, розділ 7.0)
+> devstash-infra gcp secrets   # gh-секрети з tofu output (розділ 7.1)
 > ```
-> Код: [`infra/run/gcp/run.sh`](../run/gcp/run.sh) → `eso()`, `secrets()`, `dns_hint()`.
+> Код: [`devstash-infra` CLI](../cli/README.md) → `eso()`, `secrets()`, `dns_hint()`.
 
 ---
 
@@ -641,21 +641,21 @@ tofu -chdir=infra/terraform/envs/dev output -raw dns_authorization_cname_target 
 ```bash
 gcloud certificate-manager certificates describe devstash-dev-cert \
   --format='value(managed.state)'   # PROVISIONING → ACTIVE
-# або через run.sh:
-bash infra/run/gcp/run.sh status    # показує Gateway + cert state
+# або через devstash-infra:
+devstash-infra gcp status    # показує Gateway + cert state
 ```
 
 > Gateway/overlay ще не застосовано? Certificate Manager cert НЕ залежить від кластера — він
 > провіжиниться від самого CNAME, навіть поки overlay не задеплоєно. Сам застосунок підніметься
 > після деплою (потрібен реальний digest образу + заповнені `settings.yaml`/GitHub-секрети з
-> кроків 6–7.1): `bash infra/run/gcp/run.sh deploy`.
+> кроків 6–7.1): `devstash-infra gcp deploy`.
 
 > Якщо cert завис у `Provisioning` довше години — майже завжди DNS ще не резолвиться
 > глобально (перевір `dig`), або A-запис веде не на ту IP. HTTPS-LB і cert на GKE
 > вимагають саме коректного публічного A-запису.
 
 > 🔒 **Тільки вручну** — A-запис вноситься у дашборді реєстратора (Spaceship або той, де
-> обслуговується зона); `run.sh` лише друкує готовий рядок (`dns_hint`), але записати його
+> обслуговується зона); `devstash-infra` лише друкує готовий рядок (`dns_hint`), але записати його
 > може лише власник домену.
 
 ---
@@ -729,11 +729,11 @@ Terraform складає всі ключі в один JSON-blob.
 **Спосіб Б — руками через `gcloud`** (якщо не хочеш тримати креди у tfvars). Оскільки все
 консолідовано в один секрет, тут потрібно **правити властивість усередині
 `devstash-app-config`** (read-modify-write), а не створювати окремий `devstash-<key>` —
-окремий секрет ESO більше не читає. Найпростіше — командою `run.sh`:
+окремий секрет ESO більше не читає. Найпростіше — командою `devstash-infra`:
 
 ```bash
 # Оновлює одну властивість у devstash-app-config і форсить ESO-синк:
-bash infra/run/gcp/run.sh rotate-secret resend-api-key   # значення — з прихованого prompt
+devstash-infra gcp rotate-secret resend-api-key   # значення — з прихованого prompt
 
 # Або вручну через jq (read-modify-write однієї властивості):
 blob="$(gcloud secrets versions access latest --secret=devstash-app-config)"
@@ -788,7 +788,7 @@ printf %s "whsec_…" | gcloud secrets versions add devstash-stripe-webhook-secr
 > endpoint → остання доставка має бути `200`, не `400 signature verification failed`.
 
 > 🔒 **Тільки вручну** — endpoint створюється в Stripe Dashboard або Stripe CLI, прив'язаний
-> до твого акаунта; `whsec_…` отримують лише там. `run.sh` не може цього автоматизувати.
+> до твого акаунта; `whsec_…` отримують лише там. `devstash-infra` не може цього автоматизувати.
 
 ## 7d. OAuth redirect URIs — додати GKE-хост у GitHub + Google
 
@@ -844,7 +844,7 @@ gcloud container clusters describe devstash-dev-gke --region=us-central1 --proje
 # ── 3rd-party креди в Secret Manager (крок 7b) — БЕЗ них pod не підніметься ──
 #   Усі креди — властивості ОДНОГО секрета devstash-app-config (консолідовано для $0 idle).
 #   Спосіб А: поклади їх у third_party_secrets у terraform.tfvars ще ДО apply (вище).
-#   Спосіб Б: run.sh rotate-secret <key> (править властивість у devstash-app-config; розділ 7b).
+#   Спосіб Б: devstash-infra gcp rotate-secret <key> (править властивість у devstash-app-config; розділ 7b).
 
 # ── ESO + Reloader (крок 7.0) ────────────────────────────────────────────
 helm repo add external-secrets https://charts.external-secrets.io
@@ -867,7 +867,7 @@ gh variable set GCP_PROJECT_ID --body "$(tofu output -raw gcp_project_id)"
 gh secret set DEPLOYER_SA --body "$(tofu output -raw deployer_service_account_email)"
 gh secret set WORKLOAD_IDENTITY_PROVIDER --body "$(tofu output -raw wif_provider)"
 gh variable set APP_DOMAIN --body "$(tofu output -raw app_domain)"
-# BINAUTHZ_* — лише якщо binauthz_enabled=true (у dev FALSE за замовч.). run.sh робить умовно:
+# BINAUTHZ_* — лише якщо binauthz_enabled=true (у dev FALSE за замовч.). devstash-infra робить умовно:
 if [ -n "$(tofu output -raw binauthz_attestor_name 2>/dev/null)" ]; then
   gh variable set BINAUTHZ_ATTESTOR --body "$(tofu output -raw binauthz_attestor_name)"
   gh variable set BINAUTHZ_KMS_KEYRING --body "$(tofu output -raw binauthz_kms_keyring)"
@@ -981,26 +981,26 @@ kubectl -n devstash delete pod redis-cli
 
 ---
 
-## 9. Скрипт «у одну команду»: `infra/run/gcp/run.sh`
+## 9. Скрипт «у одну команду»: `devstash-infra gcp`
 
 Усе з розділів 1–7 (окрім того, що фізично робиться в чужих дашбордах — DNS, Stripe,
 OAuth) автоматизовано в одному ідемпотентному скрипті — хмарний аналог локального
-[`infra/run/local/run.sh`](../run/local/run.sh). Кожен крок перевіряє існування
+[`devstash-infra local`](../cli/README.md). Кожен крок перевіряє існування
 перед створенням, тож повторний запуск безпечний.
 
 ```bash
-bash infra/run/gcp/run.sh up             # preflight → bootstrap → tofu apply → ESO+Reloader → gh-секрети → DNS-підказка
-bash infra/run/gcp/run.sh bootstrap      # лише project/billing/ADC/state-bucket/APIs (розділи 1–4)
-bash infra/run/gcp/run.sh apply          # лише tofu init/plan/apply (+ get-credentials, + ESO+Reloader)
-bash infra/run/gcp/run.sh eso            # встановити ESO + Stakater Reloader (раз на кластер, розділ 7.0)
-bash infra/run/gcp/run.sh reloader       # лише встановити Stakater Reloader окремо (раз на кластер)
-bash infra/run/gcp/run.sh secrets        # лише gh secret/variable set із tofu output (розділ 7)
-bash infra/run/gcp/run.sh verify-secrets # перевірити, що всі очікувані Secret Manager секрети існують
-bash infra/run/gcp/run.sh deploy         # запустити CI deploy-gke (build web+migrate → migrate Job → rollout)
-bash infra/run/gcp/run.sh smoke          # дочекатись CI + перевірити health endpoint
-bash infra/run/gcp/run.sh status         # кластер / Ingress IP / стан cert / поди
-bash infra/run/gcp/run.sh logs           # хвіст логів app-подів (останні 100 рядків, усі поди)
-bash infra/run/gcp/run.sh down           # tofu destroy (з підтвердженням)
+devstash-infra gcp up             # preflight → bootstrap → tofu apply → ESO+Reloader → gh-секрети → DNS-підказка
+devstash-infra gcp bootstrap      # лише project/billing/ADC/state-bucket/APIs (розділи 1–4)
+devstash-infra gcp apply          # лише tofu init/plan/apply (+ get-credentials, + ESO+Reloader)
+devstash-infra gcp eso            # встановити ESO + Stakater Reloader (раз на кластер, розділ 7.0)
+devstash-infra gcp reloader       # лише встановити Stakater Reloader окремо (раз на кластер)
+devstash-infra gcp secrets        # лише gh secret/variable set із tofu output (розділ 7)
+devstash-infra gcp verify-secrets # перевірити, що всі очікувані Secret Manager секрети існують
+devstash-infra gcp deploy         # запустити CI deploy-gke (build web+migrate → migrate Job → rollout)
+devstash-infra gcp smoke          # дочекатись CI + перевірити health endpoint
+devstash-infra gcp status         # кластер / Ingress IP / стан cert / поди
+devstash-infra gcp logs           # хвіст логів app-подів (останні 100 рядків, усі поди)
+devstash-infra gcp down           # tofu destroy (з підтвердженням)
 ```
 
 ### 9.1. Що скрипт автоматизує (повністю)
@@ -1465,7 +1465,7 @@ CI (крок `verify`) запускає `@flvmnt/pgfence analyze --max-risk medi
 
 ### Ротація секретів — Stakater Reloader робить rolling restart автоматично
 
-ESO синхронізує секрети щогодини. **Stakater Reloader** (встановлений через `run.sh eso`
+ESO синхронізує секрети щогодини. **Stakater Reloader** (встановлений через `devstash-infra gcp eso`
 або CI) стежить за `devstash-secrets` і автоматично виконує rolling restart web Deployment,
 щойно Secret змінюється — анотація `secret.reloader.stakater.com/reload: "devstash-secrets"`
 на Deployment активує цю поведінку. Ручна команда `kubectl rollout restart` **більше не потрібна**.
@@ -1474,11 +1474,11 @@ ESO синхронізує секрети щогодини. **Stakater Reloader*
 
 ```bash
 # Без видалення live Secret: додай нову версію, форсуй ESO sync, дочекайся Reloader.
-bash infra/run/gcp/run.sh rotate-secret <name-suffix>   # hidden prompt; value not in shell history
+devstash-infra gcp rotate-secret <name-suffix>   # hidden prompt; value not in shell history
 kubectl -n devstash rollout status deploy/devstash-web
 ```
 
-Якщо Reloader не встановлений (кластер піднято без CI і без `run.sh eso`):
+Якщо Reloader не встановлений (кластер піднято без CI і без `devstash-infra gcp eso`):
 
 ```bash
 helm upgrade --install reloader stakater/reloader \

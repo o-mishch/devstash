@@ -116,7 +116,7 @@ variable "third_party_secrets" {
   }
 }
 
-# Spaceship DNS API credentials — OPS creds (not app config). `run.sh resume` uses them
+# Spaceship DNS API credentials — OPS creds (not app config). `devstash-infra gcp resume` uses them
 # to re-point the gke.* A-record at the freshly-allocated ingress IP after a suspend.
 # Sourced from the gitignored terraform.tfvars like every other real credential, then
 # pushed to Secret Manager by dns.tf (kept SEPARATE from third_party_secrets so they are
@@ -127,7 +127,7 @@ variable "spaceship_api_key" {
   type        = string
   sensitive   = true
   default     = ""
-  description = "Spaceship DNS API key for run.sh resume's A-record update. Empty disables DNS automation."
+  description = "Spaceship DNS API key for devstash-infra gcp resume's A-record update. Empty disables DNS automation."
 }
 
 variable "spaceship_api_secret" {
@@ -148,11 +148,11 @@ variable "spaceship_api_secret" {
 #
 # Driven through to module.network (compute_active), module.gke (cluster_active),
 # module.cloudsql (activation_policy), and module.memorystore (count). NOTE: both the manual
-# `run.sh suspend` AND the event-driven auto-suspend (auto-suspend.tf) drive a DEEP suspend —
+# `devstash-infra gcp suspend` AND the event-driven auto-suspend (auto-suspend.tf) drive a DEEP suspend —
 # they set environment_active=false AND db_active=false together, so the DB is destroyed (after
 # a verified dump), not just stopped. The two flags stay separate only to make the (false,true)
 # "compute-off, DB-kept" state expressible; nothing sets that state automatically today.
-# Operated via `infra/run/gcp/run.sh suspend|resume`, which persist the value in
+# Operated via `devstash-infra gcp suspend|resume`, which persist the value in
 # active.auto.tfvars so a plain `tofu apply` keeps the chosen state. See
 # infra/docs/10-suspend-resume.md.
 variable "environment_active" {
@@ -161,25 +161,25 @@ variable "environment_active" {
   description = "true = full compute running; false = compute suspended (GKE/Memorystore/NAT/Armor/ingress-IP destroyed). Does NOT by itself destroy Cloud SQL — that is db_active. Both the manual and event-driven suspend flip db_active=false too (deep suspend, DB destroyed after a verified dump)."
 }
 
-# Deep-suspend toggle for the Cloud SQL INSTANCE itself (the run.sh suspend/resume path).
+# Deep-suspend toggle for the Cloud SQL INSTANCE itself (the devstash-infra gcp suspend/resume path).
 #
 #   true  (default) — the Cloud SQL instance exists (running if environment_active, else
 #                     STOPPED via activation_policy=NEVER but kept: disk ≈ $1.70/mo).
 #   false           — the instance is DESTROYED (count → 0) for true ~$0 idle. The data
-#                     is preserved out-of-band: run.sh suspend runs `gcloud sql export`
+#                     is preserved out-of-band: devstash-infra gcp suspend runs `gcloud sql export`
 #                     to the GCS dump bucket and verifies it BEFORE setting this false;
-#                     run.sh resume recreates the instance and `gcloud sql import`s it.
+#                     devstash-infra gcp resume recreates the instance and `gcloud sql import`s it.
 #
 # Kept SEPARATE from environment_active on purpose so the (false,true) "compute-off, DB-kept"
 # state is expressible. BOTH suspend paths set this false after a verified dump: the manual
-# `run.sh suspend` (dump_db → set_active_state false false) AND the event-driven auto-suspend
-# (auto-suspend-suspend.sh applies -var db_active=false, gated by the dump step before it). So
+# `devstash-infra gcp suspend` (dump+verify → destroying apply) AND the event-driven auto-suspend
+# (the suspend step applies -var db_active=false, gated by the dump step before it). So
 # the DB IS destroyed unattended — the dump-verify step, not this flag, is the safety gate.
 # Persisted alongside environment_active in active.auto.tfvars.
 variable "db_active" {
   type        = bool
   default     = true
-  description = "true = Cloud SQL instance exists; false = destroyed for ~$0 idle (data kept in the GCS dump). Both run.sh suspend/resume AND the event-driven auto-suspend flip this, always after a verified dump. See infra/docs/10-suspend-resume.md."
+  description = "true = Cloud SQL instance exists; false = destroyed for ~$0 idle (data kept in the GCS dump). Both devstash-infra gcp suspend/resume AND the event-driven auto-suspend flip this, always after a verified dump. See infra/docs/10-suspend-resume.md."
 
   validation {
     # The app cannot run without its database. environment_active ⇒ db_active. Valid
@@ -288,7 +288,7 @@ variable "armor_waf_preview" {
 # per-request, and a gke.* showcase does not need an edge WAF. When false the policy is
 # never created and CI injects an empty securityPolicy so the ingress attaches none. Set
 # true in prod for edge DDoS/WAF protection. Independent of environment_active. Keep this
-# in sync with the ARMOR_ENABLED CI variable (run.sh set-repo-secrets does it for you).
+# in sync with the ARMOR_ENABLED CI variable (devstash-infra gcp secrets does it for you).
 variable "armor_enabled" {
   type        = bool
   default     = false
@@ -313,7 +313,7 @@ variable "deletion_protection" {
 # round to $0 while the environment is deep-suspended. Disabling it (never applied live in
 # dev) means the KMS key is never created — a literal $0 idle footprint. Set true in prod.
 # When false, the CI "Sign images for Binary Authorization" step self-skips (its BINAUTHZ_*
-# repo variables are unset) and run.sh does not publish them.
+# repo variables are unset) and the devstash-infra CLI does not publish them.
 variable "binauthz_enabled" {
   type        = bool
   default     = false
@@ -329,7 +329,7 @@ variable "binauthz_enabled" {
 # dedicated, least-privileged "lifecycle" SA (NOT the deploy SA) and re-checks idleness
 # before acting, so it can never suspend a busy env; a failed/empty dump fails the build so
 # an un-dumped instance is never destroyed. RESUME IS NEVER AUTOMATED — this only drives the
-# env DOWN; bring it back with `run.sh resume` (which restores the dump). See
+# env DOWN; bring it back with `devstash-infra gcp resume` (which restores the dump). See
 # infra/docs/10-suspend-resume.md.
 #
 # ON BY DEFAULT: this is a personal on-demand showcase, so the safe default is "guard the

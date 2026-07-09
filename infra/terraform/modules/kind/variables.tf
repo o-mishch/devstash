@@ -1,8 +1,8 @@
 # Cost/lifecycle toggle. Mirrors modules/gke's cluster_active: false = the cluster is
 # destroyed (count → 0). kind clusters are disposable and hold no persistent state worth
 # keeping (Postgres/MinIO data live in emptyDir/hostPath inside the node and are recreated
-# by run.sh on every `up`), so a "suspended" local env is simply no cluster at all — the
-# same suspend/resume concept as GKE, applied to the local analog. run.sh `down` sets this
+# by the devstash-infra CLI on every `up`), so a "suspended" local env is simply no cluster at all — the
+# same suspend/resume concept as GKE, applied to the local analog. devstash-infra local `down` sets this
 # false via tofu destroy; `up` leaves it true.
 variable "cluster_active" {
   type        = bool
@@ -13,7 +13,7 @@ variable "cluster_active" {
 variable "cluster_name" {
   type        = string
   default     = "devstash"
-  description = "kind cluster name. Must match the name run.sh / kubectl-context tooling expects."
+  description = "kind cluster name. Must match the name devstash-infra / kubectl-context tooling expects."
 }
 
 # Path to the kind cluster config on disk (infra/k8s/local/kind-config.yaml). The module
@@ -27,7 +27,7 @@ variable "kind_config_path" {
   description = "Path to kind-config.yaml, read via file()+yamldecode so the YAML remains the single source of truth."
 }
 
-# Where kind writes the kubeconfig. Surfaced back out so run.sh can point kubectl at it.
+# Where kind writes the kubeconfig. Surfaced back out so the devstash-infra CLI can point kubectl at it.
 # Empty = the provider uses its default (~/.kube/config merge), matching a bare `kind create`.
 variable "kubeconfig_path" {
   type        = string

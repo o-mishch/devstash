@@ -26,8 +26,7 @@
     "db:purge-demo-items": "tsx scripts/purge-demo-items.ts",
     "test": "vitest watch",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:infra": "infra/ci/run-bats.sh"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
@@ -115,10 +114,6 @@
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.10",
     "@vitest/eslint-plugin": "^1.6.21",
-    "bats": "^1.13.0",
-    "bats-assert": "^2.2.4",
-    "bats-mock": "^1.2.5",
-    "bats-support": "^0.3.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "openapi-typescript": "^7.13.0",

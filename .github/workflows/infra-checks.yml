@@ -1,27 +1,30 @@
-# PR-level infra shell gate. Runs the SAME static analysis + tests the maintainer runs by hand
-# (shellcheck over the infra shell scripts, plus the bats test suite), but on PULL REQUESTS so a
-# regression in the run.sh/suspend.sh orchestration — a reintroduced empty-body `gh secret set`
-# hang, a lost outputs-present gate, a broken state-lock recovery, or any new shellcheck error — is
-# caught BEFORE it reaches main. Mirrors migration-safety.yml: paths-scoped, fork-safe, no-cloud-auth.
+# PR-level infra gate for the devstash-infra Python CLI. Runs the SAME strict tool suite the
+# maintainer runs by hand (ruff format+lint, mypy & basedpyright strict, pytest argv-parity, uv
+# supply-chain audit) on PULL REQUESTS, so a regression in the devstash-infra gcp/ci orchestration —
+# now the CLI's gcp/ci/local orchestrators — is caught BEFORE it reaches main. A tiny shellcheck job
+# covers the only shell that survives the cutover: the Cloud Build auto-suspend shims. Mirrors
+# migration-safety.yml: paths-scoped, fork-safe, no-cloud-auth.
 # Make this a REQUIRED status check in branch protection for main.
 #
-# SECURITY: PRs from forks run untrusted code, so this job is minimal — contents: read only, NO
-# id-token / cloud auth (nothing here needs GCP; the bats tests stub `gcloud`/`tofu`/`gh` on PATH),
-# and persist-credentials: false. shellcheck runs at ERROR severity: the infra scripts carry a few
-# long-standing warning-level false positives (SC2034 sourced vars, SC2178 local-var reuse), so
-# gating on errors keeps the check meaningful without pinning the whole tree to a clean-warning bar.
+# SECURITY: PRs from forks run untrusted code, so this stays minimal — contents: read only, NO
+# id-token / cloud auth (the argv-parity tests fake subprocess, they never touch GCP), and
+# persist-credentials: false. The floor-drift guard (needs docker to pull the pinned image) is NOT
+# run here to keep the gate fork-safe + fast; it belongs on the deploy/scheduled path.
 name: infra-checks
 
 on:
   pull_request:
     branches: [main]
-    # Only gate PRs that touch infra shell — run.sh/suspend.sh orchestration, the CI scripts, the
-    # POSIX libs, or the bats tests themselves. Other PRs skip this workflow entirely.
+    # Gate PRs that touch the CLI package, the surviving shims, the committed inputs the CLI reads
+    # at runtime (a bad docker-bake.hcl / versions.env / gcp overlay / pgfence policy would otherwise
+    # skip this strict gate and only surface at deploy time — or not at all), or this workflow.
     paths:
-      - "infra/**/*.sh"
-      - "infra/**/*.bats"
-      - "infra/**/*.bash"
-      - "infra/**/__fixtures__/**"
+      - "infra/cli/**"
+      - "infra/terraform/envs/dev/scripts/*.sh"
+      - "infra/data/**"
+      - "infra/versions.env"
+      - "infra/k8s/overlays/gcp/**"
+      - ".pgfence.json"
       - ".github/workflows/infra-checks.yml"
 
 permissions:
@@ -32,7 +35,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  shell-checks:
+  cli-checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: infra/cli
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      # uv reads infra/cli/.python-version and provisions the pinned interpreter; --frozen installs
+      # exactly uv.lock (reproducible, fails on drift). enable-cache reuses the wheel cache across PRs.
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Format (ruff)
+        run: uv run ruff format --check
+      - name: Lint (ruff)
+        run: uv run ruff check
+      - name: Types (mypy strict)
+        run: uv run mypy
+      - name: Types (basedpyright strict)
+        run: uv run basedpyright
+      - name: Tests (pytest, argv-parity)
+        run: uv run pytest
+      - name: Supply-chain audit (uv)
+        run: uv audit --preview-features audit-command
+
+  shellcheck-shims:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,24 +73,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      # shellcheck + jq + python3 are preinstalled on ubuntu-latest runners; no setup step needed.
-      - name: Shellcheck infra scripts (error severity)
-        run: infra/ci/shellcheck-infra.sh
-      # bats is an npm devDependency, so provision Node + install it (the bats CLI + bats-mock/
-      # support/assert helpers the tests load from node_modules). --ignore-scripts skips the
-      # prisma-generate postinstall (irrelevant to the shell tests, needs no DB).
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "22"
-      - name: Install bats toolchain
-        run: npm ci --ignore-scripts
-      # GNU `parallel` lets infra/ci/run-bats.sh split the suite across files (~3x faster). It is
-      # preinstalled on ubuntu-latest today, but installing it explicitly keeps the speedup from
-      # silently regressing to serial if the runner image ever drops it. Idempotent + no-op if present.
-      - name: Ensure GNU parallel (for parallel bats)
-        run: command -v parallel >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y parallel; }
-      # The bats suite stubs gcloud/tofu/gh/pgrep on PATH — reproduces the empty-state secrets bug,
-      # the pre-dispatch gate, state-lock recovery, and the POSIX suspend helpers. Self-contained:
-      # no cloud auth. run-bats.sh parallelises across files when `parallel` is present (it is, above).
-      - name: Infra shell tests (bats)
-        run: npm run test:infra
+      # shellcheck is preinstalled on ubuntu-latest. The only shell left after the cutover is the
+      # thin Cloud Build shims (POSIX sh) under the dev env's scripts/ dir.
+      - name: Shellcheck surviving shell (error severity)
+        run: shellcheck --severity=error infra/terraform/envs/dev/scripts/*.sh

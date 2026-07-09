@@ -35,7 +35,7 @@
 # whole DNS surface stays in shell. The plural spaceship_dns_records might dodge the validator but
 # is group-scoped (deletes any record absent from its list), which would endanger the apex/www
 # prod-Vercel records — not worth it. Revisit if the provider fixes the reference-rejection bug.
-# Instead run.sh's update_dns (lib/dns.sh → ensure_cert_cname) asserts it idempotently on every
+# Instead devstash-infra gcp update-dns (Dns.ensure_cert_cname) asserts it idempotently on every
 # apply/resume from these outputs, so it self-heals and needs no manual step. After it
 # resolves, the cert provisions and then persists forever — DNS-auth certs renew automatically as
 # long as the CNAME stays in place (which update_dns guarantees; it is upserted, never pruned),

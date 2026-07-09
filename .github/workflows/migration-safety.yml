@@ -1,5 +1,5 @@
-# PR-level migration safety gate. Runs the SAME static analysis (infra/ci/check-migrations.sh →
-# pgfence) that the deploy pipeline runs, but on PULL REQUESTS so a dangerous migration
+# PR-level migration safety gate. Runs the SAME static analysis (devstash-infra ci check-migrations
+# → pgfence) that the deploy pipeline runs, but on PULL REQUESTS so a dangerous migration
 # (DROP COLUMN, lock-heavy ALTER, non-CONCURRENT index, rename) is BLOCKED BEFORE it reaches
 # main — never after. Without this gate the check only ran post-merge in deploy-gke.yml, where a
 # bad migration is already on main and wedges every subsequent deploy at the verify step until
@@ -39,8 +39,16 @@ jobs:
           # Single source of truth: same pinned Node version the deploy pipeline uses.
           node-version-file: .nvmrc
           cache: npm
+      # pgfence is a pinned npm devDependency; `npm ci` puts it on node_modules/.bin so the CLI's
+      # `npx --no-install pgfence` finds it without any network fetch.
       - run: npm ci
-      # Same script, same .pgfence.json policy the deploy pipeline runs — one source of truth,
-      # just moved earlier (PR) so dangerous migrations never merge.
+      # devstash-infra runs from infra/cli's uv project; the ci steps read repo-relative paths
+      # (prisma/migrations) from the runner's repo-root cwd, so invoke via --project (keeps cwd).
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --project infra/cli
+      # Same pgfence + .pgfence.json policy the deploy pipeline runs — one source of truth, just
+      # moved earlier (PR) so dangerous migrations never merge.
       - name: Check migration safety
-        run: infra/ci/check-migrations.sh
+        run: uv run --project infra/cli devstash-infra ci check-migrations

@@ -11,9 +11,9 @@
 ```
 
 > 🎓 **Як учити (швидко).** Це runbook встановлення. Кожен інструмент тут потрібен
-> якомусь кроку `run.sh`: `gcloud/tofu/gh/kubectl/helm/jq/yq` звіряє preflight у
-> [`infra/run/gcp/run.sh`](../run/gcp/run.sh); `docker/kind/kubectl` — основа
-> [`infra/run/local/run.sh`](../run/local/run.sh).
+> якомусь кроку `devstash-infra`: `gcloud/tofu/gh/kubectl/helm/jq/yq` звіряє preflight у
+> [`devstash-infra` CLI](../cli/README.md); `docker/kind/kubectl` — основа
+> [`devstash-infra` CLI](../cli/README.md).
 
 ## Terraform
 
@@ -119,8 +119,8 @@ brew install kustomize
 
 ## Helm (менеджер пакетів для Kubernetes)
 
-Потрібен для встановлення **External Secrets Operator** (крок 7.0 у `run/gcp/run.sh`). Без
-нього `run.sh eso` впаде на `need helm`.
+Потрібен для встановлення **External Secrets Operator** (крок 7.0 у `devstash-infra` CLI). Без
+нього `devstash-infra gcp eso` впаде на `need helm`.
 
 ```bash
 brew install helm
@@ -129,9 +129,9 @@ helm version
 
 ## jq та yq (обробники JSON / YAML)
 
-Обидва перевіряються preflight-функцією `run/gcp/run.sh`. `jq` для JSON-виводу gcloud/gh,
+Обидва перевіряються preflight-функцією `devstash-infra` CLI. `jq` для JSON-виводу gcloud/gh,
 `yq` для маніпуляцій із YAML-маніфестами (інʼєкція PROJECT_ID, domain, imageTag у CI та
-у run.sh):
+у CLI):
 
 ```bash
 brew install jq yq
@@ -139,52 +139,19 @@ jq --version
 yq --version
 ```
 
-## GNU-утиліти на macOS (необов'язково — для парності з Linux/CI)
+## GNU-утиліти на macOS — більше не потрібні
 
-> Джерела звірено через websearch (офіційна формула Homebrew `coreutils`; поширений
-> рецепт «GNU tools on macOS» із додаванням `gnubin` до `PATH`), липень 2026.
-
-macOS постачається з **BSD**-версіями `sed`/`awk`/`date`/`grep`/`find`, а Linux/CI — з
-**GNU**-версіями. Прапорці й вивід подекуди різняться (класика: `sed -i` на BSD вимагає
-аргумент-суфікс, `readlink -f`/`grep -P`/`date -d` — GNU-only).
-
-**Головне: скрипти цього треку цього НЕ вимагають.** Вони написані на портативному
-перетині BSD/GNU — напр. fallback `date -j -f … || date -d …` у
-[`infra/lib/common.sh`](../lib/common.sh) і форма `sed -i.bak … && rm …bak` у
-[`infra/run/gcp/lib/gke.sh`](../run/gcp/lib/gke.sh), яка працює на обох. Тож на «голому»
-macOS усе відпрацьовує коректно **без жодних GNU-утиліт**.
-
-Встановлюйте GNU-набір, лише якщо **хочете**, щоб `sed`/`date`/`grep`/… локально
-поводилися ідентично до CI. Зробіть це одним махом через helper:
-
-```bash
-bash infra/run/local/brew-bootstrap.sh          # bash + coreutils + gnu-sed + gawk + findutils + grep
-# і додайте до ~/.zshrc блок PATH, який він друкує (або одразу):
-bash infra/run/local/brew-bootstrap.sh --path >> ~/.zshrc
-```
-
-Або вручну — встановіть формули, а PATH-блок візьміть із того самого helper (`--path`
-друкує його дослівно, тож жодної копії, яка могла б розійтися):
-
-```bash
-brew install bash coreutils gnu-sed gawk findutils grep
-# Кожен ставиться з префіксом g (gsed, gdate, …); щоб «голі» імена вказували на GNU,
-# додайте каталоги gnubin на початок PATH. Канонічний блок (з $(brew --prefix), тож
-# arch-portable — /opt/homebrew на Apple Silicon, /usr/local на Intel):
-bash infra/run/local/brew-bootstrap.sh --path
-```
-
-> ⚠️ **Ризик дрейфу (drift).** Цей PATH змінює `sed`/`awk`/`date` на GNU **лише у вашій
-> оболонці** — не в CI й не в колеги на стоковому Mac. Тож НЕ дозволяйте йому спонукати
-> писати GNU-only виклики (`sed -i` без суфікса, `readlink -f`, `grep -P`, `date -d` без
-> BSD-fallback): вони зламаються деінде, і ніщо тут їх не зловить. Скрипти мусять лишатися
-> портативними **незалежно** від цього bootstrap — це лише локальний комфорт, а не привід
-> кидати dual-dialect-ідіоми.
+Раніше цей трек тримав bash-скрипти, тож радив поставити GNU-набір
+(`coreutils`/`gnu-sed`/`gawk`/…) для парності з Linux/CI. **Після переходу на
+`devstash-infra` (Python) цього більше не треба:** CLI не викликає `sed`/`awk`/`date`/
+`grep`/`find` — уся логіка на stdlib (`datetime`, `pathlib`, `re`), тож поведінка
+ідентична на macOS і в CI **без жодних GNU-утиліт**. Достатньо інструментів вище
+(docker/kind/kubectl/helm/yq/jq/openssl/tofu) + `uv` для самого CLI.
 
 ## GitHub CLI (`gh`)
 
-Потрібен для `run.sh secrets` (запис `GCP_PROJECT_ID` / `DEPLOYER_SA` / `WORKLOAD_IDENTITY_PROVIDER`
-та `APP_DOMAIN` у GitHub Actions) і `run.sh deploy` (запуск CI-воркфлоу):
+Потрібен для `devstash-infra gcp secrets` (запис `GCP_PROJECT_ID` / `DEPLOYER_SA` / `WORKLOAD_IDENTITY_PROVIDER`
+та `APP_DOMAIN` у GitHub Actions) і `devstash-infra gcp deploy` (запуск CI-воркфлоу):
 
 ```bash
 brew install gh
@@ -258,7 +225,7 @@ gke-gcloud-auth-plugin --version   # якщо підключаєтесь до GK
 ```
 
 > ⚙️ **Автоматизація.** Замість звіряти руками — `preflight()` у
-> [`infra/run/gcp/run.sh`](../run/gcp/run.sh) перевіряє наявність кожного CLI і падає
+> [`devstash-infra` CLI](../cli/README.md) перевіряє наявність кожного CLI і падає
 > з посиланням на встановлення, якщо чогось бракує. Будь-яка підкоманда (`up`,
 > `bootstrap`, `apply`…) запускає його першою.
 
@@ -272,7 +239,7 @@ gke-gcloud-auth-plugin --version   # якщо підключаєтесь до GK
 | **kind** | `brew install kind` | Швидкі локальні кластери; поєднується з Docker |
 | **Docker** | `brew install --cask docker` | Потрібен для kind; також Layer 1 |
 | **helm** | `brew install helm` | Встановлення External Secrets Operator (ESO) на GKE |
-| **jq / yq** | `brew install jq yq` | JSON/YAML-обробка; preflight-перевірка `run/gcp/run.sh` |
-| **gh** | `brew install gh` | Запис GitHub Actions secrets; запуск CI-деплою з run.sh |
+| **jq / yq** | `brew install jq yq` | JSON/YAML-обробка; preflight-перевірка `devstash-infra` CLI |
+| **gh** | `brew install gh` | Запис GitHub Actions secrets; запуск CI-деплою з `devstash-infra` |
 | **gcloud** | `brew install --cask google-cloud-sdk` | Лише для реального plan/apply у GCP |
 | **gke-gcloud-auth-plugin** | `gcloud components install gke-gcloud-auth-plugin` | Обов'язковий для `kubectl` проти GKE-кластерів |

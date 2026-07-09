@@ -15,14 +15,14 @@ on:
   # fails at the auth step by design.
   workflow_dispatch:
     inputs:
-      # Intent signal set by run.sh resume/up when it PRE-DISPATCHES this workflow to
+      # Intent signal set by devstash-infra gcp resume/up when it PRE-DISPATCHES this workflow to
       # overlap the image build with `apply` (the cluster does not exist yet at dispatch).
       # The `gate` job below uses it to decide whether to build even though no cluster is
       # visible: a deliberate provision → build; a plain push while the env is parked at ~$0
       # (no input, no cluster) → skip the whole build+deploy so no images are wastefully
       # repushed only to be purged by the next suspend. Default "" = "not a provision".
       reason:
-        description: 'Set to "provision" when run.sh is bringing the environment up/back (build even before the cluster exists).'
+        description: 'Set to "provision" when the devstash-infra CLI is bringing the environment up/back (build even before the cluster exists).'
         required: false
         default: ''
 
@@ -31,7 +31,7 @@ on:
 # delete that still-running Job and interrupt a schema change.
 #
 # `queue: max` (GitHub, 2026-05) queues pending runs FIFO instead of the default "keep only the
-# newest pending, cancel the rest". This fixes the exact eviction we hit live: run.sh resume/up
+# newest pending, cancel the rest". This fixes the exact eviction we hit live: devstash-infra gcp resume/up
 # PRE-DISPATCH this workflow (reason=provision) so its build overlaps `apply`, and that build sits
 # for minutes in build-push.sh's AR-writable gate while the repo/binding are recreated. Under the
 # default policy an ordinary push to main landing during a resume found the pre-dispatched build
@@ -74,15 +74,8 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      # Lint the extracted deploy scripts (infra/ci/*.sh) + the shared bash library
-      # (infra/lib/*.sh) as real shell — the whole point of pulling them out of this YAML.
-      # shellcheck is preinstalled on ubuntu-latest. -x follows `source infra/versions.env`
-      # and `source infra/lib/common.sh`; -e SC1091 belt-and-braces in case the runner image
-      # ever drops a sourced file from the checkout. Scope excludes
-      # infra/terraform/envs/dev/scripts/*.sh — those are Cloud Build substitution templates
-      # ($$/$_VAR syntax), NOT plain bash, and must not be linted here.
-      - name: Lint deploy scripts (shellcheck)
-        run: shellcheck -x -e SC1091 infra/ci/*.sh infra/lib/*.sh
+      # The infra shell was ported to the devstash-infra Python CLI; its own strict gate
+      # (ruff/mypy/basedpyright/pytest) runs in infra-checks.yml, so no shellcheck here.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           # Single source of truth: read the pinned Node version from .nvmrc (currently
@@ -90,22 +83,28 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # Static safety analysis of every pending migration SQL file before anything is
-      # built or deployed — blocks dangerous statements (DROP COLUMN, lock-heavy ALTER,
-      # non-CONCURRENT index, renames). Full rationale + the globstar note live in the
-      # script; policy is the committed .pgfence.json.
+      # devstash-infra (uv project in infra/cli) runs the ported ci steps. --project keeps the
+      # runner's repo-root cwd so each step's repo-relative paths resolve; --frozen installs
+      # exactly uv.lock. setup-uv provisions uv + the pinned interpreter (cached across runs).
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --project infra/cli
+      # Static safety analysis of every pending migration SQL file before anything is built or
+      # deployed — blocks dangerous statements (DROP COLUMN, lock-heavy ALTER, non-CONCURRENT
+      # index, renames). Full rationale lives in the CLI; policy is the committed .pgfence.json.
       - name: Check migration safety
-        run: infra/ci/check-migrations.sh
+        run: uv run --project infra/cli devstash-infra ci check-migrations
       - run: npm run lint
       - run: npm run test:run
 
   # ---- Gate: decide whether to BUILD at all (avoid wasteful repushes) ---------
-  # The image build must run when the env is active (normal push) OR when run.sh is bringing
+  # The image build must run when the env is active (normal push) OR when the devstash-infra CLI is bringing
   # it up/back (pre-dispatch, cluster not created yet). It must NOT run on a plain push to
   # main while the env is parked at ~$0 — that would rebuild + repush images the very next
   # suspend purges, for nothing. A live cluster check alone can't tell "parked" from
   # "resume in flight" (cluster absent in both), so combine two cheap signals:
-  #   • reason == 'provision'  — run.sh set this because it IS provisioning (build wanted), or
+  #   • reason == 'provision'  — the devstash-infra CLI set this because it IS provisioning (build wanted), or
   #   • the GKE cluster already exists — the env is active (normal push, build wanted).
   # Neither → parked env, skip the build. This is a ONE-SHOT check (not the poll preflight
   # does): it only needs the state at dispatch, and the provision input covers the resume race
@@ -124,7 +123,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      # continue-on-error: a torn-down WIF pool (full `run.sh down`) makes this fail with a
+      # continue-on-error: a torn-down WIF pool (full `devstash-infra gcp down`) makes this fail with a
       # cryptic STS `invalid_target`. Rather than let that be the whole workflow's red failure,
       # tolerate it here and branch below: CI cannot self-heal a deleted pool (undeleting it
       # needs GCP auth, which needs the pool), so the correct behavior is a warned clean skip,
@@ -139,10 +138,15 @@ jobs:
       # WIF pool torn down → warn loudly + set build=false (skips build-push/preflight/deploy).
       # Runs ONLY on auth failure; owns the `decide` step id so gate.outputs.build resolves to
       # 'false' via the same output the success path writes.
+      # devstash-infra CLI for the gate decision steps (same pattern as the verify job).
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --project infra/cli
       - name: Skip cleanly if WIF is torn down
         id: decide
         if: steps.auth.outcome == 'failure'
-        run: infra/ci/wif-torn-down-skip.sh
+        run: uv run --project infra/cli devstash-infra ci wif-torn-down-skip
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
         if: steps.auth.outcome == 'success'
       - name: Decide whether to build
@@ -152,14 +156,14 @@ jobs:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           # github.event.inputs.reason is '' on a push event (only set via workflow_dispatch).
           DISPATCH_REASON: ${{ github.event.inputs.reason }}
-        run: infra/ci/decide-build.sh
+        run: uv run --project infra/cli devstash-infra ci decide-build
 
   # ---- Preflight: skip the DEPLOY cleanly if the environment is suspended -----
   # A merge to main while the showcase is parked at ~$0 (deep-suspended: no GKE cluster)
   # must NOT deploy — the `deploy` job self-skips when this publishes suspended=true, so no
   # step errors against a missing cluster.
   #
-  # WHY `needs: [build-push]` + a POLLING check (not a one-shot): run.sh resume/up now
+  # WHY `needs: [build-push]` + a POLLING check (not a one-shot): devstash-infra gcp resume/up now
   # PRE-DISPATCH this workflow so the cluster-independent build-push job overlaps `apply`
   # (Cloud SQL ~10 min). At dispatch time the cluster does not exist yet, so a one-shot
   # existence check here would wrongly report suspended=true and permanently skip the deploy
@@ -188,18 +192,22 @@ jobs:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.DEPLOYER_SA }}
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --project infra/cli
       - name: Detect suspended environment
         id: env-state
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-        run: infra/ci/check-env-active.sh
+        run: uv run --project infra/cli devstash-infra ci check-env-active
 
   # ---- Build the images + push to Artifact Registry (NO cluster dependency) ---
   # Split out of the old single build-deploy job so the image build can run WHILE the
   # infra (Cloud SQL ~10 min, GKE control plane ~5-7 min) is still provisioning. This job
   # needs only `verify` — NOT `preflight` — because Artifact Registry exists early and
   # ungated (it is recreated before anything else on resume), so build+push has no reason
-  # to wait on the cluster. `run.sh resume`/`up` pre-dispatch this workflow so this job
+  # to wait on the cluster. `devstash-infra gcp resume`/`up` pre-dispatch this workflow so this job
   # overlaps the Terraform apply; the cluster-gated `deploy` job below then consumes the
   # digests this job emits. The `gate` job decides whether to build at all — on a plain push
   # to a PARKED env gate says build=false and this job (plus preflight+deploy) skip cleanly,
@@ -207,7 +215,7 @@ jobs:
   build-push:
     # verify = lint/test must pass; gate = the build/skip decision. Deliberately NOT
     # `preflight` — the whole point is that this runs before the cluster exists (preflight
-    # depends on THIS job). gate.outputs.build=='true' means the env is active or a run.sh
+    # depends on THIS job). gate.outputs.build=='true' means the env is active or a devstash-infra
     # provision is in flight; on a plain push to a parked env gate says 'false' and this whole
     # job (and its dependents preflight+deploy) skip cleanly — no wasteful build/repush.
     needs: [verify, gate]
@@ -247,6 +255,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --project infra/cli
       - name: Validate deployment inputs
         env:
           WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
@@ -255,7 +267,7 @@ jobs:
           BINAUTHZ_ATTESTOR: ${{ vars.BINAUTHZ_ATTESTOR }}
           BINAUTHZ_KMS_KEYRING: ${{ vars.BINAUTHZ_KMS_KEYRING }}
           BINAUTHZ_KMS_KEY: ${{ vars.BINAUTHZ_KMS_KEY }}
-        run: infra/ci/validate-inputs.sh
+        run: uv run --project infra/cli devstash-infra ci validate-inputs
 
       # Keyless auth to GCP. WORKLOAD_IDENTITY_PROVIDER + DEPLOYER_SA are repo
       # variables/secrets; the provider is created in Terraform (iam module +
@@ -298,7 +310,7 @@ jobs:
           timeout_minutes: 8
           max_attempts: 2
           retry_on: any
-          command: infra/ci/build-push.sh
+          command: uv run --project infra/cli devstash-infra ci build-push
 
       # Binary Authorization attestations (KMS-backed attestor, see modules/gke/main.tf).
       # This is the CI half of "step 2" in that module's enforcement-path comment: sign
@@ -317,7 +329,7 @@ jobs:
           BINAUTHZ_ATTESTOR: ${{ vars.BINAUTHZ_ATTESTOR }}
           BINAUTHZ_KMS_KEYRING: ${{ vars.BINAUTHZ_KMS_KEYRING }}
           BINAUTHZ_KMS_KEY: ${{ vars.BINAUTHZ_KMS_KEY }}
-        run: infra/ci/sign-images.sh
+        run: uv run --project infra/cli devstash-infra ci sign-images
 
       # Optional GitHub/Sigstore provenance. Private repositories require GitHub
       # Enterprise Cloud for artifact attestations; leave the repository variable
@@ -344,7 +356,7 @@ jobs:
   # inject-settings.sh + render-manifests.sh need NO cluster and NO secret — they only mutate the
   # overlay's settings.yaml from repo vars + build-push's image digests and run `kubectl kustomize`
   # (client-side templating, zero API calls). They used to run INSIDE the `deploy` job, wedged after
-  # get-credentials/reachability, so they didn't start until run.sh's ~10-min apply was done — pure
+  # get-credentials/reachability, so they didn't start until devstash-infra's ~10-min apply was done — pure
   # serial tail. Pulled into their own job (needs build-push for the digests, same main+build gate)
   # so the render OVERLAPS the apply alongside build-push, and the rendered manifest crosses to
   # `deploy` as an artifact. deploy's critical path then holds only genuinely cluster/secret-dependent
@@ -373,6 +385,10 @@ jobs:
       # Inject per-environment values into the overlay's settings.yaml (Kustomize replacements fan
       # them out into the SA annotation, HTTPRoute host, Gateway cert-map/static-IP, NEXTAUTH_URL,
       # and the image pins). Same env contract as before — see the deploy job's former inline step.
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --project infra/cli
       - name: Inject environment values
         env:
           # GCP_PROJECT_ID is REQUIRED by inject-settings.sh, not optional: it fills
@@ -393,13 +409,13 @@ jobs:
           STRIPE_PRICE_ID_MONTHLY: ${{ vars.STRIPE_PRICE_ID_MONTHLY }}
           STRIPE_PRICE_ID_YEARLY: ${{ vars.STRIPE_PRICE_ID_YEARLY }}
           ARMOR_ENABLED: ${{ vars.ARMOR_ENABLED }}
-        run: infra/ci/inject-settings.sh
+        run: uv run --project infra/cli devstash-infra ci inject-settings
 
       # Render the overlay ONCE to /tmp/rendered.yaml (client-side `kubectl kustomize` + the empty-
       # securityPolicy strip). apply-infra.sh and rollout-web.sh in `deploy` both consume ONLY this
       # file, so shipping it as the artifact is sufficient — settings.yaml need not travel.
       - name: Render manifests
-        run: infra/ci/render-manifests.sh
+        run: uv run --project infra/cli devstash-infra ci render-manifests
 
       # Hand the rendered manifest to the cluster-gated `deploy` job (a fresh runner with no shared
       # filesystem). deploy downloads it back to /tmp/rendered.yaml, the path its scripts expect.
@@ -494,8 +510,12 @@ jobs:
       # 403" that reads like a Helm/chart fault. This probe hits the API server's /readyz path;
       # a generic 403 HTML page means a Google-Front-End rejection, which we detect and
       # translate into the two gates to check instead of a misleading downstream error.
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --project infra/cli
       - name: Verify control plane reachable (DNS endpoint)
-        run: infra/ci/verify-control-plane.sh
+        run: uv run --project infra/cli devstash-infra ci verify-control-plane
 
       # Pull the manifest rendered by the parallel `render` job (which overlapped the apply) down to
       # /tmp/rendered.yaml — the exact path apply-infra.sh and rollout-web.sh read. inject-settings +
@@ -514,17 +534,17 @@ jobs:
       # a `helm upgrade --install ... --wait --timeout 5m`, so ensure-operators.sh runs them
       # CONCURRENTLY (up to ~5 min saved on a cold cluster vs. back-to-back) and joins on both
       # before returning. It delegates to the same ensure-eso.sh / ensure-reloader.sh that
-      # run.sh runs individually — only the parallelism is added here. --version for each chart
-      # is read from infra/versions.env (single source of truth shared with run.sh).
+      # the devstash-infra CLI runs individually — only the parallelism is added here. --version for each chart
+      # is read from infra/versions.env (single source of truth shared with the devstash-infra CLI).
       - name: Ensure operators (ESO ‖ Reloader)
-        run: infra/ci/ensure-operators.sh
+        run: uv run --project infra/cli devstash-infra ci ensure-operators
 
       # Apply everything EXCEPT the web Deployment (server-side, --force-conflicts) so
       # existing pods keep the previous image until the post-migration rollout. The full
       # rationale — why --force-conflicts is required and safe (the one-time CSA→SSA
-      # ownership transfer) — lives in infra/ci/apply-infra.sh.
+      # ownership transfer) — lives in the CLI's `ci apply-infra` step.
       - name: Apply infra (everything except the web Deployment)
-        run: infra/ci/apply-infra.sh
+        run: uv run --project infra/cli devstash-infra ci apply-infra
 
       - name: Wait for secrets to sync (ESO)
         # devstash-secrets is materialized by External Secrets Operator from Secret Manager. Both the
@@ -540,34 +560,34 @@ jobs:
         # sized to outlast a resume apply's ~13-min secret bump so this join never races-and-loses. The
         # migrate + rollout steps below gate on synced=true.
         id: eso-sync
-        run: infra/ci/wait-secrets-sync.sh
+        run: uv run --project infra/cli devstash-infra ci wait-secrets-sync
 
       - name: Run DB migrations + seed item types (gated)
         # Skipped when secrets never synced (suspended/mid-resume env) — the migrate
         # Job would otherwise fail on missing DB credentials.
         if: steps.eso-sync.outputs.synced == 'true'
-        run: infra/ci/run-migrations.sh
+        run: uv run --project infra/cli devstash-infra ci run-migrations
 
       # Migrations have landed — apply the digest-pinned web Deployment from the same
       # render to trigger the rolling update. Same SSA/--force-conflicts posture as the
-      # infra apply; see infra/ci/rollout-web.sh.
+      # infra apply; see the CLI's `ci rollout-web` step.
       - name: Roll out the web Deployment (post-migration)
         if: steps.eso-sync.outputs.synced == 'true'
-        run: infra/ci/rollout-web.sh
+        run: uv run --project infra/cli devstash-infra ci rollout-web
 
       - name: Wait for rollout
         if: steps.eso-sync.outputs.synced == 'true'
-        run: infra/ci/wait-rollout.sh
+        run: uv run --project infra/cli devstash-infra ci wait-rollout
 
       # Pod-Ready (above) is NOT servable: GKE Gateway programs the LB backend (NEG attach + its
       # own health check) on a separate path the rollout gate can't see, so the URL 502s for
       # minutes after the rollout passes — worst on a from-scratch resume. Gate on the public URL
-      # actually reporting healthy so a green deploy means a live site. See infra/ci/wait-endpoint.sh.
+      # actually reporting healthy so a green deploy means a live site. See the CLI's `ci wait-endpoint`.
       - name: Wait for public endpoint to serve
         if: steps.eso-sync.outputs.synced == 'true'
         env:
           APP_DOMAIN: ${{ vars.APP_DOMAIN }}
-        run: infra/ci/wait-endpoint.sh
+        run: uv run --project infra/cli devstash-infra ci wait-endpoint
 
       # Delete superseded image versions the instant the rollout is healthy, keeping only the
       # just-deployed digest per image — an immediate equivalent of the repository's
@@ -578,7 +598,7 @@ jobs:
         continue-on-error: true
         # WEB_DIGEST/MIGRATE_DIGEST come from the job-level env (reconstructed from
         # build-push's job outputs) — the build-push STEP no longer runs in this job.
-        run: infra/ci/prune-registry.sh
+        run: uv run --project infra/cli devstash-infra ci prune-registry
 
   # ---- Vulnerability scan (warn-only, non-blocking) ---------------------------
   # Runs in PARALLEL with preflight/deploy — needs only build-push's pushed digests, not a

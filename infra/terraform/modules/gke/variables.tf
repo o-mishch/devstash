@@ -15,7 +15,7 @@ variable "deletion_protection" {
 # resume) so a suspended environment costs ~nothing. The Binary Authorization KMS key /
 # attestor / policy in this module are NOT gated by this — they stay always-on.
 # Note: deletion_protection must be false for an active→inactive flip to actually
-# delete the cluster; run.sh suspend passes both together.
+# delete the cluster; devstash-infra gcp suspend passes both together.
 variable "cluster_active" {
   type        = bool
   default     = true

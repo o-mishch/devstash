@@ -6,7 +6,7 @@
 # Cloud SQL to the GCS db-dumps bucket (verifying the dump is non-empty), then runs
 # `tofu apply -var environment_active=false -var db_active=false` — driving the env to true
 # ~$0 (cluster/Memorystore/NAT/Armor/ingress-IP AND the Cloud SQL instance destroyed; data
-# preserved in the verified dump). This is exactly `run.sh suspend`, unattended.
+# preserved in the verified dump). This is exactly `devstash-infra gcp suspend`, unattended.
 #
 # DATA SAFETY — the dump-and-verify runs as a SEPARATE build step BEFORE the destroy apply.
 # `set -eu` + a non-empty size check make a failed/empty export exit non-zero, which fails
@@ -22,7 +22,7 @@
 # guard, which re-checks live state, so overlapping fires are harmless no-ops.
 #
 # RESUME IS NEVER AUTOMATED — this only drives the env DOWN. Bring it back with
-# `run.sh resume`.
+# `devstash-infra gcp resume`.
 #
 # CANNOT SUSPEND A BUSY ENV — the build's first step re-checks the live request count and a
 # fresh-resume grace (cluster younger than the idle window is left alone), then only
@@ -47,7 +47,7 @@
 locals {
   auto_suspend_on = var.auto_suspend_enabled
 
-  # State bucket created out-of-band by run.sh as ${project_id}-tfstate-${environment}
+  # State bucket created out-of-band by the devstash-infra CLI as ${project_id}-tfstate-${environment}
   # (see backend.tf). The build's `tofu init` targets it.
   tfstate_bucket = "${var.project_id}-tfstate-${var.environment}"
 
@@ -71,7 +71,7 @@ locals {
   #                          workload — this predefined role is the minimal write grant.
   #   secretmanager.secretAccessor
   #                          read the payloads of devstash-app-config + devstash-ops-config for
-  #                          secret RECONSTRUCTION (auto-suspend-prepare.sh: versions access). The
+  #                          secret RECONSTRUCTION (the prepare step: versions access). The
   #                          version-manager role above intentionally does NOT include access, so
   #                          the two are paired. Project-scoped like the rest; still far narrower
   #                          than admin (no delete, no IAM writes).
@@ -121,7 +121,7 @@ locals {
   # resourcemanager.projectIamAdmin (that would let it rewrite any project IAM = the escalation
   # this whole least-privilege split exists to avoid), so it CANNOT apply its own binding delta:
   # it 403s "Policy update access denied" mid-teardown, exactly the failure that stranded a
-  # prior suspend. Therefore: after ANY edit here, an OPERATOR must run `run.sh apply` (as an
+  # prior suspend. Therefore: after ANY edit here, an OPERATOR must run `devstash-infra gcp apply` (as an
   # owner/projectIamAdmin) to converge the bindings FIRST. Only once committed `main` == state
   # does the unattended suspend build find zero IAM diff and need no setIamPolicy. Same
   # "remove the cause, don't permit the symptom" posture as the self-updater note above — we do
@@ -212,9 +212,9 @@ locals {
     # lock-contention layers exclude it when checking for OTHER ongoing auto-suspend builds.
     "_BUILD_ID=$_BUILD_ID",
     # The trigger's own name (built-in $TRIGGER_NAME substitution) — the stable "our auto-suspend
-    # build" match key the lock-contention helpers filter ongoing builds by (same contract as
-    # run.sh's _ongoing_autosuspend_build_ids). Passed in rather than hardcoded so the POSIX helper
-    # stays parameterised (everything-is-a-parameter — see infra/lib/posix/lock-contention.sh).
+    # build" match key the lock-contention layer filters ongoing builds by (same contract the CLI's
+    # gcp state-recovery uses). Passed in rather than hardcoded so the ported cloudbuild step stays
+    # parameterised (everything-is-a-parameter — see devstash_infra.cloudbuild / shared.lock_contention).
     "_TRIGGER_NAME=$TRIGGER_NAME",
   ]
 
@@ -233,15 +233,16 @@ locals {
   # tag is kept alongside purely as human-readable documentation. Tradeoff: no automatic security
   # refresh — bump these deliberately (docker pull <img>:<tag> && docker buildx imagetools
   # inspect <img>:<tag> --format '{{.Manifest.Digest}}', then paste the new digest here) and
-  # re-run infra/ci/auto-suspend-image-check.sh before applying.
+  # re-run infra/cli/scripts/check_floor_drift.py before applying (it pulls the pinned image and
+  # verifies its bundled python still matches the 3.14 floor the cloudbuild steps target).
   #
   # cloud-sdk:slim is the Google-recommended variant that PREINSTALLS gcloud + python3 + git +
   # ca-certificates (unlike :stable, which is gcloud + bq only). We use it so the step scripts
-  # install NOTHING at runtime (no apt-get, no network-dependent package fetch) and so each
-  # language stays in its own file — the guard/prepare Python lives in standalone *.py helpers
-  # invoked with `python3`, never inlined into the shell. It is larger than :stable, which is the
-  # deliberate tradeoff for zero installs + clean language segregation.
-  cloud_sdk_image = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:7805e8f25c698ac26606177ae77f1d68a14e6e276570bab4ecbb75de898cb4cb"
+  # install NOTHING at runtime (no apt-get, no network-dependent package fetch): all six steps run
+  # the ported devstash_infra.cloudbuild package on gcloud's BUNDLED python (stdlib + gcloud's own
+  # vendored libs), cloned from the repo — never a pip install. It is larger than :stable, which is
+  # the deliberate tradeoff for zero installs.
+  cloud_sdk_image = "gcr.io/google.com/cloudsdktool/cloud-sdk:slim@sha256:a26856716c935af74febff4c5fa16cc00827f1343186ae108a8e6788cd082467"
   opentofu_image  = "ghcr.io/opentofu/opentofu:1.12.3@sha256:a0766d12f07b43e66f2ed40d7a8babe97d581d20339c68ad0ab561737af9a5b3"
 }
 
@@ -541,12 +542,12 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     # this, regardless of traffic (scanner-proof backstop; see the scheduler below).
     _MAX_UPTIME = tostring(var.auto_suspend_max_uptime_seconds)
     # Deep-suspend DB round trip — dump the instance to GCS before the apply destroys it.
-    # Same instance / bucket / object run.sh uses (db_dump_object output), so this path and
-    # `run.sh resume` always agree on which dump to write and read.
+    # Same instance / bucket / object the devstash-infra CLI uses (db_dump_object output), so this path and
+    # `devstash-infra gcp resume` always agree on which dump to write and read.
     _DB_INSTANCE     = local.db_instance_name
     _DB_DUMPS_BUCKET = google_storage_bucket.db_dumps.name
     _DB_DUMP_OBJECT  = local.db_dump_object
-    # Noncurrent-dump retention count (same var the lifecycle rule + run.sh dump_db use). The
+    # Noncurrent-dump retention count (same var the lifecycle rule + devstash-infra gcp dump-db use). The
     # dump step force-prunes the history to this + 1 total generations right after writing, so
     # the event-driven idle suspend caps dump history immediately instead of waiting for the
     # bucket's ~daily lifecycle sweep — same "on each touch" behaviour as the laptop path.
@@ -574,8 +575,8 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     step {
       id     = "guard"
       name   = local.cloud_sdk_image
-      env    = local.auto_suspend_build_env
-      script = file("${path.module}/scripts/auto-suspend-guard.sh")
+      env    = concat(local.auto_suspend_build_env, ["_STEP=guard"])
+      script = file("${path.module}/scripts/auto-suspend-shim.sh")
     }
 
     # 2 — PREPARE (only if idle). Clone the repo, drop the non-secret tfvars, reconstruct
@@ -583,32 +584,45 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     step {
       id     = "prepare"
       name   = local.cloud_sdk_image
-      env    = local.auto_suspend_build_env
-      script = file("${path.module}/scripts/auto-suspend-prepare.sh")
+      env    = concat(local.auto_suspend_build_env, ["_STEP=prepare"])
+      script = file("${path.module}/scripts/auto-suspend-shim.sh")
     }
 
     # 3 — DUMP (only if idle). Export the live DB to the GCS db-dumps bucket and VERIFY the
     #     object is non-empty BEFORE the destroy step runs. This is the same server-side
-    #     `gcloud sql export` run.sh uses (the Cloud SQL service agent writes to GCS). `set
+    #     `gcloud sql export` the devstash-infra CLI uses (the Cloud SQL service agent writes to GCS). `set
     #     -eu` + the explicit non-empty check mean a failed/empty dump exits non-zero, which
     #     fails the build so the suspend step below NEVER destroys an un-dumped instance.
     step {
       id     = "dump"
       name   = local.cloud_sdk_image
-      env    = local.auto_suspend_build_env
-      script = file("${path.module}/scripts/auto-suspend-dump.sh")
+      env    = concat(local.auto_suspend_build_env, ["_STEP=dump"])
+      script = file("${path.module}/scripts/auto-suspend-shim.sh")
+    }
+
+    # 3.5 — EXTRACT TOFU (Option 4). The suspend step needs tofu AND gcloud + python3 co-present,
+    #     but no single stock image ships all three. The opentofu image's tofu is a statically-linked
+    #     Go binary, so copy it out into the shared /workspace/bin; the next step (on cloud-sdk:slim)
+    #     runs it from there. This finally makes the force-unlock/lock-contention layer — which needs
+    #     gcloud + python3 — reachable at suspend time (it was silently dead on the bare tofu image).
+    step {
+      id     = "extract-tofu"
+      name   = local.opentofu_image
+      script = file("${path.module}/scripts/auto-suspend-extract-tofu.sh")
     }
 
     # 4 — SUSPEND (only if idle). Now that the verified dump exists, drive to ~$0: destroy
     #     compute, the Cloud SQL instance (db_active=false), AND the Artifact Registry repo +
     #     its images (the module gates on environment_active=false, so the same apply tears it
     #     down — no separate out-of-band delete step). -refresh=false keeps the apply (and this
-    #     SA's perms) scoped to just what these vars change.
+    #     SA's perms) scoped to just what these vars change. Runs on cloud-sdk:slim now, with the
+    #     pinned tofu from /workspace/bin on PATH (the shim prepends it) so gcloud + python3 + tofu
+    #     are all present for the lock-recovery path.
     step {
       id     = "suspend"
-      name   = local.opentofu_image
-      env    = local.auto_suspend_build_env
-      script = file("${path.module}/scripts/auto-suspend-suspend.sh")
+      name   = local.cloud_sdk_image
+      env    = concat(local.auto_suspend_build_env, ["_STEP=suspend"])
+      script = file("${path.module}/scripts/auto-suspend-shim.sh")
     }
 
     # 5 — CLEANUP BUILDS (only if idle). Cancel any OTHER in-flight build and delete the
@@ -619,21 +633,21 @@ resource "google_cloudbuild_trigger" "auto_suspend" {
     step {
       id     = "cleanup-builds"
       name   = local.cloud_sdk_image
-      env    = local.auto_suspend_build_env
-      script = file("${path.module}/scripts/auto-suspend-cleanup-builds.sh")
+      env    = concat(local.auto_suspend_build_env, ["_STEP=cleanup-builds"])
+      script = file("${path.module}/scripts/auto-suspend-shim.sh")
     }
 
     # 6 — CLEANUP LEAKED NEGs (only if idle). GKE races its own teardown and orphans the zonal
     #     Network Endpoint Groups (+ sometimes firewall rules) the ingress created — they survive
     #     the cluster destroy and, left unreaped, accumulate across suspend generations until they
-    #     block the VPC delete at the eventual `run.sh down`. Reap the ones on OUR VPC here so the
+    #     block the VPC delete at the eventual `devstash-infra gcp down`. Reap the ones on OUR VPC here so the
     #     count stays bounded. Runs last, off the critical path, best-effort (never fails the
-    #     build). Mirrors run.sh's cleanup_leaked_negs (laptop path) — keep the two in sync.
+    #     build). Mirrors devstash-infra's cleanup_leaked_negs (laptop path) — keep the two in sync.
     step {
       id     = "cleanup-negs"
       name   = local.cloud_sdk_image
-      env    = local.auto_suspend_build_env
-      script = file("${path.module}/scripts/auto-suspend-cleanup-negs.sh")
+      env    = concat(local.auto_suspend_build_env, ["_STEP=cleanup-negs"])
+      script = file("${path.module}/scripts/auto-suspend-shim.sh")
     }
   }
 
