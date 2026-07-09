@@ -25,5 +25,6 @@ def test_cli_help_resolves() -> None:
 
 
 def test_runtime_floor_is_supported() -> None:
-    # Dev/CI run 3.14; the CLI floor is 3.11. Guard against an unsupported env.
-    assert sys.version_info >= (3, 11)
+    # Dev/CI, the Cloud Build bundled interpreter, and the declared floor are all 3.14.
+    # Guard against an unsupported env.
+    assert sys.version_info >= (3, 14)

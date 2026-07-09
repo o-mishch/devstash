@@ -19,12 +19,10 @@ The classification is load-bearing (three prior outages):
 genuine fault; the entrypoint maps the bool to the `synced` step output.
 """
 
-import time
-from collections.abc import Callable
-
 from devstash_infra.ci import actions
 from devstash_infra.clients.kubectl import Kubectl
 from devstash_infra.common import log
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 from devstash_infra.shared.errors import InfraError
 
 ES = "devstash-secrets"  # the K8s Secret ESO materializes (migrate Job + web pods consume it)
@@ -50,12 +48,12 @@ def wait_for_sync(
     namespace: str,
     timeout_s: int,
     nudge_interval_s: int,
-    clock: Callable[[], float] = time.monotonic,
+    clock: Clock = SYSTEM_CLOCK,
 ) -> bool:
     """Wait for `devstash-secrets` to sync, re-nudging ESO; True=synced, False=benign parked state.
 
-    Raises `InfraError` on a genuine fault (see module docstring). `clock` is injected so tests
-    drive the deadline without real waits.
+    Raises `InfraError` on a genuine fault (see module docstring). The injected `clock` drives the
+    deadline without real waits.
     """
     log(
         f"Waiting up to {timeout_s}s for '{ES}' to sync, re-nudging ESO every {nudge_interval_s}s "
@@ -72,7 +70,7 @@ def _nudge_until_ready(
     namespace: str,
     timeout_s: int,
     nudge_interval_s: int,
-    clock: Callable[[], float],
+    clock: Clock,
 ) -> bool:
     """Re-annotate → condition-wait each interval until Ready or the overall budget is spent.
 
@@ -80,15 +78,19 @@ def _nudge_until_ready(
     mid-loop is picked up within one interval — no manual `kubectl annotate`, no burning the whole
     budget against ESO's idle 1h latch (the regression this rewrite fixes).
     """
-    deadline = clock() + timeout_s
+    deadline = clock.monotonic() + timeout_s
     while True:
         # Best-effort nudge; a changing force-sync value forces an immediate ESO reconcile.
-        kubectl.annotate(f"externalsecret/{ES}", "force-sync", str(clock()), namespace=namespace)
+        kubectl.annotate(
+            f"externalsecret/{ES}", "force-sync", str(clock.monotonic()), namespace=namespace
+        )
         if kubectl.wait_condition(
             f"externalsecret/{ES}", "Ready", namespace=namespace, timeout=f"{nudge_interval_s}s"
         ):
             return True
-        if clock() >= deadline:  # a short final interval that would overrun is not started
+        if (
+            clock.monotonic() >= deadline
+        ):  # a short final interval that would overrun is not started
             return False
 
 

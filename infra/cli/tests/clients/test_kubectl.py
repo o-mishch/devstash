@@ -41,10 +41,17 @@ def test_selector_logs_argv_and_tolerant(monkeypatch: pytest.MonkeyPatch) -> Non
     assert out == "[pod-a] hello\n[pod-b] world\n"
     assert calls == [
         [
-            "kubectl", "-n", "devstash", "logs", "-l", "app.kubernetes.io/name=devstash",
-            "--tail=100", "--prefix", "--ignore-errors",
+            "kubectl",
+            "-n",
+            "devstash",
+            "logs",
+            "-l",
+            "app.kubernetes.io/name=devstash",
+            "--tail=100",
+            "--prefix",
+            "--ignore-errors",
         ]
-    ]  # fmt: skip
+    ]
 
 
 def test_selector_logs_empty_when_no_pods(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -92,10 +99,15 @@ def test_annotate_argv_is_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
     Kubectl().annotate("externalsecret/devstash-secrets", "force-sync", "42", namespace="devstash")
     assert calls == [
         [
-            "kubectl", "-n", "devstash", "annotate", "externalsecret/devstash-secrets",
-            "force-sync=42", "--overwrite",
+            "kubectl",
+            "-n",
+            "devstash",
+            "annotate",
+            "externalsecret/devstash-secrets",
+            "force-sync=42",
+            "--overwrite",
         ]
-    ]  # fmt: skip
+    ]
 
 
 def test_wait_condition_returns_bool(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,10 +117,15 @@ def test_wait_condition_returns_bool(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert calls == [
         [
-            "kubectl", "-n", "devstash", "wait", "--for=condition=Ready",
-            "externalsecret/devstash-secrets", "--timeout=30s",
+            "kubectl",
+            "-n",
+            "devstash",
+            "wait",
+            "--for=condition=Ready",
+            "externalsecret/devstash-secrets",
+            "--timeout=30s",
         ]
-    ]  # fmt: skip
+    ]
 
 
 def test_wait_condition_false_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -124,11 +141,18 @@ def test_newest_event_message_argv_and_result(monkeypatch: pytest.MonkeyPatch) -
     assert result.stdout == "key redis-url does not exist in secret devstash-app-config"
     assert calls == [
         [
-            "kubectl", "-n", "devstash", "get", "events",
-            "--field-selector", "involvedObject.name=devstash-secrets,reason=UpdateFailed",
-            "--sort-by=.lastTimestamp", "-o", "jsonpath={.items[-1:].message}",
+            "kubectl",
+            "-n",
+            "devstash",
+            "get",
+            "events",
+            "--field-selector",
+            "involvedObject.name=devstash-secrets,reason=UpdateFailed",
+            "--sort-by=.lastTimestamp",
+            "-o",
+            "jsonpath={.items[-1:].message}",
         ]
-    ]  # fmt: skip
+    ]
 
 
 def test_newest_event_message_tolerates_kubectl_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -222,10 +246,16 @@ def test_delete_job_argv(monkeypatch: pytest.MonkeyPatch) -> None:
     Kubectl().delete_job("devstash-migrate", namespace="devstash")
     assert calls == [
         [
-            "kubectl", "-n", "devstash", "delete", "job", "devstash-migrate",
-            "--ignore-not-found", "--cascade=foreground",
+            "kubectl",
+            "-n",
+            "devstash",
+            "delete",
+            "job",
+            "devstash-migrate",
+            "--ignore-not-found",
+            "--cascade=foreground",
         ]
-    ]  # fmt: skip
+    ]
 
 
 def test_delete_argv(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -241,10 +271,16 @@ def test_job_condition_jsonpath_and_tolerant(monkeypatch: pytest.MonkeyPatch) ->
     assert Kubectl().job_condition("devstash-migrate", "Complete", namespace="devstash") == "True"
     assert calls == [
         [
-            "kubectl", "-n", "devstash", "get", "job", "devstash-migrate",
-            "-o", 'jsonpath={.status.conditions[?(@.type=="Complete")].status}',
+            "kubectl",
+            "-n",
+            "devstash",
+            "get",
+            "job",
+            "devstash-migrate",
+            "-o",
+            'jsonpath={.status.conditions[?(@.type=="Complete")].status}',
         ]
-    ]  # fmt: skip
+    ]
     _route(monkeypatch, ok=False)  # condition not present yet → "" (poll treats as not-yet)
     assert Kubectl().job_condition("devstash-migrate", "Failed", namespace="devstash") == ""
 
@@ -276,10 +312,15 @@ def test_apply_server_side_argv_and_stdin(monkeypatch: pytest.MonkeyPatch) -> No
     Kubectl().apply_server_side("kind: Deployment\n", field_manager="devstash-deploy")
     assert seen == [
         [
-            "kubectl", "apply", "--server-side", "--force-conflicts",
-            "--field-manager=devstash-deploy", "-f", "-",
+            "kubectl",
+            "apply",
+            "--server-side",
+            "--force-conflicts",
+            "--field-manager=devstash-deploy",
+            "-f",
+            "-",
         ]
-    ]  # fmt: skip
+    ]
     assert piped == ["kind: Deployment\n"]
 
 

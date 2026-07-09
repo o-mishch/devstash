@@ -106,10 +106,19 @@ class Gh:
         int databaseId is extracted typed; tolerant → "" so a bare read can't fail the caller.
         """
         result = proc.run(
-            ["gh", "run", "list", "--workflow", "deploy-gke.yml", "--limit", "1", "--json",
-             "databaseId"],
+            [
+                "gh",
+                "run",
+                "list",
+                "--workflow",
+                "deploy-gke.yml",
+                "--limit",
+                "1",
+                "--json",
+                "databaseId",
+            ],
             check=False,
-        )  # fmt: skip
+        )
         if not result.ok:
             return ""
         return _first_database_id(result.out)

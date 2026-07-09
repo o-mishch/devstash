@@ -35,7 +35,7 @@ from devstash_infra.clients.spaceship import Spaceship
 from devstash_infra.clients.tofu import Tofu
 from devstash_infra.common import DEVSTASH_NS as _NS
 from devstash_infra.common import log, ok, warn
-from devstash_infra.config import GcpConfig
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.models.api import DnsZone
 from devstash_infra.models.secrets_blob import OpsConfig
 from devstash_infra.models.tofu import TofuOutputs

@@ -112,9 +112,16 @@ class TestRunDispatch:
         calls = _route_run(monkeypatch, out=json.dumps([{"databaseId": 42}]))
         assert Gh().latest_deploy_run_id() == "42"  # int JSON → str at the boundary
         assert calls[0][0] == [
-            "gh", "run", "list", "--workflow", "deploy-gke.yml",
-            "--limit", "1", "--json", "databaseId",
-        ]  # fmt: skip
+            "gh",
+            "run",
+            "list",
+            "--workflow",
+            "deploy-gke.yml",
+            "--limit",
+            "1",
+            "--json",
+            "databaseId",
+        ]
 
     def test_latest_deploy_run_id_empty_when_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _route_run(monkeypatch, out="[]")
@@ -135,8 +142,13 @@ class TestRunDispatch:
         calls = _route_run(monkeypatch)
         Gh().workflow_run(provision=True)
         assert calls[0][0] == [
-            "gh", "workflow", "run", "deploy-gke.yml", "-f", "reason=provision",
-        ]  # fmt: skip
+            "gh",
+            "workflow",
+            "run",
+            "deploy-gke.yml",
+            "-f",
+            "reason=provision",
+        ]
 
     def test_run_watch_returns_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls = _route_run_ok(monkeypatch, ok=True)

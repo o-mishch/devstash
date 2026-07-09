@@ -9,15 +9,16 @@ from collections.abc import Sequence
 
 import pytest
 
-from devstash_infra.clients.gh import Gh
-from devstash_infra.clients.tofu import Tofu
 from devstash_infra.gcp.deploy import Deploy
 from devstash_infra.models.tofu import TofuOutputs
 from devstash_infra.shared.errors import ClusterUnreachable, InfraError
 
 
-class _FakeGh(Gh):
-    """Scripts latest_deploy_run_id over a sequence; records dispatch/watch/cancel."""
+class _FakeGh:
+    """Scripts latest_deploy_run_id over a sequence; records dispatch/watch/cancel.
+
+    A plain fake satisfying Deploy's `_Gh` protocol structurally — it does not subclass `Gh`.
+    """
 
     def __init__(self, *, run_ids: Sequence[str] = (), watch_ok: bool = True) -> None:
         self._run_ids = list(run_ids)
@@ -44,7 +45,9 @@ class _FakeGh(Gh):
         return True
 
 
-class _FakeTofu(Tofu):
+class _FakeTofu:
+    """A plain fake satisfying Deploy's `_Tofu` protocol (serves `output_json`)."""
+
     def __init__(self, outputs: dict[str, str]) -> None:
         self._outputs = outputs
 
@@ -52,7 +55,7 @@ class _FakeTofu(Tofu):
         return TofuOutputs.model_validate({k: {"value": v} for k, v in self._outputs.items()})
 
 
-def _deploy(gh: Gh, tofu: Tofu | None = None) -> Deploy:
+def _deploy(gh: _FakeGh, tofu: _FakeTofu | None = None) -> Deploy:
     return Deploy(gh=gh, tofu=tofu or _FakeTofu({}))
 
 

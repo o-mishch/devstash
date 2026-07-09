@@ -358,7 +358,11 @@ class TestBinauthz:
         )
         assert calls == [
             [
-                "gcloud", "container", "binauthz", "attestations", "sign-and-create",
+                "gcloud",
+                "container",
+                "binauthz",
+                "attestations",
+                "sign-and-create",
                 "--artifact-url=us-docker.pkg.dev/proj/repo/web@sha256:abc",
                 "--attestor=att",
                 "--attestor-project=proj",
@@ -368,7 +372,7 @@ class TestBinauthz:
                 "--keyversion-key=k",
                 "--keyversion=1",
             ]
-        ]  # fmt: skip
+        ]
 
     def test_sign_attestation_raises_on_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _route(monkeypatch, fail=True)  # a signing failure must be loud, never swallowed
@@ -387,11 +391,16 @@ class TestArtifactsPrune:
         ]
         assert calls == [
             [
-                "gcloud", "artifacts", "packages", "list",
-                "--repository=repo", "--location=us-central1", "--project=proj",
+                "gcloud",
+                "artifacts",
+                "packages",
+                "list",
+                "--repository=repo",
+                "--location=us-central1",
+                "--project=proj",
                 "--format=value(name)",
             ]
-        ]  # fmt: skip
+        ]
 
     def test_list_packages_empty_on_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _route(monkeypatch, fail=True)  # tolerant discovery — caller falls back to the static list
@@ -411,25 +420,37 @@ class TestArtifactsPrune:
         ]
         assert calls == [
             [
-                "gcloud", "artifacts", "docker", "images", "list", "BASE/web",
+                "gcloud",
+                "artifacts",
+                "docker",
+                "images",
+                "list",
+                "BASE/web",
                 "--filter=createTime < 2026-01-01",
                 "--format=value(version,metadata.mediaType)",
                 "--project=proj",
             ]
-        ]  # fmt: skip
+        ]
 
     def test_newest_tagged_index_argv_and_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls = _route(monkeypatch, out="sha256:newest")
         assert Gcloud("proj").artifacts.newest_tagged_index("BASE/extra") == "sha256:newest"
         assert calls == [
             [
-                "gcloud", "artifacts", "docker", "images", "list", "BASE/extra",
-                "--include-tags", "--sort-by=~createTime",
+                "gcloud",
+                "artifacts",
+                "docker",
+                "images",
+                "list",
+                "BASE/extra",
+                "--include-tags",
+                "--sort-by=~createTime",
                 "--filter=metadata.mediaType~index AND tags:*",
-                "--format=value(version)", "--limit=1",
+                "--format=value(version)",
+                "--limit=1",
                 "--project=proj",
             ]
-        ]  # fmt: skip
+        ]
 
     def test_newest_tagged_index_empty_when_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _route(monkeypatch, out="")
@@ -440,10 +461,17 @@ class TestArtifactsPrune:
         assert Gcloud("proj").artifacts.delete_docker_image("BASE/web@sha256:old") is True
         assert calls == [
             [
-                "gcloud", "artifacts", "docker", "images", "delete", "BASE/web@sha256:old",
-                "--delete-tags", "--quiet", "--project=proj",
+                "gcloud",
+                "artifacts",
+                "docker",
+                "images",
+                "delete",
+                "BASE/web@sha256:old",
+                "--delete-tags",
+                "--quiet",
+                "--project=proj",
             ]
-        ]  # fmt: skip
+        ]
 
     def test_delete_docker_image_false_on_failure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _route(monkeypatch, fail=True)  # never raises — a prune hiccup must not fail the deploy
@@ -456,10 +484,15 @@ class TestCertManager:
         assert Gcloud("proj").certificate_manager.cert_state("devstash-cert") == "ACTIVE"
         assert calls == [
             [
-                "gcloud", "certificate-manager", "certificates", "describe", "devstash-cert",
-                "--project=proj", "--format=value(managed.state)",
+                "gcloud",
+                "certificate-manager",
+                "certificates",
+                "describe",
+                "devstash-cert",
+                "--project=proj",
+                "--format=value(managed.state)",
             ]
-        ]  # fmt: skip
+        ]
 
     def test_cert_state_empty_when_unreadable(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _route(monkeypatch, fail=True)  # cert absent / suspended env → "" (caller shows "unknown")
@@ -474,11 +507,16 @@ class TestContainerClusterProbes:
         assert Gcloud("proj").container.cluster_listed("devstash-dev-gke", region="us-central1")
         assert calls == [
             [
-                "gcloud", "container", "clusters", "list",
-                "--project=proj", "--region=us-central1",
-                "--filter=name=devstash-dev-gke", "--format=value(name)",
+                "gcloud",
+                "container",
+                "clusters",
+                "list",
+                "--project=proj",
+                "--region=us-central1",
+                "--filter=name=devstash-dev-gke",
+                "--format=value(name)",
             ]
-        ]  # fmt: skip
+        ]
 
     def test_cluster_listed_false_when_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         _route(monkeypatch, out="")  # nothing echoed → genuinely absent

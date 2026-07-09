@@ -12,8 +12,6 @@ path has its own `/workspace/repo` clone anchor, so those two regimes keep their
 clone-anchored paths; only the human-invoked operator surface routes through here.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 

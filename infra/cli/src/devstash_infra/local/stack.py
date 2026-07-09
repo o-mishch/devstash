@@ -5,16 +5,15 @@ CI deploy order (build images → apply infra → migrate gate → roll out web)
 `gcp/lifecycle.py`; this scales that lifecycle down to a single kind cluster. Every collaborator is
 an injected typed client (docker/kind/kubectl/yq/openssl + the local-backend tofu) so the whole
 orchestration tests with fakes — no real cluster, no docker, no openssl, no HTTP. `preflight` +
-`build_stack` are the boundary helpers `app_local.py` calls, mirroring `gcp/context.py`.
+`build_stack` are the boundary helpers `local/app.py` calls, mirroring `gcp/context.py`.
 """
-
-from __future__ import annotations
 
 import shutil
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import typer
 
@@ -94,16 +93,106 @@ Billing (Pro):  OFFLINE — grant Pro with a signed fake webhook (no Stripe acct
                   npx tsx infra/local/stripe-fake-webhook.ts <userId> [active|canceled]"""
 
 
+# ── consumer-owned client seams (structural) ──────────────────────────────────
+# Narrow protocols (ISP) declaring ONLY the methods LocalStack calls on each client, signatures
+# matching the real clients exactly. The real `Docker`/`Kind`/`Kubectl`/`Yq`/`Openssl`/`LocalTofu`
+# satisfy them by shape, so test fakes are plain classes — nothing subclasses a concrete client.
+class _Docker(Protocol):
+    """The `Docker` subset LocalStack drives — just the local image build."""
+
+    def build(self, tag: str, *, target: str | None = None, context: str = ".") -> None: ...
+
+
+class _Kind(Protocol):
+    """The `Kind` subset LocalStack drives — cluster-presence probe + local-image load."""
+
+    def cluster_names(self) -> list[str]: ...
+    def load_image(self, image: str, *, cluster: str) -> None: ...
+
+
+class _Kubectl(Protocol):
+    """The `Kubectl` subset LocalStack drives (structural).
+
+    A STRUCTURAL SUPERSET of `job_gate._Kubectl` (adds `job_condition`/`describe`) so
+    `wait_for_job_gate(self.kubectl)` typechecks against the same instance.
+    """
+
+    def current_context(self) -> str: ...
+    def ensure_namespace(self, namespace: str) -> None: ...
+    def kustomize(self, directory: str) -> str: ...
+    def apply_stdin(self, manifest: str, *, server_side: bool = False) -> None: ...
+    def apply_file(self, path: str) -> None: ...
+    def apply_secret_from_files(
+        self, name: str, files: Mapping[str, str], *, namespace: str
+    ) -> None: ...
+    def delete_job(self, job: str, *, namespace: str) -> None: ...
+    def rollout_status(self, resource: str, *, namespace: str, timeout: str) -> None: ...
+    def rollout_restart(self, resource: str, *, namespace: str) -> None: ...
+    def wait_condition(
+        self, resource: str, condition: str, *, namespace: str, timeout: str
+    ) -> bool: ...
+    def get(
+        self,
+        target: str,
+        *,
+        namespace: str,
+        output: str | None = None,
+        sort_by: str | None = None,
+        selector: str | None = None,
+    ) -> str: ...
+    def job_logs(self, job: str, *, namespace: str, tail: int) -> str: ...
+    # ── job_gate._Kubectl superset (so wait_for_job_gate accepts this same instance) ──
+    def job_condition(self, job: str, condition: str, *, namespace: str) -> str: ...
+    def describe(self, resource: str, *, namespace: str) -> str: ...
+
+
+class _Yq(Protocol):
+    """The `Yq` subset LocalStack drives — the stdin-piped slice select."""
+
+    def eval_stdin(
+        self, expression: str, manifest: str, *, env_extra: Mapping[str, str] | None = None
+    ) -> str: ...
+
+
+class _Openssl(Protocol):
+    """The `Openssl` subset LocalStack drives — the CA → server-CSR → sign chain."""
+
+    def self_signed_ca(
+        self, *, key_out: Path, cert_out: Path, common_name: str, days: int
+    ) -> None: ...
+    def server_csr(self, *, key_out: Path, csr_out: Path, config: Path) -> None: ...
+    def sign_csr(
+        self,
+        *,
+        csr: Path,
+        ca_cert: Path,
+        ca_key: Path,
+        config: Path,
+        cert_out: Path,
+        days: int,
+    ) -> None: ...
+
+
+class _Tofu(Protocol):
+    """The `LocalTofu` subset LocalStack drives — init/apply/destroy + the state probe."""
+
+    @property
+    def state_exists(self) -> bool: ...
+    def init(self) -> None: ...
+    def apply(self, *, cluster_active: bool) -> None: ...
+    def destroy(self) -> None: ...
+
+
 @dataclass(frozen=True)
 class LocalStack:
     """The kind local-stack lifecycle over injected clients (up/deploy/status/info/down)."""
 
-    docker: Docker
-    kind: Kind
-    kubectl: Kubectl
-    yq: Yq
-    openssl: Openssl
-    tofu: LocalTofu
+    docker: _Docker
+    kind: _Kind
+    kubectl: _Kubectl
+    yq: _Yq
+    openssl: _Openssl
+    tofu: _Tofu
     health_report: Callable[[str], str] = deep_health_report
     health_ok: Callable[[str], bool] = deep_health_ok
 

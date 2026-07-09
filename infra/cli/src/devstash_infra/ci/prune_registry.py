@@ -19,13 +19,14 @@ must never fail an already-successful deploy — every delete failure is warned 
 """
 
 from collections.abc import Mapping
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from devstash_infra.ci import actions
 from devstash_infra.ci.images import KNOWN_IMAGES, image_base
 from devstash_infra.clients.docker import Docker
 from devstash_infra.clients.gcloud import Gcloud
 from devstash_infra.common import log
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 
 # 30-minute cutoff — protect very recent images from deletion by a concurrent/overlapping GHA run.
 _RECENT_WINDOW = timedelta(minutes=30)
@@ -39,16 +40,16 @@ def prune_registry(
     project: str,
     repo: str,
     keep_digests: Mapping[str, str],
-    now: datetime,
+    clock: Clock = SYSTEM_CLOCK,
     known_images: tuple[str, ...] = KNOWN_IMAGES,
 ) -> None:
     """Collapse every package in `repo` to its keep digest + children. Never raises (best-effort).
 
     `keep_digests` maps a known image name → its just-deployed digest (the boundary reads WEB_DIGEST
-    etc. from env). `now` is injected (the cutoff anchor) so the 30-minute window is testable.
+    etc. from env). The injected `clock` anchors the 30-minute cutoff window, so it is testable.
     """
     base = image_base(region, project, repo)
-    cutoff = (now - _RECENT_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (clock.now() - _RECENT_WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     packages = gcloud.artifacts.list_packages(repo, location=region)
     if not packages:

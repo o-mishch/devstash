@@ -42,19 +42,29 @@ def test_init_passes_absolute_state_path(monkeypatch: pytest.MonkeyPatch, tmp_pa
     LocalTofu(_TF_DIR, state).init()
     assert calls == [
         [
-            "tofu", f"-chdir={_TF_DIR}", "init", "-input=false",
+            "tofu",
+            f"-chdir={_TF_DIR}",
+            "init",
+            "-input=false",
             f"-backend-config=path={state.resolve()}",
         ]
-    ]  # fmt: skip
+    ]
 
 
 def test_apply_emits_var_and_interrupt_safe(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _route_long(monkeypatch)
     LocalTofu(_TF_DIR, Path("/s.tfstate")).apply(cluster_active=True)
     assert calls == [
-        ["tofu", f"-chdir={_TF_DIR}", "apply", "-input=false", "-auto-approve",
-         "-var", "cluster_active=true"]
-    ]  # fmt: skip
+        [
+            "tofu",
+            f"-chdir={_TF_DIR}",
+            "apply",
+            "-input=false",
+            "-auto-approve",
+            "-var",
+            "cluster_active=true",
+        ]
+    ]
 
 
 def test_apply_false_flag(monkeypatch: pytest.MonkeyPatch) -> None:

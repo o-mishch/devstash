@@ -1,26 +1,24 @@
 """gcp/gke.py — GKE/kubectl-facing operations for the deploy tooling.
 
 CLI zone (3.14). Ports the logic-bearing core of run/gcp/lib/gke.sh: the cluster-targeting guard
-[fix #10] and the fail-fast parallel join [fix #11]. Re-architected onto the Python-native paradigm:
-a `Gke` COLLABORATOR over `GcpConfig` + the typed `Tofu`/`Kubectl` clients (die → raise). The thin
-helm/kubectl orchestration wrappers (eso/reloader/upgrade_helm/status/logs) are glue over the ci/
-ensure-* entrypoints and land with that layer; the incident-critical branches are here.
+[fix #10] and the reachability wait `wait_for_cluster` [fix #11]. Re-architected onto the
+Python-native paradigm: a `Gke` COLLABORATOR over `GcpConfig` + the typed `Tofu`/`Kubectl` clients
+(die → raise). The thin helm/kubectl orchestration wrappers (eso/reloader/upgrade_helm/status/logs)
+are glue over the ci/ensure-* entrypoints and land with that layer; the incident-critical branches
+are here. The fail-fast parallel join [fix #11] lives in `gcp/parallel.py` (the concurrency
+primitive the resume overlap driver threads).
 
 Incident fixes:
   #10 use_cluster refuses to proceed unless kubectl's context is a GKE context — a get-credentials
       that silently failed (or a stale local-kind context) must NOT let a downstream kubectl mutate
       the wrong cluster.
-  #11 join_fail_fast returns only once ALL jobs exit 0; the instant the FIRST fails it KILLS every
-      surviving sibling (no detached install/apply left running) and raises — with optional per-path
-      "✓ [label] done in <dur>" narration.
+  #11 wait_for_cluster blocks on control-plane reachability with three distinct failure shapes
+      (absent / teardown-in-progress → hard fail; timeout → `ClusterUnreachable`, spared by resume).
 """
 
-import contextlib
 import json
 import shlex
-import subprocess
-import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -39,9 +37,10 @@ from devstash_infra.clients.helm import Helm
 from devstash_infra.clients.kubectl import Kubectl
 from devstash_infra.clients.tofu import Tofu
 from devstash_infra.common import DEVSTASH_NS as _NS
-from devstash_infra.common import confirm, count_missing, fmt_dur, log, ok, warn
-from devstash_infra.config import GcpConfig
+from devstash_infra.common import confirm, count_missing, log, ok, warn
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.shared import proc
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 from devstash_infra.shared.errors import ClusterUnreachable, InfraError
 from devstash_infra.versions import ESO_KEY, RELOADER_KEY, Versions, set_version
 
@@ -147,6 +146,7 @@ class Gke:
     tofu: Tofu
     kubectl: Kubectl
     helm: Helm
+    clock: Clock = SYSTEM_CLOCK
 
     def _credentials_command(self) -> str | None:
         """The tofu-emitted `get_credentials_command`, or None if it is not a gcloud command.
@@ -450,22 +450,15 @@ class Gke:
             if describe:
                 typer.echo(describe)
 
-    def rotate_secret(
-        self,
-        gcloud: Gcloud,
-        *,
-        name: str,
-        value: str,
-        clock: Callable[[], float] = time.monotonic,
-    ) -> None:
+    def rotate_secret(self, gcloud: Gcloud, *, name: str, value: str) -> None:
         """Replace ONE property of devstash-app-config, then force ESO to sync now (rotate_secret).
 
         Ports `rotate_secret` (run.sh:1466). The name is validated against `ROTATABLE_SECRETS`
         (Terraform-owned generated secrets and settings.yaml config are not rotatable) and the value
         must be non-empty — both raise. `value` arrives already-resolved (the boundary reads it via
         `common.read_secret` so a credential never touches argv or shell history). Annotating the
-        ExternalSecret with a fresh `force-sync` value tells ESO to re-sync now (skipping the 1h
-        refresh); Reloader then rolls devstash-web automatically. `clock` is injected for tests.
+        ExternalSecret with a fresh `force-sync` value (from `self.clock`) tells ESO to re-sync now
+        (skipping the 1h refresh); Reloader then rolls devstash-web automatically.
         """
         if name not in ROTATABLE_SECRETS:
             raise InfraError(
@@ -485,7 +478,10 @@ class Gke:
 
         log("Force ESO sync (skips the 1h refresh interval)")
         self.kubectl.annotate(
-            f"externalsecret/{_EXTERNAL_SECRET}", "force-sync", str(clock()), namespace=_NS
+            f"externalsecret/{_EXTERNAL_SECRET}",
+            "force-sync",
+            str(self.clock.monotonic()),
+            namespace=_NS,
         )
         ok("ESO sync triggered — Reloader will restart devstash-web once the Secret is updated")
         warn("Allow ~30s for ESO to pull from Secret Manager + Reloader to detect the change.")
@@ -493,71 +489,6 @@ class Gke:
             f'Also update third_party_secrets["{name}"] in the gitignored terraform.tfvars so '
             "disaster recovery does not recreate the old value."
         )
-
-
-# ── fail-fast parallel join [fix #11] ────────────────────────────────────────
-@dataclass(frozen=True)
-class Job:
-    """One backgrounded job in a fail-fast join: an already-launched subprocess + a label. A ""
-    label joins silently (the bare-pid back-compat path); a non-empty label announces
-    "✓ [label] done in <dur>" on finish.
-    """
-
-    process: subprocess.Popen[str]
-    label: str = ""
-
-
-def _kill_quietly(process: subprocess.Popen[str]) -> None:
-    """SIGKILL a surviving sibling, ignoring an already-exited pid (gke.sh:44)."""
-    if process.poll() is None:
-        # already-gone pid → no-op, exactly like bash `kill` on a dead pid
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
-
-
-def join_fail_fast(
-    jobs: Sequence[Job],
-    die_msg: str,
-    *,
-    t0: float | None = None,
-    poll_interval: float = 0.02,
-) -> None:
-    """Fold N backgrounded jobs under one fail-fast join [fix #11] (gke.sh:_join_fail_fast).
-
-    Returns once ALL jobs exit 0. The instant the FIRST exits non-zero it KILLS every still-running
-    sibling (so nothing is left installing/creating detached) and raises `InfraError` with
-    `die_msg`. An empty job set is a no-op success.
-
-    The bash `wait -n -p` (learn WHICH pid finished each iteration) becomes a poll over
-    `Popen.poll()`; killing the survivors' processes is the faithful, stronger form of the shell's
-    `kill "$p"` — it terminates the detached work itself, not just an OS pid.
-
-    Narration: a Job with a non-empty label prints "✓ [label] done in <dur>" as it lands, the
-    duration measured from `t0` (the group's start — a monotonic timestamp); unlabeled jobs stay
-    silent. `t0` defaults to the join's start (0 elapsed) when omitted.
-    """
-    start = t0 if t0 is not None else time.monotonic()
-    pending = list(jobs)
-    while pending:
-        finished = _await_one(pending, poll_interval)
-        rc = finished.process.returncode
-        if rc != 0:
-            for job in pending:
-                if job is not finished:
-                    _kill_quietly(job.process)
-            raise InfraError(f"{die_msg} (a joined job exited {rc})")
-        if finished.label:
-            ok(f"[{finished.label}] done in {fmt_dur(time.monotonic() - start)}")
-        pending.remove(finished)
-
-
-def _await_one(pending: Sequence[Job], poll_interval: float) -> Job:
-    """Block until one pending job's process exits; return it (the `wait -n` analogue)."""
-    while True:
-        for job in pending:
-            if job.process.poll() is not None:
-                return job
-        time.sleep(poll_interval)
 
 
 # wait_for_cluster reachability window: ~15 min (90 × 10s) covers the deep-suspend DNS-endpoint
@@ -576,7 +507,7 @@ def wait_for_cluster(
     region: str,
     attempts: int = _REACHABLE_ATTEMPTS,
     gap_s: float = _REACHABLE_GAP_S,
-    sleep: Callable[[float], None] = time.sleep,
+    clock: Clock = SYSTEM_CLOCK,
 ) -> None:
     """Block until the GKE control plane answers kubectl, or raise — the #11 reachability wait.
 
@@ -589,7 +520,7 @@ def wait_for_cluster(
     An empty `cluster` (tofu output unavailable) skips the existence/teardown checks and lets the
     reachability poll be the sole oracle, exactly as the shell did. Not built on `poll_until`: that
     helper swallows a predicate exception into a timeout, which would mask the teardown fast-abort —
-    so this is an explicit loop with an injected `sleep`, mirroring `check_env_active`.
+    so this is an explicit loop over the injected `clock`, mirroring `check_env_active`.
     """
     # Fast-fail pre-gate: a CONFIRMED-absent cluster is a real fault — don't burn the window on it.
     # A transient gcloud error is TOLERATED (treat as maybe-present and wait); only a clean
@@ -627,7 +558,7 @@ def wait_for_cluster(
             log(
                 f"control plane not reachable yet (attempt {attempt}/{attempts}) — waiting {gap_s}s"
             )
-            sleep(gap_s)
+            clock.sleep(gap_s)
 
     minutes = round(attempts * gap_s / 60)
     raise ClusterUnreachable(

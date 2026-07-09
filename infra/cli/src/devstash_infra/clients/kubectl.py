@@ -63,11 +63,16 @@ class Kubectl:
         """
         return proc.run(
             [
-                "kubectl", "-n", namespace, "wait", f"--for=condition={condition}",
-                resource, f"--timeout={timeout}",
+                "kubectl",
+                "-n",
+                namespace,
+                "wait",
+                f"--for=condition={condition}",
+                resource,
+                f"--timeout={timeout}",
             ],
             check=False,
-        ).ok  # fmt: skip
+        ).ok
 
     def newest_event_message(self, name: str, reason: str, *, namespace: str) -> Result:
         """Newest matching Event's `.message` — `get events --field-selector … --sort-by … -o …`.
@@ -79,12 +84,19 @@ class Kubectl:
         """
         return proc.run(
             [
-                "kubectl", "-n", namespace, "get", "events",
-                "--field-selector", f"involvedObject.name={name},reason={reason}",
-                "--sort-by=.lastTimestamp", "-o", "jsonpath={.items[-1:].message}",
+                "kubectl",
+                "-n",
+                namespace,
+                "get",
+                "events",
+                "--field-selector",
+                f"involvedObject.name={name},reason={reason}",
+                "--sort-by=.lastTimestamp",
+                "-o",
+                "jsonpath={.items[-1:].message}",
             ],
             check=False,
-        )  # fmt: skip
+        )
 
     def describe(self, resource: str, *, namespace: str) -> str:
         """`kubectl -n <ns> describe <resource>` stdout (tolerant → "" on failure).
@@ -187,11 +199,16 @@ class Kubectl:
         """
         proc.run(
             [
-                "kubectl", "apply", "--server-side", "--force-conflicts",
-                f"--field-manager={field_manager}", "-f", "-",
+                "kubectl",
+                "apply",
+                "--server-side",
+                "--force-conflicts",
+                f"--field-manager={field_manager}",
+                "-f",
+                "-",
             ],
             input=manifest,
-        )  # fmt: skip
+        )
 
     def ensure_namespace(self, namespace: str) -> None:
         """`create namespace <ns> --dry-run=client -o yaml | apply -f -` — idempotent. Raises.
@@ -246,10 +263,16 @@ class Kubectl:
         """
         proc.run(
             [
-                "kubectl", "-n", namespace, "delete", "job", job,
-                "--ignore-not-found", "--cascade=foreground",
+                "kubectl",
+                "-n",
+                namespace,
+                "delete",
+                "job",
+                job,
+                "--ignore-not-found",
+                "--cascade=foreground",
             ]
-        )  # fmt: skip
+        )
 
     def job_condition(self, job: str, condition: str, *, namespace: str) -> str:
         """Status of `job`'s `<condition>` condition ("True"/"False"/""), via `-o jsonpath`.
@@ -259,11 +282,17 @@ class Kubectl:
         """
         result = proc.run(
             [
-                "kubectl", "-n", namespace, "get", "job", job,
-                "-o", f'jsonpath={{.status.conditions[?(@.type=="{condition}")].status}}',
+                "kubectl",
+                "-n",
+                namespace,
+                "get",
+                "job",
+                job,
+                "-o",
+                f'jsonpath={{.status.conditions[?(@.type=="{condition}")].status}}',
             ],
             check=False,
-        )  # fmt: skip
+        )
         return result.out if result.ok else ""
 
     def job_logs(self, job: str, *, namespace: str, tail: int) -> str:
@@ -286,9 +315,16 @@ class Kubectl:
         """
         result = proc.run(
             [
-                "kubectl", "-n", namespace, "logs", "-l", selector,
-                f"--tail={tail}", "--prefix", "--ignore-errors",
+                "kubectl",
+                "-n",
+                namespace,
+                "logs",
+                "-l",
+                selector,
+                f"--tail={tail}",
+                "--prefix",
+                "--ignore-errors",
             ],
             check=False,
-        )  # fmt: skip
+        )
         return result.stdout if result.ok else ""

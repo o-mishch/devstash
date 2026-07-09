@@ -7,23 +7,25 @@ in the module namespace to script the operator's yes/no answers. Force-unlock us
 GENERATION [#1], asserted via the tofu fake's recorded argument.
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 import pytest
 
-from devstash_infra.config import GcpConfig
 from devstash_infra.gcp import state_recovery
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.gcp.state_recovery import StateLockRecovery
 from devstash_infra.shared.proc import ProcError, Result
+from tests.doubles import ManualClock
 
 _CONFIG = GcpConfig(
-    project="proj", region="us-central1", environment="dev", db_name="devstash",
+    project="proj",
+    region="us-central1",
+    environment="dev",
+    db_name="devstash",
     state_bucket="proj-tfstate-dev",
-)  # fmt: skip
+)
 
 _LOCK_URI = "gs://proj-tfstate-dev/gke/dev/default.tflock"
 _LOCK_JSON = json.dumps(
@@ -126,7 +128,7 @@ def _recovery(
         list_pids=lambda _tf_dir: list(pids or []),
         pid_alive=alive or (lambda _pid: True),
         kill=lambda _pid, _sig: None,
-        sleep=lambda _s: None,
+        clock=ManualClock(),
     )
 
 

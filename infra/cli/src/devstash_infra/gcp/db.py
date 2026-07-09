@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from devstash_infra.clients.gcloud import Gcloud
 from devstash_infra.clients.tofu import Tofu
 from devstash_infra.common import log, ok, poll_until, warn
-from devstash_infra.config import GcpConfig
+from devstash_infra.gcp.config import GcpConfig
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 from devstash_infra.shared.dump import export_and_verify_dump, prune_dump_versions
 from devstash_infra.shared.errors import InfraError
 from devstash_infra.shared.proc import ProcError
@@ -47,6 +48,7 @@ class Db:
     config: GcpConfig
     gcloud: Gcloud
     tofu: Tofu
+    clock: Clock = SYSTEM_CLOCK
 
     def resolve_dump_target(self) -> DumpTarget | None:
         """Build a DumpTarget from tofu outputs, or None if any is missing.
@@ -74,12 +76,7 @@ class Db:
         """
         return target is not None and self.gcloud.sql.instance_exists(target.instance)
 
-    def dump(
-        self,
-        *,
-        runnable_attempts: int = _RUNNABLE_ATTEMPTS,
-        runnable_gap_s: float = _RUNNABLE_GAP_S,
-    ) -> None:
+    def dump(self) -> None:
         """Export + verify the DB to GCS BEFORE any destroy [fix #4]. Ports db.sh `dump_db`.
 
         The data-safety gate that replaces Cloud SQL deletion_protection: an instance-present export
@@ -88,7 +85,7 @@ class Db:
         already destroyed it) is NOT a failure — skip and tear down whatever remains. A STOPPED one
         (compute-only suspend) is started just long enough to take a consistent dump. On success the
         dump history is pruned NOW (best-effort) rather than waiting for the bucket's daily sweep.
-        `runnable_gap_s` is injected so the start-and-wait poll runs without a real sleep in tests.
+        The start-and-wait poll drives through `self.clock`, so tests run it with no real sleep.
         """
         target = self.resolve_dump_target()
         if target is None:
@@ -108,8 +105,9 @@ class Db:
             self.gcloud.sql.patch_activation_policy(target.instance, "ALWAYS")
             if not poll_until(
                 lambda: self.gcloud.sql.instance_state(target.instance) == "RUNNABLE",
-                attempts=runnable_attempts,
-                gap_seconds=runnable_gap_s,
+                attempts=_RUNNABLE_ATTEMPTS,
+                gap_seconds=_RUNNABLE_GAP_S,
+                clock=self.clock,
             ):
                 raise InfraError("instance did not reach RUNNABLE in time — aborting suspend")
 

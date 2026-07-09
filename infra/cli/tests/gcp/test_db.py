@@ -9,10 +9,11 @@ import pytest
 
 from devstash_infra.clients.gcloud import Gcloud
 from devstash_infra.clients.tofu import Tofu
-from devstash_infra.environment import GcpConfig
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.gcp.db import Db, DumpTarget
 from devstash_infra.shared.errors import InfraError
 from tests.conftest import ExpectFn, RecordedCallsFn
+from tests.doubles import ManualClock
 
 _CONFIG = GcpConfig(
     project="proj",
@@ -56,7 +57,7 @@ _IMPORT = [
 
 
 def _collab(tf_dir: str = "tf/dev") -> Db:
-    return Db(_CONFIG, Gcloud("proj"), Tofu(tf_dir))
+    return Db(_CONFIG, Gcloud("proj"), Tofu(tf_dir), clock=ManualClock())
 
 
 class TestRestoreAlreadyLive:
@@ -166,19 +167,36 @@ _OUTPUTS = (
     ' "db_dump_keep_versions": {"value": "2"}}'
 )
 _STATE = [
-    "gcloud", "sql", "instances", "describe", "devstash-dev-sql",
-    "--project=proj", "--format=value(state)",
-]  # fmt: skip
+    "gcloud",
+    "sql",
+    "instances",
+    "describe",
+    "devstash-dev-sql",
+    "--project=proj",
+    "--format=value(state)",
+]
 _EXPORT = [
-    "gcloud", "sql", "export", "sql", "devstash-dev-sql", _TARGET.dump_uri,
-    "--database=devstash", "--project=proj",
-]  # fmt: skip
+    "gcloud",
+    "sql",
+    "export",
+    "sql",
+    "devstash-dev-sql",
+    _TARGET.dump_uri,
+    "--database=devstash",
+    "--project=proj",
+]
 _SIZE = ["gcloud", "storage", "objects", "describe", _TARGET.dump_uri, "--format=value(size)"]
 _PRUNE_LS = ["gcloud", "storage", "ls", "-a", f"{_TARGET.dump_uri}**"]
 _PATCH = [
-    "gcloud", "sql", "instances", "patch", "devstash-dev-sql",
-    "--project=proj", "--activation-policy=ALWAYS", "--quiet",
-]  # fmt: skip
+    "gcloud",
+    "sql",
+    "instances",
+    "patch",
+    "devstash-dev-sql",
+    "--project=proj",
+    "--activation-policy=ALWAYS",
+    "--quiet",
+]
 _RM = ["gcloud", "storage", "rm", _TARGET.dump_uri, "--quiet"]
 _EXISTS = ["gcloud", "sql", "instances", "describe", "devstash-dev-sql", "--project=proj"]
 
@@ -192,7 +210,7 @@ class TestDump:
         expect(_EXPORT, stdout="")
         expect(_SIZE, stdout="1024")  # non-empty → verified
         expect(_PRUNE_LS, stdout="")  # empty listing → prune no-op
-        _collab().dump(runnable_gap_s=0.0)
+        _collab().dump()
         assert "DB exported and verified" in capsys.readouterr().out
 
     def test_absent_instance_skips(
@@ -200,7 +218,7 @@ class TestDump:
     ) -> None:
         expect(_OUT, stdout=_OUTPUTS)  # resolve only — returns before keep_versions
         expect(_STATE, returncode=1, stderr="NOT_FOUND")  # instance_state → "" (absent)
-        _collab().dump(runnable_gap_s=0.0)  # idempotent teardown — no raise
+        _collab().dump()  # idempotent teardown — no raise
         assert "already destroyed by a prior suspend" in capsys.readouterr().out
 
     def test_stopped_instance_started_before_dump(
@@ -213,7 +231,7 @@ class TestDump:
         expect(_EXPORT, stdout="")
         expect(_SIZE, stdout="2048")
         expect(_PRUNE_LS, stdout="")
-        _collab().dump(runnable_gap_s=0.0)
+        _collab().dump()
         assert _PATCH in recorded_calls()  # activation-policy patch issued
 
     def test_unverified_dump_aborts(self, expect: ExpectFn) -> None:
@@ -223,12 +241,12 @@ class TestDump:
         expect(_SIZE, returncode=1, occurrences=2)  # object never present
         expect(_RM, occurrences=2)  # delete-empty-before-retry, both attempts
         with pytest.raises(InfraError, match="could not produce a non-empty dump"):
-            _collab().dump(runnable_gap_s=0.0)
+            _collab().dump()
 
     def test_no_target_raises(self, expect: ExpectFn) -> None:
         expect(_OUT, stdout="{}")  # unresolvable → run 'apply' first
         with pytest.raises(InfraError, match="run 'apply' first"):
-            _collab().dump(runnable_gap_s=0.0)
+            _collab().dump()
 
 
 class TestDbAlreadyLive:

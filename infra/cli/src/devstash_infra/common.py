@@ -21,6 +21,8 @@ from typing import NoReturn
 import typer
 from tenacity import Retrying, retry_if_result, stop_after_attempt, wait_fixed
 
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
+
 # The single app Kubernetes namespace (the shell's one `DEVSTASH_NS` in lib/common.sh). Kept here
 # so ci/gcp/local all read one source of truth rather than redefining the literal per module.
 DEVSTASH_NS = "devstash"
@@ -206,6 +208,7 @@ def poll_until(
     attempts: int,
     gap_seconds: float,
     on_attempt: Callable[[int, int], None] | None = None,
+    clock: Clock = SYSTEM_CLOCK,
 ) -> bool:
     """Run `predicate` until it returns True or `attempts` is reached.
 
@@ -214,13 +217,16 @@ def poll_until(
     in Python a caller closes over its own context, so `on_attempt(i, attempts)` is
     called after each failed attempt (the improved equivalent of the `-m` message
     hook). Returns True on success, False on timeout. Built on tenacity so the
-    retry/stop/wait policy is declarative, not a hand-rolled `while`.
+    retry/stop/wait policy is declarative, not a hand-rolled `while`. The between-attempt
+    wait goes through `clock.sleep` (the single time seam), so a virtual clock drives the
+    poll with no real waits and `gap_seconds` stays a real policy value even in tests.
     """
     # retry while the predicate is still False; stop after `attempts` tries.
     retrying = Retrying(
         retry=retry_if_result(lambda succeeded: succeeded is False),
         stop=stop_after_attempt(attempts),
         wait=wait_fixed(gap_seconds),
+        sleep=clock.sleep,
         reraise=False,
     )
 

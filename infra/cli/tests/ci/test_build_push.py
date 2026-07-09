@@ -9,6 +9,7 @@ from devstash_infra.ci.build_push import BuildPushResult, build_push
 from devstash_infra.clients.ar import ArtifactRegistry
 from devstash_infra.clients.docker import Docker
 from devstash_infra.shared.errors import InfraError
+from tests.doubles import ManualClock
 
 _WEB = "sha256:" + "a" * 64
 _MIGRATE = "sha256:" + "b" * 64
@@ -40,10 +41,6 @@ class _FakeDocker:
         Path(metadata_file).write_text(json.dumps(self._metadata))
 
 
-def _no_sleep(_seconds: float) -> None:
-    return None
-
-
 def _ar(fake: _FakeAr) -> ArtifactRegistry:
     return fake  # type: ignore[return-value]
 
@@ -64,7 +61,7 @@ def _run(ar: _FakeAr, docker: _FakeDocker, tmp_path: Path) -> BuildPushResult:
         github_sha="deadbeef",
         bake_file=tmp_path / "bake.hcl",
         metadata_file=tmp_path / "meta.json",
-        sleep=_no_sleep,
+        clock=ManualClock(),
     )
 
 

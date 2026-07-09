@@ -6,6 +6,7 @@ import pytest
 
 from devstash_infra.ci.images import image_base
 from devstash_infra.ci.prune_registry import prune_registry
+from tests.doubles import ManualClock
 
 _REGION, _PROJECT, _REPO = "us-central1", "proj", "repo"
 _BASE = image_base(_REGION, _PROJECT, _REPO)
@@ -71,7 +72,7 @@ def _run(
         project=_PROJECT,
         repo=_REPO,
         keep_digests=keep_digests,
-        now=_NOW,
+        clock=ManualClock(wall=_NOW),
         known_images=known_images,
     )
 

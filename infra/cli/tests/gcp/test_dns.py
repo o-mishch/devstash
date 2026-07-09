@@ -22,7 +22,7 @@ import pytest
 from devstash_infra.clients.gcloud import Gcloud
 from devstash_infra.clients.spaceship import Spaceship
 from devstash_infra.clients.tofu import Tofu
-from devstash_infra.environment import GcpConfig
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.gcp.dns import Dns
 from devstash_infra.shared import proc
 from devstash_infra.shared.errors import InfraError

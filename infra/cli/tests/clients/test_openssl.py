@@ -29,11 +29,23 @@ def test_self_signed_ca_argv(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert calls == [
         [
-            "openssl", "req", "-x509", "-newkey", "rsa:4096", "-nodes", "-sha256",
-            "-days", "3650", "-keyout", "/work/ca.key", "-out", "/work/ca.crt",
-            "-subj", "/CN=my-ca",
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:4096",
+            "-nodes",
+            "-sha256",
+            "-days",
+            "3650",
+            "-keyout",
+            "/work/ca.key",
+            "-out",
+            "/work/ca.crt",
+            "-subj",
+            "/CN=my-ca",
         ]
-    ]  # fmt: skip
+    ]
 
 
 def test_server_csr_argv(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -43,10 +55,20 @@ def test_server_csr_argv(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert calls == [
         [
-            "openssl", "req", "-newkey", "rsa:2048", "-nodes", "-sha256",
-            "-keyout", "/work/tls.key", "-out", "/work/tls.csr", "-config", "/cnf",
+            "openssl",
+            "req",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-sha256",
+            "-keyout",
+            "/work/tls.key",
+            "-out",
+            "/work/tls.csr",
+            "-config",
+            "/cnf",
         ]
-    ]  # fmt: skip
+    ]
 
 
 def test_sign_csr_argv(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -61,8 +83,24 @@ def test_sign_csr_argv(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert calls == [
         [
-            "openssl", "x509", "-req", "-in", "/work/tls.csr", "-CA", "/work/ca.crt",
-            "-CAkey", "/work/ca.key", "-CAcreateserial", "-sha256", "-days", "3650",
-            "-extensions", "v3_req", "-extfile", "/cnf", "-out", "/work/tls.crt",
+            "openssl",
+            "x509",
+            "-req",
+            "-in",
+            "/work/tls.csr",
+            "-CA",
+            "/work/ca.crt",
+            "-CAkey",
+            "/work/ca.key",
+            "-CAcreateserial",
+            "-sha256",
+            "-days",
+            "3650",
+            "-extensions",
+            "v3_req",
+            "-extfile",
+            "/cnf",
+            "-out",
+            "/work/tls.crt",
         ]
-    ]  # fmt: skip
+    ]

@@ -9,9 +9,12 @@ readme = "README.md"
 # See context/features/infra-shell-to-python-cli-spec.md.
 requires-python = ">=3.14"
 dependencies = [
-    "typer>=0.12",
-    "pydantic>=2.7",
-    "structlog>=24.1",
+    # Floors are honest minimums installable on the 3.14 target (a <0.15 typer / <2.11 pydantic
+    # can't resolve here); uv.lock pins the exact resolved versions. Kept below the locked versions
+    # so a re-lock never changes the resolution.
+    "typer>=0.15",
+    "pydantic>=2.11",
+    "structlog>=25.1",
     "tenacity>=9.1.4",
     "httpx>=0.28.1",
 ]

@@ -13,13 +13,10 @@ recovery tests with fakes — no real process signalling. Force-unlock addresses
 object GENERATION [#1], never the JSON "ID" UUID (gcs rejects the UUID as non-numeric).
 """
 
-from __future__ import annotations
-
 import contextlib
 import os
 import signal
 import socket
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -28,9 +25,10 @@ from devstash_infra.clients.gcloud import Gcloud
 from devstash_infra.clients.gh import Gh
 from devstash_infra.clients.tofu import Tofu
 from devstash_infra.common import confirm, ok, warn
-from devstash_infra.config import GcpConfig
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.models.tofu import TfLock
 from devstash_infra.shared import proc
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 from devstash_infra.shared.proc import ProcError
 
 _STATE_PREFIX = (
@@ -83,7 +81,7 @@ class StateLockRecovery:
     list_pids: Callable[[str], list[int]] = _pgrep_tofu
     pid_alive: Callable[[int], bool] = _pid_alive
     kill: Callable[[int, int], None] = os.kill
-    sleep: Callable[[float], None] = time.sleep
+    clock: Clock = SYSTEM_CLOCK
 
     @property
     def _lock_uri(self) -> str:
@@ -185,7 +183,7 @@ class StateLockRecovery:
         """SIGTERM then (on survival + confirm) SIGKILL a local PID; True iff it is gone after."""
         with contextlib.suppress(OSError):
             self.kill(pid, signal.SIGTERM)
-        self.sleep(1)
+        self.clock.sleep(1)
         if self.pid_alive(pid) and confirm(
             f"PID {pid} survived SIGTERM — SIGKILL it?", auto_approve=self.auto_approve
         ):

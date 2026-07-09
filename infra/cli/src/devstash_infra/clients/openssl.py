@@ -20,20 +20,42 @@ class Openssl:
         """`openssl req -x509 -newkey rsa:4096 …` — the root CA the app verifies against."""
         proc.run(
             [
-                "openssl", "req", "-x509", "-newkey", "rsa:4096", "-nodes", "-sha256",
-                "-days", str(days), "-keyout", str(key_out), "-out", str(cert_out),
-                "-subj", f"/CN={common_name}",
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:4096",
+                "-nodes",
+                "-sha256",
+                "-days",
+                str(days),
+                "-keyout",
+                str(key_out),
+                "-out",
+                str(cert_out),
+                "-subj",
+                f"/CN={common_name}",
             ]
-        )  # fmt: skip
+        )
 
     def server_csr(self, *, key_out: Path, csr_out: Path, config: Path) -> None:
         """`openssl req -newkey rsa:2048 … -config <cnf>` — server key + CSR (SANs from the cnf)."""
         proc.run(
             [
-                "openssl", "req", "-newkey", "rsa:2048", "-nodes", "-sha256",
-                "-keyout", str(key_out), "-out", str(csr_out), "-config", str(config),
+                "openssl",
+                "req",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-sha256",
+                "-keyout",
+                str(key_out),
+                "-out",
+                str(csr_out),
+                "-config",
+                str(config),
             ]
-        )  # fmt: skip
+        )
 
     def sign_csr(
         self,
@@ -48,8 +70,24 @@ class Openssl:
         """`openssl x509 -req … -CA <ca> -CAkey <k> -extensions v3_req` — sign the CSR."""
         proc.run(
             [
-                "openssl", "x509", "-req", "-in", str(csr), "-CA", str(ca_cert),
-                "-CAkey", str(ca_key), "-CAcreateserial", "-sha256", "-days", str(days),
-                "-extensions", "v3_req", "-extfile", str(config), "-out", str(cert_out),
+                "openssl",
+                "x509",
+                "-req",
+                "-in",
+                str(csr),
+                "-CA",
+                str(ca_cert),
+                "-CAkey",
+                str(ca_key),
+                "-CAcreateserial",
+                "-sha256",
+                "-days",
+                str(days),
+                "-extensions",
+                "v3_req",
+                "-extfile",
+                str(config),
+                "-out",
+                str(cert_out),
             ]
-        )  # fmt: skip
+        )

@@ -12,9 +12,9 @@ import uuid
 import typer
 
 from devstash_infra import obs
-from devstash_infra.app_gcp import gcp_app
-from devstash_infra.app_local import local_app
 from devstash_infra.ci.app import ci_app
+from devstash_infra.gcp.app import gcp_app
+from devstash_infra.local.app import local_app
 
 # Runtime floor assertion (defense-in-depth §Idempotency & runtime floor assertion).
 # Single floor: 3.14. The Cloud Build path runs cloud-sdk:slim's bundled Cloud SDK

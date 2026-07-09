@@ -13,7 +13,7 @@ recoveries; any other failure re-propagates unchanged.
 
 Gated to the signatures so a real provider/quota/permission error fails LOUDLY on the
 first attempt. The interactive lock recovery (`_recover_state_lock`, holder probes,
-the `unlock` command) is a separate operator-facing subsystem ported with app_gcp.
+the `unlock` command) is a separate operator-facing subsystem ported with gcp/app.
 """
 
 from collections.abc import Callable
@@ -21,6 +21,7 @@ from typing import cast
 
 from tenacity import RetryError, Retrying, retry_if_result, stop_after_attempt, wait_fixed
 
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 from devstash_infra.shared.proc import Result, is_lock_error, is_network_error
 
 # TOFU_NETWORK_RETRIES / TOFU_NETWORK_RETRY_GAP defaults (common.sh:213).
@@ -34,6 +35,7 @@ def tofu_locked(
     *,
     network_retries: int = _NETWORK_RETRIES,
     network_gap: float = _NETWORK_GAP,
+    clock: Clock = SYSTEM_CLOCK,
 ) -> Result:
     """Run `run_op` with lock + transient-network recovery (common.sh:233).
 
@@ -62,6 +64,7 @@ def tofu_locked(
     retrying = Retrying(
         stop=stop_after_attempt(network_retries),
         wait=wait_fixed(network_gap),
+        sleep=clock.sleep,
         retry=retry_if_result(lambda r: not r.ok and is_network_error(r.stdout)),
         reraise=False,
     )

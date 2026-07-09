@@ -24,8 +24,8 @@ reported only when present (absent by design in the dev $0 posture).
 """
 
 from dataclasses import dataclass
+from typing import Protocol
 
-from devstash_infra.clients.gh import Gh
 from devstash_infra.clients.tofu import Tofu
 from devstash_infra.common import count_missing, log, ok, warn
 from devstash_infra.shared.errors import InfraError
@@ -55,11 +55,28 @@ _OPTIONAL_VARIABLES = (
 )
 
 
+class _Gh(Protocol):
+    """The GitHub Actions store operations Secrets drives — the `Gh` subset it depends on.
+
+    A consumer-owned interface (ISP): the real `Gh` client and the test fake satisfy it by shape, so
+    nothing subclasses `Gh` to be injected here. `tofu` stays concrete — its tests drive the real
+    client through `proc`, so it is never faked.
+    """
+
+    def authenticated(self) -> bool: ...
+    def secret_set(self, name: str, value: str) -> None: ...
+    def secret_delete(self, name: str) -> None: ...
+    def variable_set(self, name: str, value: str) -> None: ...
+    def variable_delete(self, name: str) -> None: ...
+    def secret_names(self) -> list[str]: ...
+    def variable_value(self, name: str) -> str: ...
+
+
 @dataclass(frozen=True)
 class Secrets:
     """Push tofu outputs to the GitHub Actions store, then verify they landed."""
 
-    gh: Gh
+    gh: _Gh
     tofu: Tofu
 
     def push(self) -> None:

@@ -15,11 +15,12 @@ later. `smoke` waits out the whole run, then polls the public health endpoint th
 import contextlib
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
+from typing import Protocol
 
-from devstash_infra.clients.gh import Gh
 from devstash_infra.clients.health import deep_health_ok
-from devstash_infra.clients.tofu import Tofu
 from devstash_infra.common import log, ok, poll_until, warn
+from devstash_infra.models.tofu import TofuOutputs
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 from devstash_infra.shared.errors import ClusterUnreachable, InfraError
 
 # deploy(): wait ≤1 min (12 × 5s) for the dispatched run to register. smoke(): wait ≤2 min
@@ -30,17 +31,40 @@ _SMOKE_ATTEMPTS = 12
 _SMOKE_GAP_S = 10.0
 
 
+class _Gh(Protocol):
+    """The deploy-gke run controls Deploy drives — the `Gh` subset it depends on (structural).
+
+    A consumer-owned interface (ISP): the real `Gh` client and the test fakes satisfy it by shape,
+    so nothing subclasses `Gh` to be injected here.
+    """
+
+    def latest_deploy_run_id(self) -> str: ...
+    def workflow_run(self, *, provision: bool = False) -> None: ...
+    def run_watch(self, run_id: str) -> bool: ...
+    def run_cancel(self, run_id: str) -> bool: ...
+
+
+class _Tofu(Protocol):
+    """The `Tofu` subset Deploy reads — just the outputs (for `app_domain`)."""
+
+    def output_json(self) -> TofuOutputs: ...
+
+
 @dataclass(frozen=True)
 class Deploy:
-    """Dispatch + smoke-test the deploy-gke workflow over the typed `Gh` + `Tofu` clients."""
+    """Dispatch + smoke-test the deploy-gke workflow over the `Gh` + `Tofu` clients (protocols)."""
 
-    gh: Gh
-    tofu: Tofu
+    gh: _Gh
+    tofu: _Tofu
+    clock: Clock = SYSTEM_CLOCK
 
     def dispatch(
-        self, *, provision: bool = False, attempts: int = _DISPATCH_ATTEMPTS,
+        self,
+        *,
+        provision: bool = False,
+        attempts: int = _DISPATCH_ATTEMPTS,
         gap_s: float = _DISPATCH_GAP_S,
-    ) -> str:  # fmt: skip
+    ) -> str:
         """Dispatch deploy-gke.yml and return the new run's id, or "" if it couldn't be confirmed.
 
         Ports `deploy()`. `provision=True` tells CI's gate job to build even though the cluster
@@ -66,7 +90,9 @@ class Deploy:
             "(build web+migrate → push → apply -k → migrate Job → rollout)"
         )
 
-        if not poll_until(_new_run_appeared, attempts=attempts, gap_seconds=gap_s):
+        if not poll_until(
+            _new_run_appeared, attempts=attempts, gap_seconds=gap_s, clock=self.clock
+        ):
             warn("dispatched, but could not confirm the new run ID — follow it with: gh run watch")
             return ""
         ok(f"dispatched — run {confirmed} — follow it with:  gh run watch {confirmed}")
@@ -160,9 +186,12 @@ class Deploy:
         ok("devstash-infra gcp smoke   # wait for CI + verify health endpoint")
 
     def smoke(
-        self, *, health_ok: Callable[[str], bool] = deep_health_ok,
-        attempts: int = _SMOKE_ATTEMPTS, gap_s: float = _SMOKE_GAP_S,
-    ) -> None:  # fmt: skip
+        self,
+        *,
+        health_ok: Callable[[str], bool] = deep_health_ok,
+        attempts: int = _SMOKE_ATTEMPTS,
+        gap_s: float = _SMOKE_GAP_S,
+    ) -> None:
         """Wait for the latest deploy-gke run to finish, then verify the public health endpoint.
 
         Ports `smoke()`. Pins to the most recent run so it doesn't watch some other workflow that
@@ -184,7 +213,9 @@ class Deploy:
 
         url = f"https://{domain}/api/health?deep=1"
         log(f"Health check: {url}")
-        if poll_until(lambda: health_ok(url), attempts=attempts, gap_seconds=gap_s):
+        if poll_until(
+            lambda: health_ok(url), attempts=attempts, gap_seconds=gap_s, clock=self.clock
+        ):
             ok("app is healthy")
         else:
             raise InfraError("health check timed out after 2 min — cert may still be provisioning")

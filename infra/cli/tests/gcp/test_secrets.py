@@ -1,8 +1,8 @@
 """Tests for gcp/secrets.py — the GitHub Actions push + read-back verify.
 
-A `_FakeGh` (subclass of the real client, so the types stay honest) records writes into in-memory
-stores and serves them back on read, giving a full push→verify round-trip without touching `gh`.
-Tofu outputs are supplied by routing `proc.run` (the Tofu client's only exec path).
+A plain `_FakeGh` satisfying Secrets' `_Gh` protocol structurally (no subclassing) records writes
+into in-memory stores and serves them back on read, giving a full push→verify round-trip without
+touching `gh`. Tofu outputs are supplied by routing `proc.run` (the Tofu client's only exec path).
 """
 
 import json
@@ -10,7 +10,6 @@ from collections.abc import Sequence
 
 import pytest
 
-from devstash_infra.clients.gh import Gh
 from devstash_infra.clients.tofu import Tofu
 from devstash_infra.gcp.secrets import Secrets
 from devstash_infra.shared import proc
@@ -28,7 +27,7 @@ _BASE_OUTPUTS: dict[str, str] = {
 }
 
 
-class _FakeGh(Gh):
+class _FakeGh:
     """In-memory GitHub Actions store — records writes, serves them back on read."""
 
     def __init__(self, *, authed: bool = True) -> None:
@@ -72,7 +71,7 @@ def _route_outputs(monkeypatch: pytest.MonkeyPatch, outputs: dict[str, str]) -> 
     monkeypatch.setattr(proc, "run", _fake_run)
 
 
-def _secrets(gh: Gh) -> Secrets:
+def _secrets(gh: _FakeGh) -> Secrets:
     return Secrets(gh=gh, tofu=Tofu("tf/dev"))
 
 

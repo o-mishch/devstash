@@ -9,29 +9,14 @@ it. There is no monolithic CiEnv: the workflow passes a different env subset to 
 command reads exactly its own vars. The step functions hold the logic; this file holds no policy.
 """
 
-from datetime import UTC, datetime
-
 import typer
 
-from devstash_infra.ci import actions, env
-from devstash_infra.ci.apply_infra import apply_infra
+from devstash_infra.ci import actions, env, steps
 from devstash_infra.ci.build_push import build_push
-from devstash_infra.ci.check_env_active import check_env_active
-from devstash_infra.ci.check_migrations import check_migrations
-from devstash_infra.ci.decide_build import decide_build
 from devstash_infra.ci.inject_settings import inject_settings
 from devstash_infra.ci.operators import ensure_operators, helm_failure_policy
 from devstash_infra.ci.prune_registry import prune_registry
-from devstash_infra.ci.render_manifests import render_manifests
-from devstash_infra.ci.rollout_web import rollout_web
-from devstash_infra.ci.run_migrations import run_migrations
-from devstash_infra.ci.sign_images import sign_images
-from devstash_infra.ci.validate_inputs import validate_inputs
-from devstash_infra.ci.verify_control_plane import verify_control_plane
-from devstash_infra.ci.wait_endpoint import wait_endpoint
-from devstash_infra.ci.wait_rollout import wait_rollout
 from devstash_infra.ci.wait_secrets_sync import wait_for_sync
-from devstash_infra.ci.wif_torn_down_skip import wif_torn_down_skip
 from devstash_infra.clients.ar import ArtifactRegistry
 from devstash_infra.clients.docker import Docker
 from devstash_infra.clients.gcloud import Gcloud
@@ -60,7 +45,7 @@ VERSIONS_ENV = env.OVERLAY_DIR.parent.parent.parent / "versions.env"  # infra/ve
 def cmd_validate_inputs() -> None:
     """Validate the required deployment inputs (+ all-or-nothing Binary Authorization)."""
     with guard():
-        validate_inputs(
+        steps.validate_inputs(
             project_id=env.require("GCP_PROJECT_ID"),
             wif_provider=env.require("WORKLOAD_IDENTITY_PROVIDER"),
             deployer_sa=env.require("DEPLOYER_SA"),
@@ -75,7 +60,7 @@ def cmd_validate_inputs() -> None:
 def cmd_wif_torn_down_skip() -> None:
     """Green-with-warning skip when a full `down` soft-deleted the WIF pool backing CI auth."""
     with guard():
-        actions.set_output("build", str(wif_torn_down_skip()).lower())
+        actions.set_output("build", str(steps.wif_torn_down_skip()).lower())
 
 
 @ci_app.command("decide-build")
@@ -85,13 +70,13 @@ def cmd_decide_build() -> None:
         reason = env.optional("DISPATCH_REASON")
         if reason == "provision":
             # A resume/up never needs the cluster probe (it is provisioning it right now).
-            build = decide_build(dispatch_reason=reason, cluster_present=False)
+            build = steps.decide_build(dispatch_reason=reason, cluster_present=False)
         else:
             gcloud = Gcloud(env.require("GCP_PROJECT_ID"))
             present = gcloud.container.cluster_listed(
                 env.require("CLUSTER"), region=env.require("REGION")
             )
-            build = decide_build(dispatch_reason=reason, cluster_present=present)
+            build = steps.decide_build(dispatch_reason=reason, cluster_present=present)
         actions.set_output("build", str(build).lower())
 
 
@@ -112,7 +97,7 @@ def cmd_check_env_active() -> None:
             except ProcError:
                 return False
 
-        suspended = check_env_active(
+        suspended = steps.check_env_active(
             probe,
             attempts=env.optional_int("CLUSTER_WAIT_ATTEMPTS", 40),
             gap_s=env.optional_int("CLUSTER_WAIT_GAP", 15),
@@ -158,7 +143,7 @@ def cmd_build_push() -> None:
 def cmd_sign_images() -> None:
     """KMS-sign the web + migrate artifacts for Binary Authorization (hard-fails on error)."""
     with guard():
-        sign_images(
+        steps.sign_images(
             Gcloud(env.require("GCP_PROJECT_ID")),
             image_uri=env.require("IMAGE_URI"),
             web_digest=env.require("WEB_DIGEST"),
@@ -173,7 +158,7 @@ def cmd_sign_images() -> None:
 def cmd_check_migrations() -> None:
     """Pgfence migration-safety scan over every prisma migration.sql (hard-fails on risk)."""
     with guard():
-        check_migrations(env.MIGRATIONS_ROOT)
+        steps.check_migrations(env.MIGRATIONS_ROOT)
 
 
 # ── render job (overlaps the apply) ──────────────────────────────────────────
@@ -202,7 +187,7 @@ def cmd_inject_settings() -> None:
 def cmd_render_manifests() -> None:
     """Render the GCP overlay once to the shared rendered file (+ drop the empty armor policy)."""
     with guard():
-        render_manifests(
+        steps.render_manifests(
             Kubectl(), Yq(), overlay_dir=env.OVERLAY_DIR, rendered_path=env.RENDERED_PATH
         )
 
@@ -212,7 +197,7 @@ def cmd_render_manifests() -> None:
 def cmd_verify_control_plane() -> None:
     """Pre-Helm /readyz probe; raise on the 403 GFE drift signature, warn-skip if unreachable."""
     with guard():
-        verify_control_plane(
+        steps.verify_control_plane(
             Kubectl(), cluster=env.require("CLUSTER"), region=env.require("REGION")
         )
 
@@ -230,7 +215,9 @@ def cmd_ensure_operators() -> None:
 def cmd_apply_infra() -> None:
     """SSA-apply everything except the web Deployment (after deleting the legacy Ingress stack)."""
     with guard():
-        apply_infra(Kubectl(), Yq(), namespace=env.DEVSTASH_NS, rendered_path=env.RENDERED_PATH)
+        steps.apply_infra(
+            Kubectl(), Yq(), namespace=env.DEVSTASH_NS, rendered_path=env.RENDERED_PATH
+        )
 
 
 @ci_app.command("wait-secrets-sync")
@@ -250,7 +237,7 @@ def cmd_wait_secrets_sync() -> None:
 def cmd_run_migrations() -> None:
     """Apply the digest-pinned migrate Job and block on its gate (raise on Failed/timeout)."""
     with guard():
-        run_migrations(
+        steps.run_migrations(
             Kubectl(),
             Yq(),
             namespace=env.DEVSTASH_NS,
@@ -263,21 +250,23 @@ def cmd_run_migrations() -> None:
 def cmd_rollout_web() -> None:
     """Server-side apply the web Deployment (triggers the rolling update)."""
     with guard():
-        rollout_web(Kubectl(), Yq(), rendered_path=env.RENDERED_PATH)
+        steps.rollout_web(Kubectl(), Yq(), rendered_path=env.RENDERED_PATH)
 
 
 @ci_app.command("wait-rollout")
 def cmd_wait_rollout() -> None:
     """Block on the web rollout; on failure dump per-pod crash logs and raise (no auto-rollback)."""
     with guard():
-        wait_rollout(Kubectl(), namespace=env.DEVSTASH_NS)
+        steps.wait_rollout(Kubectl(), namespace=env.DEVSTASH_NS)
 
 
 @ci_app.command("wait-endpoint")
 def cmd_wait_endpoint() -> None:
     """Poll the public /api/health?deep=1 URL until the L7 LB serves it (warn-skip if no domain)."""
     with guard():
-        wait_endpoint(Kubectl(), app_domain=env.optional("APP_DOMAIN"), namespace=env.DEVSTASH_NS)
+        steps.wait_endpoint(
+            Kubectl(), app_domain=env.optional("APP_DOMAIN"), namespace=env.DEVSTASH_NS
+        )
 
 
 # ── post-deploy ──────────────────────────────────────────────────────────────
@@ -300,5 +289,4 @@ def cmd_prune_registry() -> None:
             project=env.require("GCP_PROJECT_ID"),
             repo=env.require("REPO"),
             keep_digests=keep_digests,
-            now=datetime.now(UTC),
         )

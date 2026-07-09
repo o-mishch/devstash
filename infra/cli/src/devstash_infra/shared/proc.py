@@ -140,6 +140,17 @@ def run_ok(argv: Sequence[str]) -> bool:
     return run(argv, check=False).ok
 
 
+def run_out(argv: Sequence[str], *, default: str = "") -> str:
+    """The stdout of `argv` (`$(...)` semantics), or `default` on a non-zero exit.
+
+    The tolerant-string peer of `run_ok` — the `x=$(cmd 2>/dev/null || echo "")`
+    idiom the read-only gcloud probes repeat (describe → value, absent → ""). Never
+    raises on a non-zero exit; only a failure to spawn the process propagates.
+    """
+    result = run(argv, check=False)
+    return result.out if result.ok else default
+
+
 class _ForwardInterrupt:
     """Context manager: forward SIGINT/SIGTERM to a child, never exit mid-write.
 

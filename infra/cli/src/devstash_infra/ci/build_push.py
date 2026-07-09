@@ -16,8 +16,6 @@ deps/builder stages still build concurrently with apply. A short settle absorbs 
 
 import json
 import re
-import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ReadOnly, TypedDict, cast
@@ -26,6 +24,7 @@ from devstash_infra.ci.images import image_base
 from devstash_infra.clients.ar import ArtifactRegistry
 from devstash_infra.clients.docker import Docker
 from devstash_infra.common import log, ok
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 from devstash_infra.shared.errors import InfraError
 
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -68,7 +67,7 @@ def build_push(
     github_sha: str,
     bake_file: Path,
     metadata_file: Path,
-    sleep: Callable[[float], None] = time.sleep,
+    clock: Clock = SYSTEM_CLOCK,
 ) -> BuildPushResult:
     """Gate on AR-writable, bake both images, and return their validated registry digests."""
     base = image_base(region, project, repo)
@@ -85,7 +84,7 @@ def build_push(
             ),
         )
     ok(f"Artifact Registry '{repo}' is writable — proceeding to build + push")
-    sleep(_SETTLE_S)  # absorb the residual IAM-read → registry-data-plane propagation gap
+    clock.sleep(_SETTLE_S)  # absorb the residual IAM-read → registry-data-plane propagation gap
 
     docker.buildx_bake(
         str(bake_file),

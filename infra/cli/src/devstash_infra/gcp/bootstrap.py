@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from devstash_infra.clients.gcloud import Gcloud
 from devstash_infra.common import confirm, log, ok, warn
-from devstash_infra.config import GcpConfig
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.shared.errors import Aborted, InfraError
 
 # The APIs to pre-enable — data, not inline argv. Must stay in sync with the list in

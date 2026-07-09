@@ -14,9 +14,9 @@ from collections.abc import Callable
 
 import pytest
 
-from devstash_infra.environment import GcpConfig
 from devstash_infra.gcp import bootstrap
 from devstash_infra.gcp.bootstrap import Bootstrap
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.shared.errors import Aborted, InfraError
 
 _CONFIG = GcpConfig(

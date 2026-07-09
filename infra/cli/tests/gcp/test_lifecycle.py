@@ -6,33 +6,30 @@ tag to a shared `_EVENTS` log; each test asserts the sequence. The two seams (`w
 HTTP runs. `confirm` is patched in the module namespace to answer the single upfront intent gate.
 """
 
-from __future__ import annotations
-
+import contextlib
 import threading
-from dataclasses import dataclass
+from collections.abc import Callable, Generator
 
 import pytest
 
 from devstash_infra.clients.gcloud import Gcloud
-from devstash_infra.clients.gh import Gh
-from devstash_infra.clients.tofu import Tofu
-from devstash_infra.config import GcpConfig
-from devstash_infra.environment import ApplyDeps, Environment
+from devstash_infra.clients.kubectl import Kubectl
 from devstash_infra.gcp import lifecycle
-from devstash_infra.gcp.bootstrap import Bootstrap
-from devstash_infra.gcp.db import Db, DumpTarget
-from devstash_infra.gcp.deploy import Deploy
-from devstash_infra.gcp.dns import Dns
+from devstash_infra.gcp.config import GcpConfig
+from devstash_infra.gcp.db import DumpTarget
+from devstash_infra.gcp.environment import ApplyDeps
 from devstash_infra.gcp.lifecycle import AR_PUSH_TARGETS, CI_IDENTITY_TARGETS, ArWritable, Lifecycle
-from devstash_infra.gcp.secrets import SECRETS_REQUIRED_OUTPUTS, Secrets
-from devstash_infra.gcp.suspend import Teardown
+from devstash_infra.gcp.secrets import SECRETS_REQUIRED_OUTPUTS
 from devstash_infra.models.tofu import TofuOutputs
 from devstash_infra.shared.errors import Aborted, ClusterUnreachable, InfraError
 
 _CONFIG = GcpConfig(
-    project="proj", region="us-central1", environment="dev", db_name="devstash",
+    project="proj",
+    region="us-central1",
+    environment="dev",
+    db_name="devstash",
     state_bucket="proj-tfstate-dev",
-)  # fmt: skip
+)
 
 # Every output _tf_outputs_present checks, so the "outputs present" branch is taken.
 _PRESENT: dict[str, str] = dict.fromkeys(SECRETS_REQUIRED_OUTPUTS, "x")
@@ -44,20 +41,30 @@ _FIRST_EVER: dict[str, str] = {"artifact_registry_repository_id": "devstash"}
 _EVENTS: list[str] = []
 
 
-class _FakeTofu(Tofu):
+# All collaborator fakes below are PLAIN classes satisfying Lifecycle's consumer-owned protocols
+# (`_Environment`/`_Deploy`/…) structurally — none subclasses a concrete client/collaborator.
+class _FakeTofu:
+    """Serves fake tofu outputs + a chdir path (satisfies Lifecycle's `_Tofu` seam)."""
+
     def __init__(self, outputs: dict[str, str]) -> None:
-        super().__init__("tf/dev")
         self._outputs = outputs
+
+    @property
+    def tf_dir(self) -> str:
+        return "tf/dev"
 
     def output_json(self) -> TofuOutputs:
         return TofuOutputs.model_validate({k: {"value": v} for k, v in self._outputs.items()})
 
 
-class _FakeEnv(Environment):
+class _FakeEnv:
     """Records apply / staging_apply; serves tofu outputs for the branch gate + AR repo id."""
 
     def __init__(self, outputs: dict[str, str]) -> None:
-        super().__init__(_CONFIG, tofu=_FakeTofu(outputs), gcloud=Gcloud("proj"))
+        self.config = _CONFIG
+        self.gcloud = Gcloud("proj")
+        self.kubectl = Kubectl()
+        self.tofu = _FakeTofu(outputs)
 
     def apply(
         self, deps: ApplyDeps, *, auto_approve: bool = False, confirmed: bool = False
@@ -80,19 +87,27 @@ class _FakeEnv(Environment):
         _EVENTS.append(f"staging:{kind}")
 
 
-class _FakeGh(Gh):
-    def run_cancel(self, run_id: str) -> bool:
-        _EVENTS.append(f"cancel:{run_id}")
-        return True
+class _FakeDeploy:
+    """Records the overlap steps and mimics the cancel trap (satisfies `_Deploy`)."""
 
-
-@dataclass(frozen=True)
-class _FakeDeploy(Deploy):
-    def predispatch(self, push_secrets: object) -> str:
-        assert callable(push_secrets)
+    def predispatch(self, push_secrets: Callable[[], None]) -> str:
         push_secrets()  # secrets refreshed BEFORE dispatch — records "secrets"
         _EVENTS.append("predispatch")
         return "run-1"
+
+    @contextlib.contextmanager
+    def cancel_run_on_error(self, run_id: str, phase: str) -> Generator[None]:
+        # Mirrors Deploy.cancel_run_on_error's observable outcome: a ClusterUnreachable is SPARED
+        # (endpoint still propagating), any other failure cancels the orphaned run. The precise
+        # semantics live in test_deploy; here we only record the event the ordering test asserts.
+        try:
+            yield
+        except ClusterUnreachable:
+            raise
+        except BaseException:
+            if run_id:
+                _EVENTS.append(f"cancel:{run_id}")
+            raise
 
     def print_parallel_hint(self, infra_word: str, run_id: str) -> None:
         _EVENTS.append(f"hint:{infra_word}")
@@ -101,13 +116,16 @@ class _FakeDeploy(Deploy):
         _EVENTS.append(f"watch:{run_id}")
 
 
-@dataclass(frozen=True)
-class _FakeSecrets(Secrets):
+class _FakeSecrets:
+    """Records the GitHub-Actions push (satisfies `_Secrets`)."""
+
     def push(self) -> None:
         _EVENTS.append("secrets")
 
 
-class _FakeDns(Dns):
+class _FakeDns:
+    """Records the A-record wiring (satisfies `_Dns`)."""
+
     def dns_hint(self) -> None:
         _EVENTS.append("dns_hint")
 
@@ -117,8 +135,9 @@ class _FakeDns(Dns):
         _EVENTS.append("dns_update")
 
 
-@dataclass(frozen=True)
-class _FakeBootstrap(Bootstrap):
+class _FakeBootstrap:
+    """Records the prerequisite provisioning (satisfies `_Bootstrap`)."""
+
     def run(self, *, auto_approve: bool = False) -> None:
         _EVENTS.append("bootstrap")
 
@@ -126,17 +145,16 @@ class _FakeBootstrap(Bootstrap):
 _DUMP_TARGET = DumpTarget(instance="devstash-dev-sql", dump_uri="gs://d/x.sql", db_name="devstash")
 
 
-class _FakeDb(Db):
-    """Records dump/restore + the was_already_live snapshot; `already_live` drives [#5]."""
+class _FakeDb:
+    """Records dump/restore + the was_already_live snapshot (satisfies `_Db`); drives [#5]."""
 
-    def __init__(self, tofu: Tofu, *, already_live: bool = False) -> None:
-        super().__init__(_CONFIG, Gcloud("proj"), tofu)
+    def __init__(self, *, already_live: bool = False) -> None:
         self._already_live = already_live
 
-    def dump(self, *, runnable_attempts: int = 30, runnable_gap_s: float = 10.0) -> None:
+    def dump(self) -> None:
         _EVENTS.append("db_dump")
 
-    def resolve_dump_target(self) -> DumpTarget:
+    def resolve_dump_target(self) -> DumpTarget | None:
         return _DUMP_TARGET
 
     def db_already_live(self, target: DumpTarget | None) -> bool:
@@ -147,7 +165,9 @@ class _FakeDb(Db):
         _EVENTS.append(f"db_restore(live={was_already_live})")
 
 
-class _FakeTeardown(Teardown):
+class _FakeTeardown:
+    """Records the NEG reap (satisfies `_Teardown`)."""
+
     def cleanup_leaked_negs(self) -> None:
         _EVENTS.append("cleanup_negs")
 
@@ -174,9 +194,11 @@ def _noop() -> None:
 
 
 _DEPS = ApplyDeps(
-    ensure_tfvars=_noop, require_state_bucket=_noop, wait_for_no_autosuspend_build=_noop,
+    ensure_tfvars=_noop,
+    require_state_bucket=_noop,
+    wait_for_no_autosuspend_build=_noop,
     ar_iam_addr_file="/data/ar-iam.txt",
-)  # fmt: skip
+)
 
 
 def _lifecycle(
@@ -195,16 +217,15 @@ def _lifecycle(
         return _FakeAr(writable=ar_writable)
 
     _EVENTS.clear()  # each test builds one Lifecycle before acting — reset the shared log here
-    tofu = _FakeTofu(outputs)
     return Lifecycle(
         _FakeEnv(outputs),
         _DEPS,
-        deploy=_FakeDeploy(gh=_FakeGh(), tofu=tofu),
-        secrets=_FakeSecrets(gh=_FakeGh(), tofu=tofu),
-        dns=_FakeDns(_CONFIG, Gcloud("proj"), tofu),
-        bootstrap=_FakeBootstrap(_CONFIG, Gcloud("proj"), _noop, "lifecycle.json"),
-        db=_FakeDb(tofu, already_live=already_live),
-        teardown=_FakeTeardown(_CONFIG, Gcloud("proj"), tofu),
+        deploy=_FakeDeploy(),
+        secrets=_FakeSecrets(),
+        dns=_FakeDns(),
+        bootstrap=_FakeBootstrap(),
+        db=_FakeDb(already_live=already_live),
+        teardown=_FakeTeardown(),
         cleanup_builds=lambda: _EVENTS.append("cleanup_builds"),
         wait_cluster=_wait,
         make_ar=_make_ar,

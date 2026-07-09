@@ -1,6 +1,9 @@
-"""models/tofu.py — pydantic models for OpenTofu JSON, CLI-only.
+"""models/tofu.py — pydantic models for OpenTofu-emitted JSON, CLI-only.
 
-Parses `tofu output -json`. The `-json` path (never `-raw`) is the whole point of
+Two shapes live here, both OpenTofu-emitted JSON: `TofuOutputs`/`TofuOutputValue` parse
+`tofu output -json`, and `TfLock` parses the `.tflock` state-lock blob the `unlock` recovery reads.
+
+The `tofu output -json` path (never `-raw`) is the whole point of
 incident fix #2: on a state with NO outputs, `tofu output -raw X` prints its
 "No outputs found" warning box to STDOUT and still exits 0 (hashicorp/terraform
 #26991), so the box gets consumed AS the value; `-json` prints `{}` on empty state,

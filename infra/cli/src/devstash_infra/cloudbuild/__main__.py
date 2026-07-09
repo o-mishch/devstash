@@ -14,25 +14,20 @@ import os
 import sys
 from collections.abc import Callable, Sequence
 
-from devstash_infra.cloudbuild.cleanup_builds import cleanup_builds
-from devstash_infra.cloudbuild.cleanup_negs import cleanup_negs
-from devstash_infra.cloudbuild.dump_step import dump_step
+from devstash_infra.cloudbuild import steps
 from devstash_infra.cloudbuild.env import TOFU_BIN_DIR, BuildEnv
-from devstash_infra.cloudbuild.guard import guard
-from devstash_infra.cloudbuild.prepare import prepare
-from devstash_infra.cloudbuild.suspend_step import suspend_step
 from devstash_infra.shared.errors import InfraError
 from devstash_infra.shared.log import configure
 
 # Step id (auto-suspend.tf) -> handler. The ids match the Terraform `step { id = … }` values so the
 # shim invocation `python3 -m devstash_infra.cloudbuild <id>` reads 1:1 with the build definition.
 _STEPS: dict[str, Callable[[BuildEnv], None]] = {
-    "guard": guard,
-    "prepare": prepare,
-    "dump": dump_step,
-    "suspend": suspend_step,
-    "cleanup-builds": cleanup_builds,
-    "cleanup-negs": cleanup_negs,
+    "guard": steps.guard,
+    "prepare": steps.prepare,
+    "dump": steps.dump_step,
+    "suspend": steps.suspend_step,
+    "cleanup-builds": steps.cleanup_builds,
+    "cleanup-negs": steps.cleanup_negs,
 }
 
 

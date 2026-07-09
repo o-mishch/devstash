@@ -123,16 +123,33 @@ class TestEsoInstallArgvParity:
         expect(["helm", "repo", "add", "external-secrets", ESO.repo_url])
         expect(["helm", "repo", "update", "external-secrets"])
         upgrade = [
-            "helm", "upgrade", "--install", "external-secrets", "external-secrets/external-secrets",
-            "-n", "external-secrets", "--create-namespace", "--wait", "--timeout", "5m",
-            "--atomic", "--version", "2.7.0",
-            "--set", "resources.requests.cpu=50m",
-            "--set", "resources.requests.memory=128Mi",
-            "--set", "certController.resources.requests.cpu=50m",
-            "--set", "certController.resources.requests.memory=128Mi",
-            "--set", "webhook.resources.requests.cpu=50m",
-            "--set", "webhook.resources.requests.memory=128Mi",
-        ]  # fmt: skip
+            "helm",
+            "upgrade",
+            "--install",
+            "external-secrets",
+            "external-secrets/external-secrets",
+            "-n",
+            "external-secrets",
+            "--create-namespace",
+            "--wait",
+            "--timeout",
+            "5m",
+            "--atomic",
+            "--version",
+            "2.7.0",
+            "--set",
+            "resources.requests.cpu=50m",
+            "--set",
+            "resources.requests.memory=128Mi",
+            "--set",
+            "certController.resources.requests.cpu=50m",
+            "--set",
+            "certController.resources.requests.memory=128Mi",
+            "--set",
+            "webhook.resources.requests.cpu=50m",
+            "--set",
+            "webhook.resources.requests.memory=128Mi",
+        ]
         expect(upgrade)
 
         assert ensure_operator(ESO, "2.7.0", helm=Helm(), failure_policy="--atomic") is True

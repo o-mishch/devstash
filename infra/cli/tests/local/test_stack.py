@@ -6,31 +6,23 @@ drive it without real sleeps; health_report/health_ok are injected callables so 
 `_TF_STATE` is monkeypatched to a tmp path so `_cluster_up`'s mkdir never touches the repo.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
 import typer
 
-from devstash_infra.clients.docker import Docker
-from devstash_infra.clients.kind import Kind
-from devstash_infra.clients.kubectl import Kubectl
-from devstash_infra.clients.openssl import Openssl
-from devstash_infra.clients.tofu_local import LocalTofu
-from devstash_infra.clients.yq import Yq
 from devstash_infra.local import stack as stack_mod
 from devstash_infra.local.stack import LocalStack
 
 _EVENTS: list[str] = []
 
 
-class _FakeDocker(Docker):
+class _FakeDocker:
     def build(self, tag: str, *, target: str | None = None, context: str = ".") -> None:
         _EVENTS.append(f"docker.build:{tag}")
 
 
-class _FakeKind(Kind):
+class _FakeKind:
     def __init__(self, *, present: bool) -> None:
         self._present = present
 
@@ -41,7 +33,7 @@ class _FakeKind(Kind):
         _EVENTS.append(f"kind.load:{image}")
 
 
-class _FakeKubectl(Kubectl):
+class _FakeKubectl:
     def __init__(self, *, migrate: str = "Complete") -> None:
         self._migrate = migrate  # "Complete" | "Failed" — which condition the gate sees
 
@@ -100,12 +92,12 @@ class _FakeKubectl(Kubectl):
         return "workloads"
 
 
-class _FakeYq(Yq):
+class _FakeYq:
     def eval_stdin(self, expression: str, manifest: str, *, env_extra: object = None) -> str:
         return f"{manifest}|{expression}"
 
 
-class _FakeOpenssl(Openssl):
+class _FakeOpenssl:
     def self_signed_ca(self, *, key_out: Path, cert_out: Path, common_name: str, days: int) -> None:
         _EVENTS.append("openssl.ca")
 
@@ -118,9 +110,8 @@ class _FakeOpenssl(Openssl):
         _EVENTS.append("openssl.sign")
 
 
-class _FakeTofu(LocalTofu):
+class _FakeTofu:
     def __init__(self, *, state: bool = True) -> None:
-        super().__init__("tf/local", Path("/nonexistent.tfstate"))
         self._state = state
 
     @property

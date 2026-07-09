@@ -17,8 +17,8 @@ import pytest
 
 from devstash_infra.clients.gcloud import Gcloud
 from devstash_infra.clients.tofu import Tofu
-from devstash_infra.environment import GcpConfig
 from devstash_infra.gcp import reconcile
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.gcp.reconcile import Reconcile
 from devstash_infra.shared import proc
 from devstash_infra.shared.errors import InfraError
@@ -176,20 +176,20 @@ class TestInState:
         assert reconcile.in_state(Tofu("tf/dev"), addr) is True
 
 
-class TestReadTfvar:
+class TestReadActiveToggle:
     def test_reads_true_false_toggle(self, tmp_path: Path) -> None:
         (tmp_path / "active.auto.tfvars").write_text(
             "environment_active = true\ndb_active = false\n"
         )
-        assert reconcile.read_tfvar(str(tmp_path), "environment_active") == "true"
-        assert reconcile.read_tfvar(str(tmp_path), "db_active") == "false"
+        assert reconcile.read_active_toggle(str(tmp_path), "environment_active") == "true"
+        assert reconcile.read_active_toggle(str(tmp_path), "db_active") == "false"
 
     def test_empty_when_file_absent(self, tmp_path: Path) -> None:
-        assert reconcile.read_tfvar(str(tmp_path), "environment_active") == ""
+        assert reconcile.read_active_toggle(str(tmp_path), "environment_active") == ""
 
     def test_empty_when_key_absent(self, tmp_path: Path) -> None:
         (tmp_path / "active.auto.tfvars").write_text("other = true\n")
-        assert reconcile.read_tfvar(str(tmp_path), "environment_active") == ""
+        assert reconcile.read_active_toggle(str(tmp_path), "environment_active") == ""
 
 
 class TestAdopt:

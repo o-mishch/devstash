@@ -9,15 +9,26 @@ instead of consuming the full deadline. The caller maps the outcome to its own w
 """
 
 import enum
-import time
-from collections.abc import Callable
+from typing import Protocol
 
 import typer
 
-from devstash_infra.clients.kubectl import Kubectl
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 
 _POLL_GAP_S = 5.0
 _DIAG_TAIL = 200
+
+
+class _Kubectl(Protocol):
+    """The `Kubectl` subset the Job gate drives (structural — real client + test fakes satisfy it).
+
+    Consumer-owned (ISP): the real `Kubectl` and a plain test fake both match by shape, and any
+    caller passing its own kubectl (e.g. the local stack, whose protocol is a superset) flows in.
+    """
+
+    def job_condition(self, job: str, condition: str, *, namespace: str) -> str: ...
+    def job_logs(self, job: str, *, namespace: str, tail: int) -> str: ...
+    def describe(self, resource: str, *, namespace: str) -> str: ...
 
 
 class JobGate(enum.Enum):
@@ -29,32 +40,32 @@ class JobGate(enum.Enum):
 
 
 def wait_for_job_gate(
-    kubectl: Kubectl,
+    kubectl: _Kubectl,
     *,
     namespace: str,
     job: str,
     deadline_s: float,
-    clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    clock: Clock = SYSTEM_CLOCK,
 ) -> JobGate:
     """Poll `job` until Complete/Failed or `deadline_s` elapses; dump diagnostics on a bad outcome.
 
-    `clock`/`sleep` are injected so tests drive the deadline without real waits. Complete is checked
-    before Failed each pass (a Job that both completed and had a transient failure reads as done).
+    `clock` is the single time seam so tests drive the deadline without real waits. Complete is
+    checked before Failed each pass (a Job that both completed and had a transient failure reads as
+    done).
     """
-    deadline = clock() + deadline_s
-    while clock() < deadline:
+    deadline = clock.monotonic() + deadline_s
+    while clock.monotonic() < deadline:
         if kubectl.job_condition(job, "Complete", namespace=namespace) == "True":
             return JobGate.COMPLETE
         if kubectl.job_condition(job, "Failed", namespace=namespace) == "True":
             _dump_job_diagnostics(kubectl, namespace, job)
             return JobGate.FAILED
-        sleep(_POLL_GAP_S)
+        clock.sleep(_POLL_GAP_S)
     _dump_job_diagnostics(kubectl, namespace, job)
     return JobGate.TIMEOUT
 
 
-def _dump_job_diagnostics(kubectl: Kubectl, namespace: str, job: str) -> None:
+def _dump_job_diagnostics(kubectl: _Kubectl, namespace: str, job: str) -> None:
     """Print the Job's logs + describe to stderr — the post-mortem for a Failed/timed-out gate."""
     typer.echo(kubectl.job_logs(job, namespace=namespace, tail=_DIAG_TAIL), err=True)
     typer.echo(kubectl.describe(f"job/{job}", namespace=namespace), err=True)

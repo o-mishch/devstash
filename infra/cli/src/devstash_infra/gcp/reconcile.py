@@ -1,7 +1,7 @@
 """gcp/reconcile.py — adopt-vs-destroy reconcile for stranded resources [fix #6].
 
 CLI zone (3.14). Ports the heart of run/gcp/lib/reconcile.sh. Re-architected onto the Python-native
-paradigm: the pure primitives (`reconcile_choose`, `in_state`, `read_tfvar`, `adopt`,
+paradigm: the pure primitives (`reconcile_choose`, `in_state`, `read_active_toggle`, `adopt`,
 `psc_subnet_replace`) stay module functions over the typed `Tofu` client, while the stateful
 per-branch logic becomes a `Reconcile` COLLABORATOR over `GcpConfig` + the typed `Gcloud`/`Tofu`
 clients. Every describe/delete argv now lives in the client (`gcloud.container.cluster_exists`,
@@ -26,7 +26,7 @@ from pathlib import Path
 from devstash_infra.clients.gcloud import Gcloud
 from devstash_infra.clients.tofu import Tofu
 from devstash_infra.common import confirm, log, ok, poll_until, warn
-from devstash_infra.config import GcpConfig
+from devstash_infra.gcp.config import GcpConfig
 from devstash_infra.shared.errors import InfraError
 from devstash_infra.shared.proc import ProcError
 from devstash_infra.shared.reconcile_ar_iam import purge_stranded_ar_iam
@@ -57,7 +57,7 @@ def in_state(tofu: Tofu, addr: str) -> bool:
     return addr in tofu.state_list(addr)
 
 
-def read_tfvar(tf_dir: str, key: str) -> str:
+def read_active_toggle(tf_dir: str, key: str) -> str:
     """Value of a `key = true|false` toggle in active.auto.tfvars, or "" if absent.
 
     Ports _reconcile_tfvar (reconcile.sh:38) with pathlib + regex. A missing file (fresh/empty
@@ -556,8 +556,8 @@ class Reconcile:
         environment_active gates GKE/Valkey/AR/IP.
         """
         # A toggle counts as active unless it is literally "false" (absent/"" ⇒ active).
-        db_active = read_tfvar(self.tofu.tf_dir, "db_active") != "false"
-        env_active = read_tfvar(self.tofu.tf_dir, "environment_active") != "false"
+        db_active = read_active_toggle(self.tofu.tf_dir, "db_active") != "false"
+        env_active = read_active_toggle(self.tofu.tf_dir, "environment_active") != "false"
 
         replace: list[str] = []
         self.reconcile_db_database(db_active=db_active)

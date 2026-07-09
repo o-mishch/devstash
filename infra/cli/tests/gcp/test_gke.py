@@ -8,8 +8,6 @@ exercised, not mocked.
 """
 
 import json
-import subprocess
-import time
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -18,12 +16,13 @@ import pytest
 from devstash_infra.ci.operators import ESO, RELOADER
 from devstash_infra.clients.helm import HelmFailurePolicy
 from devstash_infra.clients.tofu import Tofu
-from devstash_infra.environment import GcpConfig
-from devstash_infra.gcp.gke import Gke, Job, join_fail_fast, wait_for_cluster
+from devstash_infra.gcp.config import GcpConfig
+from devstash_infra.gcp.gke import Gke, wait_for_cluster
 from devstash_infra.models.tofu import TofuOutputs
 from devstash_infra.shared.errors import ClusterUnreachable, InfraError
 from devstash_infra.versions import Versions
 from tests.conftest import ExpectFn
+from tests.doubles import ManualClock
 
 _CONFIG = GcpConfig(
     project="proj",
@@ -101,11 +100,6 @@ def _gke(context: str = "", helm: _FakeHelm | None = None) -> Gke:
 
 def _creds_output(command: str) -> str:
     return f'{{"get_credentials_command": {{"value": "{command}"}}}}'
-
-
-def _spawn(script: str) -> subprocess.Popen[str]:
-    """Launch a real shell job (the Python peer of the bats `( … ) &`)."""
-    return subprocess.Popen(["sh", "-c", script], text=True)
 
 
 class TestUseClusterFix10:
@@ -208,58 +202,6 @@ class TestUpgradeHelm:
         assert helm.installs == []  # bailed before any reinstall
 
 
-class TestJoinFailFastFix11:
-    def test_all_succeed_returns_no_raise(self) -> None:
-        jobs = [Job(_spawn("exit 0")) for _ in range(3)]
-        join_fail_fast(jobs, "should not fire")  # no raise
-
-    def test_empty_set_is_noop_success(self) -> None:
-        join_fail_fast([], "should not fire")  # no raise
-
-    def test_fix_11_failing_job_raises_with_message_and_code(self) -> None:
-        good = Job(_spawn("exit 0"))
-        bad = Job(_spawn("sleep 0.1; exit 7"))
-        with pytest.raises(InfraError):
-            join_fail_fast([good, bad], "resume overlap failed")
-
-    def test_fix_11_survivors_are_killed_on_failure(self, tmp_path: pytest.TempPathFactory) -> None:
-        """[fix #11] When one job fails, every still-running sibling is KILLED — no detached
-        install/apply left running. The survivor writes a sentinel only if allowed to finish.
-        """
-        import pathlib
-
-        sentinel = pathlib.Path(str(tmp_path)) / "survivor-finished"
-        survivor = Job(_spawn(f"sleep 5; : > {sentinel}"))
-        bad = Job(_spawn("exit 3"))
-        with pytest.raises(InfraError):
-            join_fail_fast([survivor, bad], "overlap failed")
-        # The survivor was killed mid-sleep → its sentinel was never written, and it is dead.
-        time.sleep(0.1)
-        assert not sentinel.exists()
-        assert survivor.process.poll() is not None
-
-    def test_fix_11_labelled_job_announces_with_duration(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        # Pin t0 two seconds in the past for a deterministic elapsed reading.
-        job = Job(_spawn("exit 0"), label="apply")
-        join_fail_fast([job], "n/a", t0=time.monotonic() - 2)
-        assert "[apply] done in 2s" in capsys.readouterr().out
-
-    def test_unlabeled_job_stays_silent(self, capsys: pytest.CaptureFixture[str]) -> None:
-        job = Job(_spawn("exit 0"))  # "" label → silent (bare-pid back-compat)
-        join_fail_fast([job], "n/a", t0=time.monotonic())
-        assert "done" not in capsys.readouterr().out
-
-    def test_only_mapped_jobs_announce(self, capsys: pytest.CaptureFixture[str]) -> None:
-        a = Job(_spawn("exit 0"), label="eso")
-        b = Job(_spawn("exit 0"))  # intentionally unlabeled
-        join_fail_fast([a, b], "n/a", t0=time.monotonic())
-        out = capsys.readouterr().out
-        assert "[eso] done" in out
-        assert out.count("done in") == 1  # exactly one announce — b stayed silent
-
-
 class _ReachKubectl:
     """Answers `cluster_info` False for the first `unreachable` probes, then True."""
 
@@ -296,10 +238,6 @@ class _ReachGcloud:
         self.container = container
 
 
-def _no_sleep(_seconds: float) -> None:
-    """Injected sleep — the poll runs instantly, no real waiting."""
-
-
 class TestWaitForCluster:
     """#11 reachability wait — the three distinct failure shapes + the happy path."""
 
@@ -313,7 +251,7 @@ class TestWaitForCluster:
             region="us-central1",
             attempts=5,
             gap_s=0,
-            sleep=_no_sleep,
+            clock=ManualClock(),
         )
         assert kubectl.probes == 3
         assert "cluster reachable" in capsys.readouterr().out
@@ -328,7 +266,7 @@ class TestWaitForCluster:
                 region="us-central1",
                 attempts=5,
                 gap_s=0,
-                sleep=_no_sleep,
+                clock=ManualClock(),
             )
         assert not isinstance(exc.value, ClusterUnreachable)  # hard fault → trap stays armed
 
@@ -344,7 +282,7 @@ class TestWaitForCluster:
                 region="us-central1",
                 attempts=5,
                 gap_s=0,
-                sleep=_no_sleep,
+                clock=ManualClock(),
             )
         assert not isinstance(exc.value, ClusterUnreachable)  # hard fault → trap stays armed
         assert kubectl.probes == 0  # aborted before the first kubectl probe
@@ -360,7 +298,7 @@ class TestWaitForCluster:
                 region="us-central1",
                 attempts=3,
                 gap_s=0,
-                sleep=_no_sleep,
+                clock=ManualClock(),
             )
 
     def test_empty_cluster_skips_existence_and_teardown_checks(self) -> None:
@@ -374,7 +312,7 @@ class TestWaitForCluster:
             region="us-central1",
             attempts=5,
             gap_s=0,
-            sleep=_no_sleep,
+            clock=ManualClock(),
         )
         assert container.teardown_calls == 0  # never consulted for an empty cluster name
         assert kubectl.probes == 2
@@ -600,9 +538,15 @@ class TestVerifySecrets:
         assert "SecretSyncedError: missing key" in out  # describe body echoed
 
 
-def _rotate_gke(kubectl: _SecretsKubectl) -> Gke:
+def _rotate_gke(kubectl: _SecretsKubectl, *, clock: ManualClock | None = None) -> Gke:
     # rotate uses the HARD use_cluster: a real gcloud get-credentials command that must run.
-    return Gke(_CONFIG, _FakeTofu({"get_credentials_command": _CREDS}), kubectl, _FakeHelm())  # type: ignore[arg-type]
+    return Gke(
+        _CONFIG,
+        _FakeTofu({"get_credentials_command": _CREDS}),  # type: ignore[arg-type]
+        kubectl,  # type: ignore[arg-type]
+        _FakeHelm(),  # type: ignore[arg-type]
+        clock=clock or ManualClock(),
+    )
 
 
 class TestRotateSecret:
@@ -612,11 +556,10 @@ class TestRotateSecret:
         expect(_CREDS.split(), stdout="")  # use_cluster get-credentials
         kubectl = _SecretsKubectl(context="gke_proj_x")
         gcloud = _SecretsGcloud(json.dumps({"auth-secret": "old", "openai-api-key": "keep"}))
-        _rotate_gke(kubectl).rotate_secret(
+        _rotate_gke(kubectl, clock=ManualClock(start=123.0)).rotate_secret(
             gcloud,  # type: ignore[arg-type]
             name="auth-secret",
             value="new-val",
-            clock=lambda: 123.0,
         )
         # Exactly one new version, carrying the replaced property with the rest preserved.
         assert len(gcloud.secrets.added) == 1

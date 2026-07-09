@@ -19,6 +19,7 @@ import httpx
 
 from devstash_infra.common import log, poll_until
 from devstash_infra.shared import proc
+from devstash_infra.shared.clock import SYSTEM_CLOCK, Clock
 
 _UPLOAD_PERMISSION = "artifactregistry.repositories.uploadArtifacts"
 _HTTP_TIMEOUT = 10.0  # per-request AR API budget
@@ -34,10 +35,13 @@ class ArtifactRegistry:
     pool is released: `with ArtifactRegistry(region, project, repo) as ar: ar.writable()`.
     """
 
-    def __init__(self, region: str, project: str, repo: str) -> None:
+    def __init__(
+        self, region: str, project: str, repo: str, *, clock: Clock = SYSTEM_CLOCK
+    ) -> None:
         self._region = region
         self._project = project
         self._repo = repo
+        self._clock = clock
         self._client = httpx.Client(timeout=_HTTP_TIMEOUT)
 
     def __enter__(self) -> ArtifactRegistry:
@@ -119,5 +123,9 @@ class ArtifactRegistry:
             )
 
         return poll_until(
-            self.writable, attempts=attempts, gap_seconds=gap_seconds, on_attempt=_msg
+            self.writable,
+            attempts=attempts,
+            gap_seconds=gap_seconds,
+            on_attempt=_msg,
+            clock=self._clock,
         )

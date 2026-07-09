@@ -7,14 +7,13 @@ Step functions are monkeypatched on the app namespace where they are wiring-only
 commands run their real conditional and monkeypatch only the `Gcloud` client.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from devstash_infra.ci import app as app_module
+from devstash_infra.ci import steps as steps_module
 from devstash_infra.ci.build_push import BuildPushResult
 from devstash_infra.cli import app
 from devstash_infra.shared.proc import ProcError, Result
@@ -146,7 +145,7 @@ def test_step_infraerror_maps_to_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     def _boom(migrations_root: Path) -> None:
         raise InfraError("risky migration", exit_code=3)
 
-    monkeypatch.setattr(app_module, "check_migrations", _boom)
+    monkeypatch.setattr(steps_module, "check_migrations", _boom)
     result = runner.invoke(app, ["ci", "check-migrations"])
     assert result.exit_code == 3  # the InfraError's own exit code is honored
 

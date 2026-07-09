@@ -20,18 +20,20 @@ narration; `suspend` dumps+verifies the DB [#4] BEFORE the destroying apply.
 from collections.abc import Callable
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor
 from concurrent.futures import wait as futures_wait
+from contextlib import AbstractContextManager
 from typing import Protocol
 
 from devstash_infra.clients.ar import ArtifactRegistry
+from devstash_infra.clients.gcloud import Gcloud
+from devstash_infra.clients.kubectl import Kubectl
 from devstash_infra.common import confirm, log, ok, span, stage, warn
-from devstash_infra.environment import ApplyDeps, Environment
-from devstash_infra.gcp.bootstrap import Bootstrap
-from devstash_infra.gcp.db import Db
-from devstash_infra.gcp.deploy import Deploy
-from devstash_infra.gcp.dns import Dns
+from devstash_infra.gcp.config import GcpConfig
+from devstash_infra.gcp.db import DumpTarget
+from devstash_infra.gcp.environment import ApplyDeps
 from devstash_infra.gcp.gke import wait_for_cluster
-from devstash_infra.gcp.secrets import SECRETS_REQUIRED_OUTPUTS, Secrets
-from devstash_infra.gcp.suspend import Teardown, set_active_state
+from devstash_infra.gcp.secrets import SECRETS_REQUIRED_OUTPUTS
+from devstash_infra.gcp.teardown import set_active_state
+from devstash_infra.models.tofu import TofuOutputs
 from devstash_infra.shared.errors import Aborted
 
 # resume's narration span declares 6 stages (suspend.sh:247) — kept at the shell's literal count so
@@ -76,6 +78,91 @@ class ArWritable(Protocol):
     def wait_until_writable(self) -> bool: ...
 
 
+# ── consumer-owned collaborator seams (ISP) ──────────────────────────────────
+# Narrow structural interfaces for the collaborators Lifecycle drives — only the methods/attributes
+# it actually touches. The concrete `Environment`/`Deploy`/… classes satisfy them by shape, so the
+# orchestration tests inject PLAIN fakes (no subclassing, no `# type: ignore`). `env.gcloud`/
+# `env.kubectl`/`env.config` stay concrete because they flow into `wait_for_cluster` /
+# `ArtifactRegistry` which need the real types; only `env.tofu` narrows (outputs + `tf_dir`).
+class _Tofu(Protocol):
+    """The `Tofu` surface Lifecycle reads off the environment — outputs + the chdir path."""
+
+    @property
+    def tf_dir(self) -> str: ...
+    def output_json(self) -> TofuOutputs: ...
+
+
+class _Environment(Protocol):
+    """The `Environment` surface Lifecycle orchestrates — apply lifecycle + the clients it forwards.
+
+    `tofu` is a read-only property (covariant) so the real `Environment`, whose `.tofu` is the wider
+    concrete `Tofu`, satisfies the narrowed `_Tofu` seam; `config`/`gcloud`/`kubectl` are the exact
+    concrete types Lifecycle forwards to `wait_for_cluster` / `ArtifactRegistry`.
+    """
+
+    config: GcpConfig
+    gcloud: Gcloud
+    kubectl: Kubectl
+
+    @property
+    def tofu(self) -> _Tofu: ...
+    def apply(
+        self, deps: ApplyDeps, *, auto_approve: bool = False, confirmed: bool = False
+    ) -> None: ...
+    def apply_plan(
+        self, deps: ApplyDeps, *, auto_approve: bool = False, confirmed: bool = False
+    ) -> None: ...
+    def apply_exec(self) -> None: ...
+    def staging_apply(
+        self, deps: ApplyDeps, *, label: str, targets: list[str], auto_approve: bool = False
+    ) -> None: ...
+
+
+class _Deploy(Protocol):
+    """The CI-overlap driver surface: pre-dispatch, the cancel trap, the hint, and the watch."""
+
+    def predispatch(self, push_secrets: Callable[[], None]) -> str: ...
+    def cancel_run_on_error(self, run_id: str, phase: str) -> AbstractContextManager[None]: ...
+    def print_parallel_hint(self, infra_word: str, run_id: str) -> None: ...
+    def watch_run(self, run_id: str) -> None: ...
+
+
+class _Secrets(Protocol):
+    """The GitHub-Actions push Lifecycle triggers before a deploy dispatch."""
+
+    def push(self) -> None: ...
+
+
+class _Dns(Protocol):
+    """The A-record wiring Lifecycle runs after the cluster is reachable."""
+
+    def dns_hint(self) -> None: ...
+    def update(
+        self, *, ingress_ip_override: str = "", key_override: str = "", secret_override: str = ""
+    ) -> None: ...
+
+
+class _Bootstrap(Protocol):
+    """The first-ever prerequisite provisioning Lifecycle runs before `up`'s apply."""
+
+    def run(self, *, auto_approve: bool = False) -> None: ...
+
+
+class _Db(Protocol):
+    """The dump/restore [#4/#5] surface Lifecycle threads through suspend/resume."""
+
+    def dump(self) -> None: ...
+    def resolve_dump_target(self) -> DumpTarget | None: ...
+    def db_already_live(self, target: DumpTarget | None) -> bool: ...
+    def restore(self, target: DumpTarget | None, *, was_already_live: bool = False) -> None: ...
+
+
+class _Teardown(Protocol):
+    """The best-effort NEG reap Lifecycle runs on the suspend path."""
+
+    def cleanup_leaked_negs(self) -> None: ...
+
+
 class Lifecycle:
     """The overlapped bring-up orchestrators over the ported collaborators.
 
@@ -87,15 +174,15 @@ class Lifecycle:
 
     def __init__(
         self,
-        env: Environment,
+        env: _Environment,
         deps: ApplyDeps,
         *,
-        deploy: Deploy,
-        secrets: Secrets,
-        dns: Dns,
-        bootstrap: Bootstrap,
-        db: Db | None = None,
-        teardown: Teardown | None = None,
+        deploy: _Deploy,
+        secrets: _Secrets,
+        dns: _Dns,
+        bootstrap: _Bootstrap,
+        db: _Db,
+        teardown: _Teardown,
         cleanup_builds: Callable[[], None] | None = None,
         wait_cluster: Callable[[], None] | None = None,
         make_ar: Callable[[str], ArWritable] | None = None,
@@ -107,8 +194,8 @@ class Lifecycle:
         self.secrets = secrets
         self.dns = dns
         self.bootstrap = bootstrap
-        self.db = db or Db(env.config, env.gcloud, env.tofu)
-        self.teardown = teardown or Teardown(env.config, env.gcloud, env.tofu)
+        self.db = db
+        self.teardown = teardown
         # The in-flight-build cancel + staging-bucket reclaim shares the deferred
         # `wait_for_no_autosuspend_build` build machinery; the app boundary wires the real one. It
         # is best-effort (off the destroy path), so the default is a no-op until then.
