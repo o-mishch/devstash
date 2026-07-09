@@ -50,6 +50,10 @@ export function FileRow({ item }: FileRowProps) {
 
   return (
     <div
+      // Can't be a real <button>: it wraps a nested <CopyButton> and a real <Button> (Download) —
+      // HTML forbids nested interactive controls. Keyboard access is already handled via tabIndex +
+      // onKeyDown below.
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
       role="button"
       tabIndex={0}
       className="card-interactive group/card flex h-full w-full min-w-0 items-center gap-3 rounded-xl border-l-2 border-l-[var(--item-color)] bg-card px-4 py-2.5 ring-1 ring-border focus-visible:ring-2 focus-visible:ring-ring"

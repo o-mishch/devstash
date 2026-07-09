@@ -76,7 +76,7 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isS
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 outline-none backdrop-blur-sm duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 sm:p-8"
         >
           <div className="relative h-full w-full flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {/* oxlint-disable-next-line nextjs/no-img-element */}
             <img
               src={previewSrc}
               alt={alt}
@@ -86,7 +86,7 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isS
 
             {/* High-res fullsize overlay — raster images only */}
             {showFullsize && (
-              // eslint-disable-next-line @next/next/no-img-element
+              // oxlint-disable-next-line nextjs/no-img-element
               <img
                 src={fullsizeUrl}
                 alt={alt}

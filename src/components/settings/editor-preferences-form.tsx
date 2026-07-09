@@ -189,6 +189,7 @@ export function EditorPreferencesForm() {
                 <button
                   key={theme.value}
                   onClick={(e) => handleAppThemeChange(e, theme.value)}
+                  aria-label={`Apply ${theme.label} app theme`}
                   className={cn(
                     "flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-all hover:bg-foreground/5",
                     isActive ? "border-primary bg-foreground/5" : "border-border"

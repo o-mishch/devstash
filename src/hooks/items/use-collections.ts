@@ -81,7 +81,7 @@ export function useUpsertCollectionCache() {
 export function useRemoveCollectionQuery() {
   const queryClient = useQueryClient()
   return useCallback(
-    (id: string) => void queryClient.removeQueries({ queryKey: queryKeys.collections.detail(id) }),
+    (id: string) => queryClient.removeQueries({ queryKey: queryKeys.collections.detail(id) }),
     [queryClient],
   )
 }

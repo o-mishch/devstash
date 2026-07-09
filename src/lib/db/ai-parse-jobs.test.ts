@@ -1079,13 +1079,13 @@ describe('getSourceText', () => {
 
   it('throws for a non-text file extension (eligibility re-validated server-side)', async () => {
     const item: ParseSourceItem = { id: 'f', itemTypeName: 'file', content: null, fileUrl: 'user/a.bin', fileName: 'a.bin' }
-    await expect(getSourceText(item)).rejects.toThrow()
+    await expect(getSourceText(item)).rejects.toThrow('not a text file')
     expect(mockGetTextFromS3).not.toHaveBeenCalled()
   })
 
   it('throws for an ineligible item type', async () => {
     const item: ParseSourceItem = { id: 'i', itemTypeName: 'image', content: null, fileUrl: 'k', fileName: 'a.png' }
-    await expect(getSourceText(item)).rejects.toThrow()
+    await expect(getSourceText(item)).rejects.toThrow('ineligible source item type')
   })
 })
 

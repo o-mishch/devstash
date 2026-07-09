@@ -176,7 +176,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       return (
         <div className="card-surface card-hover group overflow-hidden rounded-lg border border-border bg-muted/30">
           {/* Local blob/object URL — next/image can't optimize it, so a plain <img> is correct here. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* oxlint-disable-next-line nextjs/no-img-element */}
           <img
             src={value.localPreviewUrl}
             alt={value.fileName}
@@ -198,18 +198,16 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
 
   return (
     <div className="space-y-2">
-      <div
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
         className={cn(
-          'group flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors',
+          'group flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors',
           isDragging
             ? 'border-primary bg-primary/5'
             : 'border-border hover:border-border/80 hover:bg-muted/30',
           progress !== null && 'pointer-events-none opacity-60'
         )}
         onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
@@ -223,7 +221,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
             {config.acceptLabel} — max {config.maxBytes / 1024 / 1024}MB
           </p>
         </div>
-      </div>
+      </button>
 
       {progress !== null && (
         <div className="space-y-1">

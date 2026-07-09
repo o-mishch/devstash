@@ -48,7 +48,7 @@ function useRows<T>(items: T[], cols: number, hasMore: boolean): (T | 'load-more
       (_, row) => items.slice(row * cols, row * cols + cols),
     )
     if (hasMore) {
-      result.push(['load-more'] as unknown as (T | 'load-more')[])
+      result.push(['load-more'])
     }
     return result
   }, [items, cols, hasMore])

@@ -352,7 +352,13 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
             so you can re-parse it later. Text is sent to OpenAI.{' '}
             <Tooltip>
               <TooltipTrigger
-                render={<button type="button" className="underline decoration-dotted underline-offset-2" />}
+                render={
+                  <button
+                    type="button"
+                    aria-label="Learn more about how Brain Dump sends text to OpenAI"
+                    className="underline decoration-dotted underline-offset-2"
+                  />
+                }
               >
                 Learn more
               </TooltipTrigger>

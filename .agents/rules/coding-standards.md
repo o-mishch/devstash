@@ -11,6 +11,16 @@ description: Language-level standards for DevStash — TypeScript, React, Tailwi
 
 - Strict mode enabled
 - No `any` types - use proper typing or `unknown`
+- **No double type assertions (`as unknown as X` / `as any as X`)** to force an incompatible cast — it bypasses the type checker rather than describing a real type, the same class of hole the `no-unsafe-*` rules exist to catch. Find the structurally honest fix first — a real generic instantiation, a type guard, a properly-typed overload, a small runtime adapter — even if it means a larger refactor than the cast. Reserve `as unknown as` only for a genuinely inherent boundary with no honest alternative (an undocumented third-party internal API, a `globalThis` augmentation, a Prisma `Json` column) — and say why in a comment:
+
+```typescript
+// ✅ correct — two honestly-generic client instances; the type system does the narrowing, no cast
+const publicClient = createFetchClient<PublicApiPaths>(clientOptions)
+const aiClient = createFetchClient<AiMutationApiPaths>(clientOptions)
+
+// ❌ wrong — double-cast to force one client's type to look like a different, incompatible one
+const api = fetchClient as unknown as Client<PublicApiPaths>
+```
 - Define interfaces for all props, API responses, and data models
 - When a type needs extra fields beyond an existing interface, define a new named interface that `extends` it — do not inline an intersection type on a parameter, return type, or variable:
 
@@ -150,8 +160,8 @@ Example v4 configuration:
 
 ## Code Quality
 
-- Code must comply with ESLint rules. Check and fix linting errors on every attempt of code editing.
-- **Type-aware linting is on.** The flat config (`eslint.config.mjs`) extends `typescript-eslint`'s `recommendedTypeChecked` at **error** level across `**/*.ts`, `**/*.tsx`, `**/*.mts` via `projectService`. Write code that satisfies these type-checked rules from the start — they are not warnings:
+- Code must comply with Oxlint rules. Check and fix linting errors on every attempt of code editing.
+- **Type-aware linting is on.** `.oxlintrc.json` enables `typescript/*` type-aware rules (via `tsgolint`) at **error** level across `**/*.ts`, `**/*.tsx`, `**/*.mts`. Write code that satisfies these type-checked rules from the start — they are not warnings:
   - `no-floating-promises` — every Promise must be `await`ed, `void`-ed, or `.catch()`-handled. Prefix deliberate fire-and-forget with `void` (e.g. `void queryClient.invalidateQueries(...)`).
   - `no-misused-promises` — no async function where a `void`-returning callback is expected (event handlers, `Array.forEach`, etc.).
   - `await-thenable` / `require-await` — only `await` real thenables; don't mark a function `async` with no `await`.

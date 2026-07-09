@@ -74,6 +74,12 @@ interface EditorChromeHeaderProps {
 // left, caller-supplied controls (copy button, language pill, write/preview tabs) on the right.
 function EditorChromeHeader({ children, className, onCollapse, onExpand, dragHandlers }: EditorChromeHeaderProps) {
   return (
+    // Tap/click-without-drag on this header bar triggers the exact same collapse/expand action as the
+    // adjacent traffic-light buttons below (real <button>s with their own aria-labels, driven by the
+    // same onCollapse/onExpand callbacks) — this is a mouse/touch-only convenience gesture layered on
+    // top of an already fully keyboard-accessible equivalent, so it needs no keyboard handling of its
+    // own.
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className={cn('flex items-center justify-between px-3 py-0.5 border-b border-white/10 bg-[#2D2D2D] shrink-0', className)}
       onTouchStart={dragHandlers?.onTouchStart}

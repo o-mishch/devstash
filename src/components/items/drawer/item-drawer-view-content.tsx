@@ -89,19 +89,32 @@ function FileSectionContent({ item }: FileSectionProps) {
             <Skeleton className="h-64 w-full rounded-none" />
           )}
           {previewSrc && !imageError && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={previewSrc}
-              alt={item.fileName ?? item.title}
-              crossOrigin="anonymous"
-              onLoad={() => {
-                setLoadedSrc(previewSrc)
-                setIsImageReloading(false)
-              }}
-              onError={handleImageError}
-              onClick={() => isImageLoaded && setLightboxOpen(true)}
-              className={`w-full max-h-[50vh] object-contain ${isImageLoaded ? 'cursor-zoom-in' : 'absolute inset-0 opacity-0 pointer-events-none'}`}
-            />
+            // The <img> itself can't carry the click handler (it's not an interactive element and has
+            // no keyboard support); the real <button> wrapper below owns opening the lightbox. `contents`
+            // keeps the button out of the box tree, so it doesn't disturb the image's own layout classes
+            // (including its `absolute` positioning while loading, which resolves against the ancestor
+            // `.group.relative` box either way). Disabled (and so out of the tab order) until loaded,
+            // mirroring the previous `isImageLoaded` click gate.
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(true)}
+              disabled={!isImageLoaded}
+              aria-label={`View full-size image: ${item.fileName ?? item.title}`}
+              className="contents"
+            >
+              {/* oxlint-disable-next-line nextjs/no-img-element */}
+              <img
+                src={previewSrc}
+                alt={item.fileName ?? item.title}
+                crossOrigin="anonymous"
+                onLoad={() => {
+                  setLoadedSrc(previewSrc)
+                  setIsImageReloading(false)
+                }}
+                onError={handleImageError}
+                className={`w-full max-h-[50vh] object-contain ${isImageLoaded ? 'cursor-zoom-in' : 'absolute inset-0 opacity-0 pointer-events-none'}`}
+              />
+            </button>
           )}
           {previewSrc && !imageError && (
             <ImageLightbox

@@ -2,9 +2,10 @@
 
 import { useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { api, $api } from '@/lib/api/client'
+import { $api, aiMutationClient } from '@/lib/api/client'
 import { useInvalidate } from '@/hooks/items/use-cache-invalidation'
 import { useIsPro } from '@/hooks/profile/use-user-profile'
+import type { AiMutationPath } from '@/lib/api/ai-mutation-paths'
 import type { components, paths } from '@/types/openapi'
 
 // Read-only AI usage meter, layered on the Redis sliding-window rate limits. This is the repo's
@@ -50,15 +51,8 @@ export function useAiUsage() {
 
 // ── AI mutation wrapper ─────────────────────────────────────────────────────────────────────────
 // Every consuming AI mutation routes through here so the usage meter refetches after the budget is
-// spent. `api.POST('/ai/…')` is banned elsewhere by the `no-restricted-syntax` ESLint rule.
-export type AiMutationPath =
-  | '/ai/optimize'
-  | '/ai/explain'
-  | '/ai/tags'
-  | '/ai/description'
-  | '/ai/collection-description'
-  | '/ai/brain-dump'
-  | '/ai/brain-dump/{jobId}/re-parse'
+// spent. The public `api`/`$api` clients (src/lib/api/client.ts) exclude AiMutationPath at the type
+// level, so calling one of these paths anywhere else is a compile error, not a lint rule.
 
 type JsonBody<T> = T extends { content: { 'application/json': infer B } } ? B : never
 type JsonSuccess<T> = T extends { responses: infer R }
@@ -96,7 +90,7 @@ type AiMutationBodyArg<P extends AiMutationPath> = [AiMutationBody<P>] extends [
 interface AiMutationVariables {
   path: AiMutationPath
   body: unknown
-  // The per-path `{ path: … }` params arg; erased to `unknown` here and cast at the `api.POST` boundary.
+  // The per-path `{ path: … }` params arg; erased to `unknown` here and cast at the `aiMutationClient.POST` boundary.
   params?: unknown
 }
 
@@ -115,10 +109,10 @@ export function useAiMutation(): <P extends AiMutationPath>(
   const invalidate = useInvalidate()
   const { mutateAsync } = useMutation({
     mutationFn: async ({ path, body, params }: AiMutationVariables): Promise<AiMutationResult<AiMutationPath>> => {
-      // `api.POST` is overloaded per concrete path; the union-typed `path` here can't collapse to one
-      // overload. Both are derived from the same `paths` type, so the cast is sound — the runtime path +
-      // body are exactly what the route contract expects.
-      return (await api.POST(path, { body, params } as never))
+      // `aiMutationClient.POST` is overloaded per concrete path; the union-typed `path` here can't
+      // collapse to one overload. Both are derived from the same `paths` type, so the cast is sound —
+      // the runtime path + body are exactly what the route contract expects.
+      return (await aiMutationClient.POST(path, { body, params } as never))
     },
     onSettled: () => invalidate('aiUsage'),
   })

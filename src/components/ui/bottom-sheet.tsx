@@ -253,6 +253,10 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
             onPointerCancel={handleResizeEnd}
+            // Interactive drag handle that resizes the sheet, with a nested pill visual as its
+            // child. <hr> is a void element — it can't hold that child — and native <hr> semantics
+            // don't cover a draggable resize control.
+            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="separator"
             aria-orientation="horizontal"
             aria-label="Resize sheet"

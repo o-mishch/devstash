@@ -91,7 +91,8 @@ export async function getEditorPreferences(userId: string): Promise<EditorPrefer
     where: { id: userId },
     select: { editorPreferences: true },
   })
-  return user?.editorPreferences as unknown as EditorPreferences | null
+  // Trusts the Json column holds this shape — only ever written by updateEditorPreferences below.
+  return user?.editorPreferences as EditorPreferences | null
 }
 
 export async function getProfileData(userId: string): Promise<ProfileData | null> {
@@ -149,7 +150,8 @@ export async function getProfileData(userId: string): Promise<ProfileData | null
       credentialEmailVerified: user.credentialEmailVerified,
       image: user.image,
       hasPassword: !!user.password,
-      editorPreferences: user.editorPreferences as unknown as EditorPreferences | null,
+      // Trusts the Json column shape — see getEditorPreferences above.
+      editorPreferences: user.editorPreferences as EditorPreferences | null,
       accounts: user.accounts.map((a) => ({ id: a.id, provider: a.provider, email: a.email })),
       createdAt: user.createdAt,
       isPro: user.isPro,
@@ -178,6 +180,9 @@ export async function updateEditorPreferences(userId: string, preferences: Edito
   const start = Date.now()
   await prisma.user.update({
     where: { id: userId },
+    // Prisma.InputJsonValue is a large recursive union that doesn't structurally overlap with a
+    // concrete interface closely enough for a single assertion, even though EditorPreferences is
+    // genuinely plain, JSON-serializable data — an inherent quirk of the generated Json column type.
     data: { editorPreferences: preferences as unknown as Prisma.InputJsonValue },
   })
   log.info({ userId, duration: Date.now() - start }, 'DB: updateEditorPreferences')

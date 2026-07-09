@@ -95,7 +95,7 @@ export function SetPasswordDialog({ suggestedEmails, verificationDisabled, onCre
               required
             />
             <datalist id="set-password-email-list">
-              {suggestedEmails.map((e) => <option key={e} value={e} />)}
+              {suggestedEmails.map((e) => <option key={e} value={e}>{e}</option>)}
             </datalist>
           </div>
 

@@ -82,7 +82,10 @@ function deserialize<T>(raw: string | null): T | null {
   try {
     return JSON.parse(raw) as T
   } catch {
-    return raw as unknown as T
+    // Mirrors Upstash: a value that wasn't JSON-encoded (plain string tokens) round-trips as-is.
+    // T is caller-supplied with no runtime evidence to validate against, same as the JSON.parse
+    // branch above — inherent to a generic deserialize helper with no schema.
+    return raw as T
   }
 }
 
@@ -223,8 +226,10 @@ function buildAdapter(): UpstashRedis {
     },
   }
   // The app only ever calls the methods above; the cast narrows our shim to the Upstash
-  // surface without re-implementing the full client.
-  return adapter as unknown as UpstashRedis
+  // surface without re-implementing the full client. A single-step assertion suffices — the
+  // shim's method names/signatures overlap enough with the real Upstash Redis class for
+  // TypeScript to accept it directly, no `unknown` bounce needed.
+  return adapter as UpstashRedis
 }
 
 /** Singleton node-redis-backed client exposing the Upstash `Redis` method surface. */

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Dialog } from '@base-ui/react/dialog'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -51,6 +51,20 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
   // A maximized content editor covers the whole drawer; swipe-to-dismiss is disabled while it is
   // fullscreen so a swipe over the editor can't close the drawer — the user collapses it first.
   const editorFullscreen = useEditorFullscreenStore((s) => s.fullscreen)
+
+  // Keyboard equivalent for the desktop resize handle's mouse drag: the handle sits on the drawer's
+  // left edge, so dragging left (mouse moving toward smaller clientX) widens the drawer — ArrowLeft
+  // mirrors that. Shift steps in larger increments, matching common resizable-pane conventions.
+  function handleResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 40 : 10
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      setWidth(width + step)
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      setWidth(width - step)
+    }
+  }
 
   // Outside-press / Esc / swipe all funnel through here. The body content registers a mode-aware guarded
   // close in sheetCloseRef, so every dismissal is intercepted: edit mode prompts to discard unsaved
@@ -148,18 +162,36 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
         showCloseButton={false}
         {...swipe.handlers}
       >
-        {/* Desktop resize handle: a thin strip along the inner (left) edge — drag to widen/narrow. No
-            always-visible grip pill (it read as a swipe indicator on desktop); the strip itself brightens
-            on hover and while dragging. Hidden on mobile, which uses the swipe-to-dismiss grab handle. */}
+        {/* Desktop resize handle: a thin strip along the inner (left) edge — drag to widen/narrow, or
+            focus it and use ArrowLeft/ArrowRight (Shift for a bigger step). No always-visible grip pill
+            (it read as a swipe indicator on desktop); the strip itself brightens on hover and while
+            dragging. Hidden on mobile, which uses the swipe-to-dismiss grab handle. `separator` is the
+            standard WAI-ARIA "window splitter" role for a resize handle between two panels — a plain
+            `<hr>` can't take focus or a keydown handler, so it can't stand in for this interactive
+            widget. */}
         <div
+          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize drawer"
+          aria-valuenow={width}
+          aria-valuemin={minWidth}
+          aria-valuemax={maxWidth}
+          tabIndex={0}
           className={cn(
             'absolute left-0 top-0 z-10 h-full w-1.5 cursor-ew-resize transition-colors max-sm:hidden',
             dragging ? 'bg-primary/40' : 'hover:bg-primary/30',
           )}
           onMouseDown={startResize}
+          onKeyDown={handleResizeKeyDown}
         />
 
         {dragging && (
+          // Transient mouse-drag capture surface — only mounted while `dragging` is true, which is only
+          // ever set from the mouse `onMouseDown` above. Keyboard resizing (ArrowLeft/ArrowRight on the
+          // handle) never sets `dragging`, so keyboard users never reach this surface; it needs no
+          // keyboard handling of its own.
+          // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
           <div className="fixed inset-0 z-[60] cursor-ew-resize select-none" onMouseMove={onMouseMove} onMouseUp={onMouseUp} />
         )}
 
@@ -170,7 +202,14 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
 
   return (
     <>
-      {stopPropagation ? <div onClick={(event) => event.stopPropagation()}>{sheet}</div> : sheet}
+      {stopPropagation ? (
+        // Not itself a click target — see the `stopPropagation` prop doc above: it only stops a click
+        // inside the Sheet (whose real, already keyboard-accessible controls are the actual interactive
+        // elements) from bubbling up the REACT tree to the draft card's clickable root. It needs no
+        // keyboard handling of its own.
+        // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+        <div onClick={(event) => event.stopPropagation()}>{sheet}</div>
+      ) : sheet}
 
       {/* Touch grab handle, PORTALED to <body> at z-[55]. It must live above the markdown
           editor/viewer (itself portaled to <body> as a fixed z-50 overlay that covers the drawer) —

@@ -1,6 +1,6 @@
 'use client'
 
-import type { KeyboardEvent, MouseEvent } from 'react'
+import type { MouseEvent } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from '@/hooks/ui/use-copy-to-clipboard'
@@ -19,7 +19,7 @@ export function ItemTags({ tags, max = Infinity, className, badgeClassName }: It
 
   // Tags can render inside a clickable row (e.g. the dashboard item row), so a copy click must not
   // bubble up and trigger the parent's open-drawer handler.
-  function handleCopy(event: MouseEvent | KeyboardEvent, tag: string) {
+  function handleCopy(event: MouseEvent, tag: string) {
     event.stopPropagation()
     void copy(tag)
   }
@@ -30,13 +30,9 @@ export function ItemTags({ tags, max = Infinity, className, badgeClassName }: It
         <Badge
           key={tag}
           variant="secondary"
-          role="button"
-          tabIndex={0}
+          render={<button type="button" aria-label={`Copy tag ${tag}`} />}
           className={cn("text-xs", badgeClassName)}
           onClick={(event) => handleCopy(event, tag)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') handleCopy(event, tag)
-          }}
         >
           {tag}
         </Badge>

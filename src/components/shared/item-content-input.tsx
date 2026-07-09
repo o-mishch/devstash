@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from 'react'
+import { useState, useEffect, useCallback, useId, useMemo, Suspense } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR, languagesForItemType } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
@@ -35,7 +35,7 @@ function useMonacoLanguageList() {
     let isMounted = true
     loader.init().then((monaco) => {
       if (!isMounted) return
-      const langs = (monaco as unknown as MonacoLanguagesApi).languages.getLanguages()
+      const langs = (monaco as MonacoLanguagesApi).languages.getLanguages()
       const list = new Set<string>()
       langs.forEach((l) => {
         list.add(l.id)
@@ -77,6 +77,7 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
     [itemType, allLanguages],
   )
   const [open, setOpen] = useState(false)
+  const listboxId = useId()
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -88,8 +89,12 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
             render={<div />}
             nativeButton={false}
             variant="outline"
+            // Listbox-style combobox (Popover + Command list), not a free-text/single-value input,
+            // so a native <input>/<select> can't represent it.
+            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
             role="combobox"
             aria-expanded={open}
+            aria-controls={listboxId}
             className={cn(fit ? "justify-start font-normal" : "w-full justify-between font-normal h-9", className)}
           />
         }
@@ -109,6 +114,7 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
           mobile sheet leaves too little room either side for the full-height list, so the popup
           spills past the top edge (the search input gets clipped). Matches collection-selector. */}
       <PopoverContent
+        id={listboxId}
         className="w-[300px] max-h-(--available-height) overflow-hidden p-0"
         align="start"
         initialFocus={(openType) => openType !== 'touch' && openType !== 'pen'}

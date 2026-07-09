@@ -18,7 +18,12 @@ export async function createPrismaMockModule(): Promise<{ prisma: DeepMockProxy<
   return { prisma: mockDeep<typeof prisma>() }
 }
 
-/** Typed view of the mocked `prisma` import as a `DeepMockProxy` for `.mockResolvedValue(...)` etc. */
+/**
+ * Typed view of the mocked `prisma` import as a `DeepMockProxy` for `.mockResolvedValue(...)` etc.
+ * `vi.mock` swaps the runtime value but not the static type the `prisma` import resolves to (that's
+ * inherent to how module mocking interacts with TypeScript — the type checker never sees the swap),
+ * so this asserts the type callers already know to be true from `createPrismaMockModule` above.
+ */
 export function asPrismaMock(client: typeof prisma): DeepMockProxy<typeof prisma> {
-  return client as unknown as DeepMockProxy<typeof prisma>
+  return client as DeepMockProxy<typeof prisma>
 }

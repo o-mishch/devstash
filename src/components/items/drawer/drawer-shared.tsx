@@ -108,9 +108,8 @@ function MobileFullScreenPanel({
     // Reset the live drag offset too: switching items mid-drag or mid fly-off (deep-link / programmatic swap)
     // would otherwise leave the new item rendered partially translated by the previous item's `x`.
     x.set(0)
-    // x is a stable useMotionValue ref — intentionally excluded from deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetKey, isSettled])
+    // x is a stable useMotionValue ref — safe to list since its identity never changes.
+  }, [resetKey, isSettled, x])
 
   return (
     /* Drag wrapper: Motion's drag gesture carries the pane (with its own opaque app background) so a

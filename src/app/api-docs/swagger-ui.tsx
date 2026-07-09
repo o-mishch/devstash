@@ -10,15 +10,17 @@ export function SwaggerUI() {
   useEffect(() => {
     if (bundleLoaded && presetLoaded) {
       // SwaggerUIBundle / SwaggerUIStandalonePreset are injected onto window by the CDN scripts below;
-      // type just the surface we call rather than augmenting the global Window interface.
+      // type just the surface we call via a Window-extending interface (a subtype of the real Window,
+      // so the cast is a single, honest narrowing step) rather than augmenting the global interface.
       type SwaggerUIBundleFn = ((config: Record<string, unknown>) => unknown) & {
         presets: { apis: unknown }
       }
-      const cdn = window as unknown as {
+      interface CdnWindow extends Window {
         SwaggerUIBundle?: SwaggerUIBundleFn
         SwaggerUIStandalonePreset?: unknown
         ui?: unknown
       }
+      const cdn = window as CdnWindow
       const SwaggerUIBundle = cdn.SwaggerUIBundle
       const SwaggerUIStandalonePreset = cdn.SwaggerUIStandalonePreset
 

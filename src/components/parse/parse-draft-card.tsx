@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Trash2, Check, Loader2, Undo2, CopyCheck, PackageCheck } from 'lucide-react'
 import { toast } from 'sonner'
@@ -244,6 +244,10 @@ export function ParseDraftCard({
           rootRef(el)
           cardRef.current = el
         }}
+        // Can't be a real <button>: it wraps nested interactive controls (the IconAction buttons,
+        // the edit drawer, and the confirm dialogs). Keyboard access is already handled via tabIndex
+        // + onKeyDown below.
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         role="button"
         tabIndex={0}
         onClick={openEditor}
@@ -287,15 +291,19 @@ export function ParseDraftCard({
           </div>
         </div>
 
+        {/* This div is not itself a click target — it only stops a click on any of its real, already
+            keyboard-accessible <button> children (IconAction) from bubbling up to the card's
+            openEditor handler. It needs no keyboard handling of its own. */}
+        {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div
           data-no-drag
-          onClick={(event) => event.stopPropagation()}
           // Absolute overlay pinned to the right edge so it reserves NO row width (per Tailwind's
           // hover-action pattern) — the text column truncates against the card edge, not this column.
           // Hover-reveal on desktop; always visible on touch/mobile (no hover there) via the `touch:`
           // variant (coarse pointer OR < lg viewport) so the actions are reachable without a hover.
           // A faint card-colored backdrop keeps the icons legible where they overlap text on a long row.
           className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0 rounded-md bg-card/80 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100 touch:opacity-100"
+          onClick={(event) => event.stopPropagation()}
         >
           {inTrash ? (
             <>
@@ -376,7 +384,10 @@ export function ParseDraftCard({
             clickable root (onClick={openEditor}), and React bubbles synthetic clicks along the REACT tree —
             so clicking any dialog button (notably Cancel, which leaves the card mounted) would bubble up and
             open the draft editor. Stop propagation here so dialog clicks never reach openEditor. (The drawer
-            itself is now provider-mounted, not nested under the card, so it no longer needs this guard.) */}
+            itself is now provider-mounted, not nested under the card, so it no longer needs this guard.)
+            Not itself a click target — the dialogs' real, already keyboard-accessible buttons are the
+            actual controls, so this div needs no keyboard handling of its own. */}
+        {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div onClick={(event) => event.stopPropagation()}>
           <Dialog open={collectionConfirmOpen} onOpenChange={setCollectionConfirmOpen}>
             <DialogContent>
@@ -559,6 +570,7 @@ function DuplicateBadge({ match }: DuplicateBadgeProps) {
             data-no-drag
             onClick={(e) => void openReferenced(e)}
             disabled={opening}
+            aria-label={`Open “${match.title}”`}
             className="inline-flex w-fit underline-offset-2 hover:underline disabled:opacity-70"
           />
         }
@@ -785,16 +797,9 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
   // whose drawer is currently open writes to it — and a card only clears the store if it still owns the current
   // item (an ownership guard) so a sibling re-render can't slam the open card shut. While open we re-sync
   // whenever the live props change (busy/canCommit/inTrash) so the provider's chrome stays current; the
-  // callbacks close over those same props, so re-syncing on them also refreshes them. Fires on BOTH platforms
-  // now (desktop + mobile) since the provider renders both shells.
-  //
-  // useLayoutEffect (NOT useEffect): the store open must commit in the SAME paint as the `open` render. On iOS
-  // Safari a passive-effect (useEffect) open ran one paint late — the mobile slider mounted and pinned the
-  // window to 0 a frame before the backdrop's saved scrollTop was applied, so a swipe-close briefly revealed
-  // the board at the TOP behind the sliding drawer (the scroll still restored correctly once it landed). Opening
-  // synchronously before paint closes that gap so the backdrop shows the captured position from the first frame.
-  useLayoutEffect(() => {
-    if (!open) return
+  // Effect Event below always reads the latest item/targetCollections/callbacks without needing them listed
+  // as deps. Fires on BOTH platforms now (desktop + mobile) since the provider renders both shells.
+  const openDraftDrawer = useEffectEvent(() => {
     useDraftDrawerStore.getState().openDrawer(item, {
       targetCollections,
       busy,
@@ -806,13 +811,21 @@ function EditDraftDrawer({ open, onOpenChange, jobId, item, patchDraft, targetCo
       onDeleteForever,
       onCommit,
     })
+  })
+
+  // useLayoutEffect (NOT useEffect): the store open must commit in the SAME paint as the `open` render. On iOS
+  // Safari a passive-effect (useEffect) open ran one paint late — the mobile slider mounted and pinned the
+  // window to 0 a frame before the backdrop's saved scrollTop was applied, so a swipe-close briefly revealed
+  // the board at the TOP behind the sliding drawer (the scroll still restored correctly once it landed). Opening
+  // synchronously before paint closes that gap so the backdrop shows the captured position from the first frame.
+  useLayoutEffect(() => {
+    if (!open) return
+    openDraftDrawer()
     return () => {
       const store = useDraftDrawerStore.getState()
       if (store.item?.id === item.id) store.closeDrawer()
     }
-    // Re-sync only on identity/prop changes, not on every render (closures rebuild each render but
-    // capture only these values + the stable targetCollections); cleanup clears the owning card's entry.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-sync only on identity/prop changes, not on every render; cleanup clears the owning card's entry.
   }, [open, item.id, busy, canCommit, inTrash])
 
   return null

@@ -644,7 +644,6 @@ export function useCommitBrainDumpDraftItem() {
   const { mutateAsync } = useMutation({
     mutationFn: async ({ jobId, itemId, options }: CommitDraftItemVariables): Promise<BrainDumpCommitResult> => {
       // Spends no AI budget (just createItem), so it does not route through useAiMutation.
-      // eslint-disable-next-line no-restricted-syntax
       const { data, error } = await api.POST('/ai/brain-dump/{jobId}/items/{itemId}/commit', {
         params: { path: { jobId, itemId } },
         body: { confirmCreateCollection: options.confirmCreateCollection },
@@ -667,7 +666,6 @@ export function useCommitBrainDumpJob() {
     mutationFn: async (jobId: string): Promise<BrainDumpCommitResult> => {
       // Not an AI mutation (commit spends no AI budget — it just creates real items), so it does not go
       // through useAiMutation and there is no usage meter to refetch.
-      // eslint-disable-next-line no-restricted-syntax
       const { data, error } = await api.POST('/ai/brain-dump/{jobId}/commit', {
         params: { path: { jobId } },
       })
@@ -705,7 +703,6 @@ export function useBulkCommitBrainDumpDrafts() {
       let closed = false
       const result = await runBulk(ids, async (id) => {
         // Not an AI mutation (commit just creates real items), so it bypasses useAiMutation.
-        // eslint-disable-next-line no-restricted-syntax
         const { data, error } = await api.POST('/ai/brain-dump/{jobId}/items/{itemId}/commit', {
           params: { path: { jobId, itemId: id } },
           body: { confirmCreateCollection: true },

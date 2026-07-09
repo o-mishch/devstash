@@ -416,13 +416,13 @@ function Footer() {
               <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Product</h4>
               <a href="#features" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Features</a>
               <a href="#pricing" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Pricing</a>
-              <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Changelog</a>
+              <span className="text-sm text-muted-foreground">Changelog</span>
             </div>
             <div className="flex flex-col gap-3">
               <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Company</h4>
-              <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">About</a>
-              <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Blog</a>
-              <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">Contact</a>
+              <span className="text-sm text-muted-foreground">About</span>
+              <span className="text-sm text-muted-foreground">Blog</span>
+              <span className="text-sm text-muted-foreground">Contact</span>
             </div>
             <div className="flex flex-col gap-3">
               <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Legal</h4>

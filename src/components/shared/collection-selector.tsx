@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type MouseEvent, type KeyboardEvent } from 'react'
+import { useId, useRef, useState, type MouseEvent } from 'react'
 import { X, ChevronsUpDown, Plus, Eraser } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ interface CollectionSelectorProps {
 export function CollectionSelector({ selectedIds, onChange, collections: collectionsProp, creatable = false, suggestedName, placeholder = 'Search and select collections...' }: CollectionSelectorProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const listboxId = useId()
   // Pointer position of the last press on the Create row, so the dialog can morph out of it (keyboard
   // selection leaves it null → the dialog falls back to the default zoom).
   const createOriginRef = useRef<MorphOrigin | null>(null)
@@ -54,7 +55,7 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
     }
   }
 
-  const unselect = (id: string, e: MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>) => {
+  const unselect = (id: string, e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
     e.stopPropagation()
     toggleCollection(id)
@@ -89,7 +90,12 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
               render={<div />}
               nativeButton={false}
               variant="outline"
+              // This is a listbox-style multiselect combobox (Popover + Command list), not a
+              // free-text or single-value input, so a native <input>/<select> can't represent it.
+              // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
               role="combobox"
+              aria-expanded={open}
+              aria-controls={listboxId}
               // touch:h-auto + touch:min-h-11 override the Button's default `touch:h-11` (a fixed
               // 44px tap height): on mobile that fixed height clipped this multiselect so several
               // wrapped collection badges overflowed the box and spilled over the label above. We
@@ -111,20 +117,14 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
                       className="px-2 py-0.5 text-xs font-medium bg-foreground/10 text-foreground border-foreground/20"
                     >
                       {col.name}
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        className="ml-1.5 cursor-pointer rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-foreground/10 p-0.5"
+                      <button
+                        type="button"
+                        className="ml-1.5 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-foreground/10 p-0.5"
                         onClick={(e) => unselect(col.id, e)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            unselect(col.id, e)
-                          }
-                        }}
                       >
                         <X className="size-3" />
                         <span className="sr-only">Remove {col.name}</span>
-                      </div>
+                      </button>
                     </Badge>
                   ))}
                 </span>
@@ -143,6 +143,7 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
             strong shadow + solid border so it reads as a distinct floating menu over the dark sheet
             instead of a murky overlap. */}
         <PopoverContent
+          id={listboxId}
           className="w-(--anchor-width) min-w-48 max-h-(--available-height) overflow-hidden border border-border p-0 shadow-xl"
           align="start"
           sideOffset={6}

@@ -39,10 +39,14 @@ export type PrismaTransactionClient = Omit<
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
 >
 
-// Reuse client across hot reloads in development
-const globalForPrisma = globalThis as unknown as { prisma?: ExtendedPrismaClient }
-export const prisma = globalForPrisma.prisma ?? createPrismaClient()
+// Reuse client across hot reloads in development. `declare global` augments the ambient
+// `globalThis` type directly — no cast needed to read/write the extra property.
+declare global {
+  var prismaGlobal: ExtendedPrismaClient | undefined
+}
+
+export const prisma = globalThis.prismaGlobal ?? createPrismaClient()
 
 if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma
+  globalThis.prismaGlobal = prisma
 }
