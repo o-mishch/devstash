@@ -63,6 +63,22 @@ jobs:
           # but the Go module lives in backend/.
           source-dir: backend
 
+      # Render a browsable HTML report from the profile the Test step produced.
+      # if: always() so it runs even when the gate above fails — that's exactly
+      # when you want to inspect which lines are uncovered. Guarded on the profile
+      # existing so a Test-step failure (no/partial profile) doesn't red-X here.
+      - name: Generate HTML coverage report
+        if: always()
+        run: test -f cover.out && go tool cover -html=cover.out -o cover.html
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-coverage-html
+          path: backend/cover.html
+          if-no-files-found: ignore
+
       # Single source of truth for the linter version: read it from the pinned
       # golangci-lint/go.mod (the same module `task backend:lint` runs via
       # `go tool -modfile=`), so the workflow can never drift from the local pin.

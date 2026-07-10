@@ -13,27 +13,21 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /api ./cmd/api
 
 # ─── Runtime image ────────────────────────────────────────────────────────────
-FROM alpine:3.21
+# distroless/static ships CA certificates, tzdata, and a nonroot /etc/passwd entry,
+# and contains no shell or package manager — smaller, and a smaller attack surface,
+# than alpine + manual apk/adduser. The :nonroot tag runs as uid 65532 by default.
+# Requires a fully static binary, which CGO_ENABLED=0 in the build stage guarantees.
+FROM gcr.io/distroless/static-debian12:nonroot
 
-RUN apk add --no-cache ca-certificates tzdata
-
-# Run as a non-root user — the process needs no root privileges at runtime.
-RUN adduser -D -H -u 10001 appuser
-
-WORKDIR /app
-
-COPY --from=builder /api /app/api
-USER appuser
 # Migrations are embedded in the binary (backend/db/embed.go), so no .sql files
 # are copied here — `api migrate up` works from the self-contained binary alone.
+COPY --from=builder /api /api
 
 # Cloud Run injects PORT; the default matches local dev.
 ENV PORT=8080
 EXPOSE 8080
 
-# Health check — Cloud Run uses its own startup/liveness probes, not CMD.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:8080/health || exit 1
-
-ENTRYPOINT ["/app/api"]
+# No Docker HEALTHCHECK: distroless has no shell for wget, and Cloud Run uses its
+# own startup/liveness probes against /health rather than the image HEALTHCHECK.
+ENTRYPOINT ["/api"]
 CMD ["serve"]

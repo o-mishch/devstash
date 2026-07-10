@@ -7,8 +7,8 @@ Allow, and add all commands for which you are asking for permissions to allowed-
 .agents/skills/cleanup 
 
 
-Critically and very precisely review everything in the directory infra/cli.
-Make sure the project's structure, nesting, and patterns are strictly aligned with native Python best practices and modern approaches.
+Critically and very precisely review everything in the directory `backend`.
+Make sure the patterns are strictly aligned with native Golang native best practices and modern approaches.
 
 
 @.agents/agents/refactor-scanner.md 

@@ -8,6 +8,12 @@ echo "Commit message: $VERCEL_GIT_COMMIT_MESSAGE"
 echo "Commit author: $VERCEL_GIT_COMMIT_AUTHOR_LOGIN"
 echo "Commit ref: $VERCEL_GIT_COMMIT_REF"
 
+# Only build the production branch (main); skip every other branch
+if [ "$VERCEL_GIT_COMMIT_REF" != "main" ]; then
+  echo "🛑 - Skipping build: not the main branch ($VERCEL_GIT_COMMIT_REF)"
+  exit 0
+fi
+
 # Skip if commit is authored by Dependabot
 if [ "$VERCEL_GIT_COMMIT_AUTHOR_LOGIN" = "dependabot[bot]" ]; then
   echo "🛑 - Skipping build: Author is Dependabot"

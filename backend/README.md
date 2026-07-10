@@ -113,7 +113,8 @@ truth — no manual sync), and CI additionally runs `golangci-lint fmt --diff` a
 ## Deploy
 
 Google Cloud Run, built from `Dockerfile` via Cloud Build (build context `/backend`),
-scale-to-zero (`min-instances=0`). The image is a static Go binary on alpine (~32 MB).
+scale-to-zero (`min-instances=0`). The runtime image is a static Go binary on
+`gcr.io/distroless/static-debian12:nonroot` (CA certs + tzdata + nonroot, no shell).
 `PORT` is injected by Cloud Run; health probe hits `/health`.
 
 ## Layout

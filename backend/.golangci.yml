@@ -61,9 +61,10 @@ linters:
       min-complexity: 5
     nakedret:
       max-func-lines: 0 # no naked returns at all
-    # Structured logging discipline: require a context to be passed to context-aware
-    # call sites. (no-global is intentionally OFF — the service configures one central
-    # slog default in logging.Setup, which is a legitimate pattern for Phase 0.)
+    # Structured logging discipline: require a context at context-aware call sites.
+    # The service builds one logger in logging.New and injects it explicitly (no
+    # slog.SetDefault global), so the no-global check is left off — the single
+    # slog.Info in `openapi emit` runs before any logger is built and is fine.
     sloglint:
       context: scope
     # exhaustive switch/map coverage (catches a missed enum case at compile-review time).

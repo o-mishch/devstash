@@ -15,7 +15,7 @@ In Progress
 ### Phase 0 — Go skeleton + CI/deploy scaffolding
 - `backend/` contains a working Go module with Huma v2 on `net/http` (chi router via `humachi`, kept for its middleware ecosystem — request-id, recovery, real-ip), serving `GET /health` (200) and SwaggerUI at `/docs`
 - `golangci-lint` and `go test ./...` run in CI (`.github/workflows/`) for the `backend/` tree
-- Google Cloud Run auto-deploy is connected to `backend/` (**Dockerfile** build via Cloud Build; scale-to-zero / `min-instances=0`; `api.devstash.one` custom domain, `/health` probe); the service returns 200 at `/health`. Runtime image is a static Go binary on alpine (~32 MB). The binary still defaults to `serve` on bare launch (robustness); goose migrations are embedded so the image ships no loose files.
+- Google Cloud Run auto-deploy is connected to `backend/` (**Dockerfile** build via Cloud Build; scale-to-zero / `min-instances=0`; `api.devstash.one` custom domain, `/health` probe); the service returns 200 at `/health`. Runtime image is a static Go binary on `gcr.io/distroless/static-debian12:nonroot` (ships CA certs, tzdata, and a nonroot user; no shell/package manager). The binary still defaults to `serve` on bare launch (robustness); goose migrations are embedded so the image ships no loose files.
 - A goose baseline migration exists at `backend/db/migrations/` representing the current Neon schema as-applied, marked as already-applied against the Neon `dev` branch (not replayed)
 - `backend/internal/config/` contains a `caarlos0/env` config struct with struct tags matching existing `.env` variable names (no renames); Go service loads from the shared repo-root `.env`/`.env.local` via `godotenv`
 

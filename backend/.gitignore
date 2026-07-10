@@ -4,6 +4,8 @@
 
 # Coverage profile emitted by `go test -coverprofile` (CI + local); gate reads it, never commits it
 /cover.out
+# HTML coverage report from `task backend:cover` / CI (uploaded as an artifact, never committed)
+/cover.html
 
 # Locally emitted OpenAPI doc (source of truth is the code; CI emits to web/)
 /openapi.json

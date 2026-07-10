@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -20,6 +21,11 @@ const (
 	poolMaxConnLifetime       = 30 * time.Minute
 	poolMaxConnLifetimeJitter = 5 * time.Minute // stagger recycling, avoid thundering herd
 	poolMaxConnIdleTime       = 5 * time.Minute
+	// connectTimeout bounds the boot Ping. In serve the caller's ctx is the process
+	// signal context (no deadline), so without this a black-hole DATABASE_URL would
+	// hang the whole startup on the TCP/TLS handshake for the OS default (minutes)
+	// instead of failing fast — which is the entire point of connecting on boot.
+	connectTimeout = 10 * time.Second
 )
 
 // Connect creates and validates a pgxpool connection pool against the given
@@ -37,20 +43,25 @@ func Connect(ctx context.Context, databaseURL string, logger *slog.Logger) (*pgx
 	cfg.MaxConnLifetimeJitter = poolMaxConnLifetimeJitter
 	cfg.MaxConnIdleTime = poolMaxConnIdleTime
 	cfg.HealthCheckPeriod = time.Minute
-	// NOTE: if we connect through Neon's *pooled* endpoint (PgBouncer transaction
-	// mode), prepared-statement caching must be disabled or queries fail with
-	// "prepared statement already exists". Prefer QueryExecModeExec — it keeps the
-	// extended protocol (binary encoding, full type fidelity) while using unnamed
-	// statements, so nothing is cached across pooled connections:
-	//   cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+	// DATABASE_URL points at Neon's *pooled* endpoint (PgBouncer transaction mode),
+	// where pgx's default named-prepared-statement caching fails with "prepared
+	// statement already exists" as soon as a connection is reused across sessions.
+	// QueryExecModeExec keeps the extended protocol (binary encoding, full type
+	// fidelity) but uses unnamed statements, so nothing is cached across pooled
+	// connections. It is also correct on a direct endpoint, so we set it always.
 	// (QueryExecModeSimpleProtocol also works but downgrades every param to text.)
+	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("db: create pool: %w", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
+	// Bound the boot Ping so a bad host fails fast rather than hanging on the
+	// deadline-less signal context (see connectTimeout).
+	pingCtx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("db: ping: %w", err)
 	}

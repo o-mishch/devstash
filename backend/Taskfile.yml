@@ -17,6 +17,16 @@ tasks:
     cmds:
       - go test ./...
 
+  cover:
+    desc: "Generate a browsable HTML coverage report at ./cover.html and print the total"
+    cmds:
+      # Same -covermode/-coverpkg as the CI gate so the report matches what the
+      # threshold check sees (-race omitted — it doesn't change coverage numbers
+      # and keeps the local run fast).
+      - go test -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./...
+      - go tool cover -html=cover.out -o cover.html
+      - go tool cover -func=cover.out | tail -n 1
+
   lint:
     desc: "Run golangci-lint (pinned via the isolated golangci-lint/go.mod tool module)"
     cmds:
