@@ -1,0 +1,33 @@
+# Test-coverage gate for the Go backend, enforced by vladopajic/go-test-coverage in backend-ci.
+# Hard-fails the build below threshold. Profile is produced by the CI Test step
+# (`go test -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./...`).
+#
+# Path (profile location) is relative to the repo root because the go-test-coverage
+# GitHub Action runs from GITHUB_WORKSPACE, not from `backend/` (defaults.run.working-directory
+# only affects `run:` steps, not `uses:` actions).
+profile: backend/cover.out
+
+# Trim the module prefix so `override.path` / `exclude.paths` regexes match short paths
+# like `internal/auth`, not the full `github.com/o-mishch/devstash/backend/internal/auth`.
+local-prefix: "github.com/o-mishch/devstash/backend"
+
+threshold:
+  # Module-wide floor. No per-file / per-package global floor (kept off to avoid PR noise);
+  # the auth surface gets its own higher bar via override below.
+  total: 70
+
+override:
+  # Auth is the highest-risk surface (session issuance, OAuth start/callback, legacy JWE
+  # cookie decode, token handling) — hold it to a higher bar than the module as a whole.
+  - path: ^internal/auth
+    threshold: 85
+
+exclude:
+  paths:
+    # sqlc-generated data layer (package sqlcdb, out: internal/db) — generated code is
+    # exercised through the repo interfaces, not unit-tested directly.
+    - ^internal/db
+    - \.sql\.go$
+    # mockgen output (external-boundary mocks) — generated, must not count toward coverage.
+    - _mock\.go$
+    - /mocks/

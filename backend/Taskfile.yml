@@ -1,0 +1,71 @@
+version: '3'
+
+tasks:
+  dev:
+    desc: "Start the Go API with air hot-reload"
+    cmds:
+      # air is pinned in the isolated tools/go.mod (kept out of the production graph).
+      - go tool -modfile=tools/go.mod air -c .air.toml
+
+  build:
+    desc: "Build the binary"
+    cmds:
+      - go build -o ./tmp/api ./cmd/api
+
+  test:
+    desc: "Run all Go tests"
+    cmds:
+      - go test ./...
+
+  lint:
+    desc: "Run golangci-lint (pinned via the isolated golangci-lint/go.mod tool module)"
+    cmds:
+      - go tool -modfile=golangci-lint/go.mod golangci-lint run
+
+  lint:fix:
+    desc: "Run golangci-lint with autofixes applied"
+    cmds:
+      - go tool -modfile=golangci-lint/go.mod golangci-lint run --fix
+
+  fmt:
+    desc: "Apply the formatters (gofumpt + goimports + golines)"
+    cmds:
+      - go tool -modfile=golangci-lint/go.mod golangci-lint fmt
+
+  fmt:check:
+    desc: "Verify formatting without writing (CI-friendly)"
+    cmds:
+      - go tool -modfile=golangci-lint/go.mod golangci-lint fmt --diff
+
+  vuln:
+    desc: "Scan for known vulnerabilities (govulncheck, pinned via the isolated tools/go.mod)"
+    cmds:
+      - go tool -modfile=tools/go.mod govulncheck ./...
+
+  check:
+    desc: "Full local gate: format check + lint + tests (mirrors the pre-commit hook and CI)"
+    cmds:
+      - task: fmt:check
+      - task: lint
+      - task: test
+
+  sqlc:gen:
+    desc: "Regenerate sqlc code from db/queries + db/migrations"
+    cmds:
+      # sqlc is pinned in the isolated tools/go.mod (kept out of the production graph).
+      - go tool -modfile=tools/go.mod sqlc generate
+
+  migrate:up:
+    desc: "Apply pending database migrations"
+    cmds:
+      - go run ./cmd/api migrate up
+
+  migrate:status:
+    desc: "Show migration status"
+    cmds:
+      - go run ./cmd/api migrate status
+
+  openapi:emit:
+    desc: "Emit OpenAPI document"
+    cmds:
+      - go run ./cmd/api openapi emit ../openapi.json

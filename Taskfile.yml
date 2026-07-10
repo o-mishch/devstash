@@ -1,0 +1,27 @@
+version: '3'
+
+includes:
+  backend:
+    taskfile: ./backend/Taskfile.yml
+    dir: ./backend
+  web:
+    taskfile: ./web/Taskfile.yml
+    dir: ./web
+    optional: true  # web/ doesn't exist yet (created in F0)
+
+tasks:
+  dev:
+    desc: "Start both Go backend (air) and Vite frontend in parallel"
+    deps:
+      - task: backend:dev
+      - task: web:dev
+
+  test:
+    desc: "Run all tests (Go + frontend)"
+    cmds:
+      - task: backend:test
+
+  lint:
+    desc: "Run all linters (Go + frontend)"
+    cmds:
+      - task: backend:lint

@@ -1,0 +1,38 @@
+# Repo-wide git hooks, managed by lefthook (replaces the pre-commit framework).
+#
+# Install:  npm install   (the root "prepare" script runs `lefthook install`)
+# Manual:   npx lefthook install
+#
+# Each command is gated by `glob`, so it only runs when matching files are staged —
+# a Go-only commit skips the infra checks and vice-versa. Commands run in parallel.
+#
+# The commands delegate to the same pinned tools CI uses (no separately-versioned
+# duplicates): golangci-lint via backend's `go tool -modfile=` module, and ruff via
+# infra/cli's uv.lock. `golangci-lint run` also reports formatting violations from
+# the gofumpt/goimports/golines formatters, so it is the single gate for both.
+
+pre-commit:
+  parallel: true
+  commands:
+    backend-lint:
+      glob: "backend/**/*.go"
+      run: cd backend && go tool -modfile=golangci-lint/go.mod golangci-lint run
+    frontend-oxlint:
+      # Runs the same `oxlint .` as CI/`npm run lint` (not staged-file-scoped): the
+      # type-aware rules (tsgolint) need whole-project context to resolve types.
+      glob: "*.{ts,tsx,js,jsx,mts,cts}"
+      run: npm run lint
+    infra-ruff-format:
+      glob: "infra/cli/**/*.py"
+      run: uv run --project infra/cli ruff format --check
+    infra-ruff-check:
+      glob: "infra/cli/**/*.py"
+      run: uv run --project infra/cli ruff check
+
+# Heavier checks run at push time, not on every commit, to keep commits fast.
+pre-push:
+  parallel: true
+  commands:
+    backend-test:
+      glob: "backend/**/*.go"
+      run: cd backend && go test -race ./...

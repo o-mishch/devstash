@@ -1,0 +1,12 @@
+# Keep the build context minimal: only Go sources + module files are needed.
+# Compiled artifacts and dev-only files bloat the context and bust layer caching.
+/api
+/tmp/
+.git
+*.md
+.gitignore
+.air.toml
+.golangci.yml
+.taplo.toml
+Taskfile.yml
+openapi.json

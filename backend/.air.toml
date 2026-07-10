@@ -1,0 +1,9 @@
+#:schema https://json.schemastore.org/any.json
+#:tombi schema.strict = false
+
+[build]
+  cmd         = "go build -o ./tmp/api ./cmd/api"
+  bin         = "./tmp/api"
+  include_ext = ["go", "env"]
+  exclude_dir = ["tmp", "vendor", "node_modules"]
+

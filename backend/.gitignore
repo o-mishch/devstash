@@ -1,0 +1,12 @@
+# Compiled binaries / build output
+/api
+/tmp/
+
+# Coverage profile emitted by `go test -coverprofile` (CI + local); gate reads it, never commits it
+/cover.out
+
+# Locally emitted OpenAPI doc (source of truth is the code; CI emits to web/)
+/openapi.json
+
+# Local env overrides
+*.local

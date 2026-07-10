@@ -82,3 +82,9 @@ tmp
 # kind kubeconfig written by local cluster provisioning — contains a live client cert/key
 infra/terraform/envs/local/devstash-config
 **.obsidian
+
+# Go workspace files — the backend tools (air/sqlc/golangci-lint) run via `go tool
+# -modfile=…`, which is incompatible with workspace mode. gopls may auto-create a
+# go.work when it sees the nested tool modules; never commit it (it breaks tooling).
+go.work
+go.work.sum

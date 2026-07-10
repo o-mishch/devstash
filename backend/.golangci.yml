@@ -1,0 +1,123 @@
+# golangci-lint v2 — maximum-criticism config for the DevStash Go backend.
+#
+# Strategy: enable EVERY linter (`default: all`), then disable only the handful
+# that enforce pure style/whitespace dogma or are known false-positive factories.
+# New linters shipped in future releases activate automatically — strictness is
+# self-updating. Runs identically in the editor, at commit (hook), and in CI.
+#
+# `golangci-lint run`  — lint.   `golangci-lint fmt` — apply the formatters below.
+version: "2"
+
+run:
+  modules-download-mode: readonly
+
+linters:
+  default: all
+  disable:
+    # ── Pure style / whitespace dogma (churn without bug value) ──────────────
+    - wsl         # mandates blank-line placement between statements
+    - wsl_v5      # ^ successor, same dogma
+    - nlreturn    # requires a blank line before every return
+    - varnamelen  # rejects short identifiers (i, r, db, tx…) that are idiomatic Go
+    - exhaustruct # every struct literal must set every field — fights zero-value idiom
+    - godox       # flags TODO/FIXME — we keep those during the strangler migration
+    - godot       # comments must end in a period (punctuation churn)
+    # ── Redundant with another enabled tool ──────────────────────────────────
+    - lll         # line length — the `golines` formatter already enforces 120
+    - gocyclo     # duplicates `cyclop` (which also checks package-average)
+    # ── Known false-positive factories / fight this stack ─────────────────────
+    - err113      # sentinel-error dogma; conflicts with our plain `fmt.Errorf` ethos
+    - wrapcheck   # over-eager error wrapping; errorlint + manual `%w` cover what matters
+    - ireturn     # "return concrete, not interface" — fights Huma's huma.API + generics
+    - tagliatelle # struct-tag case convention — noisy on json/db tag naming
+    - paralleltest # forces t.Parallel() on every test; churn for a small suite
+    - testpackage  # forces black-box _test packages; blocks white-box parity tests
+    - noinlineerr  # bans idiomatic `if err := f(); err != nil` — anti-idiomatic Go
+    - gomodguard   # deprecated (v2.12) and redundant with depguard below
+
+  settings:
+    # govet: run every analyzer (incl. shadow) except the pedantic struct-padding one.
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # micro-optimizing struct field order is not worth the churn
+    # staticcheck: all checks except a few package-comment/style ones that are too strict.
+    staticcheck:
+      checks:
+        - all
+        - -ST1000 # package-level doc comment not required on every package
+        - -ST1016 # allow varied receiver names
+        - -QF1008 # allow explicit embedded-field selectors for readability
+    # Complexity budgets — generous enough not to nag small handlers, tight enough to catch sprawl.
+    cyclop:
+      max-complexity: 30
+      package-average: 10.0
+    funlen:
+      lines: 100
+      statements: 50
+    gocognit:
+      min-complexity: 20
+    nestif:
+      min-complexity: 5
+    nakedret:
+      max-func-lines: 0 # no naked returns at all
+    # Structured logging discipline: require a context to be passed to context-aware
+    # call sites. (no-global is intentionally OFF — the service configures one central
+    # slog default in logging.Setup, which is a legitimate pattern for Phase 0.)
+    sloglint:
+      context: scope
+    # exhaustive switch/map coverage (catches a missed enum case at compile-review time).
+    exhaustive:
+      check:
+        - switch
+        - map
+    # depguard: block packages we never want imported. (Note: depguard matches by
+    # prefix, so denying std "log"/"math/rand" would also block the log/slog and
+    # math/rand/v2 we DO want — those are steered by sloglint and gosec G404 instead.)
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: github.com/pkg/errors
+              desc: 'use the stdlib errors package with fmt.Errorf("…: %w", err)'
+
+  exclusions:
+    # No default exclusion presets — we want the full ruleset. Only relax where a
+    # rule is structurally wrong for a given file, not merely inconvenient.
+    rules:
+      # Tests: relax the linters whose value is about production robustness, not test code.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - funlen
+          - gocognit
+          - gocyclo
+          - cyclop
+          - maintidx
+          - gosec
+          - dupl
+          - mnd
+          - containedctx
+          - unparam
+          - gochecknoglobals
+          - revive
+          - noctx    # httptest.NewRequest / net.Listen in tests don't need a ctx-aware variant
+          - goconst  # repeated literals across table-driven cases are clearer inline than as consts
+      # embed.go: `//go:embed` requires a package-level var by design.
+      - path: db/embed\.go
+        linters:
+          - gochecknoglobals
+
+formatters:
+  enable:
+    - gofumpt   # stricter superset of gofmt
+    - goimports # groups imports and adds the local-prefix block
+    - golines   # wraps lines longer than max-len
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/o-mishch/devstash/backend
+    golines:
+      max-len: 120

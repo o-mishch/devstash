@@ -1,0 +1,40 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "db/queries"
+    schema: "db/migrations"
+    gen:
+      go:
+        package: "sqlcdb"
+        out: "internal/db"
+        # Generate pgx/v5-native code (accepts *pgxpool.Pool). Without this sqlc
+        # defaults to database/sql and the generated Queries won't take our pool.
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_pointers_for_null_types: true
+        emit_exact_table_names: false
+        # Map Postgres timestamps to time.Time (not pgx's pgtype.Timestamp). The
+        # type names MUST be pg_catalog-qualified: Prisma emits TIMESTAMP(3), which
+        # the pgx/v5 engine resolves as pg_catalog.timestamp{,tz} — the bare
+        # "timestamp"/"timestamptz" forms silently don't match. Each type needs a
+        # nullable variant too: a plain go_type override applies to NOT NULL and
+        # NULL columns alike, so without the nullable rows a nullable timestamp
+        # would become a bare time.Time and lose its NULL distinction. The nullable
+        # rows use pointer: true so emit_pointers_for_null_types yields *time.Time.
+        overrides:
+          - db_type: "pg_catalog.timestamptz"
+            go_type: "time.Time"
+          - db_type: "pg_catalog.timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          - db_type: "pg_catalog.timestamp"
+            go_type: "time.Time"
+          - db_type: "pg_catalog.timestamp"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
