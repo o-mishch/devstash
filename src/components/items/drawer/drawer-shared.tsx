@@ -1,6 +1,6 @@
 'use client'
 
-import { CSSProperties, ReactNode, useRef, useState, useLayoutEffect } from 'react'
+import { CSSProperties, ReactNode, useCallback, useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { motion, type Variants } from 'motion/react'
 import { Calendar, FolderOpen, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +29,23 @@ export const GRIP_VARIANTS: Variants = {
   idle: { backgroundColor: 'color-mix(in oklch, var(--foreground) 30%, transparent)' },
   dragging: { backgroundColor: 'color-mix(in oklch, var(--primary) 70%, transparent)' },
 }
+
+// Static section icons — no prop/state dependency, so hoisted once rather than re-created on every render
+// of DrawerCollectionsSection / DrawerDetailsSection.
+const FOLDER_OPEN_ICON = <FolderOpen className="size-3" />
+const CALENDAR_ICON = <Calendar className="size-3" />
+
+// Static skeleton action bar — DrawerSkeleton's `actions` JSX never depends on its `fullScreen` prop, so it
+// is hoisted once rather than re-created on every render.
+const DRAWER_SKELETON_ACTIONS = (
+  <div className="flex items-center gap-0.5 w-full">
+    <Skeleton className="h-8 w-20 rounded-md" />
+    <Skeleton className="h-8 w-12 rounded-md" />
+    <Skeleton className="h-8 w-16 rounded-md" />
+    <Skeleton className="h-8 w-14 rounded-md" />
+    <Skeleton className="ml-auto h-8 w-8 rounded-md" />
+  </div>
+)
 
 interface MobileFullScreenPanelProps {
   /** Whether the pane is open (drives the swipe hook's spring-back / open guards). */
@@ -94,6 +111,15 @@ function MobileFullScreenPanel({
     requestClose,
   })
 
+  // `x` is the stable useMotionValue ref from useMotionSwipeClose (identity never changes) — memoized so the
+  // panel's `style` prop keeps a stable object reference across renders instead of a fresh literal each time.
+  const panelStyle = useMemo(() => ({ x }), [x])
+
+  // setGripPressed is a stable useState setter — memoized once so the grip pill's pointer handlers keep a
+  // stable identity across renders instead of 4 fresh closures each time.
+  const handleGripPress = useCallback(() => setGripPressed(true), [setGripPressed])
+  const handleGripRelease = useCallback(() => setGripPressed(false), [setGripPressed])
+
   // Switching directly from one open item to another (no unmount) — jump back to the top so the new item
   // starts at its header instead of inheriting the previous item's scroll. ONLY in settled mode (signalled
   // by `isSettled`, which the slider passes only when the pane IS the document scroller). During the open
@@ -125,7 +151,7 @@ function MobileFullScreenPanel({
       whileDrag="dragging"
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
-      style={{ x }}
+      style={panelStyle}
       className="app-dot-grid relative min-h-[100lvh] touch-pan-y bg-background shadow-[-8px_0_24px_rgba(0,0,0,0.25)]"
     >
       {decoration === 'blobs' ? (
@@ -149,10 +175,10 @@ function MobileFullScreenPanel({
               variants={GRIP_VARIANTS}
               initial="idle"
               animate={gripPressed ? 'dragging' : 'idle'}
-              onPointerDown={() => setGripPressed(true)}
-              onPointerUp={() => setGripPressed(false)}
-              onPointerCancel={() => setGripPressed(false)}
-              onPointerLeave={() => setGripPressed(false)}
+              onPointerDown={handleGripPress}
+              onPointerUp={handleGripRelease}
+              onPointerCancel={handleGripRelease}
+              onPointerLeave={handleGripRelease}
             />
           </div>
         </div>
@@ -202,26 +228,24 @@ export function MobileDrawerHost({ page, open, openScrollY, decoration = 'blobs'
   // registers its dirty-guarded close). Stable across pane swaps — the body re-registers on each mount.
   const sheetCloseRef = useRef<(() => void) | null>(null)
 
-  return (
-    <MobileItemPaneSlider
-      page={page}
-      open={open}
-      openScrollY={openScrollY}
-      renderPane={({ isSettled, onSwipeCloseStart }) => (
-        <MobileFullScreenPanel
-          open={open}
-          isSettled={isSettled}
-          onSwipeCloseStart={onSwipeCloseStart}
-          sheetCloseRef={sheetCloseRef}
-          onOpenChange={onOpenChange}
-          resetKey={resetKey}
-          decoration={decoration}
-        >
-          {renderBody({ isSettled, onSwipeCloseStart, sheetCloseRef })}
-        </MobileFullScreenPanel>
-      )}
-    />
+  const renderPane = useCallback(
+    ({ isSettled, onSwipeCloseStart }: { isSettled: boolean; onSwipeCloseStart?: () => void }) => (
+      <MobileFullScreenPanel
+        open={open}
+        isSettled={isSettled}
+        onSwipeCloseStart={onSwipeCloseStart}
+        sheetCloseRef={sheetCloseRef}
+        onOpenChange={onOpenChange}
+        resetKey={resetKey}
+        decoration={decoration}
+      >
+        {renderBody({ isSettled, onSwipeCloseStart, sheetCloseRef })}
+      </MobileFullScreenPanel>
+    ),
+    [open, onOpenChange, resetKey, decoration, renderBody],
   )
+
+  return <MobileItemPaneSlider page={page} open={open} openScrollY={openScrollY} renderPane={renderPane} />
 }
 
 interface DrawerContainerProps {
@@ -305,6 +329,7 @@ interface FullScreenDrawerContainerProps {
 function FullScreenDrawerContainer({ chrome, children, style, stickyHeader = false }: FullScreenDrawerContainerProps) {
   const headerRef = useRef<HTMLDivElement>(null)
   const [headerHeight, setHeaderHeight] = useState(0)
+  const spacerStyle = useMemo(() => ({ height: headerHeight }), [headerHeight])
 
   // Mirror the header's measured height into the spacer so the content never sits under the fixed header.
   // A ResizeObserver catches title wraps, badge changes, and the action bar's responsive label collapse.
@@ -336,7 +361,7 @@ function FullScreenDrawerContainer({ chrome, children, style, stickyHeader = fal
         {chrome}
       </div>
       {/* Spacer reserving the fixed header's height in the document flow so content starts below it. */}
-      <div aria-hidden style={{ height: headerHeight }} className="shrink-0" />
+      <div aria-hidden style={spacerStyle} className="shrink-0" />
       <div className="flex flex-1 flex-col gap-5 px-5 py-4">{children}</div>
     </div>
   )
@@ -355,6 +380,8 @@ interface DrawerLayoutProps {
 }
 
 export function DrawerLayout({ itemType, onClose, titleArea, actionArea, children, fullScreen = false, stickyHeader = false }: DrawerLayoutProps) {
+  const containerStyle = useMemo(() => ({ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] }) as CSSProperties, [itemType.name])
+
   return (
     // One TooltipProvider for the whole drawer (delay 150 matches the dense action-bar chrome) — scopes the
     // action bar's Parse tooltip in view mode and the Save/Commit tooltips in edit mode, so neither side
@@ -363,7 +390,7 @@ export function DrawerLayout({ itemType, onClose, titleArea, actionArea, childre
       <DrawerContainer
         fullScreen={fullScreen}
         stickyHeader={stickyHeader}
-        style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
+        style={containerStyle}
         header={
           <>
             <ItemIconWrapper itemType={itemType} wrapperClassName="mt-0.5 size-9 shrink-0 max-sm:size-8" iconClassName="size-4.5" />
@@ -408,7 +435,7 @@ interface DrawerCollectionsSectionProps {
 
 export function DrawerCollectionsSection({ item, onEdit }: DrawerCollectionsSectionProps) {
   return (
-    <DrawerSection label="Collections" icon={<FolderOpen className="size-3" />}>
+    <DrawerSection label="Collections" icon={FOLDER_OPEN_ICON}>
       {item.collections.length > 0 ? (
         <div className="flex flex-wrap gap-1.5">
           {item.collections.map((col) => (
@@ -432,7 +459,7 @@ interface DrawerDetailsSectionProps {
 
 export function DrawerDetailsSection({ item }: DrawerDetailsSectionProps) {
   return (
-    <DrawerSection label="Details" icon={<Calendar className="size-3" />}>
+    <DrawerSection label="Details" icon={CALENDAR_ICON}>
       <div className="space-y-1 text-sm">
         <div className="flex justify-between">
           <span className="text-muted-foreground">Created</span>
@@ -492,15 +519,7 @@ export function DrawerSkeleton({ fullScreen = false }: DrawerSkeletonProps) {
           </div>
         </>
       }
-      actions={
-        <div className="flex items-center gap-0.5 w-full">
-          <Skeleton className="h-8 w-20 rounded-md" />
-          <Skeleton className="h-8 w-12 rounded-md" />
-          <Skeleton className="h-8 w-16 rounded-md" />
-          <Skeleton className="h-8 w-14 rounded-md" />
-          <Skeleton className="ml-auto h-8 w-8 rounded-md" />
-        </div>
-      }
+      actions={DRAWER_SKELETON_ACTIONS}
     >
       <section className="flex flex-col">
         <Skeleton className="mb-2 h-3 w-16 shrink-0" />

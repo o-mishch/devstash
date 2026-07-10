@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react'
 import { cn } from '@/lib/utils'
 
 interface ResizableSplitProps {
@@ -53,7 +61,7 @@ export function ResizableSplit({
     [clamp],
   )
 
-  const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
+  const handlePointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     const leftEl = leftRef.current
     const separator = separatorRef.current
@@ -69,39 +77,47 @@ export function ResizableSplit({
     } catch {
       // ignore — capture is a nicety, not required for the drag to function
     }
-  }
+  }, [])
 
-  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!draggingRef.current) return
-    updateFromClientX(e.clientX)
-  }
+  const handlePointerMove = useCallback(
+    (e: PointerEvent<HTMLDivElement>) => {
+      if (!draggingRef.current) return
+      updateFromClientX(e.clientX)
+    },
+    [updateFromClientX],
+  )
 
-  const handlePointerUp = (e: PointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = useCallback((e: PointerEvent<HTMLDivElement>) => {
     draggingRef.current = false
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
-  }
+  }, [])
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      setLeftPct((pct) => clamp(pct - KEYBOARD_STEP_PCT))
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      setLeftPct((pct) => clamp(pct + KEYBOARD_STEP_PCT))
-    } else if (e.key === 'Home') {
-      e.preventDefault()
-      setLeftPct(minLeftPct)
-    } else if (e.key === 'End') {
-      e.preventDefault()
-      setLeftPct(maxLeftPct)
-    }
-  }
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setLeftPct((pct) => clamp(pct - KEYBOARD_STEP_PCT))
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        setLeftPct((pct) => clamp(pct + KEYBOARD_STEP_PCT))
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        setLeftPct(minLeftPct)
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        setLeftPct(maxLeftPct)
+      }
+    },
+    [clamp, minLeftPct, maxLeftPct],
+  )
+
+  const leftColumnStyle = useMemo(() => ({ width: `${leftPct}%` }), [leftPct])
 
   return (
     <div ref={containerRef} className={cn('flex min-h-0 w-full', className)}>
-      <div ref={leftRef} className="flex min-w-0 flex-col overflow-hidden" style={{ width: `${leftPct}%` }}>
+      <div ref={leftRef} className="flex min-w-0 flex-col overflow-hidden" style={leftColumnStyle}>
         {left}
       </div>
       <div

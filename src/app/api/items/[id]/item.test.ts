@@ -1,23 +1,42 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { anything } from '@/test/matchers'
 import { NextRequest } from 'next/server'
+import type { getSession } from '@/lib/session'
+import type { getCachedVerifiedProAccess as RealGetCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
+import type { checkRateLimit as RealCheckRateLimit, deniedMessage as RealDeniedMessage } from '@/lib/infra/rate-limit'
+import type {
+  getItemById as RealGetItemById,
+  getItemForAuth as RealGetItemForAuth,
+  updateItem as RealUpdateItem,
+  deleteItem as RealDeleteItem,
+} from '@/lib/db/items'
+import type {
+  invalidateItemsCache as RealInvalidateItemsCache,
+  invalidateCollectionsCache as RealInvalidateCollectionsCache,
+} from '@/lib/infra/cache'
+import type { deleteStoredFile as RealDeleteStoredFile } from '@/lib/storage/image-thumbnails'
 
 // Exercises the single-item GET that powers the source deep-link drawer: auth (401), 404 for a
 // foreign/missing item (IDOR), and 200 with the full item scoped to the session userId.
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof getSession>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof RealGetCachedVerifiedProAccess>(),
+}))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  checkRateLimit: vi.fn<typeof RealCheckRateLimit>(),
+  deniedMessage: vi.fn<typeof RealDeniedMessage>((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
 }))
 vi.mock('@/lib/db/items', () => ({
-  getItemById: vi.fn(),
-  getItemForAuth: vi.fn(),
-  updateItem: vi.fn(),
-  deleteItem: vi.fn(),
+  getItemById: vi.fn<typeof RealGetItemById>(),
+  getItemForAuth: vi.fn<typeof RealGetItemForAuth>(),
+  updateItem: vi.fn<typeof RealUpdateItem>(),
+  deleteItem: vi.fn<typeof RealDeleteItem>(),
 }))
-vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn(), invalidateCollectionsCache: vi.fn() }))
-vi.mock('@/lib/storage/image-thumbnails', () => ({ deleteStoredFile: vi.fn() }))
+vi.mock('@/lib/infra/cache', () => ({
+  invalidateItemsCache: vi.fn<typeof RealInvalidateItemsCache>(),
+  invalidateCollectionsCache: vi.fn<typeof RealInvalidateCollectionsCache>(),
+}))
+vi.mock('@/lib/storage/image-thumbnails', () => ({ deleteStoredFile: vi.fn<typeof RealDeleteStoredFile>() }))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
@@ -25,12 +44,12 @@ import { checkRateLimit } from '@/lib/infra/rate-limit'
 import { getItemById, getItemForAuth, updateItem } from '@/lib/db/items'
 import { GET, PATCH } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockGetById = getItemById as ReturnType<typeof vi.fn>
-const mockGetForAuth = getItemForAuth as ReturnType<typeof vi.fn>
-const mockUpdate = updateItem as ReturnType<typeof vi.fn>
-const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockPro = vi.mocked(getCachedVerifiedProAccess)
+const mockGetById = vi.mocked(getItemById)
+const mockGetForAuth = vi.mocked(getItemForAuth)
+const mockUpdate = vi.mocked(updateItem)
+const mockRateLimit = vi.mocked(checkRateLimit)
 
 function getReq(): NextRequest {
   return new NextRequest('http://localhost/api/items/item-1')

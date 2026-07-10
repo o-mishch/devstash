@@ -12,6 +12,10 @@ import type { BillingPeriod } from '@/lib/billing/config/billing-pricing.client'
 import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
 import { useUpgradeBillingStore } from '@/stores/upgrade-billing'
 
+// Static, prop/state-independent — hoisted so the JSX element is created once, not once per render
+// (the `trailingIcon` prop would otherwise trip react-perf/jsx-no-jsx-as-prop for a fresh element).
+const checkoutArrowIcon = <ArrowRight size={14} />
+
 interface UpgradeBillingShellProps {
   defaultBilling?: BillingPeriod
   checkoutDisabled?: boolean
@@ -95,7 +99,7 @@ export function UpgradeProCheckout() {
       <input type="hidden" name="priceId" value={selectedPriceId} />
       <PendingFormButton
         label="Upgrade to Pro"
-        trailingIcon={<ArrowRight size={14} />}
+        trailingIcon={checkoutArrowIcon}
         className="h-auto w-full gap-2 rounded-xl border-transparent bg-gradient-to-r from-blue-500 to-cyan-500 px-6 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-cyan-500/20 hover:from-blue-400 hover:to-cyan-400 hover:-translate-y-0.5 active:scale-95 disabled:translate-y-0 [a]:hover:bg-gradient-to-r"
       />
     </form>

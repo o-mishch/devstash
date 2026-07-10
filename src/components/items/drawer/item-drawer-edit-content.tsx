@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { X, Check } from 'lucide-react'
-import { useForm, Controller, useWatch } from 'react-hook-form'
+import { useForm, Controller, useWatch, type ControllerRenderProps } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
 import { LanguageInput } from '@/components/shared/item-content-input'
 import { ItemFormFields } from '@/components/items/item-form-fields'
+import type { ItemFileContext } from '@/lib/ai/item-context'
 import { UnsavedChangesDialog } from '@/components/shared/unsaved-changes-dialog'
 import { useUpdateItem, type TextItemTypeName } from '@/hooks/items/use-update-item'
 import type { UpdateItemInput } from '@/lib/utils/validators'
@@ -96,7 +97,11 @@ interface ItemDrawerEditContentProps {
 // The four text types, in canonical order, rendered as the type-switch options.
 const TEXT_TYPE_OPTIONS = SYSTEM_TYPE_ORDER.filter((name) => TEXT_ITEM_TYPE_NAMES.has(name))
 
-export function ItemDrawerEditContent({ item, collections = [], onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions, collectionsReadOnly, fullScreen = false, stickyHeader = false }: ItemDrawerEditContentProps) {
+// Module-level so the default for the optional `collections` prop is one stable array reference across
+// renders, instead of a new `[]` literal every render when the caller (the real item drawer) omits it.
+const EMPTY_COLLECTIONS: CollectionPickerItem[] = []
+
+export function ItemDrawerEditContent({ item, collections = EMPTY_COLLECTIONS, onClose, onSave, onCancel, sheetCloseRef, onSubmitOverride, showDetailsSection = true, saveLabel = 'Save', saveTooltip, renderExtraActions, collectionsReadOnly, fullScreen = false, stickyHeader = false }: ItemDrawerEditContentProps) {
   const { itemType } = item
   const committedType = itemType.name
   const updateItem = useUpdateItem()
@@ -144,7 +149,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
 
   // Switching the type re-derives the language for the new type (shell→bash on →command, cleared on
   // →note, etc.) so the visible field matches what Save will persist — staged, no network.
-  const handleTypeChange = (next: string | null) => {
+  const handleTypeChange = useCallback((next: string | null) => {
     if (!next || next === pendingType) return
     // Leaving the committed type: snapshot the current language so a later return can restore an edit
     // the user made before switching, not just the committed default.
@@ -168,12 +173,39 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
     const remapped = remapLanguageForType(current, next)
     setClearedLanguage(current && remapped === null ? current : null)
     form.setValue('language', remapped ?? '', { shouldDirty: true })
-  }
+  }, [pendingType, committedType, item.language, form])
 
   // The pending switch dropped the current language (lossy) — surfaced as an inline note before Save.
   const languageWillClear = typeChanged && clearedLanguage !== null
 
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(typeName)
+
+  // react-hook-form's Controller `render` prop, memoized so it isn't a fresh function+JSX literal every
+  // render — only `typeName` (via the language input's per-type placeholder/validation) is read from the
+  // outer closure; `field` comes from Controller itself.
+  const renderLanguageField = useCallback(({ field }: { field: ControllerRenderProps<DrawerFormValues, 'language'> }) => (
+    <LanguageInput
+      id="drawer-language"
+      value={field.value || ''}
+      onChange={field.onChange}
+      placeholder="Language"
+      itemType={typeName}
+      fit
+      // Match the item-type Select trigger sitting beside it: same h-7 content-sized
+      // box, gap/padding, text-xs, and corner radius. The sm SelectTrigger renders at
+      // rounded-[min(var(--radius-md),10px)] (its size variant overrides rounded-full),
+      // so use that exact radius here instead of rounded-full to get the same shape.
+      className="h-7 touch:h-7 w-auto gap-1.5 rounded-[min(var(--radius-md),10px)] border-border bg-background px-2.5 py-0 text-xs capitalize shadow-none transition-colors dark:bg-input/30 dark:hover:bg-input/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    />
+  ), [typeName])
+
+  // Memoized so ItemFormFields (and its own AI-description hook, which reads itemContext) gets a stable
+  // reference whenever the pending type / file metadata haven't actually changed.
+  const itemContext = useMemo<ItemFileContext>(() => ({
+    itemType: typeName,
+    fileName: item.fileName,
+    fileSize: item.fileSize,
+  }), [typeName, item.fileName, item.fileSize])
 
   // A staged type change counts as a dirty edit too, so Cancel/close runs the unsaved guard.
   const isDirty = form.formState.isDirty || typeChanged
@@ -186,16 +218,24 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
     onClose: () => pendingActionRef.current(),
   })
 
-  function guardedAction(action: () => void) {
+  // Stable across renders (only depends on the memoized handleOpenChange + the ref), so closures built
+  // from it can themselves be memoized instead of recreating a new function every render.
+  const guardedAction = useCallback((action: () => void) => {
     pendingActionRef.current = action
     handleOpenChange(false)
-  }
+  }, [handleOpenChange])
 
-  // Expose guarded-close to the parent Sheet so Esc/backdrop go through the guard too.
+  // Guarded close for the drawer's own X button / Esc / backdrop — shared by DrawerLayout's onClose and
+  // useRegisterSheetClose below so the parent Sheet's Esc/backdrop path goes through the same guard.
+  const handleGuardedClose = useCallback(() => guardedAction(onClose), [guardedAction, onClose])
+
   // Cleared on unmount so view-mode Esc closes normally.
-  useRegisterSheetClose(sheetCloseRef, () => guardedAction(onClose))
+  useRegisterSheetClose(sheetCloseRef, handleGuardedClose)
 
-  const handleSubmit = form.handleSubmit(async (data: DrawerFormValues) => {
+  // Guarded "Cancel" — returns to view mode instead of closing the whole drawer.
+  const handleCancelClick = useCallback(() => guardedAction(onCancel), [guardedAction, onCancel])
+
+  const onSubmit = useCallback(async (data: DrawerFormValues) => {
     const tagArray = parseTagString(data.tags)
     const payload: UpdateItemInput = {
       title: data.title.trim(),
@@ -214,7 +254,11 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
       return
     }
     await updateItem(item, payload, { onSave })
-  })
+  }, [typeChanged, pendingType, onSubmitOverride, updateItem, item, onSave])
+
+  const handleSaveClick = useCallback(() => {
+    void form.handleSubmit(onSubmit)()
+  }, [form, onSubmit])
 
   // Save is disabled when there's nothing to save (no field edit + no staged type change), so a no-op
   // save can't run. The TooltipTrigger sits on a span wrapper, not the Button — a disabled Button has
@@ -299,16 +343,24 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
   // position 1, so it reveals progressively as that bar widens. In the regular 2-button edit bar there's
   // only Cancel · Save, which always fits both labels — so Save reveals at the SAME low threshold as
   // Cancel (index 0) instead of staying icon-only while Cancel shows its text.
-  const saveButton = (
-    <Button size="sm" onClick={() => void handleSubmit()} disabled={saving || !isDirty} className={saveButtonClass} aria-label={saveLabel}>
+  // Memoized (not just an inline JSX literal) so renderSaveTrigger below has a stable dependency instead
+  // of a fresh element identity every render.
+  const saveButton = useMemo(() => (
+    <Button size="sm" onClick={handleSaveClick} disabled={saving || !isDirty} className={saveButtonClass} aria-label={saveLabel}>
       <Check className="size-4" />
       <span className={actionbarLabelClass(hasExtras ? 1 : 0)}>{saving ? 'Saving…' : saveLabel}</span>
     </Button>
-  )
+  ), [handleSaveClick, saving, isDirty, saveButtonClass, saveLabel, hasExtras])
   const saveButtonTooltip = !isDirty ? 'No changes to save' : saveTooltip
+  // Base UI's `render` prop, in function form + useCallback: the JSX-literal form (`render={<span>...}`)
+  // recreates an element on every render, which is what jsx-no-jsx-as-prop / jsx-no-new-function-as-prop
+  // flag. Base UI's own docs recommend this function-form + useCallback pattern for this exact case.
+  const renderSaveTrigger = useCallback((elProps: ComponentProps<'span'>) => (
+    <span {...elProps} className={saveWrapperClass}>{saveButton}</span>
+  ), [saveWrapperClass, saveButton])
   const saveAction = saveButtonTooltip ? (
     <Tooltip>
-      <TooltipTrigger render={<span className={saveWrapperClass}>{saveButton}</span>} />
+      <TooltipTrigger render={renderSaveTrigger} />
       <TooltipContent>{saveButtonTooltip}</TooltipContent>
     </Tooltip>
   ) : (
@@ -321,7 +373,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
         fullScreen={fullScreen}
         stickyHeader={stickyHeader}
         itemType={headerItemType}
-        onClose={() => guardedAction(onClose)}
+        onClose={handleGuardedClose}
         titleArea={
           <>
             <div className="relative w-full">
@@ -364,21 +416,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
                   <Controller
                     control={form.control}
                     name="language"
-                    render={({ field }) => (
-                      <LanguageInput
-                        id="drawer-language"
-                        value={field.value || ''}
-                        onChange={field.onChange}
-                        placeholder="Language"
-                        itemType={typeName}
-                        fit
-                        // Match the item-type Select trigger sitting beside it: same h-7 content-sized
-                        // box, gap/padding, text-xs, and corner radius. The sm SelectTrigger renders at
-                        // rounded-[min(var(--radius-md),10px)] (its size variant overrides rounded-full),
-                        // so use that exact radius here instead of rounded-full to get the same shape.
-                        className="h-7 touch:h-7 w-auto gap-1.5 rounded-[min(var(--radius-md),10px)] border-border bg-background px-2.5 py-0 text-xs capitalize shadow-none transition-colors dark:bg-input/30 dark:hover:bg-input/50 focus-visible:bg-transparent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                      />
-                    )}
+                    render={renderLanguageField}
                   />
                   {form.formState.errors.language && (
                     <p className="absolute top-7 left-0 text-red-500 text-[10px] whitespace-nowrap">{form.formState.errors.language.message}</p>
@@ -402,7 +440,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
                 max-sm:flex-1 lets the buttons share the row evenly on mobile so a dense bar (the draft
                 drawer's Cancel · Save draft · Delete · Commit) wraps into a balanced 2×2 instead of
                 clipping or right-floating its last buttons. */}
-            <Button variant="outline" size="sm" onClick={() => guardedAction(onCancel)} disabled={saving} className={cancelButtonClass} aria-label="Cancel">
+            <Button variant="outline" size="sm" onClick={handleCancelClick} disabled={saving} className={cancelButtonClass} aria-label="Cancel">
               <X className="size-4" />
               <span className={actionbarLabelClass(0)}>Cancel</span>
             </Button>
@@ -418,11 +456,7 @@ export function ItemDrawerEditContent({ item, collections = [], onClose, onSave,
       >
         <ItemFormFields
           form={form}
-          itemContext={{
-            itemType: typeName,
-            fileName: item.fileName,
-            fileSize: item.fileSize,
-          }}
+          itemContext={itemContext}
           watchedLanguage={watchedLanguage}
           collections={collections}
           collectionsReadOnly={collectionsReadOnly}

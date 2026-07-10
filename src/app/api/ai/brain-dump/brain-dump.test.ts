@@ -6,44 +6,65 @@ import { NextRequest } from 'next/server'
 // unreadable-source 422 (no token spent). The DB + rate-limit layers are mocked.
 // `after` runs the abandoned-job sweep post-response; stub it to a no-op so the handler doesn't
 // register a real callback outside a request scope in tests.
-vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }))
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
+import type { deniedMessage } from '@/lib/infra/rate-limit'
+import type { listParseSourceCandidates } from '@/lib/db/ai-parse-jobs'
+import type { invalidateItemsCache } from '@/lib/infra/cache'
+import type { LightItem } from '@/types/item'
+
+vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn<typeof after>() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof getCachedSession>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn<typeof getCachedVerifiedProAccess>() }))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  resetRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  checkRateLimit: vi.fn<typeof checkRateLimit>(),
+  resetRateLimit: vi.fn<typeof resetRateLimit>(),
+  deniedMessage: vi.fn<typeof deniedMessage>((retryAfter) => `Too many attempts (${retryAfter}s).`),
 }))
 vi.mock('@/lib/db/ai-parse-jobs', () => ({
-  createParseJob: vi.fn(),
-  listActiveParseJobs: vi.fn(),
-  listClosedParseJobs: vi.fn(),
-  getSourceItemForParse: vi.fn(),
-  getSourceText: vi.fn(),
-  listParseSourceCandidates: vi.fn(),
-  sweepAbandonedParseJobs: vi.fn(),
+  createParseJob: vi.fn<typeof createParseJob>(),
+  listActiveParseJobs: vi.fn<typeof listActiveParseJobs>(),
+  listClosedParseJobs: vi.fn<typeof listClosedParseJobs>(),
+  getSourceItemForParse: vi.fn<typeof getSourceItemForParse>(),
+  getSourceText: vi.fn<typeof getSourceText>(),
+  listParseSourceCandidates: vi.fn<typeof listParseSourceCandidates>(),
+  sweepAbandonedParseJobs: vi.fn<typeof sweepAbandonedParseJobs>(),
 }))
-vi.mock('@/lib/db/items', () => ({ createItem: vi.fn(), deleteItem: vi.fn() }))
-vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ createItem: vi.fn<typeof createItem>(), deleteItem: vi.fn<typeof deleteItem>() }))
+vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn<typeof invalidateItemsCache>() }))
 
 import { after } from 'next/server'
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { checkRateLimit, resetRateLimit } from '@/lib/infra/rate-limit'
 import { createParseJob, listActiveParseJobs, listClosedParseJobs, getSourceItemForParse, getSourceText, sweepAbandonedParseJobs } from '@/lib/db/ai-parse-jobs'
+import type { ParseJobSummary } from '@/lib/db/ai-parse-jobs'
 import { createItem, deleteItem } from '@/lib/db/items'
 import { POST, GET } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockCheckRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockResetRateLimit = resetRateLimit as ReturnType<typeof vi.fn>
-const mockCreate = createParseJob as ReturnType<typeof vi.fn>
-const mockList = listActiveParseJobs as ReturnType<typeof vi.fn>
-const mockGetSourceItem = getSourceItemForParse as ReturnType<typeof vi.fn>
-const mockGetSourceText = getSourceText as ReturnType<typeof vi.fn>
-const mockCreateItem = createItem as ReturnType<typeof vi.fn>
-const mockDeleteItem = deleteItem as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockIsPro = vi.mocked(getCachedVerifiedProAccess)
+const mockCheckRateLimit = vi.mocked(checkRateLimit)
+const mockResetRateLimit = vi.mocked(resetRateLimit)
+const mockCreate = vi.mocked(createParseJob)
+const mockList = vi.mocked(listActiveParseJobs)
+const mockGetSourceItem = vi.mocked(getSourceItemForParse)
+const mockGetSourceText = vi.mocked(getSourceText)
+const mockCreateItem = vi.mocked(createItem)
+const mockDeleteItem = vi.mocked(deleteItem)
+
+const mockSnippetItem: LightItem = {
+  id: 'note-1',
+  title: 'Brain dump',
+  createdAt: '2026-06-21T00:00:00.000Z',
+  itemType: { name: 'snippet' },
+  descriptionPreview: null,
+  contentPreview: null,
+  url: null,
+  tags: [],
+  fileName: null,
+  fileSize: null,
+  isFavorite: false,
+  isPinned: false,
+}
 
 const longText = 'Here is a real project brain dump with plenty of content to split into items.'
 
@@ -94,7 +115,7 @@ describe('POST /ai/brain-dump (paste)', () => {
   })
 
   it('persists the paste as a brain-dump snippet, then creates the job (201)', async () => {
-    mockCreateItem.mockResolvedValue({ id: 'note-1' })
+    mockCreateItem.mockResolvedValue(mockSnippetItem)
     mockGetSourceText.mockResolvedValue({ text: longText, truncated: false, sourceName: 'Here is a real project' })
     mockCreate.mockResolvedValue('job-123')
 
@@ -120,7 +141,7 @@ describe('POST /ai/brain-dump (paste)', () => {
   })
 
   it('refunds the hourly token when job creation fails after the paste snippet was saved', async () => {
-    mockCreateItem.mockResolvedValue({ id: 'note-1' })
+    mockCreateItem.mockResolvedValue(mockSnippetItem)
     mockGetSourceText.mockResolvedValue({ text: longText, truncated: false, sourceName: 'Here is a real project' })
     mockCreate.mockRejectedValue(new Error('db down'))
 
@@ -189,8 +210,8 @@ describe('GET /ai/brain-dump', () => {
   })
 
   it('returns 200 with the in-progress jobs for the session user', async () => {
-    const jobs = [
-      { id: 'job-1', status: 'processing', progress: 30, itemCount: 4, sourceName: 'notes.md', createdAt: '2026-06-21T00:00:00.000Z' },
+    const jobs: ParseJobSummary[] = [
+      { id: 'job-1', status: 'processing', progress: 30, itemCount: 4, sourceName: 'notes.md', collectionName: null, createdAt: '2026-06-21T00:00:00.000Z' },
     ]
     mockList.mockResolvedValue(jobs)
     const res = await GET(getReq())
@@ -202,9 +223,9 @@ describe('GET /ai/brain-dump', () => {
   })
 
   it('returns the closed History list when ?history=1 (not the active list)', async () => {
-    const mockClosed = listClosedParseJobs as ReturnType<typeof vi.fn>
-    const closed = [
-      { id: 'c1', status: 'closed', progress: 100, itemCount: 1, sourceName: 'done.md', createdAt: '2026-06-20T00:00:00.000Z', committedCount: 5, committedByType: { snippet: 5 } },
+    const mockClosed = vi.mocked(listClosedParseJobs)
+    const closed: ParseJobSummary[] = [
+      { id: 'c1', status: 'closed', progress: 100, itemCount: 1, sourceName: 'done.md', collectionName: null, createdAt: '2026-06-20T00:00:00.000Z', committedCount: 5, committedByType: { snippet: 5 } },
     ]
     mockClosed.mockResolvedValue(closed)
     const res = await GET(getReq('?history=1'))
@@ -215,7 +236,7 @@ describe('GET /ai/brain-dump', () => {
   })
 
   it('returns 422 for an invalid history value — neither list is queried', async () => {
-    const mockClosed = listClosedParseJobs as ReturnType<typeof vi.fn>
+    const mockClosed = vi.mocked(listClosedParseJobs)
     const res = await GET(getReq('?history=2'))
     expect(res.status).toBe(422)
     expect(mockList).not.toHaveBeenCalled()

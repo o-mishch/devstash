@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useCallback } from 'react'
+import { useId, useCallback, memo } from 'react'
 import { useWatch, type UseFormReturn } from 'react-hook-form'
 import { z } from 'zod'
 import { Input } from '@/components/ui/input'
@@ -26,7 +26,7 @@ interface CollectionFormFieldsProps {
   growDescription?: boolean
 }
 
-export function CollectionFormFields({ form, idPrefix, growDescription = false }: CollectionFormFieldsProps) {
+export const CollectionFormFields = memo(function CollectionFormFields({ form, idPrefix, growDescription = false }: CollectionFormFieldsProps) {
   const generatedId = useId()
   const prefix = idPrefix ?? generatedId
   const nameId = `${prefix}-name`
@@ -46,6 +46,10 @@ export function CollectionFormFields({ form, idPrefix, growDescription = false }
 
   const aiField = useAiDescriptionField({ canGenerate, disabledReason, onGenerate })
   const inputProps = form.register('description')
+
+  const handleApplyDescription = useCallback((description: string) => {
+    form.setValue('description', description, { shouldDirty: true, shouldValidate: true })
+  }, [form])
 
   return (
     <>
@@ -73,9 +77,7 @@ export function CollectionFormFields({ form, idPrefix, growDescription = false }
         </Label>
         <AiDescriptionField
           field={aiField}
-          onApply={(description) =>
-            form.setValue('description', description, { shouldDirty: true, shouldValidate: true })
-          }
+          onApply={handleApplyDescription}
           actionClassName="right-1.5 top-1.5"
           fill={growDescription}
         >
@@ -99,4 +101,4 @@ export function CollectionFormFields({ form, idPrefix, growDescription = false }
       </div>
     </>
   )
-}
+})

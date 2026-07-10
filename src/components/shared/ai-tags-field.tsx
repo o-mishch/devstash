@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback, type ReactNode } from 'react'
+import { useState, useCallback, memo, type ReactNode } from 'react'
 import { Check, X, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+
 import { Button } from '@/components/ui/button'
 import {
   AiFieldAction,
@@ -26,35 +26,27 @@ export interface UseAiTagsFieldResult {
   setSuggestedTags: (tags: string[]) => void
   run: () => void
   disabled: boolean
-  tooltip: string
+  tooltip: string | null
   tooltipEnabled: string
 }
 
-export function useAiTagsField({
-  canGenerate,
-  disabledReason,
-  onGenerate,
-}: UseAiTagsFieldParams): UseAiTagsFieldResult {
+export function useAiTagsField({ canGenerate, disabledReason, onGenerate }: UseAiTagsFieldParams): UseAiTagsFieldResult {
   const [suggestedTags, setSuggestedTags] = useState<string[]>([])
 
-  const handleSuccess = useCallback((tags: string[]) => {
-    if (tags.length === 0) {
-      toast.info('No tags suggested.')
-    } else {
-      setSuggestedTags(tags)
-    }
+  const handleSuccess = useCallback((data: string[]) => {
+    setSuggestedTags(data)
   }, [])
 
   const { isLoading, run } = useAiFieldGenerate({
     canGenerate,
     onGenerate,
-    onStart: () => setSuggestedTags([]),
+    onStart: useCallback(() => setSuggestedTags([]), []),
     onSuccess: handleSuccess,
     failureMessage: 'Failed to generate tags.',
   })
 
-  const disabled = !canGenerate || isLoading
-  const tooltipEnabled = `Suggest tags with AI · ${aiRateLimitHint('tag suggestions')}`
+  const disabled = isLoading || !canGenerate
+  const tooltipEnabled = `Suggest tags with AI · ${aiRateLimitHint('tags')}`
   const tooltip = disabled ? (disabledReason ?? '') : tooltipEnabled
 
   return { isLoading, suggestedTags, setSuggestedTags, run, disabled, tooltip, tooltipEnabled }
@@ -67,7 +59,62 @@ interface AiTagsFieldProps {
   children: ReactNode
 }
 
-export function AiTagsField({
+interface SuggestedTagItemProps {
+  tag: string
+  onAccept: (tag: string) => void
+  onReject: (tag: string) => void
+}
+
+const SuggestedTagItem = memo(function SuggestedTagItem({
+  tag,
+  onAccept,
+  onReject,
+}: SuggestedTagItemProps) {
+  const handleAcceptClick = useCallback(() => {
+    onAccept(tag)
+  }, [tag, onAccept])
+
+  const handleRejectClick = useCallback(() => {
+    onReject(tag)
+  }, [tag, onReject])
+
+  return (
+    <div
+      className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-background/80 pl-2.5 pr-1 py-0.5"
+    >
+      <button
+        type="button"
+        onClick={handleAcceptClick}
+        className="h-auto border-0 bg-transparent px-0 py-0 text-xs font-medium shadow-none text-foreground"
+        aria-label={`Accept ${tag}`}
+      >
+        {tag}
+      </button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        onClick={handleAcceptClick}
+        className="size-6 text-primary hover:text-primary"
+        aria-label={`Accept ${tag}`}
+      >
+        <Check className="size-3.5" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        onClick={handleRejectClick}
+        className="size-6 text-muted-foreground hover:text-destructive"
+        aria-label={`Dismiss ${tag}`}
+      >
+        <X className="size-3.5" />
+      </Button>
+    </div>
+  )
+})
+
+export const AiTagsField = memo(function AiTagsField({
   field,
   onAcceptTag,
   actionClassName,
@@ -76,14 +123,14 @@ export function AiTagsField({
   const isPro = useIsPro()
   const { isLoading, suggestedTags, setSuggestedTags, run, disabled } = field
 
-  const handleAccept = (tag: string) => {
+  const handleAccept = useCallback((tag: string) => {
     onAcceptTag(tag)
     setSuggestedTags(suggestedTags.filter((t) => t !== tag))
-  }
+  }, [onAcceptTag, setSuggestedTags, suggestedTags])
 
-  const handleReject = (tag: string) => {
+  const handleReject = useCallback((tag: string) => {
     setSuggestedTags(suggestedTags.filter((t) => t !== tag))
-  }
+  }, [setSuggestedTags, suggestedTags])
 
   return (
     <div className="space-y-2 w-full">
@@ -116,39 +163,12 @@ export function AiTagsField({
           ) : (
             <div className="flex flex-wrap gap-2">
               {suggestedTags.map((tag) => (
-                <div
+                <SuggestedTagItem
                   key={tag}
-                  className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-background/80 pl-2.5 pr-1 py-0.5"
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleAccept(tag)}
-                    className="h-auto border-0 bg-transparent px-0 py-0 text-xs font-medium shadow-none text-foreground"
-                    aria-label={`Accept ${tag}`}
-                  >
-                    {tag}
-                  </button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => handleAccept(tag)}
-                    className="size-6 text-primary hover:text-primary"
-                    aria-label={`Accept ${tag}`}
-                  >
-                    <Check className="size-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={() => handleReject(tag)}
-                    className="size-6 text-muted-foreground hover:text-destructive"
-                    aria-label={`Dismiss ${tag}`}
-                  >
-                    <X className="size-3.5" />
-                  </Button>
-                </div>
+                  tag={tag}
+                  onAccept={handleAccept}
+                  onReject={handleReject}
+                />
               ))}
             </div>
           )}
@@ -156,7 +176,7 @@ export function AiTagsField({
       )}
     </div>
   )
-}
+})
 
 export const AI_TAGS_INPUT_CLASS =
   'border-0 bg-transparent pr-16 shadow-none focus-visible:ring-0'

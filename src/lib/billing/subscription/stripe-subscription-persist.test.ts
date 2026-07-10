@@ -1,5 +1,14 @@
+import type { LogFn } from 'pino'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type {
+  clearStripeSubscriptionBySubId,
+  resolveAppUserIdForSubscription,
+  updateSubscriptionState,
+  updateUserStripeSubscription,
+} from '@/lib/billing/subscription/subscription-state'
+import type { getUserIdsByStripeSubscriptionId } from '@/lib/db/stripe'
+import type { getRedis } from '@/lib/infra/redis'
 import { anyOf } from '@/test/matchers'
 
 const {
@@ -9,11 +18,11 @@ const {
   mockResolveAppUserIdForSubscription,
   mockGetUserIdsByStripeSubscriptionId,
 } = vi.hoisted(() => ({
-  mockUpdateSubscriptionState: vi.fn(),
-  mockUpdateUserStripeSubscription: vi.fn(),
-  mockClearStripeSubscriptionBySubId: vi.fn(),
-  mockResolveAppUserIdForSubscription: vi.fn(),
-  mockGetUserIdsByStripeSubscriptionId: vi.fn(),
+  mockUpdateSubscriptionState: vi.fn<typeof updateSubscriptionState>(),
+  mockUpdateUserStripeSubscription: vi.fn<typeof updateUserStripeSubscription>(),
+  mockClearStripeSubscriptionBySubId: vi.fn<typeof clearStripeSubscriptionBySubId>(),
+  mockResolveAppUserIdForSubscription: vi.fn<typeof resolveAppUserIdForSubscription>(),
+  mockGetUserIdsByStripeSubscriptionId: vi.fn<typeof getUserIdsByStripeSubscriptionId>(),
 }))
 
 vi.mock('@/lib/billing/subscription/subscription-state', () => ({
@@ -31,17 +40,17 @@ vi.mock('@/lib/billing/stripe-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/billing/stripe-api')>()
   return {
     ...actual,
-    getIntervalFromSub: vi.fn(() => 'month'),
+    getIntervalFromSub: vi.fn<typeof actual.getIntervalFromSub>(() => 'month'),
     getPrimarySubscriptionItem: () => ({ current_period_end: 1_749_403_200 }),
   }
 })
 
 vi.mock('@/lib/infra/redis', () => ({
-  getRedis: vi.fn(() => null),
+  getRedis: vi.fn<typeof getRedis>(() => null),
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() }) },
 }))
 
 import type Stripe from 'stripe'

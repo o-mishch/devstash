@@ -1,18 +1,20 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { emptyJobTrash as EmptyJobTrashFn } from '@/lib/db/ai-parse-jobs'
 
 // Exercises the empty-trash route: auth (401), 404 for a foreign/missing job, and 204 on success —
 // asserting the delete is scoped to the session userId. Not Pro-gated by design — emptying the trash of
 // one's own job is a benign cleanup; only the paid actions gate on Pro — so no pro-access mock here.
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/db/ai-parse-jobs', () => ({ emptyJobTrash: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/db/ai-parse-jobs', () => ({ emptyJobTrash: vi.fn<typeof EmptyJobTrashFn>() }))
 
 import { getCachedSession } from '@/lib/session'
 import { emptyJobTrash } from '@/lib/db/ai-parse-jobs'
 import { DELETE } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockEmpty = emptyJobTrash as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockEmpty = vi.mocked(emptyJobTrash)
 
 function delReq(): NextRequest {
   return new NextRequest('http://localhost/api/ai/brain-dump/job-1/trash', { method: 'DELETE' })

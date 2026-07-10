@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { SidebarData } from '@/types/sidebar'
 import { useUpdateEditorPreferences } from '@/hooks/editor/use-editor-preferences'
 import { writeLayoutCookie } from '@/lib/dom/layout-cookie'
@@ -20,26 +20,39 @@ export function CollapsibleSidebarShell({ sidebarData, initialCollapsed }: Colla
 
   // Optimistically flip the rail, mirror the cookie for the pre-hydration no-flash path, and persist
   // to the DB (editorPreferences). Roll back the local state + cookie if the save fails.
-  const toggleCollapsed = async (next: boolean) => {
-    const prev = collapsed
-    setCollapsed(next)
-    writeLayoutCookie({ sidebar: next })
+  const toggleCollapsed = useCallback(
+    async (next: boolean) => {
+      const prev = collapsed
+      setCollapsed(next)
+      writeLayoutCookie({ sidebar: next })
 
-    const ok = await updateEditorPreferences({ sidebarCollapsed: next })
-    if (!ok) {
-      setCollapsed(prev)
-      writeLayoutCookie({ sidebar: prev })
-    }
-  }
+      const ok = await updateEditorPreferences({ sidebarCollapsed: next })
+      if (!ok) {
+        setCollapsed(prev)
+        writeLayoutCookie({ sidebar: prev })
+      }
+    },
+    [collapsed, updateEditorPreferences],
+  )
+
+  // Stable per-direction handlers so CollapsedSidebar/ExpandedSidebar receive a real function
+  // reference instead of a JSX-inline arrow.
+  const handleExpand = useCallback(() => {
+    void toggleCollapsed(false)
+  }, [toggleCollapsed])
+
+  const handleCollapse = useCallback(() => {
+    void toggleCollapsed(true)
+  }, [toggleCollapsed])
 
   return (
     <aside
       className={`hidden flex-col border-r border-border bg-muted/30 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] lg:flex ${collapsed ? 'w-14' : 'w-56'} overflow-hidden`}
     >
       {collapsed ? (
-        <CollapsedSidebar sidebarData={sidebarData} onToggle={() => void toggleCollapsed(false)} />
+        <CollapsedSidebar sidebarData={sidebarData} onToggle={handleExpand} />
       ) : (
-        <ExpandedSidebar sidebarData={sidebarData} onToggle={() => void toggleCollapsed(true)} />
+        <ExpandedSidebar sidebarData={sidebarData} onToggle={handleCollapse} />
       )}
     </aside>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useDraftDrawerStore } from '@/stores/draft-drawer-store'
 import type { DraftDrawerCallbacks } from '@/stores/draft-drawer-store'
 import { useIsTouch } from '@/hooks/ui/use-is-touch'
@@ -8,6 +8,7 @@ import { MobileDrawerHost } from '@/components/items/drawer/drawer-shared'
 import { DrawerShell } from '@/components/items/drawer/drawer-shell'
 import { MobileDraftFullScreenView, DraftEditBody } from '@/components/parse/parse-draft-card'
 import type { BrainDumpDraftItem } from '@/hooks/items/use-brain-dump'
+import type { SheetCloseRef } from '@/hooks/ui/use-register-sheet-close'
 import type { WithChildren } from '@/types/common'
 
 interface DraftDrawerPane {
@@ -42,27 +43,48 @@ export function DraftDrawerProvider({ children }: WithChildren) {
   // only through the store, so bouncing close through the card's latched `setEditOpen` was a no-op. The card
   // subscribes to the store and resets its own `editOpen` (clearing `?item=` and staying reopenable) when this
   // close lands. On open we ignore — the store is already open.
-  const onOpenChange = (next: boolean) => {
+  // Reads the store fresh via getState() rather than a closed-over value, so no dependency is needed — safe to
+  // hand out a single stable reference to every prop site below (MobileDrawerHost, both bodies, DrawerShell).
+  const onOpenChange = useCallback((next: boolean) => {
     if (!next) useDraftDrawerStore.getState().closeDrawer()
-  }
+  }, [])
 
   // Action callbacks from the latched pane (undefined until one latches; only read inside the `pane ? …`
-  // branches below, so the no-op fallbacks are never actually invoked).
-  const sharedActionProps = {
-    busy,
-    canCommit,
-    inTrash,
-    onTrash: pane?.callbacks.onTrash ?? noop,
-    onRestore: pane?.callbacks.onRestore ?? noop,
-    onDeleteForever: pane?.callbacks.onDeleteForever ?? noop,
-    onCommit: pane?.callbacks.onCommit ?? noop,
-  }
+  // branches below, so the no-op fallbacks are never actually invoked). Memoized so the prop identity only
+  // changes when one of its real inputs does, not on every unrelated store update.
+  const sharedActionProps = useMemo(
+    () => ({
+      busy,
+      canCommit,
+      inTrash,
+      onTrash: pane?.callbacks.onTrash ?? noop,
+      onRestore: pane?.callbacks.onRestore ?? noop,
+      onDeleteForever: pane?.callbacks.onDeleteForever ?? noop,
+      onCommit: pane?.callbacks.onCommit ?? noop,
+    }),
+    [busy, canCommit, inTrash, pane],
+  )
 
   // Touch: ALWAYS render MobileDrawerHost with `children` as its `page` — open or closed, latched or not —
   // exactly like ItemDrawerProvider. `children` must keep ONE stable tree position: if it moved between a bare
   // `<>{children}</>` (closed) and `MobileDrawerHost`'s slider wrapper (open), React would destroy and recreate
   // the whole page subtree on the first open, visibly remounting/reflowing the board (the "page refresh" flash).
   // The host's pane is null until a pane latches, so it renders nothing over the page until then.
+  const renderMobileBody = useCallback(
+    ({ sheetCloseRef }: { sheetCloseRef: SheetCloseRef }) =>
+      pane ? (
+        <MobileDraftFullScreenView
+          item={pane.item}
+          targetCollections={targetCollections}
+          onSave={pane.callbacks.onSave}
+          onOpenChange={onOpenChange}
+          sheetCloseRef={sheetCloseRef}
+          {...sharedActionProps}
+        />
+      ) : null,
+    [pane, targetCollections, onOpenChange, sharedActionProps],
+  )
+
   if (isTouch) {
     return (
       <MobileDrawerHost
@@ -72,18 +94,7 @@ export function DraftDrawerProvider({ children }: WithChildren) {
         decoration="none"
         resetKey={pane?.item.id ?? null}
         onOpenChange={onOpenChange}
-        renderBody={({ sheetCloseRef }) =>
-          pane ? (
-            <MobileDraftFullScreenView
-              item={pane.item}
-              targetCollections={targetCollections}
-              onSave={pane.callbacks.onSave}
-              onOpenChange={onOpenChange}
-              sheetCloseRef={sheetCloseRef}
-              {...sharedActionProps}
-            />
-          ) : null
-        }
+        renderBody={renderMobileBody}
       />
     )
   }

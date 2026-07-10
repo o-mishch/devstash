@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { SheetTitle } from '@/components/ui/sheet'
 import { DrawerShell } from './drawer-shell'
 import { useItemDetails, useItemContent } from '@/hooks/items/use-item-detail'
@@ -94,6 +94,18 @@ function ItemDetailDrawerInner({
     }
   }, [item, savedItem, details, content, mergedItem, onFullItemFetched])
 
+  // Stable references: both feed a downstream `useDirtyGuard`/`useAiItemRewrite` dependency array
+  // (via ItemDrawerViewContent), so a fresh closure on every render would defeat those hooks'
+  // memoization. `onDeleted` performs the same "close the drawer" action as `onClose`, so it reuses
+  // the same stable callback rather than allocating an equivalent one.
+  const handleClose = useCallback(() => onOpenChange(false), [onOpenChange])
+  const handleAiResultSaved = useCallback((updated: FullItem) => setSavedItem(updated), [])
+  const handleEditSave = useCallback((updated: FullItem) => {
+    setSavedItem(updated)
+    setEditingItemId(null)
+  }, [])
+  const handleEditCancel = useCallback(() => setEditingItemId(null), [])
+
   const displayItem = savedItem ?? mergedItem
   const detailsLoaded = Boolean(details) || Boolean(savedItem) || (item !== null && isFullItem(item))
   const contentLoaded =
@@ -103,6 +115,9 @@ function ItemDetailDrawerInner({
     Boolean(savedItem) ||
     (item !== null && isFullItem(item))
   const isLight = !detailsLoaded
+  const handleStartEdit = useCallback(() => {
+    if (contentLoaded && displayItem) setEditingItemId(displayItem.id)
+  }, [contentLoaded, displayItem])
   const contentLoading = detailsLoaded && !contentLoaded
   const editing = editingItemId !== null && editingItemId === displayItem?.id && contentLoaded
 
@@ -114,12 +129,9 @@ function ItemDetailDrawerInner({
       <ItemDrawerEditContent
         item={displayItem as FullItem}
         fullScreen={fullScreen}
-        onClose={() => onOpenChange(false)}
-        onSave={(updated: FullItem) => {
-          setSavedItem(updated)
-          setEditingItemId(null)
-        }}
-        onCancel={() => setEditingItemId(null)}
+        onClose={handleClose}
+        onSave={handleEditSave}
+        onCancel={handleEditCancel}
         sheetCloseRef={sheetCloseRef}
       />
     )
@@ -130,11 +142,11 @@ function ItemDetailDrawerInner({
         isLight={isLight}
         contentLoading={contentLoading}
         fullScreen={fullScreen}
-        onClose={() => onOpenChange(false)}
-        onEdit={() => contentLoaded && setEditingItemId(displayItem.id)}
-        onDeleted={() => onOpenChange(false)}
+        onClose={handleClose}
+        onEdit={handleStartEdit}
+        onDeleted={handleClose}
         sheetCloseRef={sheetCloseRef}
-        onAiResultSaved={(updated) => setSavedItem(updated)}
+        onAiResultSaved={handleAiResultSaved}
       />
     )
   }

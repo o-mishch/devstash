@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Lock, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -22,32 +23,40 @@ const PRO_FEATURES = [
 
 export function UpgradePromptProvider({ children }: WithChildren) {
   const router = useRouter()
-  const store = useUpgradePromptStore()
+  // Narrow selectors (not the whole store object) so each field is read independently,
+  // matching the item-row.tsx / image-card.tsx pattern used elsewhere.
+  const isOpen = useUpgradePromptStore((state) => state.isOpen)
+  const title = useUpgradePromptStore((state) => state.title)
+  const description = useUpgradePromptStore((state) => state.description)
+  const onUpgrade = useUpgradePromptStore((state) => state.onUpgrade)
+  const closePrompt = useUpgradePromptStore((state) => state.closePrompt)
 
-  function handleUpgrade() {
-    store.onUpgrade?.()
-    store.closePrompt()
+  const handleUpgrade = useCallback(() => {
+    onUpgrade?.()
+    closePrompt()
     router.push('/upgrade')
-  }
+  }, [onUpgrade, closePrompt, router])
+
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        closePrompt()
+      }
+    },
+    [closePrompt],
+  )
 
   return (
     <>
       {children}
-      <Dialog
-        open={store.isOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            store.closePrompt()
-          }
-        }}
-      >
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-[380px]">
           <DialogHeader>
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
               <Lock className="size-5 text-primary" />
             </div>
-            <DialogTitle>{store.title}</DialogTitle>
-            <DialogDescription>{store.description}</DialogDescription>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           <ul className="space-y-1.5 py-1">
             {PRO_FEATURES.map((feature) => (
@@ -58,10 +67,8 @@ export function UpgradePromptProvider({ children }: WithChildren) {
             ))}
           </ul>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => store.closePrompt()}
-            >
+            {/* closePrompt (`() => void`) passed directly — no wrapper closure needed */}
+            <Button variant="outline" onClick={closePrompt}>
               Cancel
             </Button>
             <Button onClick={handleUpgrade}>Upgrade to Pro</Button>

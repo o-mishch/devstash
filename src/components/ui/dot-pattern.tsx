@@ -63,7 +63,23 @@ interface DotPatternProps extends React.SVGProps<SVGSVGElement> {
  * - Dots color can be controlled via the text color utility classes
  */
 
-export function DotPattern({
+const staticInitial = {}
+const staticAnimate = {}
+const staticTransition = {}
+const glowInitial = { opacity: 0.4, scale: 1 }
+const glowAnimate = {
+  opacity: [0.4, 1, 0.4],
+  scale: [1, 1.5, 1],
+}
+const getGlowTransition = (duration: number, delay: number) => ({
+  duration,
+  repeat: Infinity,
+  repeatType: "reverse" as const,
+  delay,
+  ease: "easeInOut" as const,
+})
+
+export const DotPattern = React.memo(function DotPattern({
   width = 16,
   height = 16,
   x = 0,
@@ -92,23 +108,23 @@ export function DotPattern({
     return () => window.removeEventListener("resize", updateDimensions)
   }, [])
 
-  const dots = Array.from(
-    {
-      length:
-        Math.ceil(dimensions.width / width) *
-        Math.ceil(dimensions.height / height),
-    },
-    (_, i) => {
-      const col = i % Math.ceil(dimensions.width / width)
-      const row = Math.floor(i / Math.ceil(dimensions.width / width))
-      return {
-        x: col * width + cx + x,
-        y: row * height + cy + y,
-        delay: Math.random() * 5,
-        duration: Math.random() * 3 + 2,
+  const dots = React.useMemo(() => {
+    const cols = Math.ceil(dimensions.width / width)
+    const rows = Math.ceil(dimensions.height / height)
+    return Array.from(
+      { length: cols * rows },
+      (_, i) => {
+        const col = i % cols
+        const row = Math.floor(i / cols)
+        return {
+          x: col * width + cx + x,
+          y: row * height + cy + y,
+          delay: Math.random() * 5,
+          duration: Math.random() * 3 + 2,
+        }
       }
-    }
-  )
+    )
+  }, [dimensions.width, dimensions.height, width, height, cx, cy, x, y])
 
   return (
     <svg
@@ -133,28 +149,11 @@ export function DotPattern({
           cy={dot.y}
           r={cr}
           fill={glow ? `url(#${id}-gradient)` : "currentColor"}
-          initial={glow ? { opacity: 0.4, scale: 1 } : {}}
-          animate={
-            glow
-              ? {
-                  opacity: [0.4, 1, 0.4],
-                  scale: [1, 1.5, 1],
-                }
-              : {}
-          }
-          transition={
-            glow
-              ? {
-                  duration: dot.duration,
-                  repeat: Infinity,
-                  repeatType: "reverse",
-                  delay: dot.delay,
-                  ease: "easeInOut",
-                }
-              : {}
-          }
+          initial={glow ? glowInitial : staticInitial}
+          animate={glow ? glowAnimate : staticAnimate}
+          transition={glow ? getGlowTransition(dot.duration, dot.delay) : staticTransition}
         />
       ))}
     </svg>
   )
-}
+})

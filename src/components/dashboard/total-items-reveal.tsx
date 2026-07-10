@@ -1,7 +1,7 @@
 'use client'
 
-import type { ReactNode } from 'react'
-import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { AnimatePresence, motion, useReducedMotion, type Variants } from 'motion/react'
@@ -19,6 +19,13 @@ export type RevealVariant = 'pop' | 'float' | 'terminal' | 'neon' | 'list'
 
 const TYPES = getDashboardTypeShortcuts()
 
+// Precomputed once — TYPES is a fixed, module-level list, so each type's neon border/glow style has
+// no dependency on props/state/closures. A real (not merely memoized) constant, not recreated per
+// render or per menu-item.
+const NEON_STYLES: Record<string, CSSProperties> = Object.fromEntries(
+  TYPES.map((t) => [t.name, { borderColor: `${t.color}66`, boxShadow: `0 0 14px -6px ${t.color}` }]),
+)
+
 interface VariantConfig {
   width: number
   panel: string
@@ -34,6 +41,10 @@ function iconBadge(t: DashboardTypeShortcut, size: string) {
   return (
     <span
       className={cn('grid place-items-center rounded-lg', size)}
+      // Plain DOM span, rendered for at most 7 types in a closed-by-default dropdown — not a long
+      // list or expensive subtree, so there's no memoized boundary here to benefit from stabilizing
+      // this object.
+      // oxlint-disable-next-line react-perf/jsx-no-new-object-as-prop
       style={{ backgroundColor: `${t.color}24`, color: t.color }}
     >
       <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4" />
@@ -172,6 +183,11 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
     setOpen(true)
   }
 
+  // Single stable handler shared by the backdrop and every mapped tile Link — real allocation win
+  // (one closure instead of one per rendered type) since motion/AnimatePresence re-renders this
+  // subtree on every enter/exit animation frame.
+  const closePanel = useCallback(() => setOpen(false), [])
+
   // Reads the latest `place` (which closes over triggerRef/align/cfg.width) without needing the
   // effect to re-run when those change — only `open` should control listener attach/detach.
   const repositionOnResize = useEffectEvent(() => place())
@@ -194,8 +210,21 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
     }
   }, [open])
 
-  const container = reduceMotion ? { hidden: {}, show: {} } : cfg.container
-  const item = reduceMotion ? { hidden: { opacity: 0 }, show: { opacity: 1 } } : cfg.item
+  // motion/AnimatePresence is genuinely animation-driven, so stabilizing the variants/style objects
+  // it receives is a real fix (not cosmetic): avoids handing framer-motion a new object identity on
+  // every unrelated re-render of this component.
+  const container = useMemo<Variants>(
+    () => (reduceMotion ? { hidden: {}, show: {} } : cfg.container),
+    [reduceMotion, cfg],
+  )
+  const item = useMemo<Variants>(
+    () => (reduceMotion ? { hidden: { opacity: 0 }, show: { opacity: 1 } } : cfg.item),
+    [reduceMotion, cfg],
+  )
+  const panelStyle = useMemo<CSSProperties | undefined>(
+    () => (coords ? { position: 'fixed', top: coords.top, left: coords.left, width: cfg.width } : undefined),
+    [coords, cfg.width],
+  )
 
   return (
     <>
@@ -205,6 +234,9 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={panelId}
+        // Plain DOM button, single instance; there's no memoized child here for a stable ref to
+        // help, so useCallback would be cosmetic churn with no runtime benefit.
+        // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop
         onClick={() => (open ? setOpen(false) : openPanel())}
         className={cn('cursor-pointer text-left', className)}
       >
@@ -220,7 +252,7 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
                   type="button"
                   aria-hidden="true"
                   tabIndex={-1}
-                  onClick={() => setOpen(false)}
+                  onClick={closePanel}
                   className="fixed inset-0 z-50 cursor-default bg-background/60 backdrop-blur-sm"
                 />
                 <motion.div
@@ -231,7 +263,7 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
                   animate="show"
                   exit="hidden"
                   variants={container}
-                  style={{ position: 'fixed', top: coords.top, left: coords.left, width: cfg.width }}
+                  style={panelStyle}
                   className={cn('z-50 max-w-[calc(100vw-16px)]', cfg.panel)}
                 >
                   {TYPES.map((t) => (
@@ -241,9 +273,9 @@ export function TotalItemsReveal({ variant, children, className, align = 'left' 
                         prefetch={false}
                         role="menuitem"
                         tabIndex={0}
-                        onClick={() => setOpen(false)}
+                        onClick={closePanel}
                         className={cn('cursor-pointer', cfg.tile)}
-                        style={variant === 'neon' ? { borderColor: `${t.color}66`, boxShadow: `0 0 14px -6px ${t.color}` } : undefined}
+                        style={variant === 'neon' ? NEON_STYLES[t.name] : undefined}
                       >
                         {cfg.renderTile(t)}
                       </Link>

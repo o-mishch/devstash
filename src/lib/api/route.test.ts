@@ -1,12 +1,17 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { checkRateLimit as CheckRateLimitFn, deniedMessage as DeniedMessageFn } from '@/lib/infra/rate-limit'
 
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
+}))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
+  deniedMessage: vi.fn<typeof DeniedMessageFn>((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
 }))
 
 import { getCachedSession } from '@/lib/session'
@@ -15,15 +20,15 @@ import { checkRateLimit } from '@/lib/infra/rate-limit'
 import { authedRoute, authedRouteWithParams } from './route'
 import { json } from './http'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockIsPro = vi.mocked(getCachedVerifiedProAccess)
+const mockRateLimit = vi.mocked(checkRateLimit)
 
 const request = () => new NextRequest('http://localhost/api/test', { method: 'POST' })
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: false }, expires: '2099-01-01T00:00:00.000Z' })
   mockIsPro.mockResolvedValue(false)
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
 })

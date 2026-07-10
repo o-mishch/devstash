@@ -14,7 +14,14 @@ export interface OrbitingCirclesProps extends React.HTMLAttributes<HTMLDivElemen
   speed?: number
 }
 
-export function OrbitingCircles({
+const getCircleStyle = (duration: number, radius: number, angle: number, iconSize: number) => ({
+  "--duration": duration,
+  "--radius": radius,
+  "--angle": angle,
+  "--icon-size": `${iconSize}px`,
+} as React.CSSProperties)
+
+export const OrbitingCircles = React.memo(function OrbitingCircles({
   className,
   children,
   reverse,
@@ -47,14 +54,7 @@ export function OrbitingCircles({
         const angle = (360 / React.Children.count(children)) * index
         return (
           <div
-            style={
-              {
-                "--duration": calculatedDuration,
-                "--radius": radius,
-                "--angle": angle,
-                "--icon-size": `${iconSize}px`,
-              } as React.CSSProperties
-            }
+            style={getCircleStyle(calculatedDuration, radius, angle, iconSize)}
             className={cn(
               `animate-orbit absolute flex size-(--icon-size) transform-gpu items-center justify-center rounded-full`,
               { "[animation-direction:reverse]": reverse },
@@ -68,4 +68,4 @@ export function OrbitingCircles({
       })}
     </>
   )
-}
+})

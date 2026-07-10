@@ -1,19 +1,21 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import type { sendEmail as SendEmailFn } from '@/lib/infra/resend'
+import type { getUserById as GetUserByIdFn } from '@/lib/db/users'
 
 // The module imports a raw `.html` template (no vitest loader) and the template builder (which imports
 // another `.html`); mock both so the test exercises only the recipient-resolution branch.
 vi.mock('./security-notification.html', () => ({ default: '{{HEADING}}{{MESSAGE}}{{SETTINGS_URL}}' }))
 vi.mock('./template-builder', () => ({ buildEmailTemplate: (_subject: string, body: string) => body }))
 vi.mock('@/lib/utils/url', () => ({ getBaseUrl: () => 'http://localhost:3000' }))
-vi.mock('@/lib/infra/resend', () => ({ sendEmail: vi.fn() }))
-vi.mock('@/lib/db/users', () => ({ getUserById: vi.fn() }))
+vi.mock('@/lib/infra/resend', () => ({ sendEmail: vi.fn<typeof SendEmailFn>() }))
+vi.mock('@/lib/db/users', () => ({ getUserById: vi.fn<typeof GetUserByIdFn>() }))
 
 import { sendSecurityNotification } from './security-notification'
 import { sendEmail } from '@/lib/infra/resend'
 import { getUserById } from '@/lib/db/users'
 
-const mockSendEmail = sendEmail as ReturnType<typeof vi.fn>
-const mockGetUserById = getUserById as ReturnType<typeof vi.fn>
+const mockSendEmail = vi.mocked(sendEmail)
+const mockGetUserById = vi.mocked(getUserById)
 
 describe('sendSecurityNotification recipient resolution', () => {
   beforeEach(() => vi.clearAllMocks())

@@ -34,6 +34,11 @@ const SKINS_WITH_TYPE_DISTRIBUTION: ReadonlySet<UiSkin> = new Set([
   'mission-control',
 ])
 
+// Fully static — no prop/state dependency — so it's hoisted to a module-level const instead of being
+// created inline on every render (this is a Server Component: it renders once per request anyway, but
+// hoisting still satisfies jsx-no-jsx-as-prop honestly rather than just silencing it).
+const CREATE_FIRST_ITEM_TRIGGER = <Button>Create your first item &rarr;</Button>
+
 export default async function DashboardPage(props: {
   searchParams: Promise<{ skeleton?: string }>
 }) {
@@ -72,7 +77,7 @@ export default async function DashboardPage(props: {
           <CreateItemDialog
             itemTypes={sidebarData.itemTypes}
             initialCollections={sidebarData.collections}
-            trigger={<Button>Create your first item &rarr;</Button>}
+            trigger={CREATE_FIRST_ITEM_TRIGGER}
           />
         </div>
       </div>
@@ -103,12 +108,20 @@ export default async function DashboardPage(props: {
     )
   }
 
+  // Honest residual (react-perf/jsx-no-jsx-as-prop): this JSX depends on the request-scoped skin/isPro,
+  // so it can't be hoisted to a module-level const the way CREATE_FIRST_ITEM_TRIGGER above is. The
+  // usual fix is useMemo, but this file has no 'use client' directive — it's a Server Component, so
+  // React hooks aren't available here at all. Extracting to a local const (below) is as far as this
+  // can honestly go without introducing 'use client' (which would change the file's render model for
+  // no benefit — it renders once per request server-side and never re-renders client-side).
+  const dashboardSkeletonFallback = <DashboardSkinFallback skin={skin} isPro={isPro} />
+
   return (
     <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6" data-skin={skin}>
       <Suspense fallback={null}>
         <ItemDeepLink />
       </Suspense>
-      <Suspense fallback={<DashboardSkinFallback skin={skin} isPro={isPro} />}>
+      <Suspense fallback={dashboardSkeletonFallback}>
         <DashboardSkinShell
           skin={skin}
           isPro={isPro}

@@ -1,6 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+  type CSSProperties,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react'
@@ -78,6 +88,19 @@ function groupOf(item: BrainDumpDraftItem): Group {
 function emptyColumns(): Columns {
   return { snippet: [], command: [], prompt: [], note: [], link: [], trash: [] }
 }
+
+// Fully static Motion keyframes/transitions for the live-board card mount (no per-card dependency) —
+// module-level so every card shares the same object reference instead of a fresh literal per render.
+const CARD_ENTER_INITIAL = { opacity: 0, scale: 0.92 } as const
+const CARD_ENTER_ANIMATE = { opacity: 1, scale: 1 } as const
+const CARD_ENTER_EXIT = { opacity: 0, scale: 0.92 } as const
+const CARD_ENTER_TRANSITION = { type: 'spring', stiffness: 420, damping: 38, mass: 0.8 } as const
+
+// Same idea for the closed-job History Trash-only list, which uses its own simpler fade/slide.
+const TRASH_CARD_INITIAL = { opacity: 0, scale: 0.92, y: 6 } as const
+const TRASH_CARD_ANIMATE = { opacity: 1, scale: 1, y: 0 } as const
+const TRASH_CARD_EXIT = { opacity: 0, scale: 0.92 } as const
+const TRASH_CARD_TRANSITION = { duration: 0.18, ease: 'easeOut' } as const
 
 // Reconcile the bucket columns with the live items: each draft is authoritatively placed in its
 // current group (so button trash/restore relocates it), while existing in-group order is preserved
@@ -171,6 +194,14 @@ export function ParseReviewBoard({
       if (!ok) toast.error('Could not update collections')
     },
     [jobId, updateJobCollections],
+  )
+  // Adapts the fire-and-forget async setter to the sync `(ids) => void` shape `ParseCollectionTarget`'s
+  // `onChange` expects, while keeping a stable identity for `collectionTargetFooter` below.
+  const handlePersistTargetCollections = useCallback(
+    (ids: string[]) => {
+      void persistTargetCollections(ids)
+    },
+    [persistTargetCollections],
   )
   const targetCollections = useMemo(
     () => collectionPickerItems.filter((c) => targetCollectionIds.includes(c.id)),
@@ -322,19 +353,19 @@ export function ParseReviewBoard({
     [draggingId, columns],
   )
 
-  const handleDragStart = (event: DragStartEvent) => {
+  const handleDragStart = useCallback((event: DragStartEvent) => {
     setDragging(true)
     const id = event.operation.source ? String(event.operation.source.id) : null
     setDraggingId(id)
     dragOriginGroup.current = id
       ? (GROUPS.find((g) => columnsRef.current[g].includes(id)) ?? null)
       : null
-  }
+  }, [])
 
   // Reflow the columns live as a card is dragged across buckets (canonical @dnd-kit/react multi-list
   // pattern), so the user sees the card relocate during the drag — `handleDragEnd` only persists. Keep
   // `columnsRef` in lockstep with the reflow so the drop handler reads the final placement immediately.
-  const handleDragOver = (event: DragOverEvent) => {
+  const handleDragOver = useCallback((event: DragOverEvent) => {
     const { source } = event.operation
     if (!source || !isSortable(source)) return
     setColumns((prev) => {
@@ -342,114 +373,133 @@ export function ParseReviewBoard({
       columnsRef.current = next
       return next
     })
-  }
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    setDragging(false)
-    setDraggingId(null)
-    const { source } = event.operation
-    if (!source || !isSortable(source)) return
-
-    // The arrangement was already applied in `handleDragOver`; on cancel, rebuild from the
-    // authoritative items to undo the optimistic reflow.
-    if (event.canceled) {
-      setColumns((prev) => syncColumns(prev, stream.items))
-      return
-    }
-
-    // Resolve origin and destination from `columnsRef` — the post-reflow placement that `move()` drove
-    // during the drag. This is the authoritative answer for an empty-bucket drop, where dnd-kit's
-    // `source.group`/drop target stay on the origin (no sibling draft to sort against) yet the card was
-    // visually relocated. `from` was snapshotted at drag start; `to` is where the card sits now.
-    const id = String(source.id)
-    const from = dragOriginGroup.current
-    dragOriginGroup.current = null
-    const to = GROUPS.find((g) => columnsRef.current[g].includes(id)) ?? null
-    if (!from || !to || from === to) return // pure reorder / no real move — not persisted
-
-    // Dropping a content-bearing draft into Links discards its content (a `link` item has no content).
-    // Stage the move and confirm the loss first; the optimistic reflow has already shown the card in
-    // Links, so Cancel reverts it. An empty-content draft (or a move out of Trash, etc.) loses nothing
-    // and persists straight through.
-    const losesContent =
-      to === 'link' &&
-      from !== TRASH &&
-      ITEM_TYPES_WITH_CONTENT.has(from) &&
-      Boolean(itemsById.get(id)?.content?.trim())
-    if (losesContent) {
-      setPendingLinkMove({ id, from, to })
-      return
-    }
-
-    persistMove(id, from, to)
-  }
+  }, [])
 
   // Optimistically reclassify/trash a dropped draft and persist it, reverting the draft fields and the
-  // bucket columns if the PATCH fails. Split out of `handleDragEnd` so the Links content-loss confirm
+  // bucket columns if the PATCH fails. Split out ahead of `handleDragEnd` so the Links content-loss confirm
   // dialog can run the exact same move after the user accepts.
-  const persistMove = (id: string, from: Group, to: Group) => {
-    let patch: Partial<BrainDumpDraftItem>
-    let revert: Partial<BrainDumpDraftItem>
-    if (to === TRASH) {
-      patch = { trashed: true }
-      revert = { trashed: false }
-    } else if (from === TRASH) {
-      // Restore out of Trash reclassifies to the destination bucket; on failure revert to the draft's
-      // real prior type, not the `'trash'` pseudo-bucket (which is not a valid item type and would
-      // corrupt the draft — `bucketOf('trash')` falls through to `note`).
-      const priorType = itemsById.get(id)?.itemTypeName ?? to
-      patch = { trashed: false, itemTypeName: to }
-      revert = { trashed: true, itemTypeName: priorType }
-    } else {
-      patch = { itemTypeName: to }
-      revert = { itemTypeName: from }
-    }
+  const persistMove = useCallback(
+    (id: string, from: Group, to: Group) => {
+      let patch: Partial<BrainDumpDraftItem>
+      let revert: Partial<BrainDumpDraftItem>
+      if (to === TRASH) {
+        patch = { trashed: true }
+        revert = { trashed: false }
+      } else if (from === TRASH) {
+        // Restore out of Trash reclassifies to the destination bucket; on failure revert to the draft's
+        // real prior type, not the `'trash'` pseudo-bucket (which is not a valid item type and would
+        // corrupt the draft — `bucketOf('trash')` falls through to `note`).
+        const priorType = itemsById.get(id)?.itemTypeName ?? to
+        patch = { trashed: false, itemTypeName: to }
+        revert = { trashed: true, itemTypeName: priorType }
+      } else {
+        patch = { itemTypeName: to }
+        revert = { itemTypeName: from }
+      }
 
-    stream.applyPatch(id, patch)
-    trackPatch(1)
-    void patchDraft(jobId, id, patch)
-      .then((result) => {
-        if (!result.ok) {
-          toast.error(to === TRASH ? 'Could not move to trash' : 'Could not move card')
-          stream.applyPatch(id, revert)
-          setColumns((prev) => syncColumns(prev, stream.items))
-        }
-      })
-      .finally(() => trackPatch(-1))
-  }
+      stream.applyPatch(id, patch)
+      trackPatch(1)
+      void patchDraft(jobId, id, patch)
+        .then((result) => {
+          if (!result.ok) {
+            toast.error(to === TRASH ? 'Could not move to trash' : 'Could not move card')
+            stream.applyPatch(id, revert)
+            setColumns((prev) => syncColumns(prev, stream.items))
+          }
+        })
+        .finally(() => trackPatch(-1))
+    },
+    [itemsById, stream, trackPatch, patchDraft, jobId],
+  )
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setDragging(false)
+      setDraggingId(null)
+      const { source } = event.operation
+      if (!source || !isSortable(source)) return
+
+      // The arrangement was already applied in `handleDragOver`; on cancel, rebuild from the
+      // authoritative items to undo the optimistic reflow.
+      if (event.canceled) {
+        setColumns((prev) => syncColumns(prev, stream.items))
+        return
+      }
+
+      // Resolve origin and destination from `columnsRef` — the post-reflow placement that `move()` drove
+      // during the drag. This is the authoritative answer for an empty-bucket drop, where dnd-kit's
+      // `source.group`/drop target stay on the origin (no sibling draft to sort against) yet the card was
+      // visually relocated. `from` was snapshotted at drag start; `to` is where the card sits now.
+      const id = String(source.id)
+      const from = dragOriginGroup.current
+      dragOriginGroup.current = null
+      const to = GROUPS.find((g) => columnsRef.current[g].includes(id)) ?? null
+      if (!from || !to || from === to) return // pure reorder / no real move — not persisted
+
+      // Dropping a content-bearing draft into Links discards its content (a `link` item has no content).
+      // Stage the move and confirm the loss first; the optimistic reflow has already shown the card in
+      // Links, so Cancel reverts it. An empty-content draft (or a move out of Trash, etc.) loses nothing
+      // and persists straight through.
+      const losesContent =
+        to === 'link' &&
+        from !== TRASH &&
+        ITEM_TYPES_WITH_CONTENT.has(from) &&
+        Boolean(itemsById.get(id)?.content?.trim())
+      if (losesContent) {
+        setPendingLinkMove({ id, from, to })
+        return
+      }
+
+      persistMove(id, from, to)
+    },
+    [stream.items, itemsById, persistMove],
+  )
 
   // Optimistic trash/restore for the per-card Delete/Restore actions — reuse `persistMove` so a card-driven
   // soft-delete behaves exactly like a drag into/out of the Trash bucket (optimistic reflow + revert on
   // failure), instead of the card's old pessimistic await-then-apply spinner. `from`/`to` are derived from
   // the draft's current placement: trash sends its type bucket → TRASH, restore sends TRASH → its type
-  // bucket. Clears any failed-ring on this card (a successful action supersedes the prior failure). Plain
-  // consts (not memoized) so they close over the current-render `persistMove`/`stream`, like `persistMove`.
-  const optimisticTrash = (item: BrainDumpDraftItem) => {
-    clearFailed(item.id)
-    persistMove(item.id, bucketOf(item.itemTypeName), TRASH)
-  }
-  const optimisticRestore = (item: BrainDumpDraftItem) => {
-    clearFailed(item.id)
-    persistMove(item.id, TRASH, bucketOf(item.itemTypeName))
-  }
+  // bucket. Clears any failed-ring on this card (a successful action supersedes the prior failure).
+  const optimisticTrash = useCallback(
+    (item: BrainDumpDraftItem) => {
+      clearFailed(item.id)
+      persistMove(item.id, bucketOf(item.itemTypeName), TRASH)
+    },
+    [clearFailed, persistMove],
+  )
+  const optimisticRestore = useCallback(
+    (item: BrainDumpDraftItem) => {
+      clearFailed(item.id)
+      persistMove(item.id, TRASH, bucketOf(item.itemTypeName))
+    },
+    [clearFailed, persistMove],
+  )
 
   // Confirm the Links content-loss dialog: persist the staged move (server nulls the content on the
   // type change). Then clear the pending state.
-  const confirmLinkMove = () => {
+  const confirmLinkMove = useCallback(() => {
     if (!pendingLinkMove) return
     const { id, from, to } = pendingLinkMove
     setPendingLinkMove(null)
     persistMove(id, from, to)
-  }
+  }, [pendingLinkMove, persistMove])
 
   // Cancel the Links content-loss dialog: revert the optimistic reflow that already moved the card into
   // the Links bucket, restoring it to its origin bucket from the authoritative stream.
-  const cancelLinkMove = () => {
+  const cancelLinkMove = useCallback(() => {
     setPendingLinkMove(null)
     setColumns((prev) => syncColumns(prev, stream.items))
-  }
+  }, [stream.items])
 
-  const commitAll = async () => {
+  // Adapts `cancelLinkMove` to Dialog's `onOpenChange(open: boolean)` shape.
+  const handleLinkMoveOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) cancelLinkMove()
+    },
+    [cancelLinkMove],
+  )
+
+  const commitAll = useCallback(async () => {
     setCommitting(true)
     const result = await commitJob(jobId)
     setCommitting(false)
@@ -467,9 +517,12 @@ export function ParseReviewBoard({
     // v2.5: a full commit always closes the job (history stub) — redirect to the dashboard regardless of
     // entry point (matches per-item auto-close). A non-partial success is always closed, so no fallback.
     if (result.closed) router.push('/dashboard')
-  }
+  }, [commitJob, jobId, router])
+  const handleCommitAllClick = useCallback(() => {
+    void commitAll()
+  }, [commitAll])
 
-  const discard = async () => {
+  const discard = useCallback(async () => {
     setDiscarding(true)
     const ok = await discardJob(jobId)
     if (!ok) {
@@ -479,11 +532,14 @@ export function ParseReviewBoard({
     }
     toast.success('Discarded. Your source is still in your stash.')
     router.push('/parse')
-  }
+  }, [discardJob, jobId, router])
+  const handleDiscardClick = useCallback(() => {
+    void discard()
+  }, [discard])
 
   // Closed-job History mode: delete the now-empty history record (reuses the discard endpoint; committed
   // items are untouched). Routes back to /parse where the History list lives.
-  const deleteClosedJob = async () => {
+  const deleteClosedJob = useCallback(async () => {
     setDeleteJobPrompt(false)
     const ok = await discardJob(jobId)
     if (!ok) {
@@ -492,9 +548,12 @@ export function ParseReviewBoard({
     }
     toast.success('History record deleted. Your saved items are untouched.')
     router.push('/parse')
-  }
+  }, [discardJob, jobId, router])
+  const handleDeleteClosedJobClick = useCallback(() => {
+    void deleteClosedJob()
+  }, [deleteClosedJob])
 
-  const reparse = async () => {
+  const reparse = useCallback(async () => {
     setReparsing(true)
     try {
       const result = await reparseJob(jobId)
@@ -509,11 +568,14 @@ export function ParseReviewBoard({
     } finally {
       setReparsing(false)
     }
-  }
+  }, [reparseJob, jobId, router])
+  const handleReparseClick = useCallback(() => {
+    void reparse()
+  }, [reparse])
 
   // "Delete all" in the Trash bucket — permanently empties it. Reached only via the confirm dialog
   // (irreversible), so it closes that dialog as it runs.
-  const onEmptyTrash = async () => {
+  const onEmptyTrash = useCallback(async () => {
     setDeleteAllConfirmOpen(false)
     const trashedIds = columns.trash
     if (trashedIds.length === 0) return
@@ -530,12 +592,18 @@ export function ParseReviewBoard({
     }
     trashedIds.forEach((id) => stream.removeItem(id))
     toast.success(`Deleted ${trashedIds.length} item${trashedIds.length === 1 ? '' : 's'}`)
-  }
+  }, [columns.trash, pendingPatches, emptyTrash, jobId, stream])
+  const handleEmptyTrashClick = useCallback(() => {
+    void onEmptyTrash()
+  }, [onEmptyTrash])
+  const openDeleteAllConfirm = useCallback(() => setDeleteAllConfirmOpen(true), [])
+  const closeDeleteAllConfirm = useCallback(() => setDeleteAllConfirmOpen(false), [])
+  const closeDeleteJobPrompt = useCallback(() => setDeleteJobPrompt(false), [])
 
   // "Restore all" in the Trash bucket — fans out the per-item restore (clear `trashed`) over every
   // trashed draft, mirroring `saveBucket`'s fan-out. Optimistic per draft so each card flies back to its
   // type bucket immediately; a failed restore reverts that one card and toasts.
-  const restoreAllTrash = async () => {
+  const restoreAllTrash = useCallback(async () => {
     const trashedIds = [...columns.trash]
     if (trashedIds.length === 0) return
     trackBulk(1)
@@ -557,35 +625,47 @@ export function ParseReviewBoard({
     const failed = results.length - restored
     if (restored > 0) toast.success(`Restored ${restored} item${restored === 1 ? '' : 's'}`)
     if (failed > 0) toast.error(`Could not restore ${failed} item${failed === 1 ? '' : 's'}`)
-  }
+  }, [columns.trash, trackBulk, trackPatch, stream, patchDraft, jobId])
+  const handleRestoreAllTrash = useCallback(() => {
+    void restoreAllTrash()
+  }, [restoreAllTrash])
 
   // Per-bucket "Save all in this bucket": fan out the per-item commit over every (non-trashed) draft in
   // the bucket, then drop the succeeded ids (the server deleted those drafts). The whole fan-out settles
   // FIRST, then auto-close is evaluated ONCE (the hook reports `closed` after all settle) — never
   // mid-batch. This is a bucket-level convenience, not item multi-select.
-  const saveBucket = async (group: Group) => {
-    const committable = columns[group].filter((id) => !itemsById.get(id)?.trashed)
-    if (committable.length === 0) return
-    trackBulk(1)
-    trackPatch(1)
-    const { succeeded, failed, closed } = await bulkCommit(jobId, committable)
-    trackPatch(-1)
-    trackBulk(-1)
-    succeeded.forEach((id) => {
-      stream.removeItem(id)
-      clearFailed(id)
-    })
-    if (succeeded.length > 0) toast.success(`Saved ${succeeded.length} item${succeeded.length === 1 ? '' : 's'} to your stash`)
-    if (failed.length > 0) {
-      // Flash an error ring on the cards that stayed behind so they're distinguishable from untouched
-      // ones (the aggregate toast alone doesn't say which); cleared on each card's next successful action.
-      markFailed(failed)
-      toast.error(`Could not save ${failed.length} item${failed.length === 1 ? '' : 's'}`)
-    }
-    // The save-all drained the last draft → the job closed; redirect to the dashboard (matches the full
-    // "Save all" + per-item auto-close).
-    if (closed) router.push('/dashboard')
-  }
+  const saveBucket = useCallback(
+    async (group: Group) => {
+      const committable = columns[group].filter((id) => !itemsById.get(id)?.trashed)
+      if (committable.length === 0) return
+      trackBulk(1)
+      trackPatch(1)
+      const { succeeded, failed, closed } = await bulkCommit(jobId, committable)
+      trackPatch(-1)
+      trackBulk(-1)
+      succeeded.forEach((id) => {
+        stream.removeItem(id)
+        clearFailed(id)
+      })
+      if (succeeded.length > 0) toast.success(`Saved ${succeeded.length} item${succeeded.length === 1 ? '' : 's'} to your stash`)
+      if (failed.length > 0) {
+        // Flash an error ring on the cards that stayed behind so they're distinguishable from untouched
+        // ones (the aggregate toast alone doesn't say which); cleared on each card's next successful action.
+        markFailed(failed)
+        toast.error(`Could not save ${failed.length} item${failed.length === 1 ? '' : 's'}`)
+      }
+      // The save-all drained the last draft → the job closed; redirect to the dashboard (matches the full
+      // "Save all" + per-item auto-close).
+      if (closed) router.push('/dashboard')
+    },
+    [columns, itemsById, trackBulk, trackPatch, bulkCommit, jobId, stream, clearFailed, markFailed, router],
+  )
+  const handleSaveBucket = useCallback(
+    (group: Group) => {
+      void saveBucket(group)
+    },
+    [saveBucket],
+  )
 
   // "Delete all" confirm — permanent emptying of the Trash bucket is irreversible. Rendered in both the
   // closed-job History view and the live board (both can show a Trash bucket).
@@ -600,10 +680,10 @@ export function ParseReviewBoard({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => setDeleteAllConfirmOpen(false)}>
+          <Button variant="outline" size="sm" onClick={closeDeleteAllConfirm}>
             Cancel
           </Button>
-          <Button variant="destructive" size="sm" onClick={() => void onEmptyTrash()}>
+          <Button variant="destructive" size="sm" onClick={handleEmptyTrashClick}>
             Delete all
           </Button>
         </DialogFooter>
@@ -615,12 +695,7 @@ export function ParseReviewBoard({
   // no content). Cancel reverts the optimistic move; only the live board can reach this (no Links bucket
   // in History mode).
   const linkMoveDialog = (
-    <Dialog
-      open={pendingLinkMove !== null}
-      onOpenChange={(open) => {
-        if (!open) cancelLinkMove()
-      }}
-    >
+    <Dialog open={pendingLinkMove !== null} onOpenChange={handleLinkMoveOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Move to Links and discard content?</DialogTitle>
@@ -642,6 +717,76 @@ export function ParseReviewBoard({
     </Dialog>
   )
 
+  // The "Save items to collection" widget lives inside `ParseSourceBanner`'s `footer` slot. Memoized so
+  // the slot receives a stable element reference instead of a fresh one every render (real dependency:
+  // it changes only when the target selection or the collection list actually changes).
+  const collectionTargetFooter = useMemo(
+    () => (
+      <ParseCollectionTarget
+        collections={collectionPickerItems}
+        sourceItemId={sourceItemId}
+        suggestedName={suggestedCollectionName}
+        selectedIds={targetCollectionIds}
+        onChange={handlePersistTargetCollections}
+      />
+    ),
+    [collectionPickerItems, sourceItemId, suggestedCollectionName, targetCollectionIds, handlePersistTargetCollections],
+  )
+
+  // One `BoardBucket` (memoized) per group, each owning its own bucket-scoped stable callbacks — see
+  // the component below. Memoized so the array/tiles passed to `BentoMasonry` isn't rebuilt from scratch
+  // on every unrelated render.
+  const tiles = useMemo<BentoMasonryTile[]>(
+    () =>
+      GROUPS.map((group) => ({
+        key: group,
+        content: (
+          <BoardBucket
+            group={group}
+            columns={columns}
+            itemsById={itemsById}
+            activeGroup={activeGroup}
+            dragging={dragging}
+            newCardIds={newCardIds}
+            bulkBusy={bulkBusy}
+            highlightItemId={highlightItemId}
+            failedIds={failedIds}
+            targetCollections={targetCollections}
+            jobId={jobId}
+            clearFailed={clearFailed}
+            optimisticTrash={optimisticTrash}
+            optimisticRestore={optimisticRestore}
+            onPatchPending={trackPatch}
+            onEdited={stream.applyPatch}
+            onRemoved={stream.removeItem}
+            onEmptyTrash={openDeleteAllConfirm}
+            onRestoreAllTrash={handleRestoreAllTrash}
+            onSaveBucket={handleSaveBucket}
+          />
+        ),
+      })),
+    [
+      columns,
+      itemsById,
+      activeGroup,
+      dragging,
+      newCardIds,
+      bulkBusy,
+      highlightItemId,
+      failedIds,
+      targetCollections,
+      jobId,
+      clearFailed,
+      optimisticTrash,
+      optimisticRestore,
+      trackPatch,
+      stream,
+      openDeleteAllConfirm,
+      handleRestoreAllTrash,
+      handleSaveBucket,
+    ],
+  )
+
   // Closed-job History mode: the same board, but post-commit. Suppress the progress header / Resume /
   // Save-all / collection-target chrome and render ONLY the Trash bucket — each trashed draft stays
   // editable/committable (Restore is dropped here: it would move the draft into a type bucket this branch
@@ -653,7 +798,7 @@ export function ParseReviewBoard({
         <ParseHistoryBanner committedCount={stream.committedCount} committedByType={stream.committedByType} />
         <DragDropProvider sensors={boardSensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
           <div className="columns-1 gap-3">
-            <BucketColumn group={TRASH} count={columns.trash.length} isActive={activeGroup === TRASH} onEmptyTrash={() => setDeleteAllConfirmOpen(true)} saveAllBusy={bulkBusy}>
+            <BucketColumn group={TRASH} count={columns.trash.length} isActive={activeGroup === TRASH} onEmptyTrash={openDeleteAllConfirm} saveAllBusy={bulkBusy}>
               <AnimatePresence mode="popLayout" initial={false}>
                 {columns.trash.map((id, index) => {
                   const item = itemsById.get(id)
@@ -662,10 +807,10 @@ export function ParseReviewBoard({
                     <motion.div
                       key={id}
                       layout
-                      initial={{ opacity: 0, scale: 0.92, y: 6 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.92 }}
-                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                      initial={TRASH_CARD_INITIAL}
+                      animate={TRASH_CARD_ANIMATE}
+                      exit={TRASH_CARD_EXIT}
+                      transition={TRASH_CARD_TRANSITION}
                     >
                       <SortableCard
                         item={item}
@@ -675,18 +820,16 @@ export function ParseReviewBoard({
                         canRestore={false}
                         highlight={highlightItemId === id}
                         failed={failedIds.has(id)}
-                        onClearFailed={() => clearFailed(id)}
+                        onClearFailed={clearFailed}
                         targetCollections={targetCollections}
                         onTrash={optimisticTrash}
                         onRestore={optimisticRestore}
                         onPatchPending={trackPatch}
-                        onEdited={(patch) => stream.applyPatch(id, patch)}
-                        onRemoved={() => {
-                          // The "delete the now-empty history record?" prompt is driven by the
-                          // trashed-count transition effect above (robust against back-to-back removals),
-                          // not a stale `columns.trash` read here.
-                          stream.removeItem(id)
-                        }}
+                        onEdited={stream.applyPatch}
+                        // The "delete the now-empty history record?" prompt is driven by the trashed-count
+                        // transition effect above (robust against back-to-back removals), not a stale
+                        // `columns.trash` read here.
+                        onRemoved={stream.removeItem}
                       />
                     </motion.div>
                   )
@@ -705,10 +848,10 @@ export function ParseReviewBoard({
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setDeleteJobPrompt(false)}>
+              <Button variant="outline" size="sm" onClick={closeDeleteJobPrompt}>
                 Keep
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => void deleteClosedJob()}>
+              <Button variant="destructive" size="sm" onClick={handleDeleteClosedJobClick}>
                 Delete record
               </Button>
             </DialogFooter>
@@ -736,15 +879,7 @@ export function ParseReviewBoard({
               sourceName={sourceName}
               truncated={truncated}
               chrome={false}
-              footer={
-                <ParseCollectionTarget
-                  collections={collectionPickerItems}
-                  sourceItemId={sourceItemId}
-                  suggestedName={suggestedCollectionName}
-                  selectedIds={targetCollectionIds}
-                  onChange={(ids) => void persistTargetCollections(ids)}
-                />
-              }
+              footer={collectionTargetFooter}
             />
           </div>
           <div className="flex min-w-0 flex-col justify-center border-t border-border/60 pt-4 @min-[54rem]/parse-top:border-l @min-[54rem]/parse-top:border-t-0 @min-[54rem]/parse-top:pt-0 @min-[54rem]/parse-top:pl-4">
@@ -757,9 +892,9 @@ export function ParseReviewBoard({
               discarding={discarding}
               reparsing={reparsing}
               onResume={stream.resume}
-              onCommitAll={() => void commitAll()}
-              onDiscard={() => void discard()}
-              onReparse={() => void reparse()}
+              onCommitAll={handleCommitAllClick}
+              onDiscard={handleDiscardClick}
+              onReparse={handleReparseClick}
               chrome={false}
             />
           </div>
@@ -774,68 +909,7 @@ export function ParseReviewBoard({
             (trash/restore/reclassify), Motion animates it between the two positions instead of
             exit-here / enter-there. */}
         <LayoutGroup>
-          <BentoMasonry
-            tiles={GROUPS.map<BentoMasonryTile>((group) => ({
-              key: group,
-              content: (
-                <BucketColumn
-                  group={group}
-                  count={columns[group].length}
-                  isActive={activeGroup === group}
-                  onEmptyTrash={group === TRASH ? () => setDeleteAllConfirmOpen(true) : undefined}
-                  onRestoreAll={group === TRASH ? () => void restoreAllTrash() : undefined}
-                  onSaveAll={group !== TRASH && columns[group].length > 0 ? () => void saveBucket(group) : undefined}
-                  saveAllBusy={bulkBusy}
-                >
-                  {/* mode="sync" (not popLayout): when a card's id moves from this bucket's list into
-                      another bucket's list (Delete/Restore/reclassify), the SAME `layoutId` unmounts here
-                      and remounts there in one commit. Motion promotes the shared identity and FLIES the
-                      card from its old measured box to the new one across buckets. popLayout would instead
-                      detach the leaving node and run its `exit`, killing the hand-off — so the card would
-                      vanish here and pop in there. The brief crossfade is the documented shared-layout
-                      behaviour. */}
-                  <AnimatePresence mode="sync" initial={false}>
-                    {columns[group].map((id, index) => {
-                      const item = itemsById.get(id)
-                      if (!item) return null
-                      return (
-                        <motion.div
-                          key={id}
-                          // Board-wide shared identity → cross-bucket FLIGHT (see LayoutGroup above).
-                          // Suppressed while dragging so Motion's projection doesn't fight dnd-kit's
-                          // live pointer-follow; the flight is for button moves + the drop-settle.
-                          layoutId={dragging ? undefined : `draft-${id}`}
-                          layout={!dragging}
-                          // Fade in only a genuinely new draft; an already-seen card that hopped buckets
-                          // mounts solid so it just glides (no disappear/reappear blink) — see `newCardIds`.
-                          initial={newCardIds.has(id) ? { opacity: 0, scale: 0.92 } : false}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.92 }}
-                          transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.8 }}
-                        >
-                          <SortableCard
-                            item={item}
-                            index={index}
-                            group={group}
-                            jobId={jobId}
-                            highlight={highlightItemId === id}
-                            failed={failedIds.has(id)}
-                            onClearFailed={() => clearFailed(id)}
-                            targetCollections={targetCollections}
-                            onTrash={optimisticTrash}
-                            onRestore={optimisticRestore}
-                            onPatchPending={trackPatch}
-                            onEdited={(patch) => stream.applyPatch(id, patch)}
-                            onRemoved={() => stream.removeItem(id)}
-                          />
-                        </motion.div>
-                      )
-                    })}
-                  </AnimatePresence>
-                </BucketColumn>
-              ),
-            }))}
-          />
+          <BentoMasonry tiles={tiles} />
         </LayoutGroup>
       </DragDropProvider>
       {deleteAllDialog}
@@ -843,6 +917,116 @@ export function ParseReviewBoard({
     </div>
   )
 }
+
+interface BoardBucketProps {
+  group: Group
+  columns: Columns
+  itemsById: Map<string, BrainDumpDraftItem>
+  activeGroup: Group | null
+  dragging: boolean
+  newCardIds: Set<string>
+  bulkBusy: boolean
+  highlightItemId?: string
+  failedIds: Set<string>
+  targetCollections: CollectionPickerItem[]
+  jobId: string
+  clearFailed: (id: string) => void
+  optimisticTrash: (item: BrainDumpDraftItem) => void
+  optimisticRestore: (item: BrainDumpDraftItem) => void
+  onPatchPending: (delta: number) => void
+  onEdited: (id: string, patch: Partial<BrainDumpDraftItem>) => void
+  onRemoved: (id: string) => void
+  onEmptyTrash: () => void
+  onRestoreAllTrash: () => void
+  onSaveBucket: (group: Group) => void
+}
+
+// One bucket column (+ its live card list) for the main board. Extracted out of the `GROUPS.map()` in
+// the parent so every per-bucket callback (`handleSaveThisBucket` below) is a normal `useCallback` inside
+// a genuine component instance, instead of a closure freshly created on every parent render inside a
+// `.map()` body (which the linter can't recognize as stable, and which really isn't).
+const BoardBucket = memo(function BoardBucket({
+  group,
+  columns,
+  itemsById,
+  activeGroup,
+  dragging,
+  newCardIds,
+  bulkBusy,
+  highlightItemId,
+  failedIds,
+  targetCollections,
+  jobId,
+  clearFailed,
+  optimisticTrash,
+  optimisticRestore,
+  onPatchPending,
+  onEdited,
+  onRemoved,
+  onEmptyTrash,
+  onRestoreAllTrash,
+  onSaveBucket,
+}: BoardBucketProps) {
+  const ids = columns[group]
+  const handleSaveThisBucket = useCallback(() => onSaveBucket(group), [group, onSaveBucket])
+  return (
+    <BucketColumn
+      group={group}
+      count={ids.length}
+      isActive={activeGroup === group}
+      onEmptyTrash={group === TRASH ? onEmptyTrash : undefined}
+      onRestoreAll={group === TRASH ? onRestoreAllTrash : undefined}
+      onSaveAll={group !== TRASH && ids.length > 0 ? handleSaveThisBucket : undefined}
+      saveAllBusy={bulkBusy}
+    >
+      {/* mode="sync" (not popLayout): when a card's id moves from this bucket's list into
+          another bucket's list (Delete/Restore/reclassify), the SAME `layoutId` unmounts here
+          and remounts there in one commit. Motion promotes the shared identity and FLIES the
+          card from its old measured box to the new one across buckets. popLayout would instead
+          detach the leaving node and run its `exit`, killing the hand-off — so the card would
+          vanish here and pop in there. The brief crossfade is the documented shared-layout
+          behaviour. */}
+      <AnimatePresence mode="sync" initial={false}>
+        {ids.map((id, index) => {
+          const item = itemsById.get(id)
+          if (!item) return null
+          return (
+            <motion.div
+              key={id}
+              // Board-wide shared identity → cross-bucket FLIGHT (see LayoutGroup above).
+              // Suppressed while dragging so Motion's projection doesn't fight dnd-kit's
+              // live pointer-follow; the flight is for button moves + the drop-settle.
+              layoutId={dragging ? undefined : `draft-${id}`}
+              layout={!dragging}
+              // Fade in only a genuinely new draft; an already-seen card that hopped buckets
+              // mounts solid so it just glides (no disappear/reappear blink) — see `newCardIds`.
+              initial={newCardIds.has(id) ? CARD_ENTER_INITIAL : false}
+              animate={CARD_ENTER_ANIMATE}
+              exit={CARD_ENTER_EXIT}
+              transition={CARD_ENTER_TRANSITION}
+            >
+              <SortableCard
+                item={item}
+                index={index}
+                group={group}
+                jobId={jobId}
+                highlight={highlightItemId === id}
+                failed={failedIds.has(id)}
+                onClearFailed={clearFailed}
+                targetCollections={targetCollections}
+                onTrash={optimisticTrash}
+                onRestore={optimisticRestore}
+                onPatchPending={onPatchPending}
+                onEdited={onEdited}
+                onRemoved={onRemoved}
+              />
+            </motion.div>
+          )
+        })}
+      </AnimatePresence>
+    </BucketColumn>
+  )
+})
 
 interface BucketColumnProps {
   group: Group
@@ -872,14 +1056,57 @@ function BucketColumn({ group, count, isActive, onEmptyTrash, onRestoreAll, onSa
   // with. The droppable ref stays on the outer element, so a card can still be dragged onto a collapsed
   // bucket's header to drop into it.
   const [open, setOpen] = useState(true)
+  // The accent feeds the colored left border (matching the app's item cards / unified card system): a 2px
+  // left border, neutral at rest, lighting up to the bucket's type color on hover (Trash uses the
+  // destructive color). Memoized per this column instance (one `BucketColumn` per group).
+  const accentStyle = useMemo<CSSProperties>(
+    () => ({ '--card-accent': isTrash ? 'var(--destructive)' : (SYSTEM_TYPE_COLORS[group] ?? 'var(--primary)') }) as CSSProperties,
+    [isTrash, group],
+  )
+  // Base UI's `render` function form (recommended for perf-sensitive triggers): spread the injected
+  // trigger props onto our own wrapper element, then our explicit attrs. Each is `useCallback`'d so the
+  // trigger doesn't see a new render function every parent render.
+  const renderRestoreAllTrigger = useCallback(
+    (props: ComponentProps<'span'>) => (
+      <span {...props} className="inline-flex">
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onRestoreAll} disabled={saveAllBusy}>
+          Restore all
+        </Button>
+      </span>
+    ),
+    [onRestoreAll, saveAllBusy],
+  )
+  const renderEmptyTrashTrigger = useCallback(
+    (props: ComponentProps<'span'>) => (
+      <span {...props} className="inline-flex">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-destructive hover:text-destructive"
+          onClick={onEmptyTrash}
+          disabled={saveAllBusy}
+        >
+          Delete all
+        </Button>
+      </span>
+    ),
+    [onEmptyTrash, saveAllBusy],
+  )
+  const renderSaveAllTrigger = useCallback(
+    (props: ComponentProps<'span'>) => (
+      <span {...props} className="inline-flex">
+        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onSaveAll} disabled={saveAllBusy}>
+          Save all
+        </Button>
+      </span>
+    ),
+    [onSaveAll, saveAllBusy],
+  )
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div
         ref={ref}
-        // The accent feeds the colored left border (matching the app's item cards / unified card system):
-        // a 2px left border, neutral at rest, lighting up to the bucket's type color on hover (Trash uses
-        // the destructive color).
-        style={{ '--card-accent': isTrash ? 'var(--destructive)' : (SYSTEM_TYPE_COLORS[group] ?? 'var(--primary)') } as CSSProperties}
+        style={accentStyle}
         className={cn(
           'flex flex-col gap-2 rounded-xl border border-border/70 border-l-2 bg-muted/20 p-2.5 transition-colors hover:border-l-[var(--card-accent)]',
           isTrash && 'border-dashed',
@@ -913,15 +1140,7 @@ function BucketColumn({ group, count, isActive, onEmptyTrash, onRestoreAll, onSa
           {isTrash && count > 0 && onRestoreAll && (
             <TooltipProvider delay={150}>
               <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="inline-flex">
-                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onRestoreAll} disabled={saveAllBusy}>
-                        Restore all
-                      </Button>
-                    </span>
-                  }
-                />
+                <TooltipTrigger render={renderRestoreAllTrigger} />
                 <TooltipContent className="max-w-[240px]">
                   Move every draft in the Trash back to its type bucket.
                 </TooltipContent>
@@ -931,21 +1150,7 @@ function BucketColumn({ group, count, isActive, onEmptyTrash, onRestoreAll, onSa
           {isTrash && count > 0 && onEmptyTrash && (
             <TooltipProvider delay={150}>
               <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="inline-flex">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs text-destructive hover:text-destructive"
-                        onClick={onEmptyTrash}
-                        disabled={saveAllBusy}
-                      >
-                        Delete all
-                      </Button>
-                    </span>
-                  }
-                />
+                <TooltipTrigger render={renderEmptyTrashTrigger} />
                 <TooltipContent className="max-w-[240px]">
                   Permanently delete every draft in the Trash. This can’t be undone.
                 </TooltipContent>
@@ -955,15 +1160,7 @@ function BucketColumn({ group, count, isActive, onEmptyTrash, onRestoreAll, onSa
           {onSaveAll && (
             <TooltipProvider delay={150}>
               <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="inline-flex">
-                      <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onSaveAll} disabled={saveAllBusy}>
-                        Save all
-                      </Button>
-                    </span>
-                  }
-                />
+                <TooltipTrigger render={renderSaveAllTrigger} />
                 <TooltipContent className="max-w-[240px]">
                   Commit every draft in the {getTypeLabel(group)} bucket into your stash at once.
                 </TooltipContent>
@@ -1036,8 +1233,10 @@ interface SortableCardProps {
   highlight?: boolean
   // True when this draft's last bulk-commit attempt failed — the card flashes an error ring.
   failed?: boolean
-  // Clear this card's failed-ring (called by the card after its next successful action).
-  onClearFailed?: () => void
+  // Clear this card's failed-ring (called by the card after its next successful action). Takes the
+  // draft id — a single stable, board-scoped function (`clearFailed`) is passed down for every card
+  // instead of a fresh per-card closure; this component binds it to its own `item.id` below.
+  onClearFailed: (id: string) => void
   // The job's "Save items to collection" target, shown read-only in the draft drawer. Empty (default)
   // hides the field — used in closed-job History mode where there's no live save target.
   targetCollections?: CollectionPickerItem[]
@@ -1046,11 +1245,32 @@ interface SortableCardProps {
   onTrash: (item: BrainDumpDraftItem) => void
   onRestore: (item: BrainDumpDraftItem) => void
   onPatchPending: (delta: number) => void
-  onEdited: (patch: Partial<BrainDumpDraftItem>) => void
-  onRemoved: () => void
+  // Id-taking board-scoped functions (`stream.applyPatch` / `stream.removeItem` in practice) — same
+  // stable-reference rationale as `onClearFailed` above.
+  onEdited: (id: string, patch: Partial<BrainDumpDraftItem>) => void
+  onRemoved: (id: string) => void
 }
 
-function SortableCard({ item, index, group, jobId, canRestore = true, highlight, failed, onClearFailed, targetCollections, onTrash, onRestore, onPatchPending, onEdited, onRemoved }: SortableCardProps) {
+// Memoized: each card only needs to re-render when its own props change, not when a sibling card in the
+// same bucket changes. Binds the board-scoped, id-taking callbacks to this card's own `item.id` via
+// `useCallback` — the per-item closure the old inline `.map()` arrows created lives here instead, as a
+// normal hook call inside a genuine component instance (one per rendered card).
+const SortableCard = memo(function SortableCard({
+  item,
+  index,
+  group,
+  jobId,
+  canRestore = true,
+  highlight,
+  failed,
+  onClearFailed,
+  targetCollections,
+  onTrash,
+  onRestore,
+  onPatchPending,
+  onEdited,
+  onRemoved,
+}: SortableCardProps) {
   // No separate drag handle: the whole card is the sortable element (and thus the drag source), so a
   // press+move anywhere on the card drags it. A plain press (no move past the sensor's activation
   // distance) is a click that opens the editor — see ParseDraftCard.
@@ -1061,6 +1281,12 @@ function SortableCard({ item, index, group, jobId, canRestore = true, highlight,
     type: 'draft',
     accept: 'draft',
   })
+  const handleClearFailed = useCallback(() => onClearFailed(item.id), [item.id, onClearFailed])
+  const handleEdited = useCallback(
+    (patch: Partial<BrainDumpDraftItem>) => onEdited(item.id, patch),
+    [item.id, onEdited],
+  )
+  const handleRemoved = useCallback(() => onRemoved(item.id), [item.id, onRemoved])
 
   return (
     <ParseDraftCard
@@ -1070,15 +1296,15 @@ function SortableCard({ item, index, group, jobId, canRestore = true, highlight,
       canRestore={canRestore}
       highlight={highlight}
       failed={failed}
-      onClearFailed={onClearFailed}
+      onClearFailed={handleClearFailed}
       targetCollections={targetCollections}
       onTrash={onTrash}
       onRestore={onRestore}
       rootRef={ref}
       isDragging={isDragging}
       onPatchPending={onPatchPending}
-      onEdited={onEdited}
-      onRemoved={onRemoved}
+      onEdited={handleEdited}
+      onRemoved={handleRemoved}
     />
   )
-}
+})

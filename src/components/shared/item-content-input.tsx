@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useId, useMemo, Suspense } from 'react'
+import { useState, useEffect, useCallback, useId, useMemo, Suspense, memo } from 'react'
+import type { HTMLProps } from '@base-ui/react/types'
 import { Textarea } from '@/components/ui/textarea'
 import { ITEM_TYPES_WITH_CODE_EDITOR, ITEM_TYPES_WITH_MARKDOWN_EDITOR, languagesForItemType } from '@/lib/utils/constants'
 import { loader } from '@monaco-editor/react'
@@ -67,7 +68,37 @@ interface LanguageInputProps {
   fit?: boolean
 }
 
-export function LanguageInput({ id, value, onChange, placeholder = "Select language...", className, itemType, fit }: LanguageInputProps) {
+// Hoisted static functions/components to avoid jsx-no-jsx-as-prop/jsx-no-new-function-as-prop warnings
+const filterInitialFocus = (openType: string) => openType !== 'touch' && openType !== 'pen'
+const renderDiv = (props: HTMLProps) => <div {...props} />
+
+interface LanguageItemRowProps {
+  language: string
+  isSelected: boolean
+  onSelect: (val: string) => void
+}
+
+const LanguageItemRow = memo(function LanguageItemRow({
+  language,
+  isSelected,
+  onSelect,
+}: LanguageItemRowProps) {
+  const handleSelect = useCallback((currentValue: string) => {
+    onSelect(currentValue)
+  }, [onSelect])
+
+  return (
+    <CommandItem
+      value={language}
+      onSelect={handleSelect}
+    >
+      <Check className={cn("mr-2 size-4", isSelected ? "opacity-100" : "opacity-0")} />
+      {language}
+    </CommandItem>
+  )
+})
+
+export const LanguageInput = memo(function LanguageInput({ id, value, onChange, placeholder = "Select language...", className, itemType, fit }: LanguageInputProps) {
   const allLanguages = useMonacoLanguageList()
   // Memoized so the per-type filter only re-runs when the list or item type actually changes — not on
   // every render (e.g. opening/typing in the popover). React Compiler also memoizes, but this keeps the
@@ -79,25 +110,33 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
   const [open, setOpen] = useState(false)
   const listboxId = useId()
 
+  const handleSelectLanguage = useCallback((currentValue: string) => {
+    onChange(currentValue === value ? "" : currentValue)
+    setOpen(false)
+  }, [onChange, value])
+
+  const renderTriggerButton = useCallback((triggerProps: HTMLProps) => (
+    <Button
+      {...triggerProps}
+      id={id}
+      render={renderDiv}
+      nativeButton={false}
+      variant="outline"
+      // Listbox-style combobox (Popover + Command list), not a free-text/single-value input,
+      // so a native <input>/<select> can't represent it.
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+      role="combobox"
+      aria-expanded={open}
+      aria-controls={listboxId}
+      className={cn(fit ? "justify-start font-normal" : "w-full justify-between font-normal h-9", className)}
+    />
+  ), [id, open, listboxId, fit, className])
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         nativeButton={false}
-        render={
-          <Button
-            id={id}
-            render={<div />}
-            nativeButton={false}
-            variant="outline"
-            // Listbox-style combobox (Popover + Command list), not a free-text/single-value input,
-            // so a native <input>/<select> can't represent it.
-            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-            role="combobox"
-            aria-expanded={open}
-            aria-controls={listboxId}
-            className={cn(fit ? "justify-start font-normal" : "w-full justify-between font-normal h-9", className)}
-          />
-        }
+        render={renderTriggerButton}
       >
         <span className={cn("truncate text-left", !fit && "flex-1", !value && "text-muted-foreground")}>
           {value ? monacoLanguages.find((lang) => lang === value) || value : placeholder}
@@ -117,7 +156,7 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
         id={listboxId}
         className="w-[300px] max-h-(--available-height) overflow-hidden p-0"
         align="start"
-        initialFocus={(openType) => openType !== 'touch' && openType !== 'pen'}
+        initialFocus={filterInitialFocus}
       >
         <Command>
           <CommandInput placeholder="Search language..." />
@@ -125,17 +164,12 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
             <CommandEmpty>No language found.</CommandEmpty>
             <CommandGroup>
               {monacoLanguages.map((l) => (
-                <CommandItem
+                <LanguageItemRow
                   key={l}
-                  value={l}
-                  onSelect={(currentValue) => {
-                    onChange(currentValue === value ? "" : currentValue)
-                    setOpen(false)
-                  }}
-                >
-                  <Check className={cn("mr-2 size-4", value === l ? "opacity-100" : "opacity-0")} />
-                  {l}
-                </CommandItem>
+                  language={l}
+                  isSelected={value === l}
+                  onSelect={handleSelectLanguage}
+                />
               ))}
             </CommandGroup>
           </CommandList>
@@ -143,7 +177,7 @@ export function LanguageInput({ id, value, onChange, placeholder = "Select langu
       </PopoverContent>
     </Popover>
   )
-}
+})
 
 interface CodeEditorInputProps {
   value: string
@@ -154,7 +188,7 @@ interface CodeEditorInputProps {
   fullscreenLabel?: string
 }
 
-function CodeEditorInput({ value, onChange, language, contentEditorClassName, contentEditorWrapperClassName, fullscreenLabel }: CodeEditorInputProps) {
+const CodeEditorInput = memo(function CodeEditorInput({ value, onChange, language, contentEditorClassName, contentEditorWrapperClassName, fullscreenLabel }: CodeEditorInputProps) {
   const { resolvedLang, isLoading } = useMonacoLanguage(language)
 
   const handleChange = useCallback((val: string | undefined) => {
@@ -163,9 +197,11 @@ function CodeEditorInput({ value, onChange, language, contentEditorClassName, co
 
   // bg-muted == bg-popover in the default dark theme, so Skeleton is invisible against the sheet.
   // Use EditorPlaceholder (Monaco dark bg) so the loading state is always visible.
-  const placeholderEl = contentEditorWrapperClassName
-    ? <div className={contentEditorWrapperClassName}><EditorPlaceholder className={cn('w-full', contentEditorClassName)} /></div>
-    : <EditorPlaceholder className={cn('w-full', contentEditorClassName || 'h-40')} />
+  const placeholderEl = useMemo(() => {
+    return contentEditorWrapperClassName
+      ? <div className={contentEditorWrapperClassName}><EditorPlaceholder className={cn('w-full', contentEditorClassName)} /></div>
+      : <EditorPlaceholder className={cn('w-full', contentEditorClassName || 'h-40')} />
+  }, [contentEditorWrapperClassName, contentEditorClassName])
 
   if (isLoading) return placeholderEl
 
@@ -188,7 +224,7 @@ function CodeEditorInput({ value, onChange, language, contentEditorClassName, co
   }
 
   return null
-}
+})
 
 interface ItemContentInputProps {
   itemType: string
@@ -204,7 +240,7 @@ interface ItemContentInputProps {
   enableFullscreen?: boolean
 }
 
-export function ItemContentInput({
+export const ItemContentInput = memo(function ItemContentInput({
   itemType,
   value,
   onChange,
@@ -216,10 +252,17 @@ export function ItemContentInput({
   textareaClassName,
   enableFullscreen,
 }: ItemContentInputProps) {
-  if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
-    const markdownFallback = contentEditorWrapperClassName
+  const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onChange(e.target.value)
+  }, [onChange])
+
+  const markdownFallback = useMemo(() => {
+    return contentEditorWrapperClassName
       ? <div className={contentEditorWrapperClassName}><EditorPlaceholder className={cn('w-full', contentEditorClassName)} /></div>
       : <EditorPlaceholder className={cn('w-full', contentEditorClassName || 'h-40')} />
+  }, [contentEditorWrapperClassName, contentEditorClassName])
+
+  if (ITEM_TYPES_WITH_MARKDOWN_EDITOR.has(itemType)) {
     const editor = (
       <Suspense fallback={markdownFallback}>
         <MarkdownEditor
@@ -253,9 +296,9 @@ export function ItemContentInput({
     <Textarea
       id={id}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={handleTextareaChange}
       placeholder={placeholder}
       className={textareaClassName}
     />
   )
-}
+})

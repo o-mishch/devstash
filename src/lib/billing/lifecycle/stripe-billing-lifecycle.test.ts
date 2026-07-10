@@ -1,12 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type {
+  cancelSubscriptionImmediately as CancelSubscriptionImmediatelyFn,
+  deleteStripeCustomer as DeleteStripeCustomerFn,
+  updateStripeCustomerEmail as UpdateStripeCustomerEmailFn,
+} from '@/lib/infra/stripe'
+import type { getCachedUserStripeInfo as GetCachedUserStripeInfoFn } from '@/lib/billing/sync/user-billing-state'
+import type { UserStripeInfo } from '@/lib/db/stripe'
+import type { LogFn } from 'pino'
+
+const baseUserStripeInfo: UserStripeInfo = {
+  email: 'user@example.com',
+  stripeCustomerId: null,
+  stripeSubscriptionId: null,
+  stripeSubscriptionStatus: null,
+  isPro: false,
+  stripeSubscriptionStart: null,
+  stripeCurrentPeriodEnd: null,
+  stripeSubscriptionInterval: null,
+  stripeCancelAtPeriodEnd: false,
+  stripeLastSyncAt: null,
+  proExpiredAt: null,
+}
 
 vi.mock('@/lib/infra/stripe', () => ({
-  cancelSubscriptionImmediately: vi.fn(),
-  deleteStripeCustomer: vi.fn(),
-  updateStripeCustomerEmail: vi.fn(),
+  cancelSubscriptionImmediately: vi.fn<typeof CancelSubscriptionImmediatelyFn>(),
+  deleteStripeCustomer: vi.fn<typeof DeleteStripeCustomerFn>(),
+  updateStripeCustomerEmail: vi.fn<typeof UpdateStripeCustomerEmailFn>(),
 }))
 const { mockGetCachedUserStripeInfo } = vi.hoisted(() => ({
-  mockGetCachedUserStripeInfo: vi.fn(),
+  mockGetCachedUserStripeInfo: vi.fn<typeof GetCachedUserStripeInfoFn>(),
 }))
 
 vi.mock('@/lib/billing/sync/user-billing-state', () => ({
@@ -14,15 +36,15 @@ vi.mock('@/lib/billing/sync/user-billing-state', () => ({
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn<LogFn>(), error: vi.fn<LogFn>(), warn: vi.fn<LogFn>() }) },
 }))
 
 import { cancelSubscriptionImmediately, deleteStripeCustomer, updateStripeCustomerEmail } from '@/lib/infra/stripe'
 import { teardownStripeBillingForUser, syncStripeCustomerEmailForUserSafe } from './stripe-billing-lifecycle'
 
-const mockCancelSubscriptionImmediately = cancelSubscriptionImmediately as ReturnType<typeof vi.fn>
-const mockDeleteStripeCustomer = deleteStripeCustomer as ReturnType<typeof vi.fn>
-const mockUpdateStripeCustomerEmail = updateStripeCustomerEmail as ReturnType<typeof vi.fn>
+const mockCancelSubscriptionImmediately = vi.mocked(cancelSubscriptionImmediately)
+const mockDeleteStripeCustomer = vi.mocked(deleteStripeCustomer)
+const mockUpdateStripeCustomerEmail = vi.mocked(updateStripeCustomerEmail)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -33,6 +55,7 @@ beforeEach(() => {
 describe('teardownStripeBillingForUser', () => {
   it('no-ops when the user has no Stripe billing records', async () => {
     mockGetCachedUserStripeInfo.mockResolvedValue({
+      ...baseUserStripeInfo,
       stripeCustomerId: null,
       stripeSubscriptionId: null,
     })
@@ -45,6 +68,7 @@ describe('teardownStripeBillingForUser', () => {
 
   it('cancels the subscription and deletes the customer before account deletion', async () => {
     mockGetCachedUserStripeInfo.mockResolvedValue({
+      ...baseUserStripeInfo,
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: 'sub_123',
     })
@@ -57,6 +81,7 @@ describe('teardownStripeBillingForUser', () => {
 
   it('throws when subscription cancellation fails', async () => {
     mockGetCachedUserStripeInfo.mockResolvedValue({
+      ...baseUserStripeInfo,
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: 'sub_123',
     })
@@ -68,6 +93,7 @@ describe('teardownStripeBillingForUser', () => {
 
   it('throws when customer deletion fails', async () => {
     mockGetCachedUserStripeInfo.mockResolvedValue({
+      ...baseUserStripeInfo,
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: null,
     })
@@ -79,7 +105,7 @@ describe('teardownStripeBillingForUser', () => {
 
 describe('syncStripeCustomerEmailForUserSafe', () => {
   it('swallows a Stripe failure so an already-committed email change is never 500ed', async () => {
-    mockGetCachedUserStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_123' })
+    mockGetCachedUserStripeInfo.mockResolvedValue({ ...baseUserStripeInfo, stripeCustomerId: 'cus_123' })
     mockUpdateStripeCustomerEmail.mockRejectedValue(new Error('stripe down'))
 
     await expect(syncStripeCustomerEmailForUserSafe('user-1', 'new@example.com')).resolves.toBeUndefined()
@@ -87,7 +113,7 @@ describe('syncStripeCustomerEmailForUserSafe', () => {
   })
 
   it('no-ops (and never throws) when the user has no Stripe customer', async () => {
-    mockGetCachedUserStripeInfo.mockResolvedValue({ stripeCustomerId: null })
+    mockGetCachedUserStripeInfo.mockResolvedValue({ ...baseUserStripeInfo, stripeCustomerId: null })
 
     await expect(syncStripeCustomerEmailForUserSafe('user-1', 'new@example.com')).resolves.toBeUndefined()
     expect(mockUpdateStripeCustomerEmail).not.toHaveBeenCalled()

@@ -1,6 +1,15 @@
 'use client'
 
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import { motion } from 'motion/react'
 import { useMediaQuery } from '@/hooks/ui/use-media-query'
 
@@ -53,6 +62,57 @@ function packTiles(
   const containerHeight = Math.max(0, ...colHeights.map((h) => Math.max(0, h - gap)))
   return { positions, containerHeight }
 }
+
+// Fully static — same spring on every tile, every render — so it's created once, ever, at module scope
+// rather than re-literal'd per render (or per `.map()` iteration).
+const TILE_SPRING_TRANSITION = { type: 'spring', stiffness: 400, damping: 40, mass: 0.8 } as const
+
+interface BentoTileProps {
+  tileKey: string
+  content: ReactNode
+  pos: TilePosition | undefined
+  ready: boolean
+  measureRef: (el: HTMLDivElement | null) => void
+}
+
+// Extracted out of the board's `.map()` loop: each tile gets its own component so its `style`/`animate`
+// objects are memoized off that tile's own (primitive) position fields, not recreated in a closure per
+// iteration. `memo`'s comparator reads `pos` by value (x/y/width) rather than by reference, since
+// `positions` is a fresh Map from `packTiles` every parent render even when a given tile's slot is
+// unchanged — reference equality on `pos` itself would never skip a re-render.
+function BentoTileComponent({ tileKey, content, pos, ready, measureRef }: BentoTileProps) {
+  const style = useMemo<CSSProperties>(
+    () => ({ width: pos?.width ?? '100%', visibility: ready ? 'visible' : 'hidden' }),
+    [pos?.width, ready],
+  )
+  const animate = useMemo(() => ({ x: pos?.x ?? 0, y: pos?.y ?? 0 }), [pos?.x, pos?.y])
+
+  return (
+    <motion.div
+      className="absolute top-0 left-0"
+      style={style}
+      initial={false}
+      animate={animate}
+      transition={TILE_SPRING_TRANSITION}
+    >
+      <div ref={measureRef} data-tile-key={tileKey}>
+        {content}
+      </div>
+    </motion.div>
+  )
+}
+
+const BentoTile = memo(
+  BentoTileComponent,
+  (prev, next) =>
+    prev.tileKey === next.tileKey &&
+    prev.content === next.content &&
+    prev.ready === next.ready &&
+    prev.measureRef === next.measureRef &&
+    prev.pos?.x === next.pos?.x &&
+    prev.pos?.y === next.pos?.y &&
+    prev.pos?.width === next.pos?.width,
+)
 
 /**
  * JS-measured absolute masonry for the Brain Dump Bento buckets. Replaces CSS `columns` (whose
@@ -168,24 +228,23 @@ export function BentoMasonry({ tiles, gap = 12 }: BentoMasonryProps) {
   // Hide tiles until the container has a width and the first measure pass has populated heights — avoids
   // the one-frame overlap at (0, 0) if a layout-effect timing edge slips a paint through.
   const ready = containerWidth > 0
+  const containerStyle = useMemo<CSSProperties>(
+    () => ({ height: ready ? containerHeight : undefined }),
+    [ready, containerHeight],
+  )
 
   return (
-    <div ref={containerRef} className="relative w-full" style={{ height: ready ? containerHeight : undefined }}>
-      {tiles.map((tile) => {
-        const pos = positions.get(tile.key)
-        return (
-          <motion.div
-            key={tile.key}
-            className="absolute top-0 left-0"
-            style={{ width: pos?.width ?? '100%', visibility: ready ? 'visible' : 'hidden' }}
-            initial={false}
-            animate={{ x: pos?.x ?? 0, y: pos?.y ?? 0 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 40, mass: 0.8 }}
-          >
-            <div ref={measureRef} data-tile-key={tile.key}>{tile.content}</div>
-          </motion.div>
-        )
-      })}
+    <div ref={containerRef} className="relative w-full" style={containerStyle}>
+      {tiles.map((tile) => (
+        <BentoTile
+          key={tile.key}
+          tileKey={tile.key}
+          content={tile.content}
+          pos={positions.get(tile.key)}
+          ready={ready}
+          measureRef={measureRef}
+        />
+      ))}
     </div>
   )
 }

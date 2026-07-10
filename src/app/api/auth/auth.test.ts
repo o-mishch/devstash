@@ -1,6 +1,18 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
+import type { signIn as SignInFn } from '@/auth'
+import type { checkRateLimit as CheckRateLimitFn } from '@/lib/infra/rate-limit'
+import type { outboundEmailEnabled as OutboundEmailEnabledFn } from '@/lib/utils/auth'
+import type { resendVerification as ResendVerificationFn } from '@/lib/emails/verification'
+import type {
+  validateUserPassword as ValidateUserPasswordFn,
+  registerUser as RegisterUserFn,
+  triggerPasswordReset as TriggerPasswordResetFn,
+  applyPasswordReset as ApplyPasswordResetFn,
+  confirmCredentialEmail as ConfirmCredentialEmailFn,
+  assertCredentialLoginAllowed as AssertCredentialLoginAllowedFn,
+} from '@/lib/auth/auth-service'
 
 const { MockAuthError, mockAssertCredentialLoginAllowed } = vi.hoisted(() => {
   class MockAuthError extends Error {
@@ -9,28 +21,28 @@ const { MockAuthError, mockAssertCredentialLoginAllowed } = vi.hoisted(() => {
       super('AuthError')
     }
   }
-  return { MockAuthError, mockAssertCredentialLoginAllowed: vi.fn() }
+  return { MockAuthError, mockAssertCredentialLoginAllowed: vi.fn<typeof AssertCredentialLoginAllowedFn>() }
 })
 
 // `after` runs the callback immediately so the deferred forgot-password work is observable.
 vi.mock('next/server', async (orig) => ({
   ...(await orig<typeof import('next/server')>()),
-  after: vi.fn((fn: () => unknown) => { void fn() }),
+  after: vi.fn<(fn: () => unknown) => void>((fn) => { void fn() }),
 }))
 vi.mock('next-auth', () => ({ AuthError: MockAuthError }))
-vi.mock('@/auth', () => ({ signIn: vi.fn() }))
+vi.mock('@/auth', () => ({ signIn: vi.fn<typeof SignInFn>() }))
 vi.mock('@/lib/infra/rate-limit', async () => {
   const actual = await vi.importActual<typeof import('@/lib/infra/rate-limit')>('@/lib/infra/rate-limit')
-  return { ...actual, checkRateLimit: vi.fn() }
+  return { ...actual, checkRateLimit: vi.fn<typeof CheckRateLimitFn>() }
 })
-vi.mock('@/lib/utils/auth', () => ({ outboundEmailEnabled: vi.fn() }))
-vi.mock('@/lib/emails/verification', () => ({ resendVerification: vi.fn() }))
+vi.mock('@/lib/utils/auth', () => ({ outboundEmailEnabled: vi.fn<typeof OutboundEmailEnabledFn>() }))
+vi.mock('@/lib/emails/verification', () => ({ resendVerification: vi.fn<typeof ResendVerificationFn>() }))
 vi.mock('@/lib/auth/auth-service', () => ({
-  validateUserPassword: vi.fn(),
-  registerUser: vi.fn(),
-  triggerPasswordReset: vi.fn(),
-  applyPasswordReset: vi.fn(),
-  confirmCredentialEmail: vi.fn(),
+  validateUserPassword: vi.fn<typeof ValidateUserPasswordFn>(),
+  registerUser: vi.fn<typeof RegisterUserFn>(),
+  triggerPasswordReset: vi.fn<typeof TriggerPasswordResetFn>(),
+  applyPasswordReset: vi.fn<typeof ApplyPasswordResetFn>(),
+  confirmCredentialEmail: vi.fn<typeof ConfirmCredentialEmailFn>(),
   assertCredentialLoginAllowed: mockAssertCredentialLoginAllowed,
 }))
 
@@ -47,15 +59,15 @@ import { POST as RESET } from './reset-password/route'
 import { POST as RESEND } from './resend-verification/route'
 import { POST as CONFIRM_LOGIN_EMAIL } from './confirm-login-email/route'
 
-const mockSignIn = signIn as ReturnType<typeof vi.fn>
-const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockOutboundEmailEnabled = outboundEmailEnabled as ReturnType<typeof vi.fn>
-const mockValidateUserPassword = validateUserPassword as ReturnType<typeof vi.fn>
-const mockRegisterUser = registerUser as ReturnType<typeof vi.fn>
-const mockTriggerPasswordReset = triggerPasswordReset as ReturnType<typeof vi.fn>
-const mockApplyPasswordReset = applyPasswordReset as ReturnType<typeof vi.fn>
-const mockResendVerification = resendVerification as ReturnType<typeof vi.fn>
-const mockConfirmCredentialEmail = confirmCredentialEmail as ReturnType<typeof vi.fn>
+const mockSignIn = vi.mocked(signIn)
+const mockRateLimit = vi.mocked(checkRateLimit)
+const mockOutboundEmailEnabled = vi.mocked(outboundEmailEnabled)
+const mockValidateUserPassword = vi.mocked(validateUserPassword)
+const mockRegisterUser = vi.mocked(registerUser)
+const mockTriggerPasswordReset = vi.mocked(triggerPasswordReset)
+const mockApplyPasswordReset = vi.mocked(applyPasswordReset)
+const mockResendVerification = vi.mocked(resendVerification)
+const mockConfirmCredentialEmail = vi.mocked(confirmCredentialEmail)
 
 function post(path: string, payload?: unknown): NextRequest {
   return new NextRequest(`http://localhost/api/auth/${path}`, {
@@ -75,7 +87,18 @@ beforeEach(() => {
   mockOutboundEmailEnabled.mockReturnValue(false)
   mockSignIn.mockResolvedValue(undefined)
   // Default: a valid, verified credential user; password is validated before verification status leaks.
-  mockValidateUserPassword.mockResolvedValue({ id: 'u1', email: 'user@example.com', emailVerified: new Date() })
+  mockValidateUserPassword.mockResolvedValue({
+    id: 'u1',
+    email: 'user@example.com',
+    emailVerified: new Date(),
+    matchedField: 'email',
+    matchedVerified: new Date(),
+    credentialEmail: null,
+    credentialEmailVerified: null,
+    name: null,
+    image: null,
+    password: null,
+  })
 })
 
 describe('POST /auth/login', () => {
@@ -141,7 +164,18 @@ describe('POST /auth/login', () => {
   it('returns the typed 403 only on a CORRECT password for an unverified account, no budget consumed', async () => {
     mockOutboundEmailEnabled.mockReturnValue(true)
     // Primary-email match: matchedVerified mirrors the (null) emailVerified.
-    mockValidateUserPassword.mockResolvedValue({ id: 'u1', email: 'user@example.com', emailVerified: null, matchedVerified: null })
+    mockValidateUserPassword.mockResolvedValue({
+      id: 'u1',
+      email: 'user@example.com',
+      emailVerified: null,
+      matchedField: 'email',
+      matchedVerified: null,
+      credentialEmail: null,
+      credentialEmailVerified: null,
+      name: null,
+      image: null,
+      password: null,
+    })
     const res = await LOGIN(post('login', { email: 'user@example.com', password: 'password123' }))
     expect(res.status).toBe(403)
     expect((await readJson<{ data: { email: string } }>(res)).data.email).toBe('user@example.com')
@@ -153,7 +187,18 @@ describe('POST /auth/login', () => {
 
   it('signs in on a correct password for a verified account (verification enabled)', async () => {
     mockOutboundEmailEnabled.mockReturnValue(true)
-    mockValidateUserPassword.mockResolvedValue({ id: 'u1', email: 'user@example.com', emailVerified: new Date(), matchedVerified: new Date() })
+    mockValidateUserPassword.mockResolvedValue({
+      id: 'u1',
+      email: 'user@example.com',
+      emailVerified: new Date(),
+      matchedField: 'email',
+      matchedVerified: new Date(),
+      credentialEmail: null,
+      credentialEmailVerified: null,
+      name: null,
+      image: null,
+      password: null,
+    })
     const res = await LOGIN(post('login', { email: 'user@example.com', password: 'password123' }))
     expect(res.status).toBe(204)
     expect(mockSignIn).toHaveBeenCalled()
@@ -163,7 +208,18 @@ describe('POST /auth/login', () => {
     mockOutboundEmailEnabled.mockReturnValue(true)
     // OAuth account (primary emailVerified always null) signing in with its confirmed credential-login
     // email: gate on the matched field's timestamp, not the primary emailVerified, so this must NOT 403.
-    mockValidateUserPassword.mockResolvedValue({ id: 'u1', email: 'oauth@example.com', emailVerified: null, matchedVerified: new Date() })
+    mockValidateUserPassword.mockResolvedValue({
+      id: 'u1',
+      email: 'oauth@example.com',
+      emailVerified: null,
+      matchedField: 'credentialEmail',
+      matchedVerified: new Date(),
+      credentialEmail: 'cred@example.com',
+      credentialEmailVerified: new Date(),
+      name: null,
+      image: null,
+      password: null,
+    })
     const res = await LOGIN(post('login', { email: 'cred@example.com', password: 'password123' }))
     expect(res.status).toBe(204)
     expect(mockSignIn).toHaveBeenCalled()

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { useIntersectionObserver } from '@/hooks/ui/use-intersection-observer';
 
@@ -18,10 +18,17 @@ export function FadeIn({ children, index = 0, className }: FadeInProps) {
     triggerOnce: true,
   });
 
-  const setRefs = (node: HTMLDivElement | null) => {
-    nodeRef.current = node;
-    observerRef(node);
-  };
+  // observerRef itself is a new function on every render of useIntersectionObserver (it
+  // isn't memoized inside that hook), so wrapping this in useCallback doesn't stabilize
+  // the reference across renders — it only satisfies the lint rule syntactically. The
+  // real fix would live in use-intersection-observer.ts, which is out of scope here.
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      nodeRef.current = node;
+      observerRef(node);
+    },
+    [observerRef],
+  );
 
   // mounted tracks whether JS has hydrated. Before that no opacity class is applied,
   // so server-rendered content stays visible even before the IntersectionObserver fires.
@@ -45,6 +52,8 @@ export function FadeIn({ children, index = 0, className }: FadeInProps) {
 
   const visible = alreadyVisible || inView;
 
+  const style = useMemo(() => ({ transitionDelay: `${(index % 6) * 80}ms` }), [index]);
+
   return (
     <div
       ref={setRefs}
@@ -54,7 +63,7 @@ export function FadeIn({ children, index = 0, className }: FadeInProps) {
         mounted && visible && 'opacity-100 translate-y-0',
         className,
       )}
-      style={{ transitionDelay: `${(index % 6) * 80}ms` }}
+      style={style}
     >
       {children}
     </div>

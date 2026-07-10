@@ -13,22 +13,27 @@ vi.mock('@/lib/api/route', () => ({
 }))
 vi.mock('@/lib/infra/prisma', async () => (await import('@/test/prisma-mock')).createPrismaMockModule())
 vi.mock('@/lib/infra/health-checks', () => ({
-  checkRedis: vi.fn(),
-  checkS3: vi.fn(),
-  checkEmail: vi.fn(),
+  checkRedis: vi.fn<typeof CheckRedisFn>(),
+  checkS3: vi.fn<typeof CheckS3Fn>(),
+  checkEmail: vi.fn<typeof CheckEmailFn>(),
 }))
 
 import { prisma } from '@/lib/infra/prisma'
 import { asPrismaMock } from '@/test/prisma-mock'
 import { checkRedis, checkS3, checkEmail } from '@/lib/infra/health-checks'
+import type {
+  checkRedis as CheckRedisFn,
+  checkS3 as CheckS3Fn,
+  checkEmail as CheckEmailFn,
+} from '@/lib/infra/health-checks'
 
 import { GET } from './route'
 
 const prismaMock = asPrismaMock(prisma)
 const mockQueryRaw = prismaMock.$queryRaw
-const mockRedis = checkRedis as ReturnType<typeof vi.fn>
-const mockS3 = checkS3 as ReturnType<typeof vi.fn>
-const mockEmail = checkEmail as ReturnType<typeof vi.fn>
+const mockRedis = vi.mocked(checkRedis)
+const mockS3 = vi.mocked(checkS3)
+const mockEmail = vi.mocked(checkEmail)
 
 const req = (qs = '') => new NextRequest(`http://localhost/api/health${qs}`, { method: 'GET' })
 

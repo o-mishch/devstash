@@ -1,21 +1,43 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { setSubscriptionCancelAtPeriodEnd as SetSubscriptionCancelAtPeriodEndFn } from '@/lib/infra/stripe'
+import type {
+  getCachedLiveSubscriptionState as GetCachedLiveSubscriptionStateFn,
+  getCachedUserStripeInfo as GetCachedUserStripeInfoFn,
+} from '@/lib/billing/sync/user-billing-state'
+import type {
+  getFreshVerifiedProAccess as GetFreshVerifiedProAccessFn,
+  markFreshProAccessResolved as MarkFreshProAccessResolvedFn,
+} from '@/lib/billing/access/pro-access-resolution'
+import type { applyLiveSubscriptionAccessFromStripe as ApplyLiveSubscriptionAccessFromStripeFn } from '@/lib/billing/subscription/stripe-subscription-persist'
+import type { syncSubscriptionStateForUser as SyncSubscriptionStateForUserFn } from '@/lib/billing/sync/passive-billing-sync'
+import type { invalidateBillingCache as InvalidateBillingCacheFn } from '@/lib/infra/cache'
 
-vi.mock('@/lib/infra/stripe', () => ({ setSubscriptionCancelAtPeriodEnd: vi.fn() }))
+vi.mock('@/lib/infra/stripe', () => ({
+  setSubscriptionCancelAtPeriodEnd: vi.fn<typeof SetSubscriptionCancelAtPeriodEndFn>(),
+}))
 vi.mock('@/lib/billing/sync/user-billing-state', () => ({
-  getCachedUserStripeInfo: vi.fn(),
-  getCachedLiveSubscriptionState: vi.fn(),
+  getCachedUserStripeInfo: vi.fn<typeof GetCachedUserStripeInfoFn>(),
+  getCachedLiveSubscriptionState: vi.fn<typeof GetCachedLiveSubscriptionStateFn>(),
 }))
 vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
-  getFreshVerifiedProAccess: vi.fn(),
-  markFreshProAccessResolved: vi.fn(),
+  getFreshVerifiedProAccess: vi.fn<typeof GetFreshVerifiedProAccessFn>(),
+  markFreshProAccessResolved: vi.fn<typeof MarkFreshProAccessResolvedFn>(),
 }))
 vi.mock('@/lib/billing/subscription/stripe-subscription-persist', () => ({
-  applyLiveSubscriptionAccessFromStripe: vi.fn(),
+  applyLiveSubscriptionAccessFromStripe: vi.fn<typeof ApplyLiveSubscriptionAccessFromStripeFn>(),
 }))
-vi.mock('@/lib/billing/sync/passive-billing-sync', () => ({ syncSubscriptionStateForUser: vi.fn() }))
-vi.mock('@/lib/infra/cache', () => ({ invalidateBillingCache: vi.fn() }))
+vi.mock('@/lib/billing/sync/passive-billing-sync', () => ({
+  syncSubscriptionStateForUser: vi.fn<typeof SyncSubscriptionStateForUserFn>(),
+}))
+vi.mock('@/lib/infra/cache', () => ({ invalidateBillingCache: vi.fn<typeof InvalidateBillingCacheFn>() }))
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: {
+    child: () => ({
+      info: vi.fn<(...args: unknown[]) => void>(),
+      warn: vi.fn<(...args: unknown[]) => void>(),
+      error: vi.fn<(...args: unknown[]) => void>(),
+    }),
+  },
 }))
 
 import { setSubscriptionCancelAtPeriodEnd } from '@/lib/infra/stripe'
@@ -26,25 +48,55 @@ import { syncSubscriptionStateForUser } from '@/lib/billing/sync/passive-billing
 import { invalidateBillingCache } from '@/lib/infra/cache'
 import { toggleSubscriptionCancellation } from '@/lib/billing/subscription/toggle-cancellation'
 
-const mockGetUserInfo = getCachedUserStripeInfo as ReturnType<typeof vi.fn>
-const mockGetLiveState = getCachedLiveSubscriptionState as ReturnType<typeof vi.fn>
-const mockSetCancel = setSubscriptionCancelAtPeriodEnd as ReturnType<typeof vi.fn>
-const mockApplyAccess = applyLiveSubscriptionAccessFromStripe as ReturnType<typeof vi.fn>
-const mockGetProAccess = getFreshVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockMarkPro = markFreshProAccessResolved as ReturnType<typeof vi.fn>
-const mockSyncRecovery = syncSubscriptionStateForUser as ReturnType<typeof vi.fn>
-const mockInvalidate = invalidateBillingCache as ReturnType<typeof vi.fn>
+const mockGetUserInfo = vi.mocked(getCachedUserStripeInfo)
+const mockGetLiveState = vi.mocked(getCachedLiveSubscriptionState)
+const mockSetCancel = vi.mocked(setSubscriptionCancelAtPeriodEnd)
+const mockApplyAccess = vi.mocked(applyLiveSubscriptionAccessFromStripe)
+const mockGetProAccess = vi.mocked(getFreshVerifiedProAccess)
+const mockMarkPro = vi.mocked(markFreshProAccessResolved)
+const mockSyncRecovery = vi.mocked(syncSubscriptionStateForUser)
+const mockInvalidate = vi.mocked(invalidateBillingCache)
 
 describe('toggleSubscriptionCancellation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGetUserInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_1', stripeCustomerId: 'cus_1' })
-    mockGetLiveState.mockResolvedValue({ status: 'active' })
+    mockGetUserInfo.mockResolvedValue({
+      email: 'user@example.com',
+      stripeCustomerId: 'cus_1',
+      stripeSubscriptionId: 'sub_1',
+      stripeSubscriptionStatus: 'active',
+      isPro: true,
+      stripeSubscriptionStart: null,
+      stripeCurrentPeriodEnd: null,
+      stripeSubscriptionInterval: null,
+      stripeCancelAtPeriodEnd: false,
+      stripeLastSyncAt: null,
+      proExpiredAt: null,
+    })
+    mockGetLiveState.mockResolvedValue({
+      exists: true,
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: null,
+      interval: null,
+      status: 'active',
+    })
     mockGetProAccess.mockResolvedValue(true)
   })
 
   it('throws and skips Stripe when the user has no active subscription', async () => {
-    mockGetUserInfo.mockResolvedValue({ stripeSubscriptionId: null })
+    mockGetUserInfo.mockResolvedValue({
+      email: 'user@example.com',
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      stripeSubscriptionStatus: null,
+      isPro: false,
+      stripeSubscriptionStart: null,
+      stripeCurrentPeriodEnd: null,
+      stripeSubscriptionInterval: null,
+      stripeCancelAtPeriodEnd: false,
+      stripeLastSyncAt: null,
+      proExpiredAt: null,
+    })
 
     await expect(toggleSubscriptionCancellation('user-1', true)).rejects.toThrow(
       'No active subscription found. Please contact support.',
@@ -56,10 +108,20 @@ describe('toggleSubscriptionCancellation', () => {
     await toggleSubscriptionCancellation('user-1', true)
 
     expect(mockSetCancel).toHaveBeenCalledWith('sub_1', true)
-    expect(mockApplyAccess).toHaveBeenCalledWith('sub_1', { status: 'active' }, {
-      userId: 'user-1',
-      customerId: 'cus_1',
-    })
+    expect(mockApplyAccess).toHaveBeenCalledWith(
+      'sub_1',
+      {
+        exists: true,
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: null,
+        interval: null,
+        status: 'active',
+      },
+      {
+        userId: 'user-1',
+        customerId: 'cus_1',
+      },
+    )
     expect(mockMarkPro).toHaveBeenCalledWith('user-1', true)
     expect(mockInvalidate).toHaveBeenCalledWith('user-1')
     expect(mockSyncRecovery).not.toHaveBeenCalled()

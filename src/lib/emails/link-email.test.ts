@@ -1,15 +1,20 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { stringContaining } from '@/test/matchers'
+import type { buildEmailTemplate } from './template-builder'
+import type { getBaseUrl } from '@/lib/utils/url'
+import type { sendEmail as SendEmailFn } from '@/lib/infra/resend'
 
 vi.mock('./link-email.html', () => ({ default: '{{HEADING}}{{INTRO}}{{URL}}{{CTA}}{{DISCLAIMER}}' }))
-vi.mock('./template-builder', () => ({ buildEmailTemplate: (_subject: string, body: string) => body }))
-vi.mock('@/lib/utils/url', () => ({ getBaseUrl: () => 'https://app.example.com' }))
-vi.mock('@/lib/infra/resend', () => ({ sendEmail: vi.fn().mockResolvedValue(true) }))
+vi.mock('./template-builder', () => ({
+  buildEmailTemplate: vi.fn<typeof buildEmailTemplate>((_subject: string, body: string) => body),
+}))
+vi.mock('@/lib/utils/url', () => ({ getBaseUrl: vi.fn<typeof getBaseUrl>(() => 'https://app.example.com') }))
+vi.mock('@/lib/infra/resend', () => ({ sendEmail: vi.fn<typeof SendEmailFn>().mockResolvedValue(true) }))
 
 import { sendTokenLinkEmail } from './link-email'
 import { sendEmail } from '@/lib/infra/resend'
 
-const mockSendEmail = sendEmail as ReturnType<typeof vi.fn>
+const mockSendEmail = vi.mocked(sendEmail)
 
 describe('sendTokenLinkEmail', () => {
   beforeEach(() => vi.clearAllMocks())

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { memo, useCallback, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import Image from 'next/image'
 import { RotateCcw } from 'lucide-react'
 import { showFileNotFoundToast } from '@/lib/dom/toast-error'
@@ -20,8 +20,12 @@ interface ImageCardProps {
   priority?: boolean
 }
 
-export function ImageCard({ item, priority = false }: ImageCardProps) {
-  const { openDrawer } = useItemDrawerStore()
+// Rendered per-row inside the virtualized items grid (TanStackVirtualGrid re-renders visible rows
+// on every scroll frame). Memoized so a card only re-renders when its own `item`/`priority` reference
+// changes — the narrowed `openDrawer` selector below keeps that action reference stable across
+// unrelated drawer state changes, mirroring the item-card.tsx / dashboard ItemRow fix.
+export const ImageCard = memo(function ImageCard({ item, priority = false }: ImageCardProps) {
+  const openDrawer = useItemDrawerStore((state) => state.openDrawer)
   const isPro = useIsPro()
   const { refresh } = useDownloadSrcActions()
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(item.itemType.name)
@@ -33,20 +37,32 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
   const previewSrc = freshSrc || cachedPreviewSrc
   const isLoaded = previewSrc !== null && loadedSrc === previewSrc
 
-  function handleCardKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    openDrawer(item)
-  }
+  const handleClick = useCallback(() => openDrawer(item), [openDrawer, item])
 
-  function handleImageError() {
+  const handleCardKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      openDrawer(item)
+    },
+    [openDrawer, item],
+  )
+
+  // Wrapped in useCallback: next/image's <Image> reads onLoad/onError in its own internal
+  // useEffect/useCallback dependency arrays, so a stable reference avoids re-running those every render.
+  const handleImageError = useCallback(() => {
     markPreviewFailed(item.id, previewSrc ?? undefined)
     setError(true)
     setIsReloading(false)
     showFileNotFoundToast()
-  }
+  }, [item.id, previewSrc])
 
-  async function handleReload(e: MouseEvent) {
+  const handleImageLoad = useCallback(() => {
+    setLoadedSrc(previewSrc)
+    setIsReloading(false)
+  }, [previewSrc])
+
+  const handleReload = useCallback(async (e: MouseEvent) => {
     e.stopPropagation()
     setFreshSrc(null)
     setIsReloading(true)
@@ -64,7 +80,9 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
       setIsReloading(false)
       showFileNotFoundToast()
     }
-  }
+  }, [item.id, refresh])
+
+  const handleReloadClick = useCallback((e: MouseEvent) => { void handleReload(e) }, [handleReload])
 
   return (
     <Card
@@ -75,7 +93,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
       role="button"
       tabIndex={0}
       className="card-interactive group/card relative h-full min-w-0 w-full overflow-visible p-0 ring-border focus-visible:ring-2 focus-visible:ring-ring"
-      onClick={() => openDrawer(item)}
+      onClick={handleClick}
       onKeyDown={handleCardKeyDown}
     >
       <div className="relative aspect-video h-full w-full overflow-hidden rounded-xl bg-muted/30">
@@ -90,10 +108,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
             unoptimized
             crossOrigin="anonymous"
             loading={priority ? 'eager' : 'lazy'}
-            onLoad={() => {
-              setLoadedSrc(previewSrc)
-              setIsReloading(false)
-            }}
+            onLoad={handleImageLoad}
             onError={handleImageError}
             className={`object-cover transition-all duration-300 group-hover/card:scale-105 z-10 ${isLoaded && !error ? 'opacity-100' : 'opacity-0'}`}
           />
@@ -104,7 +119,7 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
         {(error || isReloading) && (
           <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
             <button
-              onClick={(e) => void handleReload(e)}
+              onClick={handleReloadClick}
               disabled={isReloading}
               className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed"
               title="Reload image"
@@ -134,4 +149,4 @@ export function ImageCard({ item, priority = false }: ImageCardProps) {
       </div>
     </Card>
   )
-}
+})

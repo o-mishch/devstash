@@ -1,34 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { LogFn } from 'pino'
+import type Stripe from 'stripe'
+import type { getRedis } from '@/lib/infra/redis'
+import type { cancelAbandonedSubscription, createPortalSession } from '@/lib/infra/stripe'
+import type { retrieveStripeCharge, listStripeCustomersByEmail, iterateCustomerSubscriptions } from '@/lib/billing/stripe-api'
+import type { resolveAppUserIdForSubscription } from '@/lib/billing/subscription/subscription-state'
+import type { getUserStripeInfo, UserStripeInfo } from '@/lib/db/stripe'
+import type { sendBillingPaymentFailedEmail } from '@/lib/billing/emails/billing-payment-failed'
+import type { sendBillingCheckoutPaymentFailedEmail } from '@/lib/billing/emails/billing-checkout-payment-failed'
+import type { sendBillingDisputeAdminEmail } from '@/lib/billing/emails/billing-dispute-admin'
+import type { sendBillingTrialEndingEmail } from '@/lib/billing/emails/billing-trial-ending'
 
 vi.mock('@/lib/infra/redis', () => ({
-  getRedis: vi.fn(() => null),
+  getRedis: vi.fn<typeof getRedis>(() => null),
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() }) },
 }))
 
 vi.mock('@/lib/infra/stripe', () => ({
-  cancelAbandonedSubscription: vi.fn(),
-  createPortalSession: vi.fn(),
-  stripe: { charges: { retrieve: vi.fn() } },
+  cancelAbandonedSubscription: vi.fn<typeof cancelAbandonedSubscription>(),
+  createPortalSession: vi.fn<typeof createPortalSession>(),
+  stripe: { charges: { retrieve: vi.fn<typeof retrieveStripeCharge>() } },
 }))
 
 const {
   mockListStripeCustomersByEmail,
   mockIterateCustomerSubscriptions,
 } = vi.hoisted(() => ({
-  mockListStripeCustomersByEmail: vi.fn(),
-  mockIterateCustomerSubscriptions: vi.fn(),
+  mockListStripeCustomersByEmail: vi.fn<typeof listStripeCustomersByEmail>(),
+  mockIterateCustomerSubscriptions: vi.fn<typeof iterateCustomerSubscriptions>(),
 }))
 
 vi.mock('@/lib/billing/stripe-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/billing/stripe-api')>()
   return {
     ...actual,
-    fetchCheckoutSessionDetails: vi.fn(),
-    fetchLiveSubscriptionState: vi.fn(),
-    fetchSubscriptionDetails: vi.fn(),
+    fetchCheckoutSessionDetails: vi.fn<typeof fetchCheckoutSessionDetails>(),
+    fetchLiveSubscriptionState: vi.fn<typeof fetchLiveSubscriptionState>(),
+    fetchSubscriptionDetails: vi.fn<typeof fetchSubscriptionDetails>(),
     listStripeCustomersByEmail: mockListStripeCustomersByEmail,
     iterateCustomerSubscriptions: mockIterateCustomerSubscriptions,
   }
@@ -38,27 +49,27 @@ vi.mock('@/lib/billing/config/billing-pricing', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/billing/config/billing-pricing')>()
   return {
     ...actual,
-    isAllowedCheckoutPriceId: vi.fn(() => true),
+    isAllowedCheckoutPriceId: vi.fn<typeof isAllowedCheckoutPriceId>(() => true),
   }
 })
 
 vi.mock('@/lib/billing/subscription/subscription-state', () => ({
-  resolveAppUserIdForSubscription: vi.fn().mockResolvedValue('user-1'),
-  clearStripeSubscriptionBySubId: vi.fn(),
-  updateSubscriptionState: vi.fn(),
-  updateUserStripeSubscription: vi.fn(),
+  resolveAppUserIdForSubscription: vi.fn<typeof resolveAppUserIdForSubscription>().mockResolvedValue('user-1'),
+  clearStripeSubscriptionBySubId: vi.fn<typeof clearStripeSubscriptionBySubId>(),
+  updateSubscriptionState: vi.fn<typeof updateSubscriptionState>(),
+  updateUserStripeSubscription: vi.fn<typeof updateUserStripeSubscription>(),
 }))
 
 vi.mock('@/lib/billing/subscription/stripe-subscription-persist', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/billing/subscription/stripe-subscription-persist')>()
   return {
     ...actual,
-    applySubscriptionAccessFromStripe: vi.fn(),
+    applySubscriptionAccessFromStripe: vi.fn<typeof applySubscriptionAccessFromStripe>(),
   }
 })
 
 const { mockGetUserStripeInfo } = vi.hoisted(() => ({
-  mockGetUserStripeInfo: vi.fn(),
+  mockGetUserStripeInfo: vi.fn<typeof getUserStripeInfo>(),
 }))
 
 vi.mock('@/lib/db/stripe', () => ({
@@ -79,19 +90,19 @@ vi.mock('@/lib/billing/sync/user-billing-state', async (importOriginal) => {
 })
 
 vi.mock('@/lib/billing/emails/billing-payment-failed', () => ({
-  sendBillingPaymentFailedEmail: vi.fn(),
+  sendBillingPaymentFailedEmail: vi.fn<typeof sendBillingPaymentFailedEmail>(),
 }))
 
 vi.mock('@/lib/billing/emails/billing-checkout-payment-failed', () => ({
-  sendBillingCheckoutPaymentFailedEmail: vi.fn(),
+  sendBillingCheckoutPaymentFailedEmail: vi.fn<typeof sendBillingCheckoutPaymentFailedEmail>(),
 }))
 
 vi.mock('@/lib/billing/emails/billing-dispute-admin', () => ({
-  sendBillingDisputeAdminEmail: vi.fn(),
+  sendBillingDisputeAdminEmail: vi.fn<typeof sendBillingDisputeAdminEmail>(),
 }))
 
 vi.mock('@/lib/billing/emails/billing-trial-ending', () => ({
-  sendBillingTrialEndingEmail: vi.fn(),
+  sendBillingTrialEndingEmail: vi.fn<typeof sendBillingTrialEndingEmail>(),
 }))
 
 
@@ -109,16 +120,20 @@ import {
 import { applySubscriptionAccessFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'
 import { finalizeCheckoutSessionForUser, validateCheckoutEligibility } from '../checkout/stripe-checkout'
 import { maybeReconcileBillingStateForUser, syncSubscriptionStateForUser } from './passive-billing-sync'
-import type Stripe from 'stripe'
 
-const mockFetchCheckoutSessionDetails = fetchCheckoutSessionDetails as ReturnType<typeof vi.fn>
-const mockFetchLiveSubscriptionState = fetchLiveSubscriptionState as ReturnType<typeof vi.fn>
-const mockFetchSubscriptionDetails = fetchSubscriptionDetails as ReturnType<typeof vi.fn>
-const mockIsAllowedCheckoutPriceId = isAllowedCheckoutPriceId as ReturnType<typeof vi.fn>
-const mockClearStripeSubscriptionBySubId = clearStripeSubscriptionBySubId as ReturnType<typeof vi.fn>
-const mockUpdateSubscriptionState = updateSubscriptionState as ReturnType<typeof vi.fn>
-const mockUpdateUserStripeSubscription = updateUserStripeSubscription as ReturnType<typeof vi.fn>
-const mockApplySubscriptionAccessFromStripe = applySubscriptionAccessFromStripe as ReturnType<typeof vi.fn>
+const mockFetchCheckoutSessionDetails = vi.mocked(fetchCheckoutSessionDetails)
+const mockFetchLiveSubscriptionState = vi.mocked(fetchLiveSubscriptionState)
+const mockFetchSubscriptionDetails = vi.mocked(fetchSubscriptionDetails)
+const mockIsAllowedCheckoutPriceId = vi.mocked(isAllowedCheckoutPriceId)
+const mockClearStripeSubscriptionBySubId = vi.mocked(clearStripeSubscriptionBySubId)
+const mockUpdateSubscriptionState = vi.mocked(updateSubscriptionState)
+const mockUpdateUserStripeSubscription = vi.mocked(updateUserStripeSubscription)
+const mockApplySubscriptionAccessFromStripe = vi.mocked(applySubscriptionAccessFromStripe)
+
+// updateUserStripeSubscription resolves the full Prisma User row; the beforeEach default below
+// never has its resolved value inspected, so a cast placeholder stands in for a real row.
+type UpdateUserStripeSubscriptionResult = Awaited<ReturnType<typeof updateUserStripeSubscription>>
+
 async function* emptySubscriptionIterator() {
   // no subscriptions
 }
@@ -141,6 +156,32 @@ function makeBlockingSubscription(overrides: Partial<Stripe.Subscription> = {}):
   } as Stripe.Subscription
 }
 
+function makeStripeCustomer(overrides: Partial<Stripe.Customer> = {}): Stripe.Customer {
+  return {
+    id: 'cus_123',
+    email: 'user@example.com',
+    metadata: {},
+    ...overrides,
+  } as Stripe.Customer
+}
+
+function makeUserStripeInfo(overrides: Partial<UserStripeInfo> = {}): UserStripeInfo {
+  return {
+    email: 'user@example.com',
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    stripeSubscriptionStatus: null,
+    isPro: false,
+    stripeSubscriptionStart: null,
+    stripeCurrentPeriodEnd: null,
+    stripeSubscriptionInterval: null,
+    stripeCancelAtPeriodEnd: false,
+    stripeLastSyncAt: null,
+    proExpiredAt: null,
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockIsAllowedCheckoutPriceId.mockReturnValue(true)
@@ -150,7 +191,7 @@ beforeEach(() => {
   mockFetchSubscriptionDetails.mockResolvedValue(null)
   mockUpdateSubscriptionState.mockResolvedValue({ count: 1 })
   mockClearStripeSubscriptionBySubId.mockResolvedValue({ count: 1 })
-  mockUpdateUserStripeSubscription.mockResolvedValue(undefined)
+  mockUpdateUserStripeSubscription.mockResolvedValue({} as UpdateUserStripeSubscriptionResult)
 })
 
 describe('validateCheckoutEligibility', () => {
@@ -163,7 +204,7 @@ describe('validateCheckoutEligibility', () => {
   })
 
   it('allows checkout when the user has no Stripe customer yet', async () => {
-    mockGetUserStripeInfo.mockResolvedValue({ stripeCustomerId: null, email: null })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeCustomerId: null, email: '' }))
 
     const result = await validateCheckoutEligibility('user-1', 'price_good')
 
@@ -171,13 +212,13 @@ describe('validateCheckoutEligibility', () => {
   })
 
   it('reuses an existing Stripe customer recovered by email', async () => {
-    mockGetUserStripeInfo.mockResolvedValue({ stripeCustomerId: null, email: 'user@example.com' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeCustomerId: null, email: 'user@example.com' }))
     mockListStripeCustomersByEmail.mockResolvedValue([
-      {
+      makeStripeCustomer({
         id: 'cus_existing',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      },
+      }),
     ])
     mockIterateCustomerSubscriptions.mockReturnValue(emptySubscriptionIterator())
 
@@ -188,13 +229,13 @@ describe('validateCheckoutEligibility', () => {
 
   it('rejects checkout when an existing subscription is found on a recovered customer', async () => {
     const blockingSubscription = makeBlockingSubscription({ id: 'sub_456', customer: 'cus_existing' })
-    mockGetUserStripeInfo.mockResolvedValue({ stripeCustomerId: null, email: 'user@example.com' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeCustomerId: null, email: 'user@example.com' }))
     mockListStripeCustomersByEmail.mockResolvedValue([
-      {
+      makeStripeCustomer({
         id: 'cus_existing',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      },
+      }),
     ])
     mockIterateCustomerSubscriptions.mockImplementation(async function* () {
       await Promise.resolve()
@@ -214,7 +255,7 @@ describe('validateCheckoutEligibility', () => {
 
   it('rejects checkout when a blocking subscription exists', async () => {
     const blockingSubscription = makeBlockingSubscription()
-    mockGetUserStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_123', email: 'user@example.com' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeCustomerId: 'cus_123', email: 'user@example.com' }))
     mockIterateCustomerSubscriptions.mockImplementation(async function* () {
       await Promise.resolve()
       yield blockingSubscription
@@ -242,7 +283,7 @@ describe('validateCheckoutEligibility', () => {
 
 describe('syncSubscriptionStateForUser', () => {
   it('returns no_subscription when the user has no local subscription id', async () => {
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: null, email: null })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeSubscriptionId: null, email: '' }))
 
     const result = await syncSubscriptionStateForUser('user-1')
 
@@ -254,15 +295,15 @@ describe('syncSubscriptionStateForUser', () => {
     const blockingSubscription = makeBlockingSubscription()
     mockApplySubscriptionAccessFromStripe.mockResolvedValue('updated')
     mockGetUserStripeInfo
-      .mockResolvedValueOnce({ email: 'user@example.com', stripeSubscriptionId: null, stripeCustomerId: null })
-      .mockResolvedValueOnce({ email: 'user@example.com', stripeSubscriptionId: null, stripeCustomerId: null })
-      .mockResolvedValueOnce({ stripeSubscriptionId: 'sub_123', stripeCustomerId: 'cus_123' })
+      .mockResolvedValueOnce(makeUserStripeInfo({ email: 'user@example.com', stripeSubscriptionId: null, stripeCustomerId: null }))
+      .mockResolvedValueOnce(makeUserStripeInfo({ email: 'user@example.com', stripeSubscriptionId: null, stripeCustomerId: null }))
+      .mockResolvedValueOnce(makeUserStripeInfo({ stripeSubscriptionId: 'sub_123', stripeCustomerId: 'cus_123' }))
     mockListStripeCustomersByEmail.mockResolvedValue([
-      {
+      makeStripeCustomer({
         id: 'cus_123',
         email: 'user@example.com',
         metadata: { userId: 'user-1' },
-      },
+      }),
     ])
     mockIterateCustomerSubscriptions.mockImplementation(async function* () {
       await Promise.resolve()
@@ -287,7 +328,7 @@ describe('syncSubscriptionStateForUser', () => {
   })
 
   it('returns unavailable when Stripe state cannot be fetched', async () => {
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_123' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeSubscriptionId: 'sub_123' }))
     mockFetchLiveSubscriptionState.mockResolvedValue(null)
 
     const result = await syncSubscriptionStateForUser('user-1')
@@ -297,7 +338,7 @@ describe('syncSubscriptionStateForUser', () => {
 
   it('updates the local subscription state when Stripe still grants access', async () => {
     const periodEnd = new Date('2026-12-31T00:00:00.000Z')
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_123' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeSubscriptionId: 'sub_123' }))
     mockFetchLiveSubscriptionState.mockResolvedValue({
       exists: true,
       status: 'active',
@@ -326,7 +367,7 @@ describe('syncSubscriptionStateForUser', () => {
   })
 
   it('revokes local access when Stripe reports the subscription missing', async () => {
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_123' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeSubscriptionId: 'sub_123' }))
     mockFetchLiveSubscriptionState.mockResolvedValue({
       exists: false,
       status: null,
@@ -348,7 +389,7 @@ describe('syncSubscriptionStateForUser', () => {
 
   it('retains the local link for incomplete subscriptions awaiting async payment', async () => {
     const periodEnd = new Date('2026-12-31T00:00:00.000Z')
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_123' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeSubscriptionId: 'sub_123' }))
     mockFetchLiveSubscriptionState.mockResolvedValue({
       exists: true,
       status: 'incomplete',
@@ -378,7 +419,7 @@ describe('syncSubscriptionStateForUser', () => {
 
   it('clears the local link when Stripe reports a canceled subscription', async () => {
     const periodEnd = new Date('2026-12-31T00:00:00.000Z')
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_123' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeSubscriptionId: 'sub_123' }))
     mockFetchLiveSubscriptionState.mockResolvedValue({
       exists: true,
       status: 'canceled',
@@ -401,7 +442,7 @@ describe('syncSubscriptionStateForUser', () => {
 
   it('revokes local access without clearing the link for recoverable billing issues', async () => {
     const periodEnd = new Date('2026-12-31T00:00:00.000Z')
-    mockGetUserStripeInfo.mockResolvedValue({ stripeSubscriptionId: 'sub_123' })
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeSubscriptionId: 'sub_123' }))
     mockFetchLiveSubscriptionState.mockResolvedValue({
       exists: true,
       status: 'unpaid',
@@ -432,14 +473,14 @@ describe('syncSubscriptionStateForUser', () => {
 
 describe('maybeReconcileBillingStateForUser', () => {
   it('returns null without calling Stripe when sync is not needed', async () => {
-    mockGetUserStripeInfo.mockResolvedValue({
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({
       email: 'user@example.com',
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: 'sub_123',
       isPro: true,
       stripeLastSyncAt: new Date(),
       stripeCurrentPeriodEnd: new Date('2026-12-31T00:00:00.000Z'),
-    })
+    }))
 
     const result = await maybeReconcileBillingStateForUser('user-1')
 
@@ -449,14 +490,14 @@ describe('maybeReconcileBillingStateForUser', () => {
 
   it('runs sync when the last sync is older than the 24h threshold', async () => {
     const staleSync = new Date(Date.now() - 25 * 60 * 60 * 1000)
-    mockGetUserStripeInfo.mockResolvedValue({
+    mockGetUserStripeInfo.mockResolvedValue(makeUserStripeInfo({
       email: 'user@example.com',
       stripeCustomerId: 'cus_123',
       stripeSubscriptionId: 'sub_123',
       isPro: true,
       stripeLastSyncAt: staleSync,
       stripeCurrentPeriodEnd: new Date('2026-12-31T00:00:00.000Z'),
-    })
+    }))
     mockFetchLiveSubscriptionState.mockResolvedValue({
       exists: true,
       status: 'active',

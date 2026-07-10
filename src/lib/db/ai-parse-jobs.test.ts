@@ -4,13 +4,19 @@ import { Prisma } from '@/generated/prisma/client'
 import { objectContaining, arrayContaining, anything } from '@/test/matchers'
 
 vi.mock('@/lib/infra/prisma', async () => (await import('@/test/prisma-mock')).createPrismaMockModule())
-vi.mock('@/lib/db/items', () => ({ createItem: vi.fn() }))
-vi.mock('@/lib/storage/s3', () => ({ getTextFromS3: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ createItem: vi.fn<typeof createItem>() }))
+vi.mock('@/lib/storage/s3', () => ({ getTextFromS3: vi.fn<typeof getTextFromS3>() }))
 // Default: no Redis → the sweep cooldown fails open (sweep proceeds), matching production without Redis.
 // Individual tests override `getRedis` to exercise the cooldown-held path.
-vi.mock('@/lib/infra/redis', () => ({ getRedis: vi.fn(() => null) }))
+vi.mock('@/lib/infra/redis', () => ({ getRedis: vi.fn<typeof getRedis>(() => null) }))
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: {
+    child: () => ({
+      info: vi.fn<(bindings: Record<string, unknown>, msg: string) => void>(),
+      warn: vi.fn<(bindings: Record<string, unknown>, msg: string) => void>(),
+      error: vi.fn<(bindings: Record<string, unknown>, msg: string) => void>(),
+    }),
+  },
 }))
 
 import { prisma } from '@/lib/infra/prisma'
@@ -51,8 +57,8 @@ const mockJobItem = prismaMock.aiParseJobItem
 const mockJobUpdate = prismaMock.aiParseJob
 const mockItem = prismaMock.item
 const mockCollection = prismaMock.collection
-const mockCreateItem = createItem as ReturnType<typeof vi.fn>
-const mockGetTextFromS3 = getTextFromS3 as ReturnType<typeof vi.fn>
+const mockCreateItem = vi.mocked(createItem)
+const mockGetTextFromS3 = vi.mocked(getTextFromS3)
 
 beforeEach(() => {
   mockReset(prismaMock)
@@ -476,7 +482,7 @@ describe('commitDraftItem', () => {
     // The first stats transaction loses a serialization race (Postgres returns P2034); the bump must
     // retry rather than surfacing the conflict or losing the increment. Non-stats transactions (which
     // pass no isolation option) flow through untouched.
-    const real = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const real = vi.mocked(prisma.$transaction)
     const passthrough = (cb: (tx: unknown) => unknown) => cb(prisma)
     let conflicted = false
     real.mockImplementation((cb: (tx: unknown) => unknown, opts?: { isolationLevel?: string }) => {
@@ -511,7 +517,7 @@ describe('commitDraftItem', () => {
 
     // Every stats transaction loses the serialization race: the bump must retry a bounded number of times
     // and then surface the conflict rather than spinning forever.
-    const real = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const real = vi.mocked(prisma.$transaction)
     const passthrough = (cb: (tx: unknown) => unknown) => cb(prisma)
     let serializableAttempts = 0
     real.mockImplementation((cb: (tx: unknown) => unknown, opts?: { isolationLevel?: string }) => {
@@ -535,7 +541,7 @@ describe('commitDraftItem', () => {
     mockJobItem.findFirst.mockResolvedValue({ ...draft, trashed: true })
     mockCreateItem.mockResolvedValue({ id: 'real' })
 
-    const real = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const real = vi.mocked(prisma.$transaction)
     const passthrough = (cb: (tx: unknown) => unknown) => cb(prisma)
     let serializableAttempts = 0
     real.mockImplementation((cb: (tx: unknown) => unknown, opts?: { isolationLevel?: string }) => {
@@ -675,7 +681,7 @@ describe('updateStreamCursor', () => {
 
 describe('updateJobCollections', () => {
   it('clamps/trims a new collection name and validates collection ownership', async () => {
-    const mockCollectionFindMany = prisma.collection.findMany as ReturnType<typeof vi.fn>
+    const mockCollectionFindMany = vi.mocked(prisma.collection.findMany)
     mockCollectionFindMany.mockResolvedValue([{ id: 'c1' }])
     mockJobUpdate.updateMany.mockResolvedValue({ count: 1 })
 
@@ -720,7 +726,7 @@ describe('updateJobCollections', () => {
 
 describe('listActiveParseJobs', () => {
   it('includes processing + completed/failed jobs with committable drafts (and self-heals close-pending)', async () => {
-    const mockFindMany = prisma.aiParseJob.findMany as ReturnType<typeof vi.fn>
+    const mockFindMany = vi.mocked(prisma.aiParseJob.findMany)
     // First findMany = the self-heal pass (close-pending jobs with zero non-trashed drafts) → none here.
     mockFindMany.mockResolvedValueOnce([])
     // Second findMany = the actual active list.
@@ -749,7 +755,7 @@ describe('listActiveParseJobs', () => {
   })
 
   it('self-heals an in-review job left with zero non-trashed drafts (closes it before listing)', async () => {
-    const mockFindMany = prisma.aiParseJob.findMany as ReturnType<typeof vi.fn>
+    const mockFindMany = vi.mocked(prisma.aiParseJob.findMany)
     // Self-heal pass finds one close-pending job…
     mockFindMany.mockResolvedValueOnce([{ id: 'pending-1' }])
     // …closeJob reads its stats…
@@ -768,7 +774,7 @@ describe('listActiveParseJobs', () => {
   })
 
   it('keeps a zero-draft failed job reachable and never self-heals it', async () => {
-    const mockFindMany = prisma.aiParseJob.findMany as ReturnType<typeof vi.fn>
+    const mockFindMany = vi.mocked(prisma.aiParseJob.findMany)
     // Self-heal pass is scoped to completed-only → finds nothing (the failed job is excluded).
     mockFindMany.mockResolvedValueOnce([])
     // Active list still surfaces the failed job even though it has zero non-trashed drafts.
@@ -790,7 +796,7 @@ describe('listActiveParseJobs', () => {
 
 describe('listClosedParseJobs', () => {
   it('lists only closed jobs with stub stats + trashed-draft count, newest first (IDOR-scoped)', async () => {
-    const mockFindMany = prisma.aiParseJob.findMany as ReturnType<typeof vi.fn>
+    const mockFindMany = vi.mocked(prisma.aiParseJob.findMany)
     mockFindMany.mockResolvedValue([
       {
         id: 'c1', status: 'closed', progress: 100, sourceName: 'done.md', createdAt: new Date('2026-02-01'),
@@ -1198,7 +1204,7 @@ describe('sweepAbandonedParseJobs', () => {
   it('TOCTOU: counts only the rows the guarded deleteMany actually removed (revived job skipped)', async () => {
     // Use a winning Redis mock so this run claims the window WITHOUT touching the in-process timestamp
     // guard (which would leak across the no-Redis throttle test).
-    const set = vi.fn().mockResolvedValue('OK')
+    const set = vi.fn<(key: string, value: string, opts?: { nx: boolean; ex: number }) => Promise<string | null>>().mockResolvedValue('OK')
     vi.mocked(getRedis).mockReturnValueOnce({ set } as unknown as ReturnType<typeof getRedis>)
     mockJob.findMany.mockResolvedValue([{ id: 'job-a' }, { id: 'job-b' }])
     // One of the two was revived/closed in the window → deleteMany removed only 1.
@@ -1238,7 +1244,7 @@ describe('sweepAbandonedParseJobs', () => {
   it('proceeds and claims the cooldown when it wins the Redis window', async () => {
     // `SET NX` returns 'OK' when the key was free → this run won the window and must sweep, setting the
     // cooldown key with the NX+EX guard. A regression on the `=== 'OK'` comparison would fail here.
-    const set = vi.fn().mockResolvedValue('OK')
+    const set = vi.fn<(key: string, value: string, opts?: { nx: boolean; ex: number }) => Promise<string | null>>().mockResolvedValue('OK')
     vi.mocked(getRedis).mockReturnValueOnce({ set } as unknown as ReturnType<typeof getRedis>)
     mockJob.findMany.mockResolvedValue([{ id: 'job-c' }])
     mockJob.deleteMany.mockResolvedValue({ count: 1 })
@@ -1254,7 +1260,7 @@ describe('sweepAbandonedParseJobs', () => {
 
   it('skips the sweep when the Redis cooldown window is already held', async () => {
     // `SET NX` returns null when the key exists → a recent sweep holds the window; this run must no-op.
-    const set = vi.fn().mockResolvedValue(null)
+    const set = vi.fn<(key: string, value: string, opts?: { nx: boolean; ex: number }) => Promise<string | null>>().mockResolvedValue(null)
     vi.mocked(getRedis).mockReturnValueOnce({ set } as unknown as ReturnType<typeof getRedis>)
 
     const result = await sweepAbandonedParseJobs(1_700_000_000_000)

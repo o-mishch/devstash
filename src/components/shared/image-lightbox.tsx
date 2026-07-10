@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, memo } from 'react'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { X, Loader2 } from 'lucide-react'
 import { useIsPro } from '@/hooks/profile/use-user-profile'
@@ -23,9 +23,16 @@ interface ImageLightboxProps {
 // item drawer (itself a dialog) nests correctly: Esc closes only the lightbox.
 //
 // For raster images: if the user is Pro, fetches the full-size image URL on demand with progressive
-// loading (thumbnail as base layer, high-res overlay once downloaded).
-// For SVGs: renders the existing preview src at full viewport size — no fetch needed.
-export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isSvg = false }: ImageLightboxProps) {
+// enhancement (renders the preview immediately, fetches the original R2 asset in the background,
+// fades it in over the preview once cached, and updates the loading indicator).
+export const ImageLightbox = memo(function ImageLightbox({
+  open,
+  onOpenChange,
+  itemId,
+  previewSrc,
+  alt,
+  isSvg = false,
+}: ImageLightboxProps) {
   const isPro = useIsPro()
   const { ensure } = useDownloadSrcActions()
   const [fullsizeUrl, setFullsizeUrl] = useState<string | null>(null)
@@ -42,6 +49,7 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isS
     setHasError(false)
   }
 
+  // Lazy-load the high-res URL only on open, and only for raster images (SVGs skip fullsize)
   useEffect(() => {
     if (!open || !isPro || isSvg) return
 
@@ -67,12 +75,25 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isS
   const showFullsize = !!fullsizeUrl && !hasError
   const showLoading = isFetchingUrl || (showFullsize && isImageLoading)
 
+  const handleClose = useCallback(() => {
+    onOpenChange(false)
+  }, [onOpenChange])
+
+  const handleImageLoad = useCallback(() => {
+    setIsImageLoading(false)
+  }, [])
+
+  const handleImageError = useCallback(() => {
+    setIsImageLoading(false)
+    setHasError(true)
+  }, [])
+
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Popup
           aria-label={alt}
-          onClick={() => onOpenChange(false)}
+          onClick={handleClose}
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 outline-none backdrop-blur-sm duration-150 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 sm:p-8"
         >
           <div className="relative h-full w-full flex items-center justify-center">
@@ -91,11 +112,8 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isS
                 src={fullsizeUrl}
                 alt={alt}
                 crossOrigin="anonymous"
-                onLoad={() => setIsImageLoading(false)}
-                onError={() => {
-                  setIsImageLoading(false)
-                  setHasError(true)
-                }}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
                 className={`absolute inset-0 h-full w-full object-contain drop-shadow-2xl transition-opacity duration-300 ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
               />
             )}
@@ -109,14 +127,11 @@ export function ImageLightbox({ open, onOpenChange, itemId, previewSrc, alt, isS
             )}
           </div>
 
-          <DialogPrimitive.Close
-            aria-label="Close preview"
-            className="absolute top-4 right-4 inline-flex size-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition-colors hover:bg-white/20 z-20"
-          >
+          <DialogPrimitive.Close className="absolute right-4 top-4 z-10 flex size-9 cursor-pointer items-center justify-center rounded-full bg-black/40 text-white/70 hover:bg-black/60 hover:text-white sm:right-6 sm:top-6">
             <X className="size-5" />
           </DialogPrimitive.Close>
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   )
-}
+})

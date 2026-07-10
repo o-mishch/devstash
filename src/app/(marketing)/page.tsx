@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -78,12 +79,15 @@ const MOCKUP_TYPES = [
   { color: SYSTEM_TYPE_COLORS.link, iconName: SYSTEM_TYPE_ICON_NAMES.link, label: 'Links' },
 ];
 
-const MOCKUP_CARDS = [
+// Per-card border style is precomputed once here (module load), not per render — the same
+// object reference is reused every time this module is evaluated, so passing it as a JSX
+// prop never trips jsx-no-new-object-as-prop.
+const MOCKUP_CARDS: { color: string; title: string; sub: string; borderStyle: CSSProperties }[] = [
   { color: SYSTEM_TYPE_COLORS.snippet, title: 'useAuth hook',      sub: 'React · TypeScript' },
   { color: SYSTEM_TYPE_COLORS.prompt, title: 'GPT-4 Code Review', sub: 'AI · Prompt' },
   { color: SYSTEM_TYPE_COLORS.command, title: 'git reset --hard',  sub: 'Git · Terminal' },
   { color: SYSTEM_TYPE_COLORS.note, title: 'Deploy checklist',  sub: 'Markdown · Note' },
-];
+].map(card => ({ ...card, borderStyle: { borderTopColor: card.color } }));
 
 function HeroVisual() {
   return (
@@ -124,12 +128,12 @@ function HeroVisual() {
                   ))}
                 </div>
                 <div className="flex flex-1 flex-col gap-1.5 overflow-hidden p-2">
-                  {/* Inline styles: card accent colors come from runtime SYSTEM_TYPE data, not static theme tokens. */}
+                  {/* Border color comes from runtime SYSTEM_TYPE data, not a static theme token — style object is precomputed once in MOCKUP_CARDS at module load, not per render. */}
                   {MOCKUP_CARDS.map(c => (
                     <div
                       key={c.title}
                       className="rounded-lg border border-white/8 border-t-2 px-2 py-1.5"
-                      style={{ borderTopColor: c.color }}
+                      style={c.borderStyle}
                     >
                       <div className="truncate text-xs font-medium">{c.title}</div>
                       <div className="text-xs text-muted-foreground">{c.sub}</div>
@@ -154,9 +158,13 @@ interface Feature {
   desc: string;
   accent: string;
   pro?: boolean;
+  // Precomputed once at module load (below) instead of built inline in JSX per render.
+  cardBorderStyle: CSSProperties;
+  hoverGlowStyle: CSSProperties;
+  iconStyle: CSSProperties;
 }
 
-const FEATURES: Feature[] = [
+const FEATURES_BASE: Omit<Feature, 'cardBorderStyle' | 'hoverGlowStyle' | 'iconStyle'>[] = [
   {
     icon: '</>',
     title: 'Code Snippets',
@@ -196,6 +204,15 @@ const FEATURES: Feature[] = [
   },
 ];
 
+// Style objects derived from each feature's accent color, precomputed once here (module load) —
+// never rebuilt inline inside FeaturesGrid's JSX, so the same object reference is reused every render.
+const FEATURES: Feature[] = FEATURES_BASE.map(f => ({
+  ...f,
+  cardBorderStyle: { background: `linear-gradient(to bottom, ${f.accent}50, transparent)` },
+  hoverGlowStyle: { background: `radial-gradient(circle at 50% 0%, ${f.accent}20, transparent 70%)` },
+  iconStyle: { background: `${f.accent}20`, color: f.accent },
+}));
+
 function FeaturesGrid() {
   return (
     <section id="features" className="py-24">
@@ -222,13 +239,13 @@ function FeaturesGrid() {
             <FadeIn key={f.title} index={i}>
               <div
                 className="h-full rounded-xl p-px"
-                style={{ background: `linear-gradient(to bottom, ${f.accent}50, transparent)` }}
+                style={f.cardBorderStyle}
               >
                 <div className="group relative flex h-full flex-col overflow-hidden rounded-[11px] bg-card p-6 transition-all duration-300 hover:-translate-y-1">
                   <div
                     aria-hidden
                     className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                    style={{ background: `radial-gradient(circle at 50% 0%, ${f.accent}20, transparent 70%)` }}
+                    style={f.hoverGlowStyle}
                   />
                   {f.pro && (
                     <Badge variant="outline" className="absolute right-4 top-4 text-xs">
@@ -237,7 +254,7 @@ function FeaturesGrid() {
                   )}
                   <div
                     className="relative mb-4 flex h-10 w-10 items-center justify-center rounded-lg text-sm font-mono font-bold"
-                    style={{ background: `${f.accent}20`, color: f.accent }}
+                    style={f.iconStyle}
                   >
                     {f.icon}
                   </div>
@@ -357,6 +374,11 @@ function AiSection() {
 
 // ─── CTA Section ──────────────────────────────────────────────────────────────
 
+// Fully static — no per-render dependency — so it is a plain module-level const, created once ever.
+const CTA_BORDER_STYLE: CSSProperties = {
+  background: 'linear-gradient(135deg, rgba(59,130,246,0.4), rgba(6,182,212,0.3), rgba(255,255,255,0.08))',
+};
+
 function CtaSection() {
   return (
     <FadeIn>
@@ -364,7 +386,7 @@ function CtaSection() {
         <div className="container mx-auto max-w-6xl px-4">
           <div
             className="rounded-2xl p-px"
-            style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.4), rgba(6,182,212,0.3), rgba(255,255,255,0.08))' }}
+            style={CTA_BORDER_STYLE}
           >
             <div className="relative overflow-hidden rounded-[15px] bg-card/80 px-8 py-20 text-center backdrop-blur-sm">
               <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -445,6 +467,11 @@ function Footer() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// Both take no props and don't depend on session/request data, so the elements are hoisted
+// to module scope and created once ever, instead of being built inline as JSX-in-JSX per render.
+const FREE_PRICING_FEATURES = <FreePricingFeatures />;
+const PRO_PRICING_FEATURES = <ProPricingFeatures />;
+
 export default async function HomePage() {
   const session = await auth()
 
@@ -456,8 +483,8 @@ export default async function HomePage() {
         <FeaturesGrid />
         <AiSection />
         <PricingSectionInteractive
-          freeFeatures={<FreePricingFeatures />}
-          proFeatures={<ProPricingFeatures />}
+          freeFeatures={FREE_PRICING_FEATURES}
+          proFeatures={PRO_PRICING_FEATURES}
           isAuthenticated={!!session?.user}
           isPro={session?.user?.isPro ?? false}
         />

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type ChangeEvent } from 'react'
 import { toast } from 'sonner'
 import { KeyRound } from 'lucide-react'
 import { SubmitButton } from '@/components/ui/button'
@@ -24,6 +24,9 @@ interface SetPasswordResult {
   mode: 'set' | 'requested'
   email: string
 }
+
+// Fully static — no props/state dependency — hoisted so it's created once ever, not once per render.
+const triggerIcon = <KeyRound className="mr-1 size-3" />
 
 export function SetPasswordDialog({ suggestedEmails, verificationDisabled, onCredentialAdded }: SetPasswordDialogProps) {
   const [open, setOpen] = useState(false)
@@ -70,12 +73,16 @@ export function SetPasswordDialog({ suggestedEmails, verificationDisabled, onCre
     if (!next) setEmail('')
   }, [])
 
+  const handleEmailChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value)
+  }, [])
+
   return (
     <ProfileFormDialog
       title="Add Email & Password sign-in"
       description="Create an email & password login for your account — pick the email you'll sign in with."
       triggerText="Set up"
-      triggerIcon={<KeyRound className="mr-1 size-3" />}
+      triggerIcon={triggerIcon}
       open={open}
       onOpenChange={handleOpenChange}
     >
@@ -91,7 +98,7 @@ export function SetPasswordDialog({ suggestedEmails, verificationDisabled, onCre
               autoComplete="off"
               list="set-password-email-list"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={handleEmailChange}
               required
             />
             <datalist id="set-password-email-list">

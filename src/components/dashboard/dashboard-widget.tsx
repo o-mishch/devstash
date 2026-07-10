@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { ChevronDown, type LucideIcon } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
@@ -27,6 +27,10 @@ export function DashboardWidget({
   accentColor,
 }: DashboardWidgetProps) {
   const [isOpen, setIsOpen] = useState(true)
+  const accentStyle = useMemo(
+    () => (accentColor ? ({ '--widget-accent': accentColor } as CSSProperties) : undefined),
+    [accentColor],
+  )
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -48,7 +52,7 @@ export function DashboardWidget({
             ? 'border-l-[color-mix(in_oklab,var(--widget-accent),transparent_45%)] hover:border-l-[var(--widget-accent)] active:border-l-[var(--widget-accent)]'
             : 'border-l-accent hover:border-l-primary active:border-l-primary'
         )}
-        style={accentColor ? ({ '--widget-accent': accentColor } as CSSProperties) : undefined}
+        style={accentStyle}
       >
         <CardHeader className="group relative pb-3">
           {/* Full-header click target: covers the entire header so a click anywhere toggles the

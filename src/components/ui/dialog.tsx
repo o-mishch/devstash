@@ -1,25 +1,27 @@
 "use client"
 
+import React, { memo, useCallback } from "react"
 import type { ComponentProps } from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import type { HTMLProps } from "@base-ui/react/types"
 
 import { cn } from "@/lib/utils/index"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
+const Dialog = memo(function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
-}
+})
 
-function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
+const DialogTrigger = memo(function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {
   return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
-}
+})
 
-function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
+const DialogPortal = memo(function DialogPortal({ ...props }: DialogPrimitive.Portal.Props) {
   return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
-}
+})
 
-function DialogOverlay({
+const DialogOverlay = memo(function DialogOverlay({
   className,
   ...props
 }: DialogPrimitive.Backdrop.Props) {
@@ -33,9 +35,9 @@ function DialogOverlay({
       {...props}
     />
   )
-}
+})
 
-function DialogContent({
+const DialogContent = memo(function DialogContent({
   className,
   children,
   showCloseButton = true,
@@ -53,6 +55,15 @@ function DialogContent({
   // so without it the surface behind stays un-dimmed (same fix as NestedAlertDialog).
   elevated?: boolean
 }) {
+  const renderCloseButton = useCallback((buttonProps: HTMLProps) => (
+    <Button
+      {...buttonProps}
+      variant="ghost"
+      className="absolute top-2 right-2"
+      size="icon-sm"
+    />
+  ), [])
+
   return (
     <DialogPortal>
       <DialogOverlay forceRender={elevated || undefined} className={cn(elevated && "z-[60]")} />
@@ -72,25 +83,18 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-2 right-2"
-                size="icon-sm"
-              />
-            }
+            render={renderCloseButton}
           >
-            <XIcon
-            />
+            <XIcon />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
     </DialogPortal>
   )
-}
+})
 
-function DialogHeader({ className, ...props }: ComponentProps<"div">) {
+const DialogHeader = memo(function DialogHeader({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
@@ -98,9 +102,9 @@ function DialogHeader({ className, ...props }: ComponentProps<"div">) {
       {...props}
     />
   )
-}
+})
 
-function DialogFooter({
+const DialogFooter = memo(function DialogFooter({
   className,
   showCloseButton = false,
   children,
@@ -108,6 +112,10 @@ function DialogFooter({
 }: ComponentProps<"div"> & {
   showCloseButton?: boolean
 }) {
+  const renderCloseButton = useCallback((buttonProps: HTMLProps) => (
+    <Button {...buttonProps} variant="outline" />
+  ), [])
+
   return (
     <div
       data-slot="dialog-footer"
@@ -119,15 +127,15 @@ function DialogFooter({
     >
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close render={<Button variant="outline" />}>
+        <DialogPrimitive.Close render={renderCloseButton}>
           Close
         </DialogPrimitive.Close>
       )}
     </div>
   )
-}
+})
 
-function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
+const DialogTitle = memo(function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
@@ -138,9 +146,9 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
       {...props}
     />
   )
-}
+})
 
-function DialogDescription({
+const DialogDescription = memo(function DialogDescription({
   className,
   ...props
 }: DialogPrimitive.Description.Props) {
@@ -154,7 +162,7 @@ function DialogDescription({
       {...props}
     />
   )
-}
+})
 
 export {
   Dialog,

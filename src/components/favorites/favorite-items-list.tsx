@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState, useEffect } from 'react'
+import { memo, useCallback, useMemo, useState, useEffect } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useInfiniteItems } from '@/hooks/items/use-infinite-items'
@@ -28,6 +28,72 @@ function groupByType(items: LightItem[]): ItemGroup[] {
   }
   return Array.from(map.values())
 }
+
+interface FavoriteItemGroupProps {
+  itemType: SlimItemType
+  groupItems: LightItem[]
+  itemTypeCounts: Record<string, number>
+  isCollapsed: boolean
+  onToggle: (typeName: string) => void
+  onOpenItem: (item: LightItem) => void
+}
+
+const FavoriteItemGroup = memo(function FavoriteItemGroup({
+  itemType,
+  groupItems,
+  itemTypeCounts,
+  isCollapsed,
+  onToggle,
+  onOpenItem,
+}: FavoriteItemGroupProps) {
+  const color = SYSTEM_TYPE_COLORS[itemType.name]
+
+  const handleToggle = useCallback(() => {
+    onToggle(itemType.name)
+  }, [onToggle, itemType.name])
+
+  const chevronStyle = useMemo(() => ({ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }), [isCollapsed])
+  const nameStyle = useMemo(() => ({ color }), [color])
+  const countStyle = useMemo(() => ({ color, backgroundColor: `${color}15` }), [color])
+
+  return (
+    <div>
+      {/* Group header */}
+      <button
+        type="button"
+        aria-expanded={!isCollapsed}
+        onClick={handleToggle}
+        className="flex w-full items-center gap-2 rounded px-3 py-1 text-left transition-colors hover:bg-foreground/[0.04] touch:py-2"
+      >
+        <ChevronRight
+          className="size-3 shrink-0 text-muted-foreground transition-transform duration-150 touch:size-4"
+          style={chevronStyle}
+        />
+        <ItemTypeIcon typeName={itemType.name} className="size-3 shrink-0 touch:size-4" />
+        <span className="font-mono text-xs font-medium capitalize touch:text-sm" style={nameStyle}>
+          {itemType.name}
+        </span>
+        <span
+          className="rounded px-1 font-mono text-[10px]"
+          style={countStyle}
+        >
+          {itemTypeCounts[itemType.name] !== undefined && groupItems.length < itemTypeCounts[itemType.name]
+            ? `${groupItems.length} / ${itemTypeCounts[itemType.name]}`
+            : groupItems.length}
+        </span>
+      </button>
+
+      {/* Group items */}
+      {!isCollapsed && (
+        <div className="mt-1 flex flex-col gap-1.5 pl-4">
+          {groupItems.map((item) => (
+            <FavoriteItemRow key={item.id} item={item} onOpen={onOpenItem} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+})
 
 interface FavoriteItemsListProps {
   firstPage: ItemsPage
@@ -63,44 +129,17 @@ export function FavoriteItemsList({ firstPage, itemTypeCounts }: FavoriteItemsLi
   return (
     <div className="flex min-w-0 flex-col gap-1">
       {groups.map(({ itemType, items: groupItems }) => {
-        const color = SYSTEM_TYPE_COLORS[itemType.name]
         const isCollapsed = collapsed.has(itemType.name)
         return (
-          <div key={itemType.name}>
-            {/* Group header */}
-            <button
-              type="button"
-              aria-expanded={!isCollapsed}
-              onClick={() => toggleGroup(itemType.name)}
-              className="flex w-full items-center gap-2 rounded px-3 py-1 text-left transition-colors hover:bg-foreground/[0.04] touch:py-2"
-            >
-              <ChevronRight
-                className="size-3 shrink-0 text-muted-foreground transition-transform duration-150 touch:size-4"
-                style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }}
-              />
-              <ItemTypeIcon typeName={itemType.name} className="size-3 shrink-0 touch:size-4" />
-              <span className="font-mono text-xs font-medium capitalize touch:text-sm" style={{ color }}>
-                {itemType.name}
-              </span>
-              <span
-                className="rounded px-1 font-mono text-[10px]"
-                style={{ color, backgroundColor: `${color}15` }}
-              >
-                {itemTypeCounts[itemType.name] !== undefined && groupItems.length < itemTypeCounts[itemType.name]
-                  ? `${groupItems.length} / ${itemTypeCounts[itemType.name]}`
-                  : groupItems.length}
-              </span>
-            </button>
-
-            {/* Group items */}
-            {!isCollapsed && (
-              <div className="mt-1 flex flex-col gap-1.5 pl-4">
-                {groupItems.map((item) => (
-                  <FavoriteItemRow key={item.id} item={item} onOpen={openDrawer} />
-                ))}
-              </div>
-            )}
-          </div>
+          <FavoriteItemGroup
+            key={itemType.name}
+            itemType={itemType}
+            groupItems={groupItems}
+            itemTypeCounts={itemTypeCounts}
+            isCollapsed={isCollapsed}
+            onToggle={toggleGroup}
+            onOpenItem={openDrawer}
+          />
         )
       })}
 

@@ -1,25 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Logger } from 'pino'
+import type { getOpenAIClient as GetOpenAIClientFn } from '@/lib/ai/openai'
+import type { checkRateLimit as CheckRateLimitFn } from '@/lib/infra/rate-limit'
+import type { getItemAiMetadata } from '@/lib/db/items'
 
-vi.mock('@/lib/ai/openai', () => ({ getOpenAIClient: vi.fn() }))
+vi.mock('@/lib/ai/openai', () => ({ getOpenAIClient: vi.fn<typeof GetOpenAIClientFn>() }))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
   deniedMessage: (retryAfter: number) => `slow down for ${retryAfter}s`,
 }))
-vi.mock('@/lib/db/items', () => ({ getItemAiMetadata: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ getItemAiMetadata: vi.fn<typeof getItemAiMetadata>() }))
 
 import { getOpenAIClient } from '@/lib/ai/openai'
 import { checkRateLimit } from '@/lib/infra/rate-limit'
 import { runProAiGeneration, type RunProAiGenerationParams } from '@/lib/ai/description-generation'
 
-const mockGetClient = getOpenAIClient as ReturnType<typeof vi.fn>
-const mockCheckRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
+const mockGetClient = vi.mocked(getOpenAIClient)
+const mockCheckRateLimit = vi.mocked(checkRateLimit)
 
-const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as unknown as Logger
+const log = {
+  info: vi.fn<Logger['info']>(),
+  warn: vi.fn<Logger['warn']>(),
+  error: vi.fn<Logger['error']>(),
+} as unknown as Logger
 
 // A non-null sentinel standing in for the OpenAI client; the orchestration only checks truthiness
 // and hands it to `execute`, which we stub per test.
 const fakeClient = {} as Parameters<RunProAiGenerationParams<unknown, unknown>['execute']>[0]
+
+type ExecuteFn = RunProAiGenerationParams<{ prompt: string }, string>['execute']
 
 function buildParams(
   overrides: Partial<RunProAiGenerationParams<{ prompt: string }, string>> = {},
@@ -33,7 +42,7 @@ function buildParams(
     failureMessage: 'Generation failed.',
     log,
     logLabel: 'description',
-    execute: vi.fn().mockResolvedValue('generated text'),
+    execute: vi.fn<ExecuteFn>().mockResolvedValue('generated text'),
     ...overrides,
   }
 }
@@ -76,7 +85,7 @@ describe('runProAiGeneration', () => {
   })
 
   it('returns 500 with failureMessage when execute throws', async () => {
-    const params = buildParams({ execute: vi.fn().mockRejectedValue(new Error('OpenAI down')) })
+    const params = buildParams({ execute: vi.fn<ExecuteFn>().mockRejectedValue(new Error('OpenAI down')) })
 
     const result = await runProAiGeneration(params)
 
@@ -84,7 +93,7 @@ describe('runProAiGeneration', () => {
   })
 
   it('returns 500 with failureMessage when execute yields null', async () => {
-    const params = buildParams({ execute: vi.fn().mockResolvedValue(null) })
+    const params = buildParams({ execute: vi.fn<ExecuteFn>().mockResolvedValue(null) })
 
     const result = await runProAiGeneration(params)
 
@@ -92,7 +101,7 @@ describe('runProAiGeneration', () => {
   })
 
   it('returns the generated value on success', async () => {
-    const execute = vi.fn().mockResolvedValue('generated text')
+    const execute = vi.fn<ExecuteFn>().mockResolvedValue('generated text')
     const params = buildParams({ execute })
 
     const result = await runProAiGeneration(params)

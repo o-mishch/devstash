@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback } from 'react'
 import { useInfiniteItems } from '@/hooks/items/use-infinite-items'
 import { ItemCard } from '@/components/items/item-card'
 import { ImageCard } from '@/components/items/image-card'
@@ -15,23 +16,23 @@ interface CollectionItemsGridProps {
   firstPage: ItemsPage
 }
 
+// Fully static — no prop/state dependency — hoisted once at module scope rather than
+// recreated (or useMemo'd) on every render.
+const emptyStateAction = (
+  <Button variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={triggerCreateItemButton}>
+    Create your first item <ArrowRight className="ml-2 h-4 w-4" />
+  </Button>
+)
+
 export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItemsGridProps) {
   const { items, hasNextPage, fetchNextPage } = useInfiniteItems({ type: 'collection', collectionId }, firstPage)
 
+  const handleLoadMore = useCallback(() => {
+    void fetchNextPage()
+  }, [fetchNextPage])
+
   if (items.length === 0) {
-    return (
-      <EmptyCard
-        action={
-          <Button
-            variant="ghost"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={triggerCreateItemButton}
-          >
-            Create your first item <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        }
-      />
-    )
+    return <EmptyCard action={emptyStateAction} />
   }
 
   // Mixed types or single type: render grid with load more button
@@ -47,7 +48,7 @@ export function CollectionItemsGrid({ collectionId, firstPage }: CollectionItems
       </div>
       {hasNextPage && (
         <div className="flex justify-center">
-          <Button variant="outline" onClick={() => void fetchNextPage()}>
+          <Button variant="outline" onClick={handleLoadMore}>
             Load more
           </Button>
         </div>

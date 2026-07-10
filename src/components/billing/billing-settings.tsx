@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { CreditCard } from 'lucide-react'
 import { BillingAlert } from '@/components/billing/billing-alert'
 import {
@@ -29,6 +30,9 @@ interface BillingSettingsProps {
   searchParams: SettingsCheckoutSearchParams
 }
 
+// Fully static — no prop/state dependency — hoisted once at module scope instead of recreated per render.
+const creditCardIcon = <CreditCard />
+
 export function BillingSettings({
   initialData,
   searchParams,
@@ -41,38 +45,49 @@ export function BillingSettings({
   // Reconcile the /profile/me Pro flag from billing so the sidebar updates after a checkout return.
   useReconcileProFlag(data?.isPro)
 
+  // Hooks must run unconditionally (before the `!data` loading-state return below), so the memo
+  // inputs are read via optional chaining here rather than from the post-guard destructure.
+  const isPro = data?.isPro ?? false
+  const billingUnavailable = data?.unavailable ?? false
+  const checkoutDisabled = data?.checkoutDisabled ?? false
+  const canManageBilling = data?.canManageBilling ?? false
+  const stripeCancelAtPeriodEnd = data?.billing?.stripeCancelAtPeriodEnd ?? false
+
+  const billingActions = useMemo(
+    () => (
+      <BillingActions
+        isPro={isPro}
+        isCanceling={stripeCancelAtPeriodEnd}
+        canManageBilling={canManageBilling}
+        showUpgradeCta={!checkoutDisabled}
+        billingUnavailable={billingUnavailable}
+      />
+    ),
+    [isPro, stripeCancelAtPeriodEnd, canManageBilling, checkoutDisabled, billingUnavailable],
+  )
+
+  const headerExtra = useMemo(
+    () => (
+      <Badge variant={isPro ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
+        {isPro ? 'Pro' : 'Free'}
+      </Badge>
+    ),
+    [isPro],
+  )
+
   if (!data) {
     return <div className="h-48 rounded-xl border bg-muted/30 animate-pulse" />
   }
 
-  const {
-    billing,
-    unavailable: billingUnavailable,
-    isPro,
-    needsBillingRecovery,
-    checkoutDisabled,
-    canManageBilling,
-    usage,
-  } = data
+  const { billing, needsBillingRecovery, usage } = data
 
   // Dates/status arrive as ISO strings over JSON — coerce back to Date / the Stripe enum for the
   // display sections (which still type against the rich domain shapes). `new Date(...)` accepts both.
   const stripeSubscriptionStart = billing?.stripeSubscriptionStart ? new Date(billing.stripeSubscriptionStart) : null
   const stripeCurrentPeriodEnd = billing?.stripeCurrentPeriodEnd ? new Date(billing.stripeCurrentPeriodEnd) : null
-  const stripeCancelAtPeriodEnd = billing?.stripeCancelAtPeriodEnd ?? false
   const stripeSubscriptionStatus = (billing?.stripeSubscriptionStatus ?? null) as Stripe.Subscription.Status | null
   const billingIssueMessage = getBillingIssueMessage(stripeSubscriptionStatus, isPro)
   const planInfo = isPro ? getSubscriptionIntervalInfo(billing?.stripeSubscriptionInterval ?? null) : null
-
-  const billingActions = (
-    <BillingActions
-      isPro={isPro}
-      isCanceling={stripeCancelAtPeriodEnd}
-      canManageBilling={canManageBilling}
-      showUpgradeCta={!checkoutDisabled}
-      billingUnavailable={billingUnavailable}
-    />
-  )
 
   let billingBody
   if (isPro && !billingUnavailable && planInfo) {
@@ -105,13 +120,9 @@ export function BillingSettings({
   return (
     <CollapsibleCard
       title="Billing & Usage"
-      icon={<CreditCard />}
+      icon={creditCardIcon}
       subtitle="Manage your subscription and view your current usage"
-      headerExtra={
-        <Badge variant={isPro ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
-          {isPro ? 'Pro' : 'Free'}
-        </Badge>
-      }
+      headerExtra={headerExtra}
     >
       <div className="space-y-6">
         <BillingCheckoutNotification notification={checkoutNotification} />

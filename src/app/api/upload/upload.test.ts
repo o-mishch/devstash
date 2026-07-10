@@ -1,27 +1,47 @@
-import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import type { after } from 'next/server'
 import { readJson } from '@/test/matchers'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { checkRateLimit as CheckRateLimitFn, deniedMessage } from '@/lib/infra/rate-limit'
+import type { getPresignedPutCredential as GetPresignedPutCredentialFn, getSignedUrlExpiresAt } from '@/lib/storage/s3'
+import type {
+  getImageThumbnailKey,
+  canGenerateImageThumbnail,
+  deleteStoredFile as DeleteStoredFileFn,
+} from '@/lib/storage/image-thumbnails'
+import type {
+  writePendingUpload as WritePendingUploadFn,
+  deletePendingUpload as DeletePendingUploadFn,
+  sweepExpiredUploads,
+} from '@/lib/storage/upload-tokens'
 
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
 }))
-vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }))
+vi.mock('@/lib/infra/rate-limit', () => ({
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
+  deniedMessage: vi.fn<typeof deniedMessage>((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+}))
+vi.mock('next/server', async (orig) => ({
+  ...(await orig<typeof import('next/server')>()),
+  after: vi.fn<typeof after>(),
+}))
 vi.mock('@/lib/storage/s3', () => ({
-  getPresignedPutCredential: vi.fn(),
-  getSignedUrlExpiresAt: vi.fn(() => new Date('2026-01-01T00:00:00.000Z')),
+  getPresignedPutCredential: vi.fn<typeof GetPresignedPutCredentialFn>(),
+  getSignedUrlExpiresAt: vi.fn<typeof getSignedUrlExpiresAt>(() => new Date('2026-01-01T00:00:00.000Z')),
 }))
 vi.mock('@/lib/storage/image-thumbnails', () => ({
-  getImageThumbnailKey: vi.fn((k: string) => `thumb/${k}`),
-  canGenerateImageThumbnail: vi.fn(() => true),
-  deleteStoredFile: vi.fn(),
+  getImageThumbnailKey: vi.fn<typeof getImageThumbnailKey>((k: string) => `thumb/${k}`),
+  canGenerateImageThumbnail: vi.fn<typeof canGenerateImageThumbnail>(() => true),
+  deleteStoredFile: vi.fn<typeof DeleteStoredFileFn>(),
 }))
 vi.mock('@/lib/storage/upload-tokens', () => ({
-  writePendingUpload: vi.fn(),
-  deletePendingUpload: vi.fn(),
-  sweepExpiredUploads: vi.fn(),
+  writePendingUpload: vi.fn<typeof WritePendingUploadFn>(),
+  deletePendingUpload: vi.fn<typeof DeletePendingUploadFn>(),
+  sweepExpiredUploads: vi.fn<typeof sweepExpiredUploads>(),
 }))
 
 import { getCachedSession } from '@/lib/session'
@@ -34,15 +54,13 @@ import { deleteStoredFile } from '@/lib/storage/image-thumbnails'
 import { POST } from './url/route'
 import { DELETE } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockPresigned = getPresignedPutCredential as unknown as Mock<
-  (key: string, contentType: string, size: number) => Promise<{ url: string; key: string; contentType: string }>
->
-const mockWritePending = writePendingUpload as ReturnType<typeof vi.fn>
-const mockDeleteStored = deleteStoredFile as ReturnType<typeof vi.fn>
-const mockDeletePending = deletePendingUpload as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockIsPro = vi.mocked(getCachedVerifiedProAccess)
+const mockRateLimit = vi.mocked(checkRateLimit)
+const mockPresigned = vi.mocked(getPresignedPutCredential)
+const mockWritePending = vi.mocked(writePendingUpload)
+const mockDeleteStored = vi.mocked(deleteStoredFile)
+const mockDeletePending = vi.mocked(deletePendingUpload)
 
 function postBody(payload: unknown): NextRequest {
   return new NextRequest('http://localhost/api/upload/url', { method: 'POST', body: JSON.stringify(payload) })
@@ -54,7 +72,7 @@ function del(qs: string): NextRequest {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: '2099-01-01T00:00:00.000Z' })
   mockIsPro.mockResolvedValue(true)
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
   // Echo the signed key back (mirrors getPresignedPutCredential returning the key it signs) so

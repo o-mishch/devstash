@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useEffect, type ReactNode } from 'react'
+import { useMemo, useEffect, useCallback, memo, type ReactNode } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 
@@ -25,7 +25,7 @@ interface CodeEditorProps {
   bodyOverride?: ReactNode
 }
 
-export function CodeEditor({ value, onChange, language, readOnly = false, className, fullscreenLabel, headerStart, bodyOverride }: CodeEditorProps) {
+export const CodeEditor = memo(function CodeEditor({ value, onChange, language, readOnly = false, className, fullscreenLabel, headerStart, bodyOverride }: CodeEditorProps) {
   const monacoLanguage = language || 'plaintext'
   const isTouch = useIsTouch()
   const monaco = useMonaco()
@@ -75,26 +75,38 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
 
   const bgStyle = useEditorBgStyle()
 
+  const headerRight = useMemo(() => (
+    <div className="flex items-center gap-2">
+      {headerStart}
+      {language && (
+        <span className="text-xs text-muted-foreground uppercase font-mono px-2 py-0 rounded bg-black/20 text-white/70">
+          {language}
+        </span>
+      )}
+      <CopyButton
+        value={value}
+        className={EDITOR_CHROME_COPY_BUTTON_CLASS}
+        title="Copy content"
+      />
+    </div>
+  ), [headerStart, language, value])
+
+  const handleMount = useCallback((editorInstance: editor.IStandaloneCodeEditor) => {
+    if (!readOnly) return
+    // Readonly viewer: tapping the editor must expand (handled by the chrome) but must
+    // NEVER raise the on-screen keyboard. Monaco still focuses its hidden textarea on
+    // tap, so set inputMode="none" on it — the documented way to keep an element
+    // focusable while suppressing the virtual keyboard on iOS/Android.
+    const inputArea = editorInstance.getDomNode()?.querySelector<HTMLTextAreaElement>('textarea.inputarea')
+    if (inputArea) inputArea.inputMode = 'none'
+  }, [readOnly])
+
   return (
     <EditorChromeShell
       className={className}
       style={bgStyle}
       fullscreenLabel={fullscreenLabel}
-      header={
-        <div className="flex items-center gap-2">
-          {headerStart}
-          {language && (
-            <span className="text-xs text-muted-foreground uppercase font-mono px-2 py-0 rounded bg-black/20 text-white/70">
-              {language}
-            </span>
-          )}
-          <CopyButton
-            value={value}
-            className={EDITOR_CHROME_COPY_BUTTON_CLASS}
-            title="Copy content"
-          />
-        </div>
-      }
+      header={headerRight}
     >
       {bodyOverride ?? (
         <div className="relative w-full flex-1 min-h-0">
@@ -106,19 +118,11 @@ export function CodeEditor({ value, onChange, language, readOnly = false, classN
               onChange={onChange}
               theme={editorTheme}
               options={editorOptions}
-              onMount={(editorInstance) => {
-                if (!readOnly) return
-                // Readonly viewer: tapping the editor must expand (handled by the chrome) but must
-                // NEVER raise the on-screen keyboard. Monaco still focuses its hidden textarea on
-                // tap, so set inputMode="none" on it — the documented way to keep an element
-                // focusable while suppressing the virtual keyboard on iOS/Android.
-                const inputArea = editorInstance.getDomNode()?.querySelector<HTMLTextAreaElement>('textarea.inputarea')
-                if (inputArea) inputArea.inputMode = 'none'
-              }}
+              onMount={handleMount}
             />
           </div>
         </div>
       )}
     </EditorChromeShell>
   )
-}
+})

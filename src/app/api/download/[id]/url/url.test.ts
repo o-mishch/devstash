@@ -1,17 +1,24 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { getDownloadItem as GetDownloadItemFn } from '@/lib/db/items'
+import type { getSignedDownloadUrl as GetSignedDownloadUrlFn, getSignedUrlExpiresAt } from '@/lib/storage/s3'
+import type { canGenerateImageThumbnail as CanGenerateImageThumbnailFn, getImageThumbnailKey } from '@/lib/storage/image-thumbnails'
 
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/db/items', () => ({ getDownloadItem: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
+}))
+vi.mock('@/lib/db/items', () => ({ getDownloadItem: vi.fn<typeof GetDownloadItemFn>() }))
 vi.mock('@/lib/storage/s3', () => ({
-  getSignedDownloadUrl: vi.fn(),
-  getSignedUrlExpiresAt: vi.fn(() => new Date('2026-01-01T00:00:00.000Z')),
+  getSignedDownloadUrl: vi.fn<typeof GetSignedDownloadUrlFn>(),
+  getSignedUrlExpiresAt: vi.fn<typeof getSignedUrlExpiresAt>(() => new Date('2026-01-01T00:00:00.000Z')),
 }))
 vi.mock('@/lib/storage/image-thumbnails', () => ({
-  canGenerateImageThumbnail: vi.fn(),
-  getImageThumbnailKey: vi.fn((key: string) => `thumb/${key}`),
+  canGenerateImageThumbnail: vi.fn<typeof CanGenerateImageThumbnailFn>(),
+  getImageThumbnailKey: vi.fn<typeof getImageThumbnailKey>((key: string) => `thumb/${key}`),
 }))
 
 import { getCachedSession } from '@/lib/session'
@@ -21,11 +28,11 @@ import { getSignedDownloadUrl } from '@/lib/storage/s3'
 import { canGenerateImageThumbnail } from '@/lib/storage/image-thumbnails'
 import { GET } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockGetDownloadItem = getDownloadItem as ReturnType<typeof vi.fn>
-const mockSignedUrl = getSignedDownloadUrl as ReturnType<typeof vi.fn>
-const mockCanThumbnail = canGenerateImageThumbnail as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockPro = vi.mocked(getCachedVerifiedProAccess)
+const mockGetDownloadItem = vi.mocked(getDownloadItem)
+const mockSignedUrl = vi.mocked(getSignedDownloadUrl)
+const mockCanThumbnail = vi.mocked(canGenerateImageThumbnail)
 
 function get(id: string, preview?: boolean) {
   const qs = preview === undefined ? '' : `?preview=${preview}`
@@ -33,12 +40,24 @@ function get(id: string, preview?: boolean) {
   return GET(req, { params: Promise.resolve({ id }) })
 }
 
-const fileItem = { id: 'item-1', itemType: { name: 'file' }, fileUrl: 'user-1/file.pdf', fileName: 'doc.pdf' }
-const imageItem = { id: 'item-2', itemType: { name: 'image' }, fileUrl: 'user-1/pic.png', fileName: 'pic.png' }
+const fileItem = {
+  id: 'item-1',
+  itemType: { name: 'file' },
+  fileUrl: 'user-1/file.pdf',
+  fileName: 'doc.pdf',
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+}
+const imageItem = {
+  id: 'item-2',
+  itemType: { name: 'image' },
+  fileUrl: 'user-1/pic.png',
+  fileName: 'pic.png',
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: '2026-12-31T00:00:00.000Z' })
   mockPro.mockResolvedValue(true)
   mockSignedUrl.mockResolvedValue('https://s3/signed')
   mockCanThumbnail.mockReturnValue(true)
@@ -58,7 +77,13 @@ describe('GET /download/{id}/url', () => {
   })
 
   it('returns 400 for a non-file/image item', async () => {
-    mockGetDownloadItem.mockResolvedValue({ id: 'x', itemType: { name: 'snippet' }, fileUrl: 'user-1/x', fileName: null })
+    mockGetDownloadItem.mockResolvedValue({
+      id: 'x',
+      itemType: { name: 'snippet' },
+      fileUrl: 'user-1/x',
+      fileName: null,
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    })
     const res = await get('item-1')
     expect(res.status).toBe(400)
   })

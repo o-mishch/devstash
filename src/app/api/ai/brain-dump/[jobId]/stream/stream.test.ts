@@ -1,16 +1,26 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+// Type-only: these two are never imported as values in this file (only referenced for their
+// `vi.fn<...>()` signatures below), so a value import would be an unused-import lint error.
+import type {
+  appendDraftsAndAdvance,
+  setOpenAiResponseId,
+  ParseJobSnapshot,
+  ParseJobRunState,
+} from '@/lib/db/ai-parse-jobs'
 
 // Exercises the SSE stream route's branching: 404 for a foreign job, snapshot-only replay for a
 // finished job, a resume offer for an interrupted job, fresh-start vs. cursor-resume run selection,
 // and the Redis single-flight lock (acquire/release + contention → no double-generate).
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/ai/openai', () => ({ getOpenAIClient: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof getCachedSession>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof getCachedVerifiedProAccess>(),
+}))
+vi.mock('@/lib/ai/openai', () => ({ getOpenAIClient: vi.fn<typeof getOpenAIClient>() }))
 vi.mock('@/lib/ai/brain-dump', () => ({
-  startBackgroundBrainDump: vi.fn(),
-  resumeBackgroundBrainDump: vi.fn(),
-  consumeBrainDumpStream: vi.fn(),
+  startBackgroundBrainDump: vi.fn<typeof startBackgroundBrainDump>(),
+  resumeBackgroundBrainDump: vi.fn<typeof resumeBackgroundBrainDump>(),
+  consumeBrainDumpStream: vi.fn<typeof consumeBrainDumpStream>(),
   brainDumpProgress: (n: number) => Math.min(95, n * 3),
   // Stand-in that surfaces the reason-specific copy the route assertions look for ("What to do:",
   // "safety filter"), so the route's failed-branch composition is exercised without the real builder.
@@ -20,13 +30,13 @@ vi.mock('@/lib/ai/brain-dump', () => ({
       : `Run failed. ${persisted} saved. What to do: retry.`,
 }))
 vi.mock('@/lib/db/ai-parse-jobs', () => ({
-  getParseJobSnapshot: vi.fn(),
-  getParseJobRunState: vi.fn(),
-  appendDraftsAndAdvance: vi.fn(),
-  setOpenAiResponseId: vi.fn(),
-  finishJob: vi.fn(),
+  getParseJobSnapshot: vi.fn<typeof getParseJobSnapshot>(),
+  getParseJobRunState: vi.fn<typeof getParseJobRunState>(),
+  appendDraftsAndAdvance: vi.fn<typeof appendDraftsAndAdvance>(),
+  setOpenAiResponseId: vi.fn<typeof setOpenAiResponseId>(),
+  finishJob: vi.fn<typeof finishJob>(),
 }))
-vi.mock('@/lib/infra/redis', () => ({ getRedis: vi.fn() }))
+vi.mock('@/lib/infra/redis', () => ({ getRedis: vi.fn<typeof getRedis>() }))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
@@ -36,16 +46,16 @@ import { getParseJobSnapshot, getParseJobRunState, finishJob } from '@/lib/db/ai
 import { getRedis } from '@/lib/infra/redis'
 import { GET } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockClient = getOpenAIClient as ReturnType<typeof vi.fn>
-const mockStart = startBackgroundBrainDump as ReturnType<typeof vi.fn>
-const mockResume = resumeBackgroundBrainDump as ReturnType<typeof vi.fn>
-const mockConsume = consumeBrainDumpStream as ReturnType<typeof vi.fn>
-const mockSnapshot = getParseJobSnapshot as ReturnType<typeof vi.fn>
-const mockRunState = getParseJobRunState as ReturnType<typeof vi.fn>
-const mockFinish = finishJob as ReturnType<typeof vi.fn>
-const mockRedis = getRedis as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockPro = vi.mocked(getCachedVerifiedProAccess)
+const mockClient = vi.mocked(getOpenAIClient)
+const mockStart = vi.mocked(startBackgroundBrainDump)
+const mockResume = vi.mocked(resumeBackgroundBrainDump)
+const mockConsume = vi.mocked(consumeBrainDumpStream)
+const mockSnapshot = vi.mocked(getParseJobSnapshot)
+const mockRunState = vi.mocked(getParseJobRunState)
+const mockFinish = vi.mocked(finishJob)
+const mockRedis = vi.mocked(getRedis)
 
 const ctx = { params: Promise.resolve({ jobId: 'job-1' }) }
 function req(resume = false): NextRequest {
@@ -74,26 +84,66 @@ async function readSse(res: Response): Promise<SseEvent[]> {
     })
 }
 
-const processingSnap = { status: 'processing', progress: 0, error: null, collectionName: null, collectionIds: [], items: [] }
-const freshRun = { status: 'processing', sourceText: 'file text', openaiResponseId: null, streamCursor: null, itemCount: 0 }
-const interruptedRun = { status: 'processing', sourceText: 'x', openaiResponseId: 'resp-1', streamCursor: 7, itemCount: 3 }
+const processingSnap: ParseJobSnapshot = {
+  status: 'processing',
+  progress: 0,
+  error: null,
+  collectionName: null,
+  collectionIds: [],
+  sourceItemId: null,
+  sourceItemType: null,
+  sourceName: null,
+  truncated: false,
+  committedCount: 0,
+  committedByType: null,
+  items: [],
+}
+const freshRun: ParseJobRunState = {
+  status: 'processing',
+  sourceText: 'file text',
+  openaiResponseId: null,
+  streamCursor: null,
+  itemCount: 0,
+}
+const interruptedRun: ParseJobRunState = {
+  status: 'processing',
+  sourceText: 'x',
+  openaiResponseId: 'resp-1',
+  streamCursor: 7,
+  itemCount: 3,
+}
+
+// Locally-shaped stand-ins for the @upstash/redis client methods the route actually calls (`set`
+// with the `nx`/`ex` lock options, single-key `del`) — there is no single named export to `typeof`
+// against, so these mirror the call signatures exercised in the route (mirrors the pattern in
+// src/lib/storage/upload-tokens.test.ts).
+type RedisSetFn = (key: string, value: string, opts: { nx: boolean; ex: number }) => Promise<string | null>
+type RedisDelFn = (key: string) => Promise<number>
 
 function mockRedisLock(acquired = true) {
+  // @upstash/redis's Redis class declares private members, so no object literal can ever
+  // structurally satisfy it — `as never` is the only way to hand getRedis()'s mock a fake client
+  // (mirrors src/lib/storage/upload-tokens.test.ts).
   mockRedis.mockReturnValue({
-    set: vi.fn().mockResolvedValue(acquired ? 'OK' : null),
-    del: vi.fn(),
-  })
+    set: vi.fn<RedisSetFn>().mockResolvedValue(acquired ? 'OK' : null),
+    del: vi.fn<RedisDelFn>(),
+  } as never)
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: '2099-01-01T00:00:00.000Z' })
   mockPro.mockResolvedValue(true)
-  mockClient.mockReturnValue({})
+  // OpenAI declares `#private` fields, so no object literal can structurally satisfy it — `as never`
+  // stands in for a real client (its methods are never called; startBackgroundBrainDump/
+  // resumeBackgroundBrainDump/consumeBrainDumpStream are themselves mocked below).
+  mockClient.mockReturnValue({} as never)
   mockRedisLock()
   mockConsume.mockResolvedValue({ status: 'completed', emitted: 0 })
-  mockStart.mockResolvedValue({})
-  mockResume.mockResolvedValue({})
+  // Empty async generators structurally satisfy `Promise<AsyncIterable<ResponseEvent>>` with no cast —
+  // the stream is never actually iterated because consumeBrainDumpStream is itself mocked above.
+  mockStart.mockResolvedValue((async function* () {})())
+  mockResume.mockResolvedValue((async function* () {})())
 })
 
 describe('GET /ai/brain-dump/{jobId}/stream', () => {
@@ -224,8 +274,8 @@ describe('GET /ai/brain-dump/{jobId}/stream', () => {
   })
 
   it('releases the single-flight lock after the run', async () => {
-    const del = vi.fn()
-    mockRedis.mockReturnValue({ set: vi.fn().mockResolvedValue('OK'), del })
+    const del = vi.fn<RedisDelFn>()
+    mockRedis.mockReturnValue({ set: vi.fn<RedisSetFn>().mockResolvedValue('OK'), del } as never)
     mockSnapshot.mockResolvedValue(processingSnap)
     mockRunState.mockResolvedValue(freshRun)
     await readSse(await GET(req(), ctx))
@@ -244,7 +294,7 @@ describe('GET /ai/brain-dump/{jobId}/stream', () => {
   })
 
   it('does not double-generate when the lock is already held', async () => {
-    mockRedis.mockReturnValue({ set: vi.fn().mockResolvedValue(null), del: vi.fn() })
+    mockRedis.mockReturnValue({ set: vi.fn<RedisSetFn>().mockResolvedValue(null), del: vi.fn<RedisDelFn>() } as never)
     mockSnapshot.mockResolvedValue(processingSnap)
     mockRunState.mockResolvedValue(freshRun)
     const events = await readSse(await GET(req(), ctx))

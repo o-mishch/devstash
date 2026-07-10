@@ -1,22 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { RateLimiterRes } from 'rate-limiter-flexible'
+
 // Self-hosted backend: rate-limiter-flexible over the raw node-redis client. Both are mocked; the
 // tests assert limiter construction (keyPrefix/points/duration), the consume→result mapping, the
 // store-error-vs-rate-limited distinction, and the non-consuming read. vi.hoisted so the mock
 // factory can reference these stubs; the constructor impl lives in the factory so `new
 // RateLimiterRedis()` always yields the stub. Per-test we only reset call history.
+//
+// consume()/get() are typed against a Pick of the real RateLimiterRes fields these tests actually
+// exercise (remainingPoints/msBeforeNext) rather than the full class — the fixtures below are
+// intentionally partial, and the SUT (rate-limit-tcp.ts) only ever reads those two fields.
+type MockRateLimiterRes = Pick<RateLimiterRes, 'remainingPoints' | 'msBeforeNext'>
+
 const { mockConsume, mockGet, mockDelete } = vi.hoisted(() => ({
-  mockConsume: vi.fn(),
-  mockGet: vi.fn(),
-  mockDelete: vi.fn(),
+  mockConsume: vi.fn<(key: string) => Promise<MockRateLimiterRes>>(),
+  mockGet: vi.fn<(key: string) => Promise<MockRateLimiterRes | null>>(),
+  mockDelete: vi.fn<(key: string) => Promise<boolean>>(),
 }))
 
 vi.mock('rate-limiter-flexible', () => ({
-  RateLimiterRedis: vi.fn(function () {
+  // The mocked constructor returns a plain stub object (not a real RateLimiterRedis instance), so
+  // it's typed against that stub's own shape rather than the real class's full instance type —
+  // the options parameter still reflects the real constructor via ConstructorParameters<>.
+  RateLimiterRedis: vi.fn<
+    (
+      opts: ConstructorParameters<typeof RateLimiterRedis>[0],
+    ) => { consume: typeof mockConsume; get: typeof mockGet; delete: typeof mockDelete }
+  >(function () {
     return { consume: mockConsume, get: mockGet, delete: mockDelete }
   }),
 }))
-vi.mock('@/lib/infra/redis-tcp', () => ({ getTcpRedisClient: vi.fn(() => ({})) }))
+vi.mock('@/lib/infra/redis-tcp', () => ({
+  // storeClient is opaque to this test (RateLimiterRedis itself is fully mocked and never reads
+  // it), so the stub is typed as the empty object it actually is rather than the real (unexported)
+  // TcpClient/RedisClientType shape.
+  getTcpRedisClient: vi.fn<() => Promise<Record<string, never>>>(() => Promise.resolve({})),
+}))
 
 import { RateLimiterRedis } from 'rate-limiter-flexible'
 import { tcpRateLimit, resetTcpLimitersForTests } from '@/lib/infra/rate-limit-tcp'

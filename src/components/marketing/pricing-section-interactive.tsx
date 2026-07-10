@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
@@ -19,6 +19,28 @@ interface PricingSectionInteractiveProps {
   isPro?: boolean
 }
 
+// Fully static — no prop/state dependency — so these are hoisted to module scope
+// rather than recreated (or even useMemo'd) on every render.
+const INTERACTIVE_CLASSNAME =
+  'outline-none focus-visible:ring-2 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg'
+
+const FREE_CARD_PROPS = {
+  className: cn(INTERACTIVE_CLASSNAME, 'hover:border-blue-500/30 hover:shadow-blue-500/10'),
+}
+
+const PRO_CARD_PROPS = {
+  className: cn(
+    INTERACTIVE_CLASSNAME,
+    'focus-visible:ring-cyan-500 transition-colors hover:bg-card/90',
+  ),
+}
+
+// Stable handler shared by every CTA link/button below — takes no closure-captured
+// values, so a single module-level reference is correct for all of them.
+function stopPropagation(e: MouseEvent<HTMLElement>) {
+  e.stopPropagation()
+}
+
 export function PricingSectionInteractive({
   freeFeatures,
   proFeatures,
@@ -29,46 +51,42 @@ export function PricingSectionInteractive({
   const isYearly = billing === 'yearly'
   const proHref = isAuthenticated ? `/upgrade?billing=${billing}` : '/register'
 
-  const interactiveClassName =
-    'outline-none focus-visible:ring-2 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg'
-
-  const freeCardProps = {
-    className: cn(interactiveClassName, 'hover:border-blue-500/30 hover:shadow-blue-500/10'),
-  }
-
-  const proCardProps = {
-    className: cn(
-      interactiveClassName,
-      'focus-visible:ring-cyan-500 transition-colors hover:bg-card/90',
-    ),
-  }
-
-  const freeCta = isAuthenticated ? (
-    <div className={CURRENT_PLAN_CTA_CLASSNAME}>{CURRENT_PLAN_LABEL}</div>
-  ) : (
-    <Link
-      href="/register"
-      onClick={(e) => e.stopPropagation()}
-      className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-center group-hover:border-blue-500/40 group-hover:text-foreground transition-colors')}
-    >
-      Get Started Free
-    </Link>
+  const freeCta = useMemo(
+    () =>
+      isAuthenticated ? (
+        <div className={CURRENT_PLAN_CTA_CLASSNAME}>{CURRENT_PLAN_LABEL}</div>
+      ) : (
+        <Link
+          href="/register"
+          onClick={stopPropagation}
+          className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-center group-hover:border-blue-500/40 group-hover:text-foreground transition-colors')}
+        >
+          Get Started Free
+        </Link>
+      ),
+    [isAuthenticated],
   )
 
-  const proCta = isAuthenticated && isPro ? (
-    <Link
-      href="/settings"
-      onClick={(e) => e.stopPropagation()}
-      className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-center group-hover:border-cyan-500/40 group-hover:text-foreground transition-colors')}
-    >
-      Manage Billing
-    </Link>
-  ) : (
-    <GradientCta href={proHref} className="w-full h-9" onClick={(e) => e.stopPropagation()}>
-      Get Pro
-      <ArrowRight size={14} />
-    </GradientCta>
+  const proCta = useMemo(
+    () =>
+      isAuthenticated && isPro ? (
+        <Link
+          href="/settings"
+          onClick={stopPropagation}
+          className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-center group-hover:border-cyan-500/40 group-hover:text-foreground transition-colors')}
+        >
+          Manage Billing
+        </Link>
+      ) : (
+        <GradientCta href={proHref} className="w-full h-9" onClick={stopPropagation}>
+          Get Pro
+          <ArrowRight size={14} />
+        </GradientCta>
+      ),
+    [isAuthenticated, isPro, proHref],
   )
+
+  const proPrice = useMemo(() => <PricingProPrice isYearly={isYearly} />, [isYearly])
 
   return (
     <section id="pricing" className="py-24">
@@ -94,13 +112,13 @@ export function PricingSectionInteractive({
 
         <FadeIn index={1}>
           <PricingCardsDisplay
-            proPrice={<PricingProPrice isYearly={isYearly} />}
+            proPrice={proPrice}
             freeCta={freeCta}
             proCta={proCta}
             freeFeatures={freeFeatures}
             proFeatures={proFeatures}
-            freeCardProps={freeCardProps}
-            proCardProps={proCardProps}
+            freeCardProps={FREE_CARD_PROPS}
+            proCardProps={PRO_CARD_PROPS}
           />
         </FadeIn>
       </div>

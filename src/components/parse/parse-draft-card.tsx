@@ -1,6 +1,19 @@
 'use client'
 
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type MouseEvent, type CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+  type MouseEvent,
+  type KeyboardEvent,
+  type CSSProperties,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import { Pencil, Trash2, Check, Loader2, Undo2, CopyCheck, PackageCheck } from 'lucide-react'
 import { toast } from 'sonner'
@@ -35,6 +48,24 @@ import { useDraftDrawerStore } from '@/stores/draft-drawer-store'
 import { draftToFullItem } from '@/lib/utils/brain-dump-draft'
 import type { CollectionPickerItem } from '@/types/collection'
 import type { UpdateItemInput } from '@/lib/utils/validators'
+
+// Fully static — a click on either overlay div (the action-button row, the confirm-dialog wrapper)
+// must not bubble to the card's own onClick={openEditor}. No closured values, so this is hoisted
+// once at module scope instead of recreated per render (jsx-no-new-function-as-prop).
+function stopPropagation(event: MouseEvent<HTMLDivElement>) {
+  event.stopPropagation()
+}
+
+// Drafts have no per-item collections (they attach to the job's target on commit); the read-only
+// field is fed this shared empty array instead of a fresh `[]` literal every render.
+const EMPTY_COLLECTIONS: CollectionPickerItem[] = []
+
+// Fully static icons for the drawer's action bar (DrawerAction's `icon` prop) — hoisted once at module
+// scope instead of created fresh per render inside DraftEditBody's renderExtraActions. DELETE_ICON is
+// shared by both the "move to trash" and "delete forever" actions — same icon, same size, either way.
+const RESTORE_ICON = <Undo2 className="size-4" />
+const DELETE_ICON = <Trash2 className="size-4" />
+const COMMIT_ICON = <PackageCheck className="size-4" />
 
 interface ParseDraftCardProps {
   jobId: string
@@ -155,12 +186,13 @@ export function ParseDraftCard({
   // Soft delete / restore: delegate to the board's optimistic `persistMove`-backed handlers (optimistic
   // reflow + revert on failure + failed-ring clear), instead of the card's old pessimistic await-then-
   // apply spinner. These are synchronous — the card no longer blocks/spins on the network round-trip.
-  const trash = () => onTrash(item)
-  const restore = () => onRestore(item)
+  // Memoized (used directly as a JSX prop below — IconAction's onClick) so the reference is stable.
+  const trash = useCallback(() => onTrash(item), [onTrash, item])
+  const restore = useCallback(() => onRestore(item), [onRestore, item])
 
   // Permanent delete (from the Trash bucket only) — removes the row for good. Reached only via the
   // delete-confirm dialog (irreversible), so it closes that dialog as it runs.
-  const deleteForever = async () => {
+  const deleteForever = useCallback(async () => {
     setDeleteConfirmOpen(false)
     setBusy(true)
     onPatchPending(1)
@@ -172,27 +204,30 @@ export function ParseDraftCard({
       return
     }
     onRemoved()
-  }
+  }, [jobId, item.id, deleteDraft, onPatchPending, onRemoved])
 
   // Applies a settled per-item commit result: toasts, drops the card, and — when this was the last draft
   // (the job auto-closed) — redirects to the dashboard (always dashboard, matching "Save all").
-  const applyCommitResult = (result: BrainDumpCommitResult): void => {
-    if (!result.ok) {
-      toast.error(result.message ?? 'Could not save item')
-      return
-    }
-    // A successful action supersedes a prior bulk-commit failure on this card (it's leaving the board now).
-    onClearFailed?.()
-    toast.success(`Saved “${item.title}”`)
-    onRemoved()
-    if (result.closed) router.push('/dashboard')
-  }
+  const applyCommitResult = useCallback(
+    (result: BrainDumpCommitResult): void => {
+      if (!result.ok) {
+        toast.error(result.message ?? 'Could not save item')
+        return
+      }
+      // A successful action supersedes a prior bulk-commit failure on this card (it's leaving the board now).
+      onClearFailed?.()
+      toast.success(`Saved “${item.title}”`)
+      onRemoved()
+      if (result.closed) router.push('/dashboard')
+    },
+    [item.title, onClearFailed, onRemoved, router],
+  )
 
   // Per-item "Save now": commit this draft into a real item, attached to the job's collection target
   // (same as the batch "Save all"), then drop the draft. Spends no AI budget (just createItem). The first
   // attempt omits `confirmCreateCollection`; if the job has a pending new collection the server answers
   // `needsCollectionConfirm` and we open the confirm dialog instead of committing.
-  const saveNow = async () => {
+  const saveNow = useCallback(async () => {
     setBusy(true)
     const result = await commitDraft(jobId, item.id)
     setBusy(false)
@@ -201,17 +236,38 @@ export function ParseDraftCard({
       return
     }
     applyCommitResult(result)
-  }
+  }, [commitDraft, jobId, item.id, applyCommitResult])
 
   // Re-commit after the collection-confirm dialog: `create` true materializes the pending new collection
   // and attaches it; false (Cancel) commits the item with no new collection. Either way the item is saved.
-  const confirmSaveNow = async (create: boolean) => {
-    setCollectionConfirmOpen(false)
-    setBusy(true)
-    const result = await commitDraft(jobId, item.id, { confirmCreateCollection: create })
-    setBusy(false)
-    applyCommitResult(result)
-  }
+  const confirmSaveNow = useCallback(
+    async (create: boolean) => {
+      setCollectionConfirmOpen(false)
+      setBusy(true)
+      const result = await commitDraft(jobId, item.id, { confirmCreateCollection: create })
+      setBusy(false)
+      applyCommitResult(result)
+    },
+    [commitDraft, jobId, item.id, applyCommitResult],
+  )
+
+  // Stable click handlers for the inline "Save now" / collection-confirm / delete-forever actions below —
+  // each just fire-and-forgets (`void`) one of the memoized async actions above, so the handler itself
+  // needs no additional deps beyond the action it wraps.
+  const handleSaveNowClick = useCallback(() => {
+    void saveNow()
+  }, [saveNow])
+  const handleDeleteForeverClick = useCallback(() => {
+    void deleteForever()
+  }, [deleteForever])
+  const openDeleteConfirm = useCallback(() => setDeleteConfirmOpen(true), [])
+  const closeDeleteConfirm = useCallback(() => setDeleteConfirmOpen(false), [])
+  const handleConfirmSaveWithoutCollection = useCallback(() => {
+    void confirmSaveNow(false)
+  }, [confirmSaveNow])
+  const handleConfirmSaveWithCollection = useCallback(() => {
+    void confirmSaveNow(true)
+  }, [confirmSaveNow])
 
   const subtitle = item.description || (item.itemTypeName === 'link' ? item.url : item.content)
 
@@ -220,7 +276,7 @@ export function ParseDraftCard({
   // separates the two, so a click that doesn't move never starts a drag. The action buttons
   // opt out of both via `data-no-drag` (the sensor's preventActivation) and stopPropagation (so they
   // don't open the drawer). `wasDraggingRef` suppresses the click that fires on pointer-up after a drag.
-  const openEditor = () => {
+  const openEditor = useCallback(() => {
     if (wasDraggingRef.current) {
       wasDraggingRef.current = false
       return
@@ -233,17 +289,68 @@ export function ParseDraftCard({
     // document-level scroll has no React/Next equivalent. 0 on desktop (the slider ignores it).
     if (typeof window !== 'undefined') useDraftDrawerStore.getState().setOpenScrollY(window.scrollY)
     setEditOpen(true)
-  }
+  }, [busy])
+
+  // The ref callback fans out to both the board's `rootRef` (drag/measurement) and the card's own
+  // `cardRef` (highlight scroll target) — memoized so a re-render doesn't hand the div a fresh
+  // function (which would otherwise fire an unnecessary detach/attach ref cycle).
+  const setCardRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      rootRef(el)
+      cardRef.current = el
+    },
+    [rootRef],
+  )
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        openEditor()
+      }
+    },
+    [openEditor],
+  )
+
+  // The colored left-border accent depends only on the item's type, so it's memoized instead of built
+  // fresh on every render.
+  const cardStyle = useMemo(
+    () => ({ '--card-accent': SYSTEM_TYPE_COLORS[item.itemTypeName] ?? 'var(--primary)' }) as CSSProperties,
+    [item.itemTypeName],
+  )
+
+  // Stable wrappers for the props handed to EditDraftDrawer below.
+  const handleDraftEdited = useCallback(
+    (patch: Partial<BrainDumpDraftItem>) => {
+      // A successful draft edit also clears a prior bulk-commit failure ring on this card.
+      onClearFailed?.()
+      onEdited(patch)
+    },
+    [onClearFailed, onEdited],
+  )
+  const handleDrawerTrash = useCallback(() => {
+    trash()
+    setEditOpen(false)
+  }, [trash])
+  const handleDrawerRestore = useCallback(() => {
+    restore()
+    setEditOpen(false)
+  }, [restore])
+  const handleDrawerCommit = useCallback(() => {
+    void (async () => {
+      await saveNow()
+      // saveNow drops the card on success (onRemoved) and may open the collection-confirm dialog;
+      // close the drawer either way so the confirm dialog (rendered on the card) isn't behind it.
+      setEditOpen(false)
+    })()
+  }, [saveNow])
 
   return (
     // Local provider so the card's action/duplicate tooltips appear quickly (150ms) instead of the
     // app-wide 400ms default — matching the Brain Dump entry card.
     <TooltipProvider delay={150}>
       <div
-        ref={(el) => {
-          rootRef(el)
-          cardRef.current = el
-        }}
+        ref={setCardRef}
         // Can't be a real <button>: it wraps nested interactive controls (the IconAction buttons,
         // the edit drawer, and the confirm dialogs). Keyboard access is already handled via tabIndex
         // + onKeyDown below.
@@ -251,16 +358,11 @@ export function ParseDraftCard({
         role="button"
         tabIndex={0}
         onClick={openEditor}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            openEditor()
-          }
-        }}
+        onKeyDown={handleKeyDown}
         aria-label={`Open ${item.title}`}
         // The accent feeds the colored left border (matching the app's item cards / unified card system):
         // a 2px left border that's neutral at rest and lights up to the item-type color on hover.
-        style={{ '--card-accent': SYSTEM_TYPE_COLORS[item.itemTypeName] ?? 'var(--primary)' } as CSSProperties}
+        style={cardStyle}
         // card-interactive = the same hover lift + highlight + shadow as the dashboard item rows.
         // draggable-card = touch-action:none so a press-and-hold drags on touch screens (the whole card
         // is the drag source) instead of the browser hijacking the gesture for scrolling.
@@ -303,7 +405,7 @@ export function ParseDraftCard({
           // variant (coarse pointer OR < lg viewport) so the actions are reachable without a hover.
           // A faint card-colored backdrop keeps the icons legible where they overlap text on a long row.
           className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0 rounded-md bg-card/80 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-within:opacity-100 touch:opacity-100"
-          onClick={(event) => event.stopPropagation()}
+          onClick={stopPropagation}
         >
           {inTrash ? (
             <>
@@ -319,14 +421,14 @@ export function ParseDraftCard({
                   <IconAction
                     label="Save now"
                     tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
-                    onClick={() => void saveNow()}
+                    onClick={handleSaveNowClick}
                     disabled={busy}
                   >
                     {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
                   </IconAction>
                 </>
               )}
-              <IconAction label="Delete forever" onClick={() => setDeleteConfirmOpen(true)} disabled={busy} destructive>
+              <IconAction label="Delete forever" onClick={openDeleteConfirm} disabled={busy} destructive>
                 <Trash2 className="size-3.5" />
               </IconAction>
             </>
@@ -338,7 +440,7 @@ export function ParseDraftCard({
               <IconAction
                 label="Save now"
                 tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
-                onClick={() => void saveNow()}
+                onClick={handleSaveNowClick}
                 disabled={busy}
               >
                 {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
@@ -354,31 +456,14 @@ export function ParseDraftCard({
           item={item}
           patchDraft={patchDraft}
           targetCollections={targetCollections}
-          onEdited={(patch) => {
-            // A successful draft edit also clears a prior bulk-commit failure ring on this card.
-            onClearFailed?.()
-            onEdited(patch)
-          }}
+          onEdited={handleDraftEdited}
           busy={busy}
           canCommit={!inTrash || !canRestore}
           inTrash={inTrash}
-          onTrash={() => {
-            trash()
-            setEditOpen(false)
-          }}
-          onRestore={() => {
-            restore()
-            setEditOpen(false)
-          }}
-          onDeleteForever={() => setDeleteConfirmOpen(true)}
-          onCommit={() => {
-            void (async () => {
-              await saveNow()
-              // saveNow drops the card on success (onRemoved) and may open the collection-confirm dialog;
-              // close the drawer either way so the confirm dialog (rendered on the card) isn't behind it.
-              setEditOpen(false)
-            })()
-          }}
+          onTrash={handleDrawerTrash}
+          onRestore={handleDrawerRestore}
+          onDeleteForever={openDeleteConfirm}
+          onCommit={handleDrawerCommit}
         />
         {/* Both confirm dialogs portal to <body> in the DOM, but in the REACT tree they sit under the card's
             clickable root (onClick={openEditor}), and React bubbles synthetic clicks along the REACT tree —
@@ -388,7 +473,7 @@ export function ParseDraftCard({
             Not itself a click target — the dialogs' real, already keyboard-accessible buttons are the
             actual controls, so this div needs no keyboard handling of its own. */}
         {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-        <div onClick={(event) => event.stopPropagation()}>
+        <div onClick={stopPropagation}>
           <Dialog open={collectionConfirmOpen} onOpenChange={setCollectionConfirmOpen}>
             <DialogContent>
               <DialogHeader>
@@ -399,10 +484,10 @@ export function ParseDraftCard({
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
-                <Button variant="outline" size="sm" onClick={() => void confirmSaveNow(false)} disabled={busy}>
+                <Button variant="outline" size="sm" onClick={handleConfirmSaveWithoutCollection} disabled={busy}>
                   Save without collection
                 </Button>
-                <Button size="sm" onClick={() => void confirmSaveNow(true)} disabled={busy}>
+                <Button size="sm" onClick={handleConfirmSaveWithCollection} disabled={busy}>
                   Create and save
                 </Button>
               </DialogFooter>
@@ -417,10 +502,10 @@ export function ParseDraftCard({
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
-                <Button variant="outline" size="sm" onClick={() => setDeleteConfirmOpen(false)} disabled={busy}>
+                <Button variant="outline" size="sm" onClick={closeDeleteConfirm} disabled={busy}>
                   Cancel
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => void deleteForever()} disabled={busy}>
+                <Button variant="destructive" size="sm" onClick={handleDeleteForeverClick} disabled={busy}>
                   Delete forever
                 </Button>
               </DialogFooter>
@@ -446,25 +531,36 @@ interface IconActionProps {
 // A compact icon-only card action with a shadcn tooltip (the card is dense, so the actions are
 // icon-only). Used for Edit / Save now / Delete / Restore on the draft card.
 function IconAction({ label, tooltip, onClick, disabled, destructive, children }: IconActionProps) {
+  // Function form (Base UI's documented perf pattern for the `render` prop) instead of a plain
+  // element, wrapped in `useCallback` so the function reference itself is also stable across renders
+  // where none of the deps changed — matching the pattern already established in
+  // `dashboard/brain-dump-widget.tsx`'s `renderTrigger`. `triggerProps` carries Base UI's own
+  // hover/focus/click-cancel handlers for the tooltip; spread first, then this action's own
+  // click/disabled/label/children on top (mirrors the element-form original, which layered the same
+  // explicit attrs onto the trigger's computed props).
+  const renderButton = useCallback(
+    (triggerProps: ComponentProps<'button'>) => (
+      <Button
+        {...triggerProps}
+        variant="ghost"
+        size="icon-sm"
+        // `icon-sm` carries `touch:size-11` (44px tap target on coarse-pointer / <lg). On this dense
+        // overlay the cards are already tap-friendly, so neutralize it (`touch:size-6`) — otherwise
+        // the buttons balloon and the trash/check icons drift far apart on touch/narrow viewports.
+        className={cn('size-6 touch:size-6', destructive && 'text-destructive hover:text-destructive')}
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+      >
+        {children}
+      </Button>
+    ),
+    [destructive, onClick, disabled, label, children],
+  )
+
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            // `icon-sm` carries `touch:size-11` (44px tap target on coarse-pointer / <lg). On this dense
-            // overlay the cards are already tap-friendly, so neutralize it (`touch:size-6`) — otherwise
-            // the buttons balloon and the trash/check icons drift far apart on touch/narrow viewports.
-            className={cn('size-6 touch:size-6', destructive && 'text-destructive hover:text-destructive')}
-            onClick={onClick}
-            disabled={disabled}
-            aria-label={label}
-          >
-            {children}
-          </Button>
-        }
-      />
+      <TooltipTrigger render={renderButton} />
       <TooltipContent className="max-w-[260px]">{tooltip ?? label}</TooltipContent>
     </Tooltip>
   )
@@ -491,23 +587,28 @@ interface DrawerActionProps {
 // A worded action-bar button (icon + collapsing label + tooltip) for the draft edit drawer's footer —
 // the verbose sibling of IconAction. Used for Restore / Delete / Delete-forever / Commit.
 function DrawerAction({ icon, label, ariaLabel, tooltip, labelPriority = 2, onClick, disabled, destructive, primary }: DrawerActionProps) {
+  // See IconAction's `renderButton` above for why this is the function form + useCallback.
+  const renderButton = useCallback(
+    (triggerProps: ComponentProps<'button'>) => (
+      <Button
+        {...triggerProps}
+        variant={primary ? 'default' : 'outline'}
+        size="sm"
+        className={cn(ACTIONBAR_BUTTON_CLASS, destructive && 'text-destructive hover:text-destructive')}
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={ariaLabel ?? label}
+      >
+        {icon}
+        <span className={actionbarLabelClass(labelPriority)}>{label}</span>
+      </Button>
+    ),
+    [primary, destructive, onClick, disabled, ariaLabel, label, icon, labelPriority],
+  )
+
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant={primary ? 'default' : 'outline'}
-            size="sm"
-            className={cn(ACTIONBAR_BUTTON_CLASS, destructive && 'text-destructive hover:text-destructive')}
-            onClick={onClick}
-            disabled={disabled}
-            aria-label={ariaLabel ?? label}
-          >
-            {icon}
-            <span className={actionbarLabelClass(labelPriority)}>{label}</span>
-          </Button>
-        }
-      />
+      <TooltipTrigger render={renderButton} />
       <TooltipContent>{tooltip ?? label}</TooltipContent>
     </Tooltip>
   )
@@ -547,36 +648,50 @@ function DuplicateBadge({ match }: DuplicateBadgeProps) {
   // The badge sits inside the card's `role="button"` (onClick → openEditor) on the drag source, so stop
   // the click from bubbling (else it opens THIS draft's editor) and mark `data-no-drag` (else a press
   // starts a card drag).
-  const openReferenced = async (event: MouseEvent) => {
-    event.stopPropagation()
-    if (opening) return
-    setOpening(true)
-    // Cached fetch (TanStack) — re-opening the same referenced item skips the backend round-trip.
-    const item = await fetchItemDetail(match.id)
-    setOpening(false)
-    if (item) {
-      openDrawer(item)
-    } else {
-      toast.error('That item is no longer available.')
-    }
-  }
+  const openReferenced = useCallback(
+    async (event: MouseEvent) => {
+      event.stopPropagation()
+      if (opening) return
+      setOpening(true)
+      // Cached fetch (TanStack) — re-opening the same referenced item skips the backend round-trip.
+      const item = await fetchItemDetail(match.id)
+      setOpening(false)
+      if (item) {
+        openDrawer(item)
+      } else {
+        toast.error('That item is no longer available.')
+      }
+    },
+    [opening, fetchItemDetail, match.id, openDrawer],
+  )
+
+  const handleOpenReferencedClick = useCallback(
+    (event: MouseEvent) => {
+      void openReferenced(event)
+    },
+    [openReferenced],
+  )
+
+  // Function form (see IconAction's `renderButton` above) — a plain native `<button>` here, not the
+  // shadcn `Button`, so `triggerProps` types against `ComponentProps<'button'>` directly.
+  const renderButton = useCallback(
+    (triggerProps: ComponentProps<'button'>) => (
+      <button
+        {...triggerProps}
+        type="button"
+        data-no-drag
+        onClick={handleOpenReferencedClick}
+        disabled={opening}
+        aria-label={`Open “${match.title}”`}
+        className="inline-flex w-fit underline-offset-2 hover:underline disabled:opacity-70"
+      />
+    ),
+    [handleOpenReferencedClick, opening, match.title],
+  )
 
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            data-no-drag
-            onClick={(e) => void openReferenced(e)}
-            disabled={opening}
-            aria-label={`Open “${match.title}”`}
-            className="inline-flex w-fit underline-offset-2 hover:underline disabled:opacity-70"
-          />
-        }
-      >
-        {badge}
-      </TooltipTrigger>
+      <TooltipTrigger render={renderButton}>{badge}</TooltipTrigger>
       <TooltipContent className="max-w-[260px]">
         {`Looks like “${match.title}”, already in your stash. Click to open it.`}
       </TooltipContent>
@@ -653,6 +768,66 @@ export function DraftEditBody({
   onDeleteForever,
   onCommit,
 }: DraftEditBodyProps) {
+  // onClose/onCancel/onSave (this last one is ItemDrawerEditContent's post-save UI hook, distinct from
+  // the `onSave` prop above which does the actual PATCH via onSubmitOverride) all just close the drawer —
+  // one stable handler covers all three. `onSave`'s `(updated: FullItem) => void` signature is satisfied
+  // by this arg-less `() => void` (fewer declared params is assignable to a wider callback type).
+  const handleClose = useCallback(() => onOpenChange(false), [onOpenChange])
+
+  const renderExtraActions = useCallback(
+    ({ disabled }: { disabled: boolean }) => (
+      <>
+        {inTrash ? (
+          <>
+            {/* Distinct ascending priorities so labels collapse one at a time from the right as the bar
+                narrows. Same priority on two siblings makes them collapse together, leaving the rightmost
+                (Delete) clipped before either label drops — the bug this avoids. */}
+            <DrawerAction
+              icon={RESTORE_ICON}
+              label="Restore"
+              labelPriority={2}
+              tooltip="Restore draft from trash"
+              onClick={onRestore}
+              disabled={disabled || busy}
+            />
+            <DrawerAction
+              icon={DELETE_ICON}
+              label="Delete"
+              ariaLabel="Delete forever"
+              labelPriority={3}
+              tooltip="Delete permanently"
+              onClick={onDeleteForever}
+              disabled={disabled || busy}
+              destructive
+            />
+          </>
+        ) : (
+          <DrawerAction
+            icon={DELETE_ICON}
+            label="Delete"
+            labelPriority={3}
+            tooltip="Delete (move to trash)"
+            onClick={onTrash}
+            disabled={disabled || busy}
+            destructive
+          />
+        )}
+        {canCommit && (
+          <DrawerAction
+            icon={COMMIT_ICON}
+            label="Commit"
+            labelPriority={4}
+            tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
+            onClick={onCommit}
+            disabled={disabled || busy}
+            primary
+          />
+        )}
+      </>
+    ),
+    [inTrash, onRestore, onDeleteForever, onTrash, canCommit, onCommit, busy],
+  )
+
   return (
     <>
       {/* SheetTitle is a Radix Dialog primitive — only valid inside the desktop Sheet. Full-screen mobile has
@@ -670,68 +845,19 @@ export function DraftEditBody({
       <ItemDrawerEditContent
         key={item.id}
         item={draftToFullItem(item)}
-        collections={targetCollections ?? []}
+        collections={targetCollections ?? EMPTY_COLLECTIONS}
         collectionsReadOnly
         fullScreen={fullScreen}
         stickyHeader={fullScreen}
-        onClose={() => onOpenChange(false)}
-        onCancel={() => onOpenChange(false)}
-        onSave={() => onOpenChange(false)}
+        onClose={handleClose}
+        onCancel={handleClose}
+        onSave={handleClose}
         onSubmitOverride={onSave}
         showDetailsSection={false}
         sheetCloseRef={sheetCloseRef}
         saveLabel="Save draft"
         saveTooltip="Save your edits to this draft (stays in review)"
-        renderExtraActions={({ disabled }) => (
-          <>
-            {inTrash ? (
-              <>
-                {/* Distinct ascending priorities so labels collapse one at a time from the right as the bar
-                    narrows. Same priority on two siblings makes them collapse together, leaving the rightmost
-                    (Delete) clipped before either label drops — the bug this avoids. */}
-                <DrawerAction
-                  icon={<Undo2 className="size-4" />}
-                  label="Restore"
-                  labelPriority={2}
-                  tooltip="Restore draft from trash"
-                  onClick={onRestore}
-                  disabled={disabled || busy}
-                />
-                <DrawerAction
-                  icon={<Trash2 className="size-4" />}
-                  label="Delete"
-                  ariaLabel="Delete forever"
-                  labelPriority={3}
-                  tooltip="Delete permanently"
-                  onClick={onDeleteForever}
-                  disabled={disabled || busy}
-                  destructive
-                />
-              </>
-            ) : (
-              <DrawerAction
-                icon={<Trash2 className="size-4" />}
-                label="Delete"
-                labelPriority={3}
-                tooltip="Delete (move to trash)"
-                onClick={onTrash}
-                disabled={disabled || busy}
-                destructive
-              />
-            )}
-            {canCommit && (
-              <DrawerAction
-                icon={<PackageCheck className="size-4" />}
-                label="Commit"
-                labelPriority={4}
-                tooltip="Commit this draft to your stash — moves it out of this Brain Dump and into your real items"
-                onClick={onCommit}
-                disabled={disabled || busy}
-                primary
-              />
-            )}
-          </>
-        )}
+        renderExtraActions={renderExtraActions}
       />
     </>
   )

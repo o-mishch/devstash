@@ -2,72 +2,77 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { anyOf } from '@/test/matchers'
 import bcrypt from 'bcryptjs'
 import { Prisma } from '@/generated/prisma'
+import type { restoreCredentialEmailToken } from '@/lib/auth/tokens'
+import type { ChangeCredentialEmailResult } from '@/lib/db/users'
 
 // Mock dependencies
 vi.mock('bcryptjs', () => ({
   default: {
-    hash: vi.fn(),
-    compare: vi.fn(),
+    // `bcrypt.hash`/`compare` are overloaded (Promise-returning vs. callback-returning `void`); a bare
+    // `typeof bcrypt.hash` resolves to the last (callback) overload, so the Promise-returning signature
+    // actually used here is spelled out explicitly instead.
+    hash: vi.fn<(password: string, salt: number | string) => Promise<string>>(),
+    compare: vi.fn<(password: string, hash: string) => Promise<boolean>>(),
   },
 }))
 
 vi.mock('@/lib/db/users', () => ({
-  getUserAuthInfoByEmail: vi.fn(),
-  getUserAuthMethods: vi.fn(),
-  createCredentialUser: vi.fn(),
-  updateUserPassword: vi.fn(),
-  setPasswordAndVerifyEmail: vi.fn(),
-  bootstrapCredentialLogin: vi.fn(),
-  findUserByAnyEmail: vi.fn(),
-  setCredentialEmailLogin: vi.fn(),
-  changeCredentialEmail: vi.fn(),
-  isEmailTakenByAnotherUser: vi.fn(),
-  checkProviderAccountExists: vi.fn(),
-  createAccount: vi.fn(),
+  getUserAuthInfoByEmail: vi.fn<typeof getUserAuthInfoByEmail>(),
+  getUserAuthMethods: vi.fn<typeof getUserAuthMethods>(),
+  createCredentialUser: vi.fn<typeof createCredentialUser>(),
+  updateUserPassword: vi.fn<typeof updateUserPassword>(),
+  setPasswordAndVerifyEmail: vi.fn<typeof setPasswordAndVerifyEmail>(),
+  bootstrapCredentialLogin: vi.fn<typeof bootstrapCredentialLogin>(),
+  findUserByAnyEmail: vi.fn<typeof findUserByAnyEmail>(),
+  setCredentialEmailLogin: vi.fn<typeof setCredentialEmailLogin>(),
+  changeCredentialEmail: vi.fn<typeof changeCredentialEmail>(),
+  isEmailTakenByAnotherUser: vi.fn<typeof isEmailTakenByAnotherUser>(),
+  checkProviderAccountExists: vi.fn<typeof checkProviderAccountExists>(),
+  createAccount: vi.fn<typeof createAccount>(),
 }))
 
 vi.mock('@/lib/infra/cache', () => ({
-  invalidateProfileCache: vi.fn(),
+  invalidateProfileCache: vi.fn<typeof invalidateProfileCache>(),
 }))
 
 vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', () => ({
   // auth-service uses the resilient variant — its own swallow-and-log is unit-tested in the billing
   // module, so here it is a plain vi.fn (resolves) and never simulates a throw.
-  syncStripeCustomerEmailForUserSafe: vi.fn(),
+  syncStripeCustomerEmailForUserSafe: vi.fn<typeof syncStripeCustomerEmailForUserSafe>(),
 }))
 
 vi.mock('@/lib/utils/auth', () => ({
-  outboundEmailEnabled: vi.fn(),
+  outboundEmailEnabled: vi.fn<typeof outboundEmailEnabled>(),
 }))
 
 vi.mock('@/lib/emails/verification', () => ({
-  sendRegistrationVerification: vi.fn(),
-  resendVerification: vi.fn(),
+  sendRegistrationVerification: vi.fn<typeof sendRegistrationVerification>(),
+  resendVerification: vi.fn<typeof resendVerification>(),
 }))
 
 vi.mock('@/lib/emails/password-reset', () => ({
-  sendPasswordResetRequest: vi.fn(),
+  sendPasswordResetRequest: vi.fn<typeof sendPasswordResetRequest>(),
 }))
 
 vi.mock('@/lib/emails/credential-email', () => ({
-  sendCredentialEmailLink: vi.fn(),
+  sendCredentialEmailLink: vi.fn<typeof sendCredentialEmailLink>(),
 }))
 
 vi.mock('@/lib/emails/security-notification', () => ({
-  sendSecurityNotification: vi.fn(),
+  sendSecurityNotification: vi.fn<typeof sendSecurityNotification>(),
 }))
 
 vi.mock('@/lib/auth/tokens', () => ({
-  consumePasswordResetToken: vi.fn(),
-  consumeCredentialEmailToken: vi.fn(),
-  peekCredentialEmailPayload: vi.fn(),
-  createCredentialEmailToken: vi.fn(),
-  deleteCredentialEmailToken: vi.fn(),
-  restoreCredentialEmailToken: vi.fn(),
+  consumePasswordResetToken: vi.fn<typeof consumePasswordResetToken>(),
+  consumeCredentialEmailToken: vi.fn<typeof consumeCredentialEmailToken>(),
+  peekCredentialEmailPayload: vi.fn<typeof peekCredentialEmailPayload>(),
+  createCredentialEmailToken: vi.fn<typeof createCredentialEmailToken>(),
+  deleteCredentialEmailToken: vi.fn<typeof deleteCredentialEmailToken>(),
+  restoreCredentialEmailToken: vi.fn<typeof restoreCredentialEmailToken>(),
 }))
 
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
+  checkRateLimit: vi.fn<typeof checkRateLimit>(),
 }))
 
 import {
@@ -113,37 +118,85 @@ import {
 } from '@/lib/auth/tokens'
 import { checkRateLimit } from '@/lib/infra/rate-limit'
 
-const mockBcryptHash = bcrypt.hash as unknown as ReturnType<typeof vi.fn>
-const mockBcryptCompare = bcrypt.compare as unknown as ReturnType<typeof vi.fn>
+// `bcrypt.hash`/`compare` are overloaded (Promise-returning vs. callback-returning `void`) on the real
+// module; pin `vi.mocked` to the Promise-returning overload actually used here (a bare `typeof
+// bcrypt.hash` would resolve to the last, callback, overload).
+const mockBcryptHash = vi.mocked<(password: string, salt: number | string) => Promise<string>>(bcrypt.hash)
+const mockBcryptCompare = vi.mocked<(password: string, hash: string) => Promise<boolean>>(bcrypt.compare)
 
-const mockGetUserAuthInfoByEmail = getUserAuthInfoByEmail as ReturnType<typeof vi.fn>
-const mockGetUserAuthMethods = getUserAuthMethods as ReturnType<typeof vi.fn>
-const mockCreateCredentialUser = createCredentialUser as ReturnType<typeof vi.fn>
-const mockUpdateUserPassword = updateUserPassword as ReturnType<typeof vi.fn>
-const mockSetPasswordAndVerifyEmail = setPasswordAndVerifyEmail as ReturnType<typeof vi.fn>
-const mockBootstrapCredentialLogin = bootstrapCredentialLogin as ReturnType<typeof vi.fn>
-const mockFindUserByAnyEmail = findUserByAnyEmail as ReturnType<typeof vi.fn>
+const mockGetUserAuthInfoByEmail = vi.mocked(getUserAuthInfoByEmail)
+const mockGetUserAuthMethods = vi.mocked(getUserAuthMethods)
+const mockCreateCredentialUser = vi.mocked(createCredentialUser)
+const mockUpdateUserPassword = vi.mocked(updateUserPassword)
+const mockSetPasswordAndVerifyEmail = vi.mocked(setPasswordAndVerifyEmail)
+const mockBootstrapCredentialLogin = vi.mocked(bootstrapCredentialLogin)
+const mockFindUserByAnyEmail = vi.mocked(findUserByAnyEmail)
 
-const mockInvalidateProfileCache = invalidateProfileCache as ReturnType<typeof vi.fn>
-const mockSyncStripeCustomerEmail = syncStripeCustomerEmailForUserSafe as ReturnType<typeof vi.fn>
+const mockInvalidateProfileCache = vi.mocked(invalidateProfileCache)
+const mockSyncStripeCustomerEmail = vi.mocked(syncStripeCustomerEmailForUserSafe)
 
-const mockEmailVerificationEnabled = outboundEmailEnabled as ReturnType<typeof vi.fn>
-const mockSendRegistrationVerification = sendRegistrationVerification as ReturnType<typeof vi.fn>
-const mockResendVerification = resendVerification as ReturnType<typeof vi.fn>
-const mockSendPasswordResetRequest = sendPasswordResetRequest as ReturnType<typeof vi.fn>
-const mockSendSecurityNotification = sendSecurityNotification as ReturnType<typeof vi.fn>
-const mockConsumePasswordResetToken = consumePasswordResetToken as ReturnType<typeof vi.fn>
-const mockConsumeCredentialEmailToken = consumeCredentialEmailToken as ReturnType<typeof vi.fn>
-const mockPeekCredentialEmailPayload = peekCredentialEmailPayload as ReturnType<typeof vi.fn>
-const mockCreateCredentialEmailToken = createCredentialEmailToken as ReturnType<typeof vi.fn>
-const mockDeleteCredentialEmailToken = deleteCredentialEmailToken as ReturnType<typeof vi.fn>
-const mockSetCredentialEmailLogin = setCredentialEmailLogin as ReturnType<typeof vi.fn>
-const mockChangeCredentialEmail = changeCredentialEmail as ReturnType<typeof vi.fn>
-const mockIsEmailTakenByAnotherUser = isEmailTakenByAnotherUser as ReturnType<typeof vi.fn>
-const mockSendCredentialEmailLink = sendCredentialEmailLink as ReturnType<typeof vi.fn>
-const mockCheckRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockCheckProviderAccountExists = checkProviderAccountExists as ReturnType<typeof vi.fn>
-const mockCreateAccount = createAccount as ReturnType<typeof vi.fn>
+const mockEmailVerificationEnabled = vi.mocked(outboundEmailEnabled)
+const mockSendRegistrationVerification = vi.mocked(sendRegistrationVerification)
+const mockResendVerification = vi.mocked(resendVerification)
+const mockSendPasswordResetRequest = vi.mocked(sendPasswordResetRequest)
+const mockSendSecurityNotification = vi.mocked(sendSecurityNotification)
+const mockConsumePasswordResetToken = vi.mocked(consumePasswordResetToken)
+const mockConsumeCredentialEmailToken = vi.mocked(consumeCredentialEmailToken)
+const mockPeekCredentialEmailPayload = vi.mocked(peekCredentialEmailPayload)
+const mockCreateCredentialEmailToken = vi.mocked(createCredentialEmailToken)
+const mockDeleteCredentialEmailToken = vi.mocked(deleteCredentialEmailToken)
+const mockSetCredentialEmailLogin = vi.mocked(setCredentialEmailLogin)
+const mockChangeCredentialEmail = vi.mocked(changeCredentialEmail)
+const mockIsEmailTakenByAnotherUser = vi.mocked(isEmailTakenByAnotherUser)
+const mockSendCredentialEmailLink = vi.mocked(sendCredentialEmailLink)
+const mockCheckRateLimit = vi.mocked(checkRateLimit)
+const mockCheckProviderAccountExists = vi.mocked(checkProviderAccountExists)
+const mockCreateAccount = vi.mocked(createAccount)
+
+// Full-shape fixture helpers — the real db/token exports carry the field set filled in below, but
+// each test only ever varies a couple of fields. These keep mockResolvedValue satisfying the now
+// precisely-typed mocks (see vi.fn<typeof realExport>() above) without repeating unrelated fields at
+// every call site.
+type AuthInfoUser = NonNullable<Awaited<ReturnType<typeof getUserAuthInfoByEmail>>>
+function authInfoUser(overrides: Partial<AuthInfoUser> = {}): AuthInfoUser {
+  return {
+    id: '1',
+    email: 'test@example.com',
+    name: null,
+    image: null,
+    password: null,
+    emailVerified: null,
+    credentialEmail: null,
+    credentialEmailVerified: null,
+    matchedField: 'email',
+    matchedVerified: null,
+    ...overrides,
+  }
+}
+
+type AuthMethodsUser = NonNullable<Awaited<ReturnType<typeof getUserAuthMethods>>>
+function authMethodsUser(overrides: Partial<AuthMethodsUser> = {}): AuthMethodsUser {
+  return {
+    email: 'test@example.com',
+    credentialEmail: null,
+    password: null,
+    accounts: [],
+    ...overrides,
+  }
+}
+
+type TestCredentialEmailPayload = NonNullable<Awaited<ReturnType<typeof peekCredentialEmailPayload>>>
+function credentialEmailPayload(
+  overrides: Partial<TestCredentialEmailPayload> & Pick<TestCredentialEmailPayload, 'userId' | 'email'>,
+): TestCredentialEmailPayload {
+  return { mode: 'add', gen: 1, ...overrides }
+}
+
+function changeCredentialResult(
+  overrides: Partial<ChangeCredentialEmailResult> & Pick<ChangeCredentialEmailResult, 'status' | 'emailMoved'>,
+): ChangeCredentialEmailResult {
+  return { previousLoginEmail: null, ...overrides }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -184,19 +237,19 @@ describe('auth-service', () => {
     })
 
     it('returns null and runs a dummy compare for an OAuth-only account (no password)', async () => {
-      mockGetUserAuthInfoByEmail.mockResolvedValue({ password: null })
+      mockGetUserAuthInfoByEmail.mockResolvedValue(authInfoUser({ password: null }))
       expect(await validateUserPassword('test@example.com', 'pass')).toBeNull()
       expect(mockBcryptCompare).toHaveBeenCalledTimes(1) // dummy compare ran
     })
 
     it('returns null if password comparison fails', async () => {
-      mockGetUserAuthInfoByEmail.mockResolvedValue({ password: 'hashed' })
+      mockGetUserAuthInfoByEmail.mockResolvedValue(authInfoUser({ password: 'hashed' }))
       mockBcryptCompare.mockResolvedValue(false)
       expect(await validateUserPassword('test@example.com', 'wrong')).toBeNull()
     })
 
     it('returns user if password matches', async () => {
-      const user = { id: '1', password: 'hashed' }
+      const user = authInfoUser({ id: '1', password: 'hashed' })
       mockGetUserAuthInfoByEmail.mockResolvedValue(user)
       mockBcryptCompare.mockResolvedValue(true)
       expect(await validateUserPassword('test@example.com', 'pass')).toEqual(user)
@@ -210,7 +263,7 @@ describe('auth-service', () => {
     })
 
     it('returns comparison result', async () => {
-      mockGetUserAuthMethods.mockResolvedValue({ password: 'hashed' })
+      mockGetUserAuthMethods.mockResolvedValue(authMethodsUser({ password: 'hashed' }))
       mockBcryptCompare.mockResolvedValue(true)
       expect(await verifyUserPasswordById('1', 'pass')).toBe(true)
     })
@@ -393,7 +446,7 @@ describe('auth-service', () => {
 
     it('bootstraps the credential login (password + verified email == credentialEmail) for an OAuth-only account and notifies credential-email-added', async () => {
       mockConsumePasswordResetToken.mockResolvedValue({ email: 'test@example.com' })
-      mockGetUserAuthInfoByEmail.mockResolvedValue({ id: '1', email: 'test@example.com', password: null, emailVerified: null })
+      mockGetUserAuthInfoByEmail.mockResolvedValue(authInfoUser({ id: '1', email: 'test@example.com', password: null, emailVerified: null }))
       mockBcryptHash.mockResolvedValue('new-hashed')
 
       const result = await applyPasswordReset('token', 'new-pass')
@@ -409,7 +462,7 @@ describe('auth-service', () => {
 
     it('sets emailVerified for an unverified credentials account (pre-existing-gap fix)', async () => {
       mockConsumePasswordResetToken.mockResolvedValue({ email: 'test@example.com' })
-      mockGetUserAuthInfoByEmail.mockResolvedValue({ id: '1', password: 'old', emailVerified: null })
+      mockGetUserAuthInfoByEmail.mockResolvedValue(authInfoUser({ id: '1', password: 'old', emailVerified: null }))
       mockBcryptHash.mockResolvedValue('new-hashed')
 
       const result = await applyPasswordReset('token', 'new-pass')
@@ -421,7 +474,7 @@ describe('auth-service', () => {
 
     it('updates password but leaves emailVerified untouched for a verified account', async () => {
       mockConsumePasswordResetToken.mockResolvedValue({ email: 'test@example.com' })
-      mockGetUserAuthInfoByEmail.mockResolvedValue({ id: '1', password: 'old', emailVerified: new Date() })
+      mockGetUserAuthInfoByEmail.mockResolvedValue(authInfoUser({ id: '1', password: 'old', emailVerified: new Date() }))
       mockBcryptHash.mockResolvedValue('new-hashed')
 
       const result = await applyPasswordReset('token', 'new-pass')
@@ -436,9 +489,9 @@ describe('auth-service', () => {
 
   describe('requestCredentialEmail', () => {
     // No existing password → this is a first-time ADD.
-    const asAdd = () => mockGetUserAuthMethods.mockResolvedValue({ password: null })
+    const asAdd = () => mockGetUserAuthMethods.mockResolvedValue(authMethodsUser({ password: null }))
     // Existing password → this is a CHANGE (re-point of the sign-in email).
-    const asChange = () => mockGetUserAuthMethods.mockResolvedValue({ password: 'existing-hash' })
+    const asChange = () => mockGetUserAuthMethods.mockResolvedValue(authMethodsUser({ password: 'existing-hash' }))
 
     describe('with email verification enabled (confirmation link)', () => {
       beforeEach(() => {
@@ -587,7 +640,7 @@ describe('auth-service', () => {
 
       it('re-syncs the Stripe customer email when the change moved the primary email', async () => {
         asChange()
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: true })
+        mockChangeCredentialEmail.mockResolvedValue(changeCredentialResult({ status: 'ok', emailMoved: true }))
         const result = await requestCredentialEmail('user-1', 'new@example.com')
         expect(result.result).toBe('activated')
         expect(mockSyncStripeCustomerEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
@@ -595,7 +648,9 @@ describe('auth-service', () => {
 
       it('alerts the OLD sign-in address on an in-sync change, never the moved-to primary', async () => {
         asChange()
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: true, previousLoginEmail: 'old@example.com' })
+        mockChangeCredentialEmail.mockResolvedValue(
+          changeCredentialResult({ status: 'ok', emailMoved: true, previousLoginEmail: 'old@example.com' }),
+        )
         const result = await requestCredentialEmail('user-1', 'new@example.com')
         expect(result.result).toBe('activated')
         expect(mockSyncStripeCustomerEmail).toHaveBeenCalledWith('user-1', 'new@example.com')
@@ -604,7 +659,7 @@ describe('auth-service', () => {
 
       it('maps a CHANGE collision to email-in-use and does not notify', async () => {
         asChange()
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'in-use', emailMoved: false })
+        mockChangeCredentialEmail.mockResolvedValue(changeCredentialResult({ status: 'in-use', emailMoved: false }))
         const result = await requestCredentialEmail('user-1', 'taken@example.com')
         expect(result.result).toBe('email-in-use')
         expect(mockSendSecurityNotification).not.toHaveBeenCalled()
@@ -622,10 +677,10 @@ describe('auth-service', () => {
 
     describe('add mode', () => {
       // Confirm derives the operation from current state: no password yet → add path. (item 3)
-      beforeEach(() => mockGetUserAuthMethods.mockResolvedValue({ password: null }))
+      beforeEach(() => mockGetUserAuthMethods.mockResolvedValue(authMethodsUser({ password: null })))
 
       it('writes password + credentialEmail and notifies the owner on success', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'add' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
         mockBcryptHash.mockResolvedValue('new-hashed')
@@ -642,7 +697,7 @@ describe('auth-service', () => {
       })
 
       it('returns password-required when an add confirm carries no password', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'add' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
         expect(await confirmCredentialEmail('token')).toBe('password-required')
@@ -651,7 +706,7 @@ describe('auth-service', () => {
       })
 
       it('defaults a mode-less (legacy) token to add', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com' }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
         mockBcryptHash.mockResolvedValue('new-hashed')
@@ -661,7 +716,7 @@ describe('auth-service', () => {
       })
 
       it('maps a unique-constraint collision to email-in-use (409) and does not notify', async () => {
-        const payload = { userId: 'user-1', email: 'taken@example.com', mode: 'add' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'taken@example.com', mode: 'add' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
         mockBcryptHash.mockResolvedValue('new-hashed')
@@ -674,7 +729,7 @@ describe('auth-service', () => {
       })
 
       it('maps a deleted user (token spent after account removal) to invalid-token and does not notify', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'add' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
         mockBcryptHash.mockResolvedValue('new-hashed')
@@ -690,13 +745,15 @@ describe('auth-service', () => {
 
     describe('change mode', () => {
       // Confirm derives the operation from current state: has a password → change/re-point path. (item 3)
-      beforeEach(() => mockGetUserAuthMethods.mockResolvedValue({ password: 'existing-hash' }))
+      beforeEach(() => mockGetUserAuthMethods.mockResolvedValue(authMethodsUser({ password: 'existing-hash' })))
 
       it('re-points credentialEmail without touching the password and notifies the owner', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'change' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: false, previousLoginEmail: 'old@example.com' })
+        mockChangeCredentialEmail.mockResolvedValue(
+          changeCredentialResult({ status: 'ok', emailMoved: false, previousLoginEmail: 'old@example.com' }),
+        )
 
         const result = await confirmCredentialEmail('token')
 
@@ -712,10 +769,10 @@ describe('auth-service', () => {
       })
 
       it('re-syncs the Stripe customer email when the confirmed change moved the primary email', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'change' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: true })
+        mockChangeCredentialEmail.mockResolvedValue(changeCredentialResult({ status: 'ok', emailMoved: true }))
 
         const result = await confirmCredentialEmail('token')
 
@@ -724,10 +781,12 @@ describe('auth-service', () => {
       })
 
       it('alerts the OLD sign-in address on an in-sync confirmed change, never the moved-to primary', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'change' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: true, previousLoginEmail: 'old@example.com' })
+        mockChangeCredentialEmail.mockResolvedValue(
+          changeCredentialResult({ status: 'ok', emailMoved: true, previousLoginEmail: 'old@example.com' }),
+        )
 
         const result = await confirmCredentialEmail('token')
 
@@ -737,10 +796,10 @@ describe('auth-service', () => {
       })
 
       it('maps a change collision to email-in-use and does not notify', async () => {
-        const payload = { userId: 'user-1', email: 'taken@example.com', mode: 'change' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'taken@example.com', mode: 'change' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'in-use', emailMoved: false })
+        mockChangeCredentialEmail.mockResolvedValue(changeCredentialResult({ status: 'in-use', emailMoved: false }))
 
         const result = await confirmCredentialEmail('token')
 
@@ -749,10 +808,12 @@ describe('auth-service', () => {
       })
 
       it('maps a deleted user (token spent after account removal) to invalid-token and does not notify', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'change' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'not-found', emailMoved: false, previousLoginEmail: null })
+        mockChangeCredentialEmail.mockResolvedValue(
+          changeCredentialResult({ status: 'not-found', emailMoved: false, previousLoginEmail: null }),
+        )
 
         const result = await confirmCredentialEmail('token')
 
@@ -765,11 +826,11 @@ describe('auth-service', () => {
     describe('stale token (state changed between request and confirm)', () => {
       it('re-points instead of clobbering when an ADD token is confirmed after the account gained a password', async () => {
         // Token minted as 'add', but the user now HAS a password → derive 'change': re-point only, keep pw.
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'add' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
-        mockGetUserAuthMethods.mockResolvedValue({ password: 'existing-hash' })
-        mockChangeCredentialEmail.mockResolvedValue({ status: 'ok', emailMoved: false })
+        mockGetUserAuthMethods.mockResolvedValue(authMethodsUser({ password: 'existing-hash' }))
+        mockChangeCredentialEmail.mockResolvedValue(changeCredentialResult({ status: 'ok', emailMoved: false }))
 
         const result = await confirmCredentialEmail('token', 'typed-pw')
 
@@ -782,10 +843,10 @@ describe('auth-service', () => {
       it('returns password-required when a CHANGE token is confirmed after the password was removed', async () => {
         // Token minted as 'change' (no password collected), but the user now has NO password → an add is
         // needed and none was provided → 422 without burning the single-use token.
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'change' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'change' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
-        mockGetUserAuthMethods.mockResolvedValue({ password: null })
+        mockGetUserAuthMethods.mockResolvedValue(authMethodsUser({ password: null }))
 
         const result = await confirmCredentialEmail('token')
 
@@ -796,7 +857,7 @@ describe('auth-service', () => {
       })
 
       it('returns invalid-token when the account was deleted after the token was issued', async () => {
-        const payload = { userId: 'user-1', email: 'new@example.com', mode: 'add' as const }
+        const payload = credentialEmailPayload({ userId: 'user-1', email: 'new@example.com', mode: 'add' })
         mockPeekCredentialEmailPayload.mockResolvedValue(payload)
         mockConsumeCredentialEmailToken.mockResolvedValue(payload)
         mockGetUserAuthMethods.mockResolvedValue(null)
@@ -825,9 +886,28 @@ describe('auth-service', () => {
       session_state: null,
     }
 
+    // Full Account row — checkProviderAccountExists resolves to the row or null (not a boolean), and
+    // createAccount resolves to the created row; both are typed via vi.fn<typeof realExport>() above.
+    const existingAccount = { id: 'account-1' }
+    const createdAccount = {
+      id: 'account-1',
+      userId: 'user-1',
+      type: 'oauth',
+      provider: 'github',
+      providerAccountId: 'gh-123',
+      email: 'oauth@github.com',
+      refresh_token: null,
+      access_token: null,
+      expires_at: null,
+      token_type: null,
+      scope: null,
+      id_token: null,
+      session_state: null,
+    }
+
     it('creates the account and sends notification when not yet linked', async () => {
-      mockCheckProviderAccountExists.mockResolvedValue(false)
-      mockCreateAccount.mockResolvedValue({})
+      mockCheckProviderAccountExists.mockResolvedValue(null)
+      mockCreateAccount.mockResolvedValue(createdAccount)
 
       await linkPendingAccount('user-1', pending)
 
@@ -837,7 +917,7 @@ describe('auth-service', () => {
     })
 
     it('skips creation and notification when account is already linked', async () => {
-      mockCheckProviderAccountExists.mockResolvedValue(true)
+      mockCheckProviderAccountExists.mockResolvedValue(existingAccount)
 
       await linkPendingAccount('user-1', pending)
 
@@ -846,7 +926,7 @@ describe('auth-service', () => {
     })
 
     it('treats a P2002 race as idempotent success without throwing', async () => {
-      mockCheckProviderAccountExists.mockResolvedValue(false)
+      mockCheckProviderAccountExists.mockResolvedValue(null)
       mockCreateAccount.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' })
       )

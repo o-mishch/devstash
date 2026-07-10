@@ -60,6 +60,9 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
   }
 
   // Fan the tiles across the down-and-right arc, then clamp the whole group to the viewport (measure).
+  // Per-tile style objects (badge/label/dot) are precomputed here too — this memo only reruns on
+  // isDesktop/viewportWidth changes, not on every activeIndex-driven re-render from touch tracking,
+  // so tile.badgeStyle/labelVars/dotStyle stay referentially stable across those frequent re-renders.
   const { tiles, minTileX, maxTileX } = useMemo(() => {
     const baseRadius = isDesktop ? FAN_RADIUS.desktop : FAN_RADIUS.mobile
     const arcStart = (FAN_ARC_START_DEG * Math.PI) / 180
@@ -74,13 +77,25 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
     const available = (viewportWidth || 1024) - 2 * VIEWPORT_MARGIN - 2 * TILE_HALF
     const fitRadius = cosSpan > 0 ? available / cosSpan : baseRadius
     const radius = Math.max(MIN_RADIUS, Math.min(baseRadius, fitRadius))
-    const built = TYPES.map((type, i) => ({
-      ...type,
-      x: Math.cos(angles[i]) * radius,
-      y: Math.sin(angles[i]) * radius,
-      dirX: Math.cos(angles[i]),
-      dirY: Math.sin(angles[i]),
-    }))
+    const built = TYPES.map((type, i) => {
+      const dirX = Math.cos(angles[i])
+      const dirY = Math.sin(angles[i])
+      return {
+        ...type,
+        x: dirX * radius,
+        y: dirY * radius,
+        dirX,
+        dirY,
+        badgeStyle: { backgroundColor: `${type.color}24` } satisfies CSSProperties,
+        dotStyle: { backgroundColor: type.color } satisfies CSSProperties,
+        labelVars: {
+          // Desktop labels fly OUTWARD along the radial; mobile flies INWARD (toward the center) so
+          // they stay on-screen within the viewport-clamped fan.
+          '--lx': `${dirX * LABEL_DISTANCE * (isDesktop ? 1 : -1)}px`,
+          '--ly': `${dirY * LABEL_DISTANCE * (isDesktop ? 1 : -1)}px`,
+        } as CSSProperties,
+      }
+    })
     return {
       tiles: built,
       minTileX: Math.min(...built.map((t) => t.x)),
@@ -108,12 +123,16 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
     [router],
   )
 
+  // Single stable handler shared by every tile (reads which tile via data-tile-index) instead of a
+  // new closure per iteration — real allocation win since this list re-renders on every touch-drag
+  // frame (activeIndex tracking).
   const handleTileClick = useCallback(
-    (e: MouseEvent<HTMLAnchorElement>, href: string) => {
+    (e: MouseEvent<HTMLAnchorElement>) => {
       e.preventDefault()
-      launchTile(href)
+      const tile = tiles[Number(e.currentTarget.dataset.tileIndex)]
+      if (tile) launchTile(tile.href)
     },
-    [launchTile],
+    [tiles, launchTile],
   )
 
   // Touch dock-magnification: phones have no hover, so we track the finger across the fan and
@@ -125,6 +144,9 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
     setActiveIndex(tileEl ? Number(tileEl.dataset.tileIndex) : null)
   }, [])
 
+  // Assigned to a plain DOM div (onTouchStart/onTouchMove below), not a memoized child; useCallback
+  // would add ceremony without a referential-equality consumer to benefit from it.
+  // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop
   const handleTouchTrack = (e: TouchEvent<HTMLDivElement>) => {
     if (!revealed) return
     const touch = e.touches[0]
@@ -133,6 +155,8 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
     }
   }
 
+  // Same rationale: plain DOM div (onTouchEnd below), no memoized consumer.
+  // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop
   const handleTouchEnd = () => {
     if (activeIndex !== null) launchTile(tiles[activeIndex].href)
     setActiveIndex(null)
@@ -220,6 +244,9 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
         style={statAccentStyle(STAT_COLORS.total)}
         aria-haspopup="true"
         aria-expanded={open}
+        // Plain DOM button, single instance; there's no memoized child here for a stable ref to
+        // help, so useCallback would be cosmetic churn with no runtime benefit.
+        // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop
         onClick={() => (open ? closeFan() : openFan())}
       >
         <StatChipBody icon={Package} value={totalItems} label="Total Items" color={STAT_COLORS.total} />
@@ -232,6 +259,9 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
             type="button"
             aria-hidden="true"
             tabIndex={-1}
+            // Plain DOM button; style diffing is per-CSS-property, not by object identity, so
+            // there's nothing to gain from memoizing this.
+            // oxlint-disable-next-line react-perf/jsx-no-new-object-as-prop
             style={{ opacity: revealed ? 1 : 0 }}
             className="fixed inset-0 z-40 cursor-default bg-background/70 backdrop-blur-sm transition-opacity duration-200"
             onClick={closeFan}
@@ -240,11 +270,15 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
           <div
             role="menu"
             aria-label="Browse items by type"
+            // Plain DOM div, single instance; style diffing is per-property, not by object identity.
+            // oxlint-disable-next-line react-perf/jsx-no-new-object-as-prop
             style={{ transform: `translateX(${shiftX}px)` }}
             className="pointer-events-none absolute left-1/2 top-1/2 z-50"
             onTouchStart={handleTouchTrack}
             onTouchMove={handleTouchTrack}
             onTouchEnd={handleTouchEnd}
+            // Plain DOM div, single instance; no memoized consumer for a stable ref to help.
+            // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop
             onTouchCancel={() => setActiveIndex(null)}
           >
             {tiles.map((tile, i) => (
@@ -258,7 +292,7 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
                 aria-label={tile.label}
                 data-tile-index={i}
                 data-active={activeIndex === i}
-                onClick={(e) => handleTileClick(e, tile.href)}
+                onClick={handleTileClick}
                 style={getTileStyle(tile, i)}
                 className="group/tile pointer-events-auto absolute -ml-7 -mt-7 touch-none rounded-full transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:z-10 focus-visible:z-10 focus-visible:outline-none data-[active=true]:z-10"
               >
@@ -270,7 +304,7 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
                 >
                   <span
                     className="flex size-11 items-center justify-center rounded-full"
-                    style={{ backgroundColor: `${tile.color}24` }}
+                    style={tile.badgeStyle}
                   >
                     <ItemTypeIcon iconName={tile.icon} color={tile.color} className="size-5" />
                   </span>
@@ -281,17 +315,10 @@ export function TotalItemsFanout({ totalItems }: TotalItemsFanoutProps) {
                     so it reads as shooting out of the circle. */}
                 <span
                   aria-hidden="true"
-                  style={
-                    {
-                      // Desktop labels fly OUTWARD along the radial; mobile flies INWARD (toward the
-                      // center) so they stay on-screen within the viewport-clamped fan.
-                      '--lx': `${tile.dirX * LABEL_DISTANCE * (isDesktop ? 1 : -1)}px`,
-                      '--ly': `${tile.dirY * LABEL_DISTANCE * (isDesktop ? 1 : -1)}px`,
-                    } as CSSProperties
-                  }
+                  style={tile.labelVars}
                   className="pointer-events-none absolute left-1/2 top-1/2 flex items-center gap-1.5 whitespace-nowrap rounded-full bg-popover px-2.5 py-1 text-xs font-semibold text-popover-foreground opacity-0 shadow-lg ring-1 ring-foreground/10 [transform:translate(-50%,-50%)_scale(0.4)] transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover/tile:opacity-100 group-hover/tile:[transform:translate(-50%,-50%)_translate(var(--lx),var(--ly))_scale(1)] group-data-[active=true]/tile:opacity-100 group-data-[active=true]/tile:[transform:translate(-50%,-50%)_translate(var(--lx),var(--ly))_scale(1)] group-focus-visible/tile:opacity-100 group-focus-visible/tile:[transform:translate(-50%,-50%)_translate(var(--lx),var(--ly))_scale(1)]"
                 >
-                  <span className="size-1.5 rounded-full" style={{ backgroundColor: tile.color }} />
+                  <span className="size-1.5 rounded-full" style={tile.dotStyle} />
                   {tile.label}
                 </span>
               </Link>

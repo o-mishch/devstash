@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode } from 'react'
+import { type ReactNode, useCallback } from 'react'
 import { toast } from 'sonner'
 import { useMutation } from '@tanstack/react-query'
 
@@ -38,7 +38,7 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
     onOpenChange,
   })
 
-  const deleteMutation = useMutation({
+  const { mutate: deleteCollection, isPending: isDeletePending } = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await api.DELETE('/collections/{id}', { params: { path: { id } } })
       if (error) throw new Error(error.message || 'Failed to delete collection')
@@ -62,17 +62,22 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
     },
   })
 
-  function handleDelete() {
+  // `deleteCollection` (the destructured `mutate`) is a stable reference from TanStack Query,
+  // so this callback only changes when the target collection id changes.
+  const handleDelete = useCallback(() => {
     if (!displayCollection.id) return
-    deleteMutation.mutate(displayCollection.id)
-  }
+    deleteCollection(displayCollection.id)
+  }, [displayCollection.id, deleteCollection])
+
+  const handleTriggerClick = useCallback(() => handleOpenChange(true), [handleOpenChange])
+  const handleCancel = useCallback(() => handleOpenChange(false), [handleOpenChange])
 
   const triggerEl = trigger ? (
     // This wrapper only opens the dialog on a mouse click — it never needs its own keyboard handling.
     // Every call site passes a real, natively keyboard-accessible <button>, so Enter/Space on it already
     // fires a native `click` event that bubbles up to this handler.
     // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-    <span onClick={() => handleOpenChange(true)} className="contents">
+    <span onClick={handleTriggerClick} className="contents">
       {trigger}
     </span>
   ) : null
@@ -90,9 +95,9 @@ export function CollectionDeleteDialog({ collection: activeCollection, trigger, 
             </DialogDescription>
           </DialogHeader>
           <DestructiveDialogFooter
-            onCancel={() => handleOpenChange(false)}
+            onCancel={handleCancel}
             onConfirm={handleDelete}
-            isPending={deleteMutation.isPending}
+            isPending={isDeletePending}
             confirmText="Delete Collection"
           />
         </DialogContent>

@@ -1,10 +1,12 @@
 import { vi, describe, it, expect } from 'vitest'
 import type OpenAI from 'openai'
+import type { Logger } from 'pino'
 import {
   parseBrainDumpLine,
   consumeBrainDumpStream,
   buildFailureDetail,
   type BrainDumpDraft,
+  type BrainDumpStreamHandlers,
 } from './brain-dump'
 
 type ResponseEvent = OpenAI.Responses.ResponseStreamEvent
@@ -134,7 +136,11 @@ describe('parseBrainDumpLine', () => {
 })
 
 describe('consumeBrainDumpStream', () => {
-  const fakeLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never
+  const fakeLog = {
+    info: vi.fn<Logger['info']>(),
+    warn: vi.fn<Logger['warn']>(),
+    error: vi.fn<Logger['error']>(),
+  } as never
 
   function created(id: string): ResponseEvent {
     return { type: 'response.created', response: { id } } as ResponseEvent
@@ -168,7 +174,7 @@ describe('consumeBrainDumpStream', () => {
   }
 
   it('captures responseId on response.created', async () => {
-    const onResponseId = vi.fn()
+    const onResponseId = vi.fn<BrainDumpStreamHandlers['onResponseId']>()
     await consumeBrainDumpStream(
       eventStream([created('resp_123')]),
       { startOrder: 0, onResponseId, onFlush: async () => {} },

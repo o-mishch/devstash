@@ -1,6 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import type { S3Client } from '@aws-sdk/client-s3'
+import type { Logger } from 'pino'
 import {
   uploadToS3,
   deleteFromS3,
@@ -12,24 +14,36 @@ import {
 import { SPLIT_FILE_MAX_INPUT_CHARS } from '@/lib/utils/constants'
 
 // Mock the AWS SDK
-const mockSend = vi.fn()
+interface MockS3GetResponse {
+  Body?: { transformToString: (encoding?: string) => Promise<string> }
+  ContentRange?: string
+  ContentLength?: number
+}
+type MockS3Command = PutObjectCommand | DeleteObjectCommand | GetObjectCommand
+const mockSend = vi.fn<(command: MockS3Command) => Promise<MockS3GetResponse>>()
 const { mockGetSignedUrl, mockLogError } = vi.hoisted(() => ({
-  mockGetSignedUrl: vi.fn(),
-  mockLogError: vi.fn(),
+  mockGetSignedUrl: vi.fn<typeof getSignedUrl>(),
+  mockLogError: vi.fn<Logger['error']>(),
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: mockLogError }) },
+  logger: {
+    child: () => ({
+      info: vi.fn<Logger['info']>(),
+      warn: vi.fn<Logger['warn']>(),
+      error: mockLogError,
+    }),
+  },
 }))
 
 vi.mock('@aws-sdk/client-s3', () => {
   return {
-    S3Client: vi.fn().mockImplementation(function() {
+    S3Client: vi.fn<typeof S3Client>().mockImplementation(function () {
       return { send: mockSend }
     }),
-    PutObjectCommand: vi.fn(),
-    DeleteObjectCommand: vi.fn(),
-    GetObjectCommand: vi.fn(),
+    PutObjectCommand: vi.fn<typeof PutObjectCommand>(),
+    DeleteObjectCommand: vi.fn<typeof DeleteObjectCommand>(),
+    GetObjectCommand: vi.fn<typeof GetObjectCommand>(),
   }
 })
 
@@ -172,7 +186,7 @@ describe('s3 utility', () => {
 
   describe('getTextFromS3', () => {
     it('issues a bounded Range GET sized to the parse window and decodes once (never the whole object)', async () => {
-      const transformToString = vi.fn().mockResolvedValue('hello world')
+      const transformToString = vi.fn<(encoding?: string) => Promise<string>>().mockResolvedValue('hello world')
       mockSend.mockResolvedValueOnce({ Body: { transformToString }, ContentRange: 'bytes 0-99/11', ContentLength: 11 })
 
       const result = await getTextFromS3('user/key.txt', SPLIT_FILE_MAX_INPUT_CHARS)
@@ -188,7 +202,7 @@ describe('s3 utility', () => {
     })
 
     it('marks truncated when the object is larger than the bytes pulled (from ContentRange total)', async () => {
-      const transformToString = vi.fn().mockResolvedValue('partial window')
+      const transformToString = vi.fn<(encoding?: string) => Promise<string>>().mockResolvedValue('partial window')
       // total (after the slash) exceeds the pulled ContentLength → truncated.
       mockSend.mockResolvedValueOnce({
         Body: { transformToString },
@@ -202,7 +216,7 @@ describe('s3 utility', () => {
 
     it('does NOT mark truncated when no ContentRange but a short ContentLength proves a whole-object read', async () => {
       // A small .txt: no range total header, but ContentLength < the requested window → we read it all.
-      const transformToString = vi.fn().mockResolvedValue('short note')
+      const transformToString = vi.fn<(encoding?: string) => Promise<string>>().mockResolvedValue('short note')
       mockSend.mockResolvedValueOnce({ Body: { transformToString }, ContentLength: 10 })
 
       const result = await getTextFromS3('user/small.txt', SPLIT_FILE_MAX_INPUT_CHARS)
@@ -210,7 +224,7 @@ describe('s3 utility', () => {
     })
 
     it('does NOT mark truncated when ContentLength is exactly requestedBytes', async () => {
-      const transformToString = vi.fn().mockResolvedValue('exact window')
+      const transformToString = vi.fn<(encoding?: string) => Promise<string>>().mockResolvedValue('exact window')
       const requestedBytes = SPLIT_FILE_MAX_INPUT_CHARS * 4
       mockSend.mockResolvedValueOnce({ Body: { transformToString }, ContentLength: requestedBytes })
 
@@ -220,7 +234,7 @@ describe('s3 utility', () => {
 
     it('over-discloses (truncated) when neither ContentRange nor ContentLength can prove a whole read', async () => {
       // No headers to prove we got the whole object → safe direction is to flag a possible clip.
-      const transformToString = vi.fn().mockResolvedValue('window of text')
+      const transformToString = vi.fn<(encoding?: string) => Promise<string>>().mockResolvedValue('window of text')
       mockSend.mockResolvedValueOnce({ Body: { transformToString } })
 
       const result = await getTextFromS3('user/unknown.txt', SPLIT_FILE_MAX_INPUT_CHARS)

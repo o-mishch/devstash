@@ -1,24 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { objectContaining } from '@/test/matchers'
+import type { ActionState } from '@/types/actions'
+import type { RateLimitBackend } from '@/lib/infra/rate-limit-types'
+import type { resetUpstashLimitersForTests as ResetUpstashLimitersForTestsFn } from '@/lib/infra/rate-limit-upstash'
+import type { resetTcpLimitersForTests as ResetTcpLimitersForTestsFn } from '@/lib/infra/rate-limit-tcp'
+import type { isTcpRedis as IsTcpRedisFn } from '@/lib/infra/redis'
 
 // Dispatcher tests: rate-limit.ts selects a backend by isTcpRedis() and owns the fail-open/closed
 // policy + AI-usage mapping. Both backends are mocked here; their real behavior is covered in
 // rate-limit-upstash.test.ts and rate-limit-tcp.test.ts. vi.hoisted so the mock factories (hoisted
 // above the file) can reference these stubs.
 const { upstash, tcp } = vi.hoisted(() => ({
-  upstash: { check: vi.fn(), getRemainingMany: vi.fn(), reset: vi.fn() },
-  tcp: { check: vi.fn(), getRemainingMany: vi.fn(), reset: vi.fn() },
+  upstash: {
+    check: vi.fn<RateLimitBackend['check']>(),
+    getRemainingMany: vi.fn<RateLimitBackend['getRemainingMany']>(),
+    reset: vi.fn<RateLimitBackend['reset']>(),
+  },
+  tcp: {
+    check: vi.fn<RateLimitBackend['check']>(),
+    getRemainingMany: vi.fn<RateLimitBackend['getRemainingMany']>(),
+    reset: vi.fn<RateLimitBackend['reset']>(),
+  },
 }))
 
 vi.mock('@/lib/infra/rate-limit-upstash', () => ({
   upstashRateLimit: upstash,
-  resetUpstashLimitersForTests: vi.fn(),
+  resetUpstashLimitersForTests: vi.fn<typeof ResetUpstashLimitersForTestsFn>(),
 }))
 vi.mock('@/lib/infra/rate-limit-tcp', () => ({
   tcpRateLimit: tcp,
-  resetTcpLimitersForTests: vi.fn(),
+  resetTcpLimitersForTests: vi.fn<typeof ResetTcpLimitersForTestsFn>(),
 }))
-vi.mock('@/lib/infra/redis', () => ({ isTcpRedis: vi.fn(() => false) }))
+vi.mock('@/lib/infra/redis', () => ({ isTcpRedis: vi.fn<typeof IsTcpRedisFn>(() => false) }))
 
 import { isTcpRedis } from '@/lib/infra/redis'
 import {
@@ -34,7 +47,7 @@ import {
 } from '@/lib/infra/rate-limit'
 import { AI_FEATURE_HOURLY_LIMIT } from '@/lib/utils/constants'
 
-const mockIsTcp = isTcpRedis as ReturnType<typeof vi.fn>
+const mockIsTcp = vi.mocked(isTcpRedis)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -115,7 +128,7 @@ describe('checkRateLimit', () => {
 describe('withRateLimit', () => {
   it('calls fn and returns its result when allowed', async () => {
     upstash.check.mockResolvedValue({ success: true, remaining: 9, retryAfter: 0 })
-    const fn = vi.fn().mockResolvedValue({ success: true })
+    const fn = vi.fn<() => Promise<ActionState>>().mockResolvedValue({ success: true })
     const result = await withRateLimit('login', fn)
     expect(fn).toHaveBeenCalledOnce()
     expect(result).toEqual({ success: true })
@@ -123,7 +136,7 @@ describe('withRateLimit', () => {
 
   it('returns the denied state without calling fn when rate limited', async () => {
     upstash.check.mockResolvedValue({ success: false, remaining: 0, retryAfter: 60 })
-    const fn = vi.fn()
+    const fn = vi.fn<() => Promise<ActionState>>()
     const result = await withRateLimit('login', fn)
     expect(fn).not.toHaveBeenCalled()
     expect(result.success).toBe(false)

@@ -58,7 +58,7 @@ describe('schedulePostDismissCheck', () => {
   it('calls onDeferred when element is present without data-ending-style', () => {
     const rafRef = { current: 0 }
     const el = { hasAttribute: () => false } as unknown as Element
-    const onDeferred = vi.fn()
+    const onDeferred = vi.fn<() => void>()
 
     schedulePostDismissCheck(rafRef, () => el, onDeferred)
     expect(onDeferred).not.toHaveBeenCalled()
@@ -68,7 +68,7 @@ describe('schedulePostDismissCheck', () => {
 
   it('does not call onDeferred when element is absent', () => {
     const rafRef = { current: 0 }
-    const onDeferred = vi.fn()
+    const onDeferred = vi.fn<() => void>()
 
     schedulePostDismissCheck(rafRef, () => null, onDeferred)
     rafCallback!()
@@ -78,7 +78,7 @@ describe('schedulePostDismissCheck', () => {
   it('does not call onDeferred when element has data-ending-style', () => {
     const rafRef = { current: 0 }
     const el = { hasAttribute: (attr: string) => attr === 'data-ending-style' } as unknown as Element
-    const onDeferred = vi.fn()
+    const onDeferred = vi.fn<() => void>()
 
     schedulePostDismissCheck(rafRef, () => el, onDeferred)
     rafCallback!()
@@ -88,7 +88,7 @@ describe('schedulePostDismissCheck', () => {
   it('stores the rAF handle in rafRef.current', () => {
     const rafRef = { current: 0 }
 
-    schedulePostDismissCheck(rafRef, () => null, vi.fn())
+    schedulePostDismissCheck(rafRef, () => null, vi.fn<() => void>())
     expect(rafRef.current).toBe(1)
   })
 })

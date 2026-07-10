@@ -2,7 +2,7 @@
 'use no memo'
 
 import { useVirtualizer, useWindowVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
-import { useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { useVirtualContainer } from '@/hooks/ui/use-virtual-container'
 import { useIsTouch } from '@/hooks/ui/use-is-touch'
 import { useItemDrawerStore } from '@/stores/item-drawer-store'
@@ -186,49 +186,87 @@ function VirtualGridBody<T>({
     }
   }, [hasMore, isLoading, lastRowIndex, rows.length, onLoadMore])
 
+  const containerStyle = useMemo<CSSProperties>(() => ({ height: `${totalSize}px` }), [totalSize])
+  // Shared by every item slot in the grid — one stable reference reused across the whole
+  // virtualized list instead of a fresh object per item on every row.
+  const itemStyle = useMemo<CSSProperties>(() => ({ height: `${effectiveItemHeight}px` }), [effectiveItemHeight])
+
   return (
-    <div ref={containerRef} className="relative w-full" style={{ height: `${totalSize}px` }}>
-      {virtualItems.map((virtualRow) => {
-        const row = rows[virtualRow.index]
+    <div ref={containerRef} className="relative w-full" style={containerStyle}>
+      {virtualItems.map((virtualRow) => (
+        <VirtualGridRow
+          key={virtualRow.key}
+          row={rows[virtualRow.index]}
+          cols={cols}
+          columnGap={columnGap}
+          rowGap={rowGap}
+          top={virtualRow.start - scrollMargin}
+          startIndex={virtualRow.index * cols}
+          itemStyle={itemStyle}
+          isLoading={isLoading}
+          renderItem={renderItem}
+        />
+      ))}
+    </div>
+  )
+}
+
+interface VirtualGridRowProps<T> {
+  row: (T | 'load-more')[]
+  cols: number
+  columnGap: number
+  rowGap: number
+  // Row's vertical offset within the scroller, already net of scrollMargin.
+  top: number
+  startIndex: number
+  itemStyle: CSSProperties
+  isLoading: boolean
+  renderItem: (item: T, index: number) => ReactNode
+}
+
+// One virtualized row. Memoized so that, while scrolling, rows that stay mounted with unchanged
+// props (same index, same layout) skip re-rendering entirely instead of being recreated by the
+// parent's map() on every scroll tick.
+function VirtualGridRowComponent<T>({
+  row, cols, columnGap, rowGap, top, startIndex, itemStyle, isLoading, renderItem,
+}: VirtualGridRowProps<T>) {
+  const rowStyle = useMemo<CSSProperties>(
+    () => ({
+      display: 'grid',
+      gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+      columnGap: `${columnGap}px`,
+      rowGap: `${rowGap}px`,
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      transform: `translateY(${top}px)`,
+      overflow: 'visible',
+    }),
+    [cols, columnGap, rowGap, top],
+  )
+
+  return (
+    <div style={rowStyle}>
+      {row.map((item, colIndex) => {
+        const itemIndex = startIndex + colIndex
+        if (item === 'load-more') {
+          // Trailing sentinel row: its windowing into view drives the infinite-scroll effect
+          // above. Non-interactive (just a loading hint) so it can't double-fire the fetch.
+          return (
+            <div key="load-more" className="col-span-full flex justify-center py-4 text-sm text-muted-foreground">
+              {isLoading ? 'Loading...' : null}
+            </div>
+          )
+        }
         return (
-          <div
-            key={virtualRow.key}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              columnGap: `${columnGap}px`,
-              rowGap: `${rowGap}px`,
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              transform: `translateY(${virtualRow.start - scrollMargin}px)`,
-              overflow: 'visible',
-            }}
-          >
-            {row.map((item, colIndex) => {
-              const itemIndex = virtualRow.index * cols + colIndex
-              if (item === 'load-more') {
-                // Trailing sentinel row: its windowing into view drives the infinite-scroll effect
-                // above. Non-interactive (just a loading hint) so it can't double-fire the fetch.
-                return (
-                  <div
-                    key="load-more"
-                    className="col-span-full flex justify-center py-4 text-sm text-muted-foreground"
-                  >
-                    {isLoading ? 'Loading...' : null}
-                  </div>
-                )
-              }
-              return (
-                <div key={itemIndex} style={{ height: `${effectiveItemHeight}px` }}>
-                  {renderItem(item, itemIndex)}
-                </div>
-              )
-            })}
+          <div key={itemIndex} style={itemStyle}>
+            {renderItem(item, itemIndex)}
           </div>
         )
       })}
     </div>
   )
 }
+
+const VirtualGridRow = memo(VirtualGridRowComponent) as typeof VirtualGridRowComponent

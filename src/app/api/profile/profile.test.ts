@@ -2,47 +2,83 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
 import { Prisma } from '@/generated/prisma'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { invalidateProfileCache } from '@/lib/infra/cache'
+import type { checkRateLimit as CheckRateLimitFn, deniedMessage } from '@/lib/infra/rate-limit'
+import type { signOut } from '@/auth'
+import type {
+  getUserAuthMethods as GetUserAuthMethodsFn,
+  deleteUserById as DeleteUserByIdFn,
+  removeCredentialLogin as RemoveCredentialLoginFn,
+  checkAccountExists as CheckAccountExistsFn,
+  unlinkUserAccount as UnlinkUserAccountFn,
+  isEmailTakenByAnotherUser as IsEmailTakenByAnotherUserFn,
+  getUserProfile as GetUserProfileFn,
+} from '@/lib/db/users'
+import type {
+  updateUserName as UpdateUserNameFn,
+  updateEditorPreferences,
+  getProfileData as GetProfileDataFn,
+  updateUserEmail as UpdateUserEmailFn,
+  getEditorPreferences as GetEditorPreferencesFn,
+} from '@/lib/db/profile'
+import type { canCreateItem as CanCreateItemFn, canCreateCollection as CanCreateCollectionFn } from '@/lib/db/usage'
+import type {
+  changeUserPassword as ChangeUserPasswordFn,
+  verifyUserPasswordById as VerifyUserPasswordByIdFn,
+  requestCredentialEmail as RequestCredentialEmailFn,
+} from '@/lib/auth/auth-service'
+import type { sendSecurityNotification as SendSecurityNotificationFn } from '@/lib/emails/security-notification'
+import type {
+  teardownStripeBillingForUser as TeardownStripeBillingForUserFn,
+  syncStripeCustomerEmailForUserSafe as SyncStripeCustomerEmailForUserSafeFn,
+} from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 
 // Route handlers are tested by invoking the exported handler with a mocked NextRequest and asserting
 // res.status. The real profile-helpers run through the handlers (db/auth/billing mocked beneath).
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/infra/cache', () => ({ invalidateProfileCache: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>() }))
+vi.mock('@/lib/infra/cache', () => ({ invalidateProfileCache: vi.fn<typeof invalidateProfileCache>() }))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
+  deniedMessage: vi.fn<typeof deniedMessage>((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
 }))
-vi.mock('@/auth', () => ({ signOut: vi.fn() }))
+vi.mock('@/auth', () => ({ signOut: vi.fn<typeof signOut>() }))
 vi.mock('@/lib/db/users', () => ({
-  getUserAuthMethods: vi.fn(),
-  deleteUserById: vi.fn(),
-  removeCredentialLogin: vi.fn(),
-  checkAccountExists: vi.fn(),
-  unlinkUserAccount: vi.fn(),
-  isEmailTakenByAnotherUser: vi.fn(),
-  getUserProfile: vi.fn(),
+  getUserAuthMethods: vi.fn<typeof GetUserAuthMethodsFn>(),
+  deleteUserById: vi.fn<typeof DeleteUserByIdFn>(),
+  removeCredentialLogin: vi.fn<typeof RemoveCredentialLoginFn>(),
+  checkAccountExists: vi.fn<typeof CheckAccountExistsFn>(),
+  unlinkUserAccount: vi.fn<typeof UnlinkUserAccountFn>(),
+  isEmailTakenByAnotherUser: vi.fn<typeof IsEmailTakenByAnotherUserFn>(),
+  getUserProfile: vi.fn<typeof GetUserProfileFn>(),
 }))
 vi.mock('@/lib/db/profile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/db/profile')>()
   return {
-    updateUserName: vi.fn(),
-    updateEditorPreferences: vi.fn(),
-    getProfileData: vi.fn(),
-    updateUserEmail: vi.fn(),
-    getEditorPreferences: vi.fn(),
+    updateUserName: vi.fn<typeof UpdateUserNameFn>(),
+    updateEditorPreferences: vi.fn<typeof updateEditorPreferences>(),
+    getProfileData: vi.fn<typeof GetProfileDataFn>(),
+    updateUserEmail: vi.fn<typeof UpdateUserEmailFn>(),
+    getEditorPreferences: vi.fn<typeof GetEditorPreferencesFn>(),
     buildOwnedEmails: actual.buildOwnedEmails,
     getProfileAccountSummary: actual.getProfileAccountSummary,
   }
 })
 vi.mock('@/lib/db/usage', () => ({
-  canCreateItem: vi.fn(),
-  canCreateCollection: vi.fn(),
+  canCreateItem: vi.fn<typeof CanCreateItemFn>(),
+  canCreateCollection: vi.fn<typeof CanCreateCollectionFn>(),
 }))
-vi.mock('@/lib/auth/auth-service', () => ({ changeUserPassword: vi.fn(), verifyUserPasswordById: vi.fn(), requestCredentialEmail: vi.fn() }))
-vi.mock('@/lib/emails/security-notification', () => ({ sendSecurityNotification: vi.fn() }))
+vi.mock('@/lib/auth/auth-service', () => ({
+  changeUserPassword: vi.fn<typeof ChangeUserPasswordFn>(),
+  verifyUserPasswordById: vi.fn<typeof VerifyUserPasswordByIdFn>(),
+  requestCredentialEmail: vi.fn<typeof RequestCredentialEmailFn>(),
+}))
+vi.mock('@/lib/emails/security-notification', () => ({ sendSecurityNotification: vi.fn<typeof SendSecurityNotificationFn>() }))
 vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', () => ({
-  teardownStripeBillingForUser: vi.fn(),
-  syncStripeCustomerEmailForUserSafe: vi.fn(),
+  teardownStripeBillingForUser: vi.fn<typeof TeardownStripeBillingForUserFn>(),
+  syncStripeCustomerEmailForUserSafe: vi.fn<typeof SyncStripeCustomerEmailForUserSafeFn>(),
 }))
 
 import { getCachedSession } from '@/lib/session'
@@ -73,28 +109,28 @@ import { POST as REQUEST_CREDENTIAL_EMAIL } from './credential-email/route'
 import { PATCH as UPDATE_MAIN_EMAIL } from './main-email/route'
 import { DELETE as UNLINK_ACCOUNT } from './accounts/[id]/route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockAuthMethods = getUserAuthMethods as ReturnType<typeof vi.fn>
-const mockDeleteUser = deleteUserById as ReturnType<typeof vi.fn>
-const mockRemoveCredentialLogin = removeCredentialLogin as ReturnType<typeof vi.fn>
-const mockCheckAccount = checkAccountExists as ReturnType<typeof vi.fn>
-const mockUnlink = unlinkUserAccount as ReturnType<typeof vi.fn>
-const mockIsEmailTaken = isEmailTakenByAnotherUser as ReturnType<typeof vi.fn>
-const mockUpdateName = updateUserName as ReturnType<typeof vi.fn>
-const mockGetProfile = getProfileData as ReturnType<typeof vi.fn>
-const mockUpdateEmail = updateUserEmail as ReturnType<typeof vi.fn>
-const mockChangePassword = changeUserPassword as ReturnType<typeof vi.fn>
-const mockRequestCredentialEmail = requestCredentialEmail as ReturnType<typeof vi.fn>
-const mockVerifyPassword = verifyUserPasswordById as ReturnType<typeof vi.fn>
-const mockNotify = sendSecurityNotification as ReturnType<typeof vi.fn>
-const mockTeardown = teardownStripeBillingForUser as ReturnType<typeof vi.fn>
-const mockSyncStripeEmail = syncStripeCustomerEmailForUserSafe as ReturnType<typeof vi.fn>
-const mockGetUserProfile = getUserProfile as ReturnType<typeof vi.fn>
-const mockCanCreateItem = canCreateItem as ReturnType<typeof vi.fn>
-const mockCanCreateCollection = canCreateCollection as ReturnType<typeof vi.fn>
-const mockGetEditorPrefs = getEditorPreferences as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockIsPro = vi.mocked(getCachedVerifiedProAccess)
+const mockRateLimit = vi.mocked(checkRateLimit)
+const mockAuthMethods = vi.mocked(getUserAuthMethods)
+const mockDeleteUser = vi.mocked(deleteUserById)
+const mockRemoveCredentialLogin = vi.mocked(removeCredentialLogin)
+const mockCheckAccount = vi.mocked(checkAccountExists)
+const mockUnlink = vi.mocked(unlinkUserAccount)
+const mockIsEmailTaken = vi.mocked(isEmailTakenByAnotherUser)
+const mockUpdateName = vi.mocked(updateUserName)
+const mockGetProfile = vi.mocked(getProfileData)
+const mockUpdateEmail = vi.mocked(updateUserEmail)
+const mockChangePassword = vi.mocked(changeUserPassword)
+const mockRequestCredentialEmail = vi.mocked(requestCredentialEmail)
+const mockVerifyPassword = vi.mocked(verifyUserPasswordById)
+const mockNotify = vi.mocked(sendSecurityNotification)
+const mockTeardown = vi.mocked(teardownStripeBillingForUser)
+const mockSyncStripeEmail = vi.mocked(syncStripeCustomerEmailForUserSafe)
+const mockGetUserProfile = vi.mocked(getUserProfile)
+const mockCanCreateItem = vi.mocked(canCreateItem)
+const mockCanCreateCollection = vi.mocked(canCreateCollection)
+const mockGetEditorPrefs = vi.mocked(getEditorPreferences)
 
 const OWNED_EMAIL = 'owned@google.com'
 
@@ -109,7 +145,7 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) })
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: false }, expires: '2099-01-01T00:00:00.000Z' })
   mockIsPro.mockResolvedValue(false)
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
   mockVerifyPassword.mockResolvedValue(true)
@@ -132,6 +168,7 @@ beforeEach(() => {
       accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }],
       createdAt: new Date('2026-06-24T00:00:00.000Z'),
       isPro: false,
+      editorPreferences: null,
     },
     stats: {
       totalItems: 0,
@@ -149,7 +186,7 @@ describe('DELETE /profile', () => {
   })
 
   it('returns 204 for an OAuth-only account (no password required)', async () => {
-    mockAuthMethods.mockResolvedValue({ password: null, accounts: [{ id: 'acc-1', provider: 'google' }] })
+    mockAuthMethods.mockResolvedValue({ email: 'me@example.com', credentialEmail: null, password: null, accounts: [{ id: 'acc-1', provider: 'google', email: null }] })
     const res = await DELETE_ACCOUNT(req('DELETE', {}))
     expect(res.status).toBe(204)
     expect(mockDeleteUser).toHaveBeenCalledWith('user-1')
@@ -168,7 +205,7 @@ describe('DELETE /profile', () => {
   })
 
   it('returns 500 when billing teardown fails', async () => {
-    mockAuthMethods.mockResolvedValue({ password: null, accounts: [] })
+    mockAuthMethods.mockResolvedValue({ email: 'me@example.com', credentialEmail: null, password: null, accounts: [] })
     mockTeardown.mockRejectedValue(new Error('stripe down'))
     const res = await DELETE_ACCOUNT(req('DELETE', {}))
     expect(res.status).toBe(500)
@@ -286,13 +323,13 @@ describe('PATCH /profile/password (change)', () => {
 
 describe('DELETE /profile/credentials', () => {
   it('returns 400 when no password is set', async () => {
-    mockAuthMethods.mockResolvedValue({ password: null, accounts: [{ id: 'acc-1', provider: 'google' }] })
+    mockAuthMethods.mockResolvedValue({ email: 'me@example.com', credentialEmail: null, password: null, accounts: [{ id: 'acc-1', provider: 'google', email: null }] })
     const res = await REMOVE_CREDENTIALS(req('DELETE', { password: 'password123' }))
     expect(res.status).toBe(400)
   })
 
   it('returns 400 when password is the only sign-in method', async () => {
-    mockAuthMethods.mockResolvedValue({ password: 'hash', accounts: [] })
+    mockAuthMethods.mockResolvedValue({ email: 'me@example.com', credentialEmail: null, password: 'hash', accounts: [] })
     const res = await REMOVE_CREDENTIALS(req('DELETE', { password: 'password123' }))
     expect(res.status).toBe(400)
   })
@@ -435,12 +472,19 @@ describe('PATCH /profile/main-email', () => {
   it('returns 204 for a no-password account', async () => {
     mockGetProfile.mockResolvedValue({
       user: {
+        id: 'user-1',
+        name: 'me',
         email: 'me@example.com',
         credentialEmail: null,
         credentialEmailVerified: null,
+        image: 'img',
         hasPassword: false,
+        editorPreferences: null,
         accounts: [{ id: 'acc-1', provider: 'google', email: OWNED_EMAIL }],
+        createdAt: new Date('2026-06-24T00:00:00.000Z'),
+        isPro: false,
       },
+      stats: { totalItems: 0, totalCollections: 0, itemTypeCounts: [] },
     })
     const res = await UPDATE_MAIN_EMAIL(req('PATCH', { email: OWNED_EMAIL }))
     expect(res.status).toBe(204)
@@ -469,7 +513,7 @@ describe('PATCH /profile/main-email', () => {
 
 describe('DELETE /profile/accounts/{id}', () => {
   it('returns 400 when it is the only sign-in method', async () => {
-    mockAuthMethods.mockResolvedValue({ password: null, accounts: [{ id: 'acc-1', provider: 'google' }] })
+    mockAuthMethods.mockResolvedValue({ email: 'me@example.com', credentialEmail: null, password: null, accounts: [{ id: 'acc-1', provider: 'google', email: null }] })
     const res = await UNLINK_ACCOUNT(req('DELETE'), params('acc-1'))
     expect(res.status).toBe(400)
   })

@@ -1,6 +1,6 @@
 'use client'
 
-import type { MouseEvent } from 'react'
+import { memo, useCallback, type MouseEvent } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useCopyToClipboard } from '@/hooks/ui/use-copy-to-clipboard'
@@ -12,31 +12,59 @@ interface ItemTagsProps {
   badgeClassName?: string
 }
 
-export function ItemTags({ tags, max = Infinity, className, badgeClassName }: ItemTagsProps) {
+interface ItemTagBadgeProps {
+  tag: string
+  badgeClassName?: string
+  onCopy: (event: MouseEvent, tag: string) => void
+}
+
+import type { HTMLProps } from '@base-ui/react/types'
+
+const ItemTagBadge = memo(function ItemTagBadge({
+  tag,
+  badgeClassName,
+  onCopy,
+}: ItemTagBadgeProps) {
+  const handleCopyClick = useCallback((event: MouseEvent) => {
+    onCopy(event, tag)
+  }, [tag, onCopy])
+
+  const renderButton = useCallback((props: HTMLProps) => (
+    <button {...props} type="button" aria-label={`Copy tag ${tag}`} />
+  ), [tag])
+
+  return (
+    <Badge
+      variant="secondary"
+      render={renderButton}
+      className={cn("text-xs", badgeClassName)}
+      onClick={handleCopyClick}
+    >
+      {tag}
+    </Badge>
+  )
+})
+
+export const ItemTags = memo(function ItemTags({ tags, max = Infinity, className, badgeClassName }: ItemTagsProps) {
   const { copy } = useCopyToClipboard()
 
-  if (!tags || tags.length === 0) return null
-
-  // Tags can render inside a clickable row (e.g. the dashboard item row), so a copy click must not
-  // bubble up and trigger the parent's open-drawer handler.
-  function handleCopy(event: MouseEvent, tag: string) {
+  const handleCopy = useCallback((event: MouseEvent, tag: string) => {
     event.stopPropagation()
     void copy(tag)
-  }
+  }, [copy])
+
+  if (!tags || tags.length === 0) return null
 
   return (
     <div className={cn("flex flex-wrap gap-1.5", className)}>
       {tags.slice(0, max).map((tag) => (
-        <Badge
+        <ItemTagBadge
           key={tag}
-          variant="secondary"
-          render={<button type="button" aria-label={`Copy tag ${tag}`} />}
-          className={cn("text-xs", badgeClassName)}
-          onClick={(event) => handleCopy(event, tag)}
-        >
-          {tag}
-        </Badge>
+          tag={tag}
+          badgeClassName={badgeClassName}
+          onCopy={handleCopy}
+        />
       ))}
     </div>
   )
-}
+})

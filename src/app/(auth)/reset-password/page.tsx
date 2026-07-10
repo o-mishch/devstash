@@ -6,6 +6,9 @@ interface ResetPasswordPageProps {
   searchParams: Promise<{ token?: string }>
 }
 
+// Static, no dependency on props/state — hoisted so it isn't recreated on every render.
+const INVALID_TOKEN_ACTION = { label: 'Request new link', href: '/forgot-password' }
+
 export default async function ResetPasswordPage({ searchParams }: ResetPasswordPageProps) {
   const { token } = await searchParams
 
@@ -14,7 +17,7 @@ export default async function ResetPasswordPage({ searchParams }: ResetPasswordP
       token={token}
       peek={peekPasswordResetToken}
       invalidDescription="This password reset link is invalid, has expired, or was already used."
-      invalidAction={{ label: 'Request new link', href: '/forgot-password' }}
+      invalidAction={INVALID_TOKEN_ACTION}
       title="Reset password"
       description="Enter your new password below."
     >

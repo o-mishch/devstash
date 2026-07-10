@@ -1,13 +1,18 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import type { generateSecureToken as GenerateSecureTokenFn, hashToken as HashTokenFn } from '@/lib/auth/tokens'
 
 const store = new Map<string, unknown>()
+// A minimal stand-in for the real `Redis` client — only the three methods `pending-link.ts`
+// actually calls. The real `getRedis()` returns the full `@upstash/redis` `Redis` class (dozens
+// of unrelated methods), so this fake is typed by what it honestly is (its own shape), not by
+// pretending to satisfy the full SDK type.
 const fakeRedis = {
-  set: vi.fn((key: string, value: unknown) => {
+  set: vi.fn<(key: string, value: unknown) => string>((key, value) => {
     store.set(key, value)
     return 'OK'
   }),
-  get: vi.fn((key: string) => store.get(key) ?? null),
-  getdel: vi.fn((key: string) => {
+  get: vi.fn<(key: string) => unknown>((key) => store.get(key) ?? null),
+  getdel: vi.fn<(key: string) => unknown>((key) => {
     const value = store.get(key) ?? null
     store.delete(key)
     return value
@@ -15,12 +20,12 @@ const fakeRedis = {
 }
 
 vi.mock('@/lib/infra/redis', () => ({
-  getRedis: vi.fn(() => fakeRedis),
+  getRedis: vi.fn<() => typeof fakeRedis>(() => fakeRedis),
 }))
 
 vi.mock('@/lib/auth/tokens', () => ({
-  generateSecureToken: vi.fn(() => 'test-token-abc'),
-  hashToken: vi.fn((token: string) => `hashed-${token}`),
+  generateSecureToken: vi.fn<typeof GenerateSecureTokenFn>(() => 'test-token-abc'),
+  hashToken: vi.fn<typeof HashTokenFn>((token: string) => `hashed-${token}`),
 }))
 
 import {

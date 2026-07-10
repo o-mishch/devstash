@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
+import type { LogFn } from 'pino'
+import type { getCachedSession } from '@/lib/session'
+import type { rateLimitAction } from '@/lib/infra/rate-limit'
+import type { finalizeCheckoutReturn } from '@/lib/billing/checkout/finalize-checkout-return'
 
 const {
   mockGetSession,
   mockRateLimitAction,
   mockFinalizeCheckoutReturn,
 } = vi.hoisted(() => ({
-  mockGetSession: vi.fn(),
-  mockRateLimitAction: vi.fn(),
-  mockFinalizeCheckoutReturn: vi.fn(),
+  mockGetSession: vi.fn<typeof getCachedSession>(),
+  mockRateLimitAction: vi.fn<typeof rateLimitAction>(),
+  mockFinalizeCheckoutReturn: vi.fn<typeof finalizeCheckoutReturn>(),
 }))
 
 vi.mock('@/lib/session', () => ({
@@ -37,7 +41,13 @@ vi.mock('@/lib/billing/checkout/finalize-checkout-return', () => ({
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: {
+    child: () => ({
+      info: vi.fn<LogFn>(),
+      warn: vi.fn<LogFn>(),
+      error: vi.fn<LogFn>(),
+    }),
+  },
 }))
 
 import { GET } from './route'
@@ -53,7 +63,10 @@ function makeRequest(sessionId?: string) {
 describe('GET /api/billing/checkout-return', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGetSession.mockResolvedValue({ user: { id: 'user-1' } })
+    mockGetSession.mockResolvedValue({
+      user: { id: 'user-1', isPro: false },
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    })
     mockRateLimitAction.mockResolvedValue(null)
     mockFinalizeCheckoutReturn.mockResolvedValue({ type: 'success' })
   })

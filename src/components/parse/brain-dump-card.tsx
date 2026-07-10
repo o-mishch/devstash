@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sparkles, Upload, Loader2, Clipboard, FolderOpen, Library, Info, Eye } from 'lucide-react'
 import { toast } from 'sonner'
@@ -36,6 +36,10 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 
 type Mode = 'paste' | 'upload' | 'select' | 'content'
 
+// Static empty fallback for `sources`/`contentSources` — hoisted so the array reference stays stable
+// across renders instead of allocating a fresh `[]` from the `??` fallback every render.
+const EMPTY_SOURCES: BrainDumpSource[] = []
+
 interface BrainDumpCardProps {
   isPro: boolean
 }
@@ -69,27 +73,27 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
 
   // Only fetch each picker list when a Pro user is on its tab.
   const sourcesQuery = useBrainDumpSources(isPro && mode === 'select', 'file')
-  const sources = sourcesQuery.data?.sources ?? []
+  const sources = sourcesQuery.data?.sources ?? EMPTY_SOURCES
   const contentQuery = useBrainDumpSources(isPro && mode === 'content', 'content')
-  const contentSources = contentQuery.data?.sources ?? []
+  const contentSources = contentQuery.data?.sources ?? EMPTY_SOURCES
 
   const nonBlank = useMemo(() => text.replace(/\s/g, '').length, [text])
   const overPasteCap = useMemo(() => new TextEncoder().encode(text).length > SPLIT_FILE_MAX_PASTE_BYTES, [text])
   const overWindow = text.length > SPLIT_FILE_MAX_INPUT_CHARS
   const tooShort = nonBlank < SPLIT_FILE_MIN_INPUT_CHARS
 
-  function handleCopySourceTag() {
+  const handleCopySourceTag = useCallback(() => {
     void copy(BRAIN_DUMP_SOURCE_TAG)
-  }
+  }, [copy])
 
-  const ensurePro = (): boolean => {
+  const ensurePro = useCallback((): boolean => {
     if (isPro) return true
     openPrompt(BRAIN_DUMP_UPGRADE_PROMPT)
     return false
-  }
+  }, [isPro, openPrompt])
 
   // Finalizes any create path: surface failures, otherwise toast (noting truncation) and go to review.
-  const finishCreate = (result: CreateBrainDumpResult): void => {
+  const finishCreate = useCallback((result: CreateBrainDumpResult): void => {
     if (!result.ok) {
       setBusy(false)
       if (result.status === 403) {
@@ -106,23 +110,23 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
         : `Saved ${label} to your stash and started parsing.`,
     )
     router.push(`/parse/${result.jobId}`)
-  }
+  }, [openPrompt, router])
 
-  const startPaste = async (): Promise<void> => {
+  const startPaste = useCallback(async (): Promise<void> => {
     if (!ensurePro()) return
     setBusy(true)
     finishCreate(await createJob({ text }))
-  }
+  }, [ensurePro, createJob, text, finishCreate])
 
-  const startFromSource = async (sourceItemId: string): Promise<void> => {
+  const startFromSource = useCallback(async (sourceItemId: string): Promise<void> => {
     if (!ensurePro()) return
     setBusy(true)
     finishCreate(await createJob({ sourceItemId }))
-  }
+  }, [ensurePro, createJob, finishCreate])
 
   // Upload reuses the existing file-item flow: presign → direct browser→S3 → createItem type `file`
   // (tagged brain-dump, a permanent Files-tab item) → start the job referencing that item.
-  const onFile = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+  const onFile = useCallback(async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.target.files?.[0]
     event.target.value = '' // allow re-selecting the same file
     if (!file) return
@@ -153,7 +157,59 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
       return
     }
     finishCreate(await createJob({ sourceItemId: uploaded.itemId }))
-  }
+  }, [ensurePro, createJob, finishCreate])
+
+  // Tabs' `onValueChange` types the tab value as `any` upstream (see ui/tabs.tsx); the cast to `Mode`
+  // mirrors what the inline handler did before it was moved into a stable callback.
+  const handleModeChange = useCallback((value: unknown) => setMode(value as Mode), [])
+
+  const handleTextChange = useCallback(
+    (event: ChangeEvent<HTMLTextAreaElement>) => setText(event.target.value),
+    [],
+  )
+
+  const handleStartPasteClick = useCallback(() => void startPaste(), [startPaste])
+
+  const handleChooseFileClick = useCallback(() => fileInputRef.current?.click(), [])
+
+  const handleFileInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => void onFile(event),
+    [onFile],
+  )
+
+  const handleStartFromSelected = useCallback(() => {
+    if (selectedSourceId) void startFromSource(selectedSourceId)
+  }, [selectedSourceId, startFromSource])
+
+  const handleStartFromContent = useCallback(() => {
+    if (selectedContentId) void startFromSource(selectedContentId)
+  }, [selectedContentId, startFromSource])
+
+  // Base UI's `render` function form: `triggerProps` already carries the trigger's own `children`
+  // (none here — this trigger is self-closing), so spreading it first and adding explicit attrs after
+  // is safe (see the Base UI composition docs on the `render` prop function form).
+  const renderAwaitingBadge = useCallback(
+    (triggerProps: object) => (
+      <Badge {...triggerProps} variant="secondary" className="text-[10px]">
+        {awaitingReview} awaiting review
+      </Badge>
+    ),
+    [awaitingReview],
+  )
+
+  // Same pattern; here the trigger DOES have children ("Learn more"), which `triggerProps` already
+  // carries merged-in, so we spread it first without re-declaring the children.
+  const renderLearnMoreTrigger = useCallback(
+    (triggerProps: object) => (
+      <button
+        {...triggerProps}
+        type="button"
+        aria-label="Learn more about how Brain Dump sends text to OpenAI"
+        className="underline decoration-dotted underline-offset-2"
+      />
+    ),
+    [],
+  )
 
   const counterClass = overPasteCap || overWindow ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
 
@@ -169,13 +225,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
               Brain Dump
               {awaitingReview > 0 && (
                 <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Badge variant="secondary" className="text-[10px]">
-                        {awaitingReview} awaiting review
-                      </Badge>
-                    }
-                  />
+                  <TooltipTrigger render={renderAwaitingBadge} />
                   <TooltipContent className="max-w-[260px]">
                     {pendingSourceNames.join(', ')}
                   </TooltipContent>
@@ -190,7 +240,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
 
         <Tabs
           value={mode}
-          onValueChange={(value) => setMode(value as Mode)}
+          onValueChange={handleModeChange}
           className="mt-4"
         >
           {/* @container/bdtabs: as the card narrows, each tab's text label collapses to icon-only one at
@@ -234,7 +284,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
           <TabsContent value="paste" className="mt-3">
             <Textarea
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={handleTextChange}
               placeholder="Paste your project notes, snippets, commands, links…"
               rows={8}
               className="font-mono text-xs"
@@ -246,7 +296,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
               <RateLimitTooltip active={rateLimited} resetAt={renewResetAt}>
                 <Button
                   size="sm"
-                  onClick={() => void startPaste()}
+                  onClick={handleStartPasteClick}
                   disabled={busy || tooShort || overPasteCap || rateLimited}
                 >
                   {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
@@ -273,7 +323,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
           </TabsContent>
 
           <TabsContent value="upload" className="mt-3">
-            <input ref={fileInputRef} type="file" accept=".txt,.md" onChange={(e) => void onFile(e)} className="hidden" />
+            <input ref={fileInputRef} type="file" accept=".txt,.md" onChange={handleFileInputChange} className="hidden" />
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border p-6 text-center">
               <Upload className="size-5 text-muted-foreground" />
               <p className="text-xs text-muted-foreground">
@@ -286,7 +336,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={handleChooseFileClick}
                     disabled={busy || rateLimited}
                   >
                     {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
@@ -310,7 +360,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
                 rateLimited={rateLimited}
                 resetAt={renewResetAt}
                 onSelect={setSelectedSourceId}
-                onStart={() => { if (selectedSourceId) void startFromSource(selectedSourceId) }}
+                onStart={handleStartFromSelected}
                 emptyMessage={`No .txt or .md files tagged “${BRAIN_DUMP_SOURCE_TAG}” yet. Upload one here, or tag an existing text file with “${BRAIN_DUMP_SOURCE_TAG}”.`}
               />
             )}
@@ -329,7 +379,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
                 rateLimited={rateLimited}
                 resetAt={renewResetAt}
                 onSelect={setSelectedContentId}
-                onStart={() => { if (selectedContentId) void startFromSource(selectedContentId) }}
+                onStart={handleStartFromContent}
                 emptyMessage={`No snippets, commands, prompts, or notes tagged “${BRAIN_DUMP_SOURCE_TAG}” yet. Tag one with “${BRAIN_DUMP_SOURCE_TAG}” and it shows up here.`}
               />
             )}
@@ -351,15 +401,7 @@ export function BrainDumpCard({ isPro }: BrainDumpCardProps) {
             )
             so you can re-parse it later. Text is sent to OpenAI.{' '}
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label="Learn more about how Brain Dump sends text to OpenAI"
-                    className="underline decoration-dotted underline-offset-2"
-                  />
-                }
-              >
+              <TooltipTrigger render={renderLearnMoreTrigger}>
                 Learn more
               </TooltipTrigger>
               <TooltipContent className="max-w-[260px]">
@@ -401,50 +443,14 @@ function SourcePicker({ sources, selectedId, busy, rateLimited, resetAt, onSelec
     <div className="flex flex-col gap-2">
       <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
         {sources.map((source) => (
-          <div
+          <SourceRow
             key={source.itemId}
-            className={
-              selectedId === source.itemId
-                ? 'flex items-center gap-1 rounded-lg border border-primary/60 bg-primary/5 pr-1.5'
-                : 'flex items-center gap-1 rounded-lg border border-border pr-1.5 hover:bg-accent/40'
-            }
-          >
-            <button
-              type="button"
-              onClick={() => onSelect(source.itemId)}
-              className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2 text-left"
-            >
-              <span className="min-w-0 flex-1 truncate text-xs font-medium">{source.name}</span>
-              {source.itemTypeName !== 'file' && (
-                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                  {source.itemTypeName}
-                </span>
-              )}
-              {source.sizeBytes !== null && (
-                <span className="shrink-0 text-[11px] text-muted-foreground">{formatBytes(source.sizeBytes)}</span>
-              )}
-            </button>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    onClick={() => void handlePreview(source.itemId)}
-                    disabled={previewingId === source.itemId}
-                    aria-label="Preview content"
-                    className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-                  />
-                }
-              >
-                {previewingId === source.itemId ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Eye className="size-4" />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>Preview content</TooltipContent>
-            </Tooltip>
-          </div>
+            source={source}
+            selected={selectedId === source.itemId}
+            previewing={previewingId === source.itemId}
+            onSelect={onSelect}
+            onPreview={handlePreview}
+          />
         ))}
       </div>
       <RateLimitTooltip active={rateLimited} resetAt={resetAt} className="self-end">
@@ -457,6 +463,66 @@ function SourcePicker({ sources, selectedId, busy, rateLimited, resetAt, onSelec
   )
 }
 
+interface SourceRowProps {
+  source: BrainDumpSource
+  selected: boolean
+  previewing: boolean
+  onSelect: (id: string) => void
+  onPreview: (id: string) => Promise<void>
+}
+
+// Extracted so the per-item onClick/render closures created inside SourcePicker's `sources.map()` are
+// stable (React.memo + id-based callbacks) instead of a fresh closure per row on every render.
+const SourceRow = memo(function SourceRow({ source, selected, previewing, onSelect, onPreview }: SourceRowProps) {
+  const handleSelect = useCallback(() => onSelect(source.itemId), [onSelect, source.itemId])
+  const handlePreviewClick = useCallback(() => void onPreview(source.itemId), [onPreview, source.itemId])
+  const renderPreviewTrigger = useCallback(
+    (triggerProps: object) => (
+      <button
+        {...triggerProps}
+        type="button"
+        onClick={handlePreviewClick}
+        disabled={previewing}
+        aria-label="Preview content"
+        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+      />
+    ),
+    [handlePreviewClick, previewing],
+  )
+
+  return (
+    <div
+      className={
+        selected
+          ? 'flex items-center gap-1 rounded-lg border border-primary/60 bg-primary/5 pr-1.5'
+          : 'flex items-center gap-1 rounded-lg border border-border pr-1.5 hover:bg-accent/40'
+      }
+    >
+      <button
+        type="button"
+        onClick={handleSelect}
+        className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2 text-left"
+      >
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">{source.name}</span>
+        {source.itemTypeName !== 'file' && (
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+            {source.itemTypeName}
+          </span>
+        )}
+        {source.sizeBytes !== null && (
+          <span className="shrink-0 text-[11px] text-muted-foreground">{formatBytes(source.sizeBytes)}</span>
+        )}
+      </button>
+      <Tooltip>
+        <TooltipTrigger render={renderPreviewTrigger}>
+          {previewing ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+        </TooltipTrigger>
+        <TooltipContent>Preview content</TooltipContent>
+      </Tooltip>
+    </div>
+  )
+})
+
 interface RateLimitTooltipProps {
   active: boolean
   resetAt: number
@@ -467,10 +533,16 @@ interface RateLimitTooltipProps {
 // Wraps a start CTA: when the hourly Brain Dump token is spent, the (disabled) button gets a tooltip
 // explaining when the next slot opens; otherwise it renders the button untouched (no stray tooltip).
 function RateLimitTooltip({ active, resetAt, className, children }: RateLimitTooltipProps) {
+  // `triggerProps` already carries the trigger's own children (the CTA button passed in below), so
+  // spreading it first and adding the dynamic `className` after is safe and needs no re-declaration.
+  const renderWrapper = useCallback(
+    (triggerProps: object) => <span {...triggerProps} className={`inline-flex ${className ?? ''}`} />,
+    [className],
+  )
   if (!active) return children
   return (
     <Tooltip>
-      <TooltipTrigger render={<span className={`inline-flex ${className ?? ''}`} />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={renderWrapper}>{children}</TooltipTrigger>
       <TooltipContent className="max-w-[260px]">
         Brain Dump runs once an hour, and you’ve used this hour’s — {formatRenewIn(resetAt)}.
       </TooltipContent>

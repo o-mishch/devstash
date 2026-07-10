@@ -1,6 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type Stripe from 'stripe'
+import type { LogFn } from 'pino'
 import { Prisma } from '@/generated/prisma'
+import type {
+  fetchCheckoutSessionDetails,
+  isStripeResourceMissing,
+  iterateCustomerSubscriptions,
+  listStripeCustomersByEmail,
+} from '@/lib/billing/stripe-api'
+import type {
+  cancelAbandonedSubscription,
+  createStripeCustomer,
+  ensureStripeCustomerUserId,
+} from '@/lib/infra/stripe'
+import type { clearStripeCustomerByCustomerId, linkStripeCustomerToUser, UserStripeInfo } from '@/lib/db/stripe'
+import type { invalidateBillingCache } from '@/lib/infra/cache'
+import type { isAllowedCheckoutPriceId } from '@/lib/billing/config/billing-pricing'
+import type { persistSubscriptionFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'
+import type { getCachedUserStripeInfo } from '@/lib/billing/sync/user-billing-state'
 
 const {
   mockFetchCheckoutSessionDetails,
@@ -17,19 +34,19 @@ const {
   mockLinkStripeCustomerToUser,
   mockInvalidateBillingCache,
 } = vi.hoisted(() => ({
-  mockFetchCheckoutSessionDetails: vi.fn(),
-  mockIsAllowedCheckoutPriceId: vi.fn(),
-  mockPersistSubscriptionFromStripe: vi.fn(),
-  mockGetCachedUserStripeInfo: vi.fn(),
-  mockCustomersList: vi.fn(),
-  mockIterateCustomerSubscriptions: vi.fn(),
-  mockCancelAbandonedSubscription: vi.fn(),
-  mockIsStripeResourceMissing: vi.fn(),
-  mockCreateStripeCustomer: vi.fn(),
-  mockEnsureStripeCustomerUserId: vi.fn(),
-  mockClearStripeCustomerByCustomerId: vi.fn(),
-  mockLinkStripeCustomerToUser: vi.fn(),
-  mockInvalidateBillingCache: vi.fn(),
+  mockFetchCheckoutSessionDetails: vi.fn<typeof fetchCheckoutSessionDetails>(),
+  mockIsAllowedCheckoutPriceId: vi.fn<typeof isAllowedCheckoutPriceId>(),
+  mockPersistSubscriptionFromStripe: vi.fn<typeof persistSubscriptionFromStripe>(),
+  mockGetCachedUserStripeInfo: vi.fn<typeof getCachedUserStripeInfo>(),
+  mockCustomersList: vi.fn<typeof listStripeCustomersByEmail>(),
+  mockIterateCustomerSubscriptions: vi.fn<typeof iterateCustomerSubscriptions>(),
+  mockCancelAbandonedSubscription: vi.fn<typeof cancelAbandonedSubscription>(),
+  mockIsStripeResourceMissing: vi.fn<typeof isStripeResourceMissing>(),
+  mockCreateStripeCustomer: vi.fn<typeof createStripeCustomer>(),
+  mockEnsureStripeCustomerUserId: vi.fn<typeof ensureStripeCustomerUserId>(),
+  mockClearStripeCustomerByCustomerId: vi.fn<typeof clearStripeCustomerByCustomerId>(),
+  mockLinkStripeCustomerToUser: vi.fn<typeof linkStripeCustomerToUser>(),
+  mockInvalidateBillingCache: vi.fn<typeof invalidateBillingCache>(),
 }))
 
 vi.mock('@/lib/billing/stripe-api', () => ({
@@ -67,7 +84,7 @@ vi.mock('@/lib/billing/sync/user-billing-state', () => ({
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() }) },
 }))
 
 import {
@@ -87,6 +104,31 @@ function makeSubscription(overrides: Partial<Stripe.Subscription> = {}): Stripe.
     metadata: { userId: 'user-1' },
     ...overrides,
   } as Stripe.Subscription
+}
+
+function makeCustomer(overrides: Partial<Stripe.Customer> = {}): Stripe.Customer {
+  return {
+    id: 'cus_test',
+    email: 'user@example.com',
+    ...overrides,
+  } as Stripe.Customer
+}
+
+function makeUserStripeInfo(overrides: Partial<UserStripeInfo> = {}): UserStripeInfo {
+  return {
+    email: 'user@example.com',
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    stripeSubscriptionStatus: null,
+    isPro: false,
+    stripeSubscriptionStart: null,
+    stripeCurrentPeriodEnd: null,
+    stripeSubscriptionInterval: null,
+    stripeCancelAtPeriodEnd: false,
+    stripeLastSyncAt: null,
+    proExpiredAt: null,
+    ...overrides,
+  }
 }
 
 async function* subscriptionIterator(subscriptions: Stripe.Subscription[]) {
@@ -205,7 +247,7 @@ describe('resolveStripeCustomerForUser', () => {
     mockIsStripeResourceMissing.mockReturnValue(true)
     mockClearStripeCustomerByCustomerId.mockResolvedValue({ count: 1, userIds: ['user-1'] })
     mockCustomersList.mockResolvedValue([
-      { id: 'cus_live', email: 'user@example.com', deleted: false, metadata: { userId: 'user-1' } },
+      makeCustomer({ id: 'cus_live', metadata: { userId: 'user-1' } }),
     ])
 
     const result = await resolveStripeCustomerForUser({
@@ -264,7 +306,7 @@ describe('resolveOrCreateStripeCustomer', () => {
   it('adopts a customer recovered by email and persists the link', async () => {
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
     mockCustomersList.mockResolvedValue([
-      { id: 'cus_email', email: 'user@example.com', deleted: false, metadata: { userId: 'user-1' } },
+      makeCustomer({ id: 'cus_email', metadata: { userId: 'user-1' } }),
     ])
 
     const result = await resolveOrCreateStripeCustomer({
@@ -280,7 +322,7 @@ describe('resolveOrCreateStripeCustomer', () => {
 
   it('creates a new customer when none exists by id or email', async () => {
     mockCustomersList.mockResolvedValue([])
-    mockCreateStripeCustomer.mockResolvedValue({ id: 'cus_new' })
+    mockCreateStripeCustomer.mockResolvedValue(makeCustomer({ id: 'cus_new' }))
 
     const result = await resolveOrCreateStripeCustomer({
       userId: 'user-1',
@@ -296,7 +338,7 @@ describe('resolveOrCreateStripeCustomer', () => {
   it('returns foreign when the resolved customer is already linked to another user in the DB (P2002)', async () => {
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
     mockCustomersList.mockResolvedValue([
-      { id: 'cus_email', email: 'user@example.com', deleted: false, metadata: { userId: 'user-1' } },
+      makeCustomer({ id: 'cus_email', metadata: { userId: 'user-1' } }),
     ])
     // Stripe metadata check passes (ensureStripeCustomerUserId → 'linked'), but the id is already
     // stored on another user's row → the unique constraint fires P2002; treat it as foreign.
@@ -319,7 +361,7 @@ describe('resolveOrCreateStripeCustomer', () => {
   it('rethrows a non-P2002 DB error from linkStripeCustomerToUser', async () => {
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
     mockCustomersList.mockResolvedValue([
-      { id: 'cus_email', email: 'user@example.com', deleted: false, metadata: { userId: 'user-1' } },
+      makeCustomer({ id: 'cus_email', metadata: { userId: 'user-1' } }),
     ])
     mockLinkStripeCustomerToUser.mockRejectedValue(new Error('db down'))
 
@@ -355,13 +397,8 @@ describe('findCheckoutCustomerByEmail', () => {
 
   it('prefers the customer matching preferredCustomerId when ranking', async () => {
     mockCustomersList.mockResolvedValue([
-      { id: 'cus_other', email: 'user@example.com', deleted: false },
-      {
-        id: 'cus_preferred',
-        email: 'user@example.com',
-        deleted: false,
-        metadata: { userId: 'user-1' },
-      },
+      makeCustomer({ id: 'cus_other' }),
+      makeCustomer({ id: 'cus_preferred', metadata: { userId: 'user-1' } }),
     ])
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
 
@@ -374,9 +411,7 @@ describe('findCheckoutCustomerByEmail', () => {
   })
 
   it('skips blocking subscriptions owned by another user', async () => {
-    mockCustomersList.mockResolvedValue([
-      { id: 'cus_1', email: 'user@example.com', deleted: false },
-    ])
+    mockCustomersList.mockResolvedValue([makeCustomer({ id: 'cus_1' })])
     mockIterateCustomerSubscriptions.mockReturnValue(
       subscriptionIterator([makeSubscription({ metadata: { userId: 'other-user' } })]),
     )
@@ -389,12 +424,7 @@ describe('findCheckoutCustomerByEmail', () => {
   it('returns blocking subscription when metadata matches user', async () => {
     const blocking = makeSubscription({ metadata: { userId: 'user-1' } })
     mockCustomersList.mockResolvedValue([
-      {
-        id: 'cus_1',
-        email: 'user@example.com',
-        deleted: false,
-        metadata: { userId: 'user-1' },
-      },
+      makeCustomer({ id: 'cus_1', metadata: { userId: 'user-1' } }),
     ])
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([blocking]))
 
@@ -420,10 +450,7 @@ describe('validateCheckoutEligibility', () => {
   })
 
   it('returns ok when user has no blocking subscription', async () => {
-    mockGetCachedUserStripeInfo.mockResolvedValue({
-      email: 'user@example.com',
-      stripeCustomerId: 'cus_1',
-    })
+    mockGetCachedUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeCustomerId: 'cus_1' }))
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([]))
 
     const result = await validateCheckoutEligibility('user-1', 'price_monthly')
@@ -433,10 +460,7 @@ describe('validateCheckoutEligibility', () => {
 
   it('returns existing_subscription when customer already has an active sub', async () => {
     const blockingSubscription = makeSubscription()
-    mockGetCachedUserStripeInfo.mockResolvedValue({
-      email: 'user@example.com',
-      stripeCustomerId: 'cus_1',
-    })
+    mockGetCachedUserStripeInfo.mockResolvedValue(makeUserStripeInfo({ stripeCustomerId: 'cus_1' }))
     mockIterateCustomerSubscriptions.mockReturnValue(subscriptionIterator([blockingSubscription]))
 
     const result = await validateCheckoutEligibility('user-1', 'price_monthly')
@@ -447,7 +471,7 @@ describe('validateCheckoutEligibility', () => {
   })
 
   it('returns error when Stripe lookup throws', async () => {
-    mockGetCachedUserStripeInfo.mockResolvedValue({ email: 'user@example.com' })
+    mockGetCachedUserStripeInfo.mockResolvedValue(makeUserStripeInfo())
     mockIterateCustomerSubscriptions.mockImplementation(() => {
       throw new Error('Stripe unavailable')
     })

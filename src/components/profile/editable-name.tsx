@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import { useCallback, useState } from 'react'
+import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Pencil, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useApiFormAction } from '@/hooks/ui/use-api-form-action'
@@ -34,12 +34,26 @@ export function EditableName({ name }: EditableNameProps) {
     },
   })
 
-  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {
       setValue(currentName)
       setEditing(false)
     }
-  }
+  }, [currentName])
+
+  const handleValueChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setValue(e.target.value)
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    setValue(currentName)
+    setEditing(false)
+  }, [currentName])
+
+  const handleStartEditing = useCallback(() => {
+    setValue(currentName)
+    setEditing(true)
+  }, [currentName])
 
   return (
     <div className="flex min-w-0 items-center gap-1.5 font-medium">
@@ -53,7 +67,7 @@ export function EditableName({ name }: EditableNameProps) {
             autoFocus
             name="name"
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={handleValueChange}
             onKeyDown={handleKeyDown}
             disabled={isPending}
             maxLength={64}
@@ -70,7 +84,7 @@ export function EditableName({ name }: EditableNameProps) {
           <button
             type="button"
             disabled={isPending}
-            onClick={() => { setValue(currentName); setEditing(false) }}
+            onClick={handleCancel}
             className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
             aria-label="Cancel"
           >
@@ -80,7 +94,7 @@ export function EditableName({ name }: EditableNameProps) {
       ) : (
         <button
           type="button"
-          onClick={() => { setValue(currentName); setEditing(true) }}
+          onClick={handleStartEditing}
           className="group flex min-w-0 items-center gap-1.5 truncate hover:text-foreground/80"
         >
           <span className="truncate">{currentName || 'No name set'}</span>

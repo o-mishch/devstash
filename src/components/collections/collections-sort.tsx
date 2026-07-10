@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -8,12 +9,15 @@ export function CollectionsSort() {
   const searchParams = useSearchParams()
   const sort = searchParams.get('sort') || 'recent'
 
-  function onSortChange(value: string | null) {
-    if (!value) return
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('sort', value)
-    router.push(`?${params.toString()}`)
-  }
+  const onSortChange = useCallback(
+    (value: string | null) => {
+      if (!value) return
+      const params = new URLSearchParams(searchParams.toString())
+      params.set('sort', value)
+      router.push(`?${params.toString()}`)
+    },
+    [router, searchParams],
+  )
 
   return (
     <Select value={sort} onValueChange={onSortChange}>

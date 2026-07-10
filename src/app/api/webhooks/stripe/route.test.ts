@@ -1,5 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { LogFn } from 'pino'
 import { anyOf } from '@/test/matchers'
+import type {
+  cancelAbandonedSubscription,
+  cancelSubscriptionImmediately,
+  constructStripeWebhookEvent,
+  createPortalSession,
+} from '@/lib/infra/stripe'
+import type {
+  fetchCheckoutSessionDetails,
+  fetchLiveSubscriptionState,
+  fetchSubscriptionDetails,
+  getIntervalFromSub,
+  retrieveStripeCharge,
+  retrieveStripeCustomer,
+} from '@/lib/billing/stripe-api'
+import type { reconcileSubscriptionById } from '@/lib/billing/subscription/stripe-subscription-persist'
+import type {
+  clearStripeCustomerByCustomerId,
+  clearStripeSubscriptionBySubId,
+  resolveAppUserIdForSubscription,
+  updateSubscriptionState,
+  updateUserStripeSubscription,
+} from '@/lib/billing/subscription/subscription-state'
+import type { subscriptionShouldClearLocalLink } from '@/lib/billing/subscription/subscription-access'
+import type { getUserIdByStripeCustomerId, getUserIdsByStripeSubscriptionId } from '@/lib/db/stripe'
+import type { getUserById } from '@/lib/db/users'
+import type {
+  claimStripeWebhookEvent,
+  markStripeWebhookEventProcessed,
+  releaseStripeWebhookEvent,
+} from '@/lib/billing/webhook/stripe-webhook-idempotency'
+import type { getRedis } from '@/lib/infra/redis'
+import type { sendBillingPaymentFailedEmail } from '@/lib/billing/emails/billing-payment-failed'
+import type { sendBillingDisputeAdminEmail } from '@/lib/billing/emails/billing-dispute-admin'
+import type { sendBillingTrialEndingEmail } from '@/lib/billing/emails/billing-trial-ending'
+import type { sendBillingCheckoutPaymentFailedEmail } from '@/lib/billing/emails/billing-checkout-payment-failed'
 
 const {
   mockConstructStripeWebhookEvent,
@@ -29,32 +65,32 @@ const {
   mockGetUserIdsByStripeSubscriptionId,
   mockResolveAppUserIdForSubscription,
 } = vi.hoisted(() => ({
-  mockConstructStripeWebhookEvent: vi.fn(),
-  mockCancelAbandonedSubscription: vi.fn(),
-  mockCreatePortalSession: vi.fn(),
-  mockFetchSubscriptionDetails: vi.fn(),
-  mockFetchCheckoutSessionDetails: vi.fn(),
-  mockFetchLiveSubscriptionState: vi.fn(),
-  mockGetIntervalFromSub: vi.fn(),
-  mockSendBillingPaymentFailedEmail: vi.fn(),
-  mockClaimStripeWebhookEvent: vi.fn(),
-  mockMarkStripeWebhookEventProcessed: vi.fn(),
-  mockReleaseStripeWebhookEvent: vi.fn(),
-  mockSubscriptionShouldClearLocalLink: vi.fn(),
-  mockUpdateUserStripeSubscription: vi.fn(),
-  mockUpdateSubscriptionState: vi.fn(),
-  mockClearStripeSubscriptionBySubId: vi.fn(),
-  mockReconcileSubscriptionById: vi.fn(),
-  mockStripeChargesRetrieve: vi.fn(),
-  mockStripeCustomersRetrieve: vi.fn(),
-  mockSendBillingDisputeAdminEmail: vi.fn(),
-  mockSendBillingTrialEndingEmail: vi.fn(),
-  mockSendBillingCheckoutPaymentFailedEmail: vi.fn(),
-  mockCancelSubscriptionImmediately: vi.fn(),
-  mockClearStripeCustomerByCustomerId: vi.fn(),
-  mockGetUserIdByStripeCustomerId: vi.fn(),
-  mockGetUserIdsByStripeSubscriptionId: vi.fn(),
-  mockResolveAppUserIdForSubscription: vi.fn(),
+  mockConstructStripeWebhookEvent: vi.fn<typeof constructStripeWebhookEvent>(),
+  mockCancelAbandonedSubscription: vi.fn<typeof cancelAbandonedSubscription>(),
+  mockCreatePortalSession: vi.fn<typeof createPortalSession>(),
+  mockFetchSubscriptionDetails: vi.fn<typeof fetchSubscriptionDetails>(),
+  mockFetchCheckoutSessionDetails: vi.fn<typeof fetchCheckoutSessionDetails>(),
+  mockFetchLiveSubscriptionState: vi.fn<typeof fetchLiveSubscriptionState>(),
+  mockGetIntervalFromSub: vi.fn<typeof getIntervalFromSub>(),
+  mockSendBillingPaymentFailedEmail: vi.fn<typeof sendBillingPaymentFailedEmail>(),
+  mockClaimStripeWebhookEvent: vi.fn<typeof claimStripeWebhookEvent>(),
+  mockMarkStripeWebhookEventProcessed: vi.fn<typeof markStripeWebhookEventProcessed>(),
+  mockReleaseStripeWebhookEvent: vi.fn<typeof releaseStripeWebhookEvent>(),
+  mockSubscriptionShouldClearLocalLink: vi.fn<typeof subscriptionShouldClearLocalLink>(),
+  mockUpdateUserStripeSubscription: vi.fn<typeof updateUserStripeSubscription>(),
+  mockUpdateSubscriptionState: vi.fn<typeof updateSubscriptionState>(),
+  mockClearStripeSubscriptionBySubId: vi.fn<typeof clearStripeSubscriptionBySubId>(),
+  mockReconcileSubscriptionById: vi.fn<typeof reconcileSubscriptionById>(),
+  mockStripeChargesRetrieve: vi.fn<typeof retrieveStripeCharge>(),
+  mockStripeCustomersRetrieve: vi.fn<typeof retrieveStripeCustomer>(),
+  mockSendBillingDisputeAdminEmail: vi.fn<typeof sendBillingDisputeAdminEmail>(),
+  mockSendBillingTrialEndingEmail: vi.fn<typeof sendBillingTrialEndingEmail>(),
+  mockSendBillingCheckoutPaymentFailedEmail: vi.fn<typeof sendBillingCheckoutPaymentFailedEmail>(),
+  mockCancelSubscriptionImmediately: vi.fn<typeof cancelSubscriptionImmediately>(),
+  mockClearStripeCustomerByCustomerId: vi.fn<typeof clearStripeCustomerByCustomerId>(),
+  mockGetUserIdByStripeCustomerId: vi.fn<typeof getUserIdByStripeCustomerId>(),
+  mockGetUserIdsByStripeSubscriptionId: vi.fn<typeof getUserIdsByStripeSubscriptionId>(),
+  mockResolveAppUserIdForSubscription: vi.fn<typeof resolveAppUserIdForSubscription>(),
 }))
 
 vi.mock('@/lib/infra/stripe', () => ({
@@ -87,7 +123,7 @@ vi.mock('@/lib/billing/stripe-api', async (importOriginal) => {
     retrieveStripeCustomer: mockStripeCustomersRetrieve,
     getIntervalFromSub: mockGetIntervalFromSub,
     getPrimarySubscriptionItem: (sub: { items: { data: Array<{ current_period_end?: number }> } }) => sub.items.data[0],
-    mapSubscriptionToDetails: vi.fn(),
+    mapSubscriptionToDetails: vi.fn<typeof actual.mapSubscriptionToDetails>(),
   }
 })
 
@@ -113,7 +149,7 @@ vi.mock('@/lib/db/stripe', () => ({
 }))
 
 vi.mock('@/lib/db/users', () => ({
-  getUserById: vi.fn((userId: string) => ({ id: userId })),
+  getUserById: vi.fn<typeof getUserById>((userId: string) => ({ id: userId })),
 }))
 
 vi.mock('@/lib/billing/webhook/stripe-webhook-idempotency', async (importOriginal) => {
@@ -127,11 +163,11 @@ vi.mock('@/lib/billing/webhook/stripe-webhook-idempotency', async (importOrigina
 })
 
 vi.mock('@/lib/infra/redis', () => ({
-  getRedis: vi.fn(() => null),
+  getRedis: vi.fn<typeof getRedis>(() => null),
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() }) },
 }))
 
 vi.mock('@/lib/billing/emails/billing-payment-failed', () => ({

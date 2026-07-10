@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, startTransition } from 'react'
+import { useEffect, useRef, useState, startTransition, useCallback, memo } from 'react'
 import dynamic from 'next/dynamic'
 import { loader } from '@monaco-editor/react'
 
@@ -71,7 +71,7 @@ function HiddenMonacoWarmup({ onReady }: HiddenMonacoWarmupProps) {
 // 1. Prefetches markdown/editor chunks directly (no DOM needed — just fires the dynamic imports).
 // 2. Kicks Monaco core init, then mounts a hidden CodeEditor to spawn the Monaco worker.
 // Unmounts once Monaco has laid out so nothing stays resident in the DOM.
-export function EditorPreloader() {
+export const EditorPreloader = memo(function EditorPreloader() {
   const [warm, setWarm] = useState(false)
 
   useEffect(() => {
@@ -107,6 +107,10 @@ export function EditorPreloader() {
     return () => clearTimeout(startId)
   }, [])
 
+  const handleReady = useCallback(() => {
+    startTransition(() => setWarm(false))
+  }, [])
+
   if (!warm) return null
-  return <HiddenMonacoWarmup onReady={() => startTransition(() => setWarm(false))} />
-}
+  return <HiddenMonacoWarmup onReady={handleReady} />
+})

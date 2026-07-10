@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useEffect, type DragEvent } from 'react'
+import { useRef, useState, useEffect, useCallback, memo } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Upload, X, FileIcon } from 'lucide-react'
 import { cn } from '@/lib/utils/ui'
@@ -50,7 +50,7 @@ interface FileUploadProps {
   onClear?: () => void
 }
 
-export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadProps) {
+export const FileUpload = memo(function FileUpload({ itemType, onUpload, value, onClear }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
@@ -69,7 +69,7 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
     prevLocalPreviewUrl.current = current
   }, [value?.localPreviewUrl])
 
-  async function uploadFile(file: File) {
+  const uploadFile = useCallback(async (file: File) => {
     setError(null)
     setProgress(0)
 
@@ -130,23 +130,40 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
       imageHeight: thumb?.height ?? null,
       localPreviewUrl,
     })
-  }
+  }, [itemType, onUpload])
 
   // The upload is a multi-step pipeline (presign → direct-S3 POST → cleanup on failure); wrapping the whole
   // operation in useMutation routes it through the same mutation layer as the rest of the app. The internal
   // `/upload/url` POST and `/upload` cleanup DELETE remain pipeline sub-steps, not separate mutations.
-  const uploadMutation = useMutation({ mutationFn: uploadFile })
+  const { mutate: upload } = useMutation({ mutationFn: uploadFile })
 
-  function handleFiles(files: FileList | null) {
+  const handleFiles = useCallback((files: FileList | null) => {
     const file = files?.[0]
-    if (file) uploadMutation.mutate(file)
-  }
+    if (file) upload(file)
+  }, [upload])
 
-  function handleDrop(e: DragEvent) {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
     handleFiles(e.dataTransfer.files)
-  }
+  }, [handleFiles])
+
+  const handleClick = useCallback(() => {
+    inputRef.current?.click()
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragging(false)
+  }, [])
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    handleFiles(e.target.files)
+  }, [handleFiles])
 
   if (value) {
     const fileMeta = (
@@ -207,9 +224,9 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
             : 'border-border hover:border-border/80 hover:bg-muted/30',
           progress !== null && 'pointer-events-none opacity-60'
         )}
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
-        onDragLeave={() => setIsDragging(false)}
+        onClick={handleClick}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
         <Upload className="card-icon size-5 text-muted-foreground" />
@@ -237,8 +254,8 @@ export function FileUpload({ itemType, onUpload, value, onClear }: FileUploadPro
         type="file"
         accept={config.accept}
         className="hidden"
-        onChange={(e) => handleFiles(e.target.files)}
+        onChange={handleFileChange}
       />
     </div>
   )
-}
+})

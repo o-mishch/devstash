@@ -1,25 +1,48 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { invalidateCollectionsCache as InvalidateCollectionsCacheFn } from '@/lib/infra/cache'
+import type {
+  checkRateLimit as CheckRateLimitFn,
+  deniedMessage as DeniedMessageFn,
+} from '@/lib/infra/rate-limit'
+import type {
+  getAllCollections as GetAllCollectionsFn,
+  getCollectionById as GetCollectionByIdFn,
+  createCollection as CreateCollectionFn,
+  updateCollection as UpdateCollectionFn,
+  deleteCollection as DeleteCollectionFn,
+  toggleCollectionFavorite as ToggleCollectionFavoriteFn,
+} from '@/lib/db/collections'
+import type { canCreateCollection as CanCreateCollectionFn } from '@/lib/db/usage'
 
 // Route handlers are tested by invoking the exported handler with a mocked NextRequest and asserting
 // res.status + await res.json(). Session/Pro/db are mocked exactly as the oRPC suite did.
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/infra/cache', () => ({ invalidateCollectionsCache: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
+}))
+vi.mock('@/lib/infra/cache', () => ({
+  invalidateCollectionsCache: vi.fn<typeof InvalidateCollectionsCacheFn>(),
+}))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
+  deniedMessage: vi.fn<typeof DeniedMessageFn>((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
 }))
 vi.mock('@/lib/db/collections', () => ({
-  getAllCollections: vi.fn(),
-  getCollectionById: vi.fn(),
-  createCollection: vi.fn(),
-  updateCollection: vi.fn(),
-  deleteCollection: vi.fn(),
-  toggleCollectionFavorite: vi.fn(),
+  getAllCollections: vi.fn<typeof GetAllCollectionsFn>(),
+  getCollectionById: vi.fn<typeof GetCollectionByIdFn>(),
+  createCollection: vi.fn<typeof CreateCollectionFn>(),
+  updateCollection: vi.fn<typeof UpdateCollectionFn>(),
+  deleteCollection: vi.fn<typeof DeleteCollectionFn>(),
+  toggleCollectionFavorite: vi.fn<typeof ToggleCollectionFavoriteFn>(),
 }))
-vi.mock('@/lib/db/usage', () => ({ canCreateCollection: vi.fn(), FREE_TIER_COLLECTION_LIMIT: 3 }))
+vi.mock('@/lib/db/usage', () => ({
+  canCreateCollection: vi.fn<typeof CanCreateCollectionFn>(),
+  FREE_TIER_COLLECTION_LIMIT: 3,
+}))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
@@ -37,22 +60,22 @@ import { GET, POST } from './route'
 import { GET as GET_BY_ID, PATCH, DELETE } from './[id]/route'
 import { PATCH as PATCH_FAVORITE } from './[id]/favorite/route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockGetAll = getAllCollections as ReturnType<typeof vi.fn>
-const mockGetById = getCollectionById as ReturnType<typeof vi.fn>
-const mockCreate = createCollection as ReturnType<typeof vi.fn>
-const mockUpdate = updateCollection as ReturnType<typeof vi.fn>
-const mockDelete = deleteCollection as ReturnType<typeof vi.fn>
-const mockToggleFavorite = toggleCollectionFavorite as ReturnType<typeof vi.fn>
-const mockCanCreate = canCreateCollection as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockIsPro = vi.mocked(getCachedVerifiedProAccess)
+const mockGetAll = vi.mocked(getAllCollections)
+const mockGetById = vi.mocked(getCollectionById)
+const mockCreate = vi.mocked(createCollection)
+const mockUpdate = vi.mocked(updateCollection)
+const mockDelete = vi.mocked(deleteCollection)
+const mockToggleFavorite = vi.mocked(toggleCollectionFavorite)
+const mockCanCreate = vi.mocked(canCreateCollection)
 
 const mockCollection = {
   id: 'col-1',
   name: 'My Collection',
   description: null,
   isFavorite: false,
-  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  createdAt: new Date('2026-01-01T00:00:00.000Z').toISOString(),
   itemCount: 0,
   dominantColor: null,
   types: [],
@@ -69,7 +92,10 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) })
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({
+    user: { id: 'user-1', isPro: false },
+    expires: new Date('2026-01-01T00:00:00.000Z').toISOString(),
+  })
   mockIsPro.mockResolvedValue(false)
   mockCanCreate.mockResolvedValue(true)
   mockGetById.mockResolvedValue(mockCollection)

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { LogFn } from 'pino'
+import type { getUserStripeInfo } from '@/lib/db/stripe'
 
 const reactCacheStore = new Map<string, unknown>()
 
 const { mockGetCachedUserStripeInfo } = vi.hoisted(() => ({
-  mockGetCachedUserStripeInfo: vi.fn(),
+  mockGetCachedUserStripeInfo: vi.fn<typeof getUserStripeInfo>(),
 }))
 
 vi.mock('react', () => ({
@@ -20,11 +22,11 @@ vi.mock('react', () => ({
 
 vi.mock('@/lib/billing/sync/user-billing-state', () => ({
   getCachedUserStripeInfo: mockGetCachedUserStripeInfo,
-  getFreshUserStripeInfo: vi.fn(),
+  getFreshUserStripeInfo: vi.fn<typeof getUserStripeInfo>(),
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }) },
+  logger: { child: () => ({ error: vi.fn<LogFn>(), info: vi.fn<LogFn>(), warn: vi.fn<LogFn>() }) },
 }))
 
 vi.unmock('@/lib/billing/access/pro-access-resolution')

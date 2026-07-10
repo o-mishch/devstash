@@ -9,27 +9,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // wipe the factory impl). mockSlidingWindow is held here (not read back off `Ratelimit.slidingWindow`
 // later) so nothing ever references it as a bare property — that trips unbound-method, since the real
 // Ratelimit.slidingWindow is a static class method even though the mock itself never uses `this`.
+//
+// mockLimit/mockGetRemaining/mockSlidingWindow/mockGetRedis stand in for real methods whose full
+// return shapes (RatelimitResponse, the getRemaining/Algorithm/Redis internals) carry fields this
+// suite never populates or asserts on — they're typed against the real parameter types plus the
+// subset of the return shape each mock's fixtures actually provide, rather than the full real
+// return type (which would force every fixture below to also fabricate unrelated fields).
 const { mockLimit, mockGetRemaining, mockResetUsedTokens, mockSlidingWindow } = vi.hoisted(() => ({
-  mockLimit: vi.fn(),
-  mockGetRemaining: vi.fn(),
-  mockResetUsedTokens: vi.fn(),
-  mockSlidingWindow: vi.fn(() => 'sliding-window'),
+  mockLimit: vi.fn<(identifier: string) => Promise<{ success: boolean; remaining: number; reset: number }>>(),
+  mockGetRemaining: vi.fn<(identifier: string) => Promise<{ remaining: number; reset: number }>>(),
+  mockResetUsedTokens: vi.fn<Ratelimit['resetUsedTokens']>(),
+  mockSlidingWindow: vi.fn<(tokens: number, window: Duration) => string>(() => 'sliding-window'),
 }))
 
 vi.mock('@upstash/ratelimit', () => {
-  const Ratelimit = vi.fn(function () {
+  type RatelimitStub = {
+    limit: typeof mockLimit
+    getRemaining: typeof mockGetRemaining
+    resetUsedTokens: typeof mockResetUsedTokens
+  }
+  const Ratelimit = vi.fn<(config: RatelimitConfig) => RatelimitStub>(function () {
     return { limit: mockLimit, getRemaining: mockGetRemaining, resetUsedTokens: mockResetUsedTokens }
-  }) as unknown as { (): unknown; slidingWindow: ReturnType<typeof vi.fn> }
+  }) as unknown as { (): unknown; slidingWindow: typeof mockSlidingWindow }
   Ratelimit.slidingWindow = mockSlidingWindow
   return { Ratelimit }
 })
-vi.mock('@/lib/infra/redis', () => ({ getRedis: vi.fn(() => ({})) }))
+vi.mock('@/lib/infra/redis', () => ({ getRedis: vi.fn<() => Record<string, never> | null>(() => ({})) }))
 
-import { Ratelimit } from '@upstash/ratelimit'
+import { Ratelimit, type RatelimitConfig, type Duration } from '@upstash/ratelimit'
 import { getRedis } from '@/lib/infra/redis'
 import { upstashRateLimit, resetUpstashLimitersForTests } from '@/lib/infra/rate-limit-upstash'
 
-const mockGetRedis = getRedis as ReturnType<typeof vi.fn>
+const mockGetRedis = vi.mocked(getRedis, { partial: true })
 
 beforeEach(() => {
   resetUpstashLimitersForTests()

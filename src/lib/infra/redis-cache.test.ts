@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { Redis } from '@upstash/redis'
+import type { Logger, LogFn } from 'pino'
 
 // vi.hoisted so the mock factory (hoisted to the top) can reference mockLoggerChild directly —
 // avoids ever reading `logger.child` as a bare property later, which trips unbound-method (the real
 // Logger['child'] is a class-instance method, even though the mock itself never uses `this`).
-const { mockLoggerChild } = vi.hoisted(() => ({ mockLoggerChild: vi.fn() }))
+const { mockLoggerChild } = vi.hoisted(() => ({
+  mockLoggerChild: vi.fn<() => Pick<Logger, 'info' | 'warn' | 'error'>>(),
+}))
 
 vi.mock('@/lib/infra/redis', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/infra/redis')>()
-  return { ...actual, getRedis: vi.fn() }
+  return { ...actual, getRedis: vi.fn<typeof getRedis>() }
 })
 
 vi.mock('@/lib/infra/pino', () => ({
@@ -17,8 +21,8 @@ vi.mock('@/lib/infra/pino', () => ({
 import { makeRedisCache } from './redis-cache'
 import { getRedis } from '@/lib/infra/redis'
 
-const mockLog = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
-const mockRedis = { get: vi.fn(), set: vi.fn(), del: vi.fn() }
+const mockLog = { info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() }
+const mockRedis = { get: vi.fn<Redis['get']>(), set: vi.fn<Redis['set']>(), del: vi.fn<Redis['del']>() }
 
 function makeCache<T = string>(overrides?: Partial<Parameters<typeof makeRedisCache>[0]>) {
   return makeRedisCache<T>({ namespace: 'ns', defaultTtlSeconds: 60, logTag: 't', ...overrides })

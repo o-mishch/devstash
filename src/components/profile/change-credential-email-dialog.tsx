@@ -29,6 +29,9 @@ interface ChangeCredentialResult {
   sentLink: boolean
 }
 
+// Fully static — no prop/state dependency — hoisted once at module scope rather than recreated per render.
+const changeEmailTriggerIcon = <Pencil className="mr-1 size-3 max-sm:size-4" />
+
 export function ChangeCredentialEmailDialog({ currentEmail, alsoMovesPrimaryEmail, verificationDisabled, onCredentialChanged }: ChangeCredentialEmailDialogProps) {
   const [emailError, setEmailError] = useState('')
   const patchUserProfile = usePatchUserProfile()
@@ -73,9 +76,11 @@ export function ChangeCredentialEmailDialog({ currentEmail, alsoMovesPrimaryEmai
     await submitForm(formData)
   }, [submitForm])
 
-  function handleOpenChange(next: boolean) {
+  const handleOpenChange = useCallback((next: boolean) => {
     if (!next) setEmailError('')
-  }
+  }, [])
+
+  const clearEmailError = useCallback(() => setEmailError(''), [])
 
   const primaryMoveNote = credentialEmailPrimaryMoveNote(alsoMovesPrimaryEmail)
 
@@ -90,7 +95,7 @@ export function ChangeCredentialEmailDialog({ currentEmail, alsoMovesPrimaryEmai
       title="Change sign-in email"
       description={description}
       triggerText="Change email"
-      triggerIcon={<Pencil className="mr-1 size-3 max-sm:size-4" />}
+      triggerIcon={changeEmailTriggerIcon}
       triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-foreground max-sm:h-10 max-sm:w-full max-sm:justify-start max-sm:px-3 max-sm:text-sm"
       onOpenChange={handleOpenChange}
     >
@@ -105,7 +110,7 @@ export function ChangeCredentialEmailDialog({ currentEmail, alsoMovesPrimaryEmai
               placeholder="you@example.com"
               autoComplete="off"
               required
-              onChange={() => setEmailError('')}
+              onChange={clearEmailError}
             />
           </div>
 
@@ -118,7 +123,7 @@ export function ChangeCredentialEmailDialog({ currentEmail, alsoMovesPrimaryEmai
               placeholder="you@example.com"
               autoComplete="off"
               required
-              onChange={() => setEmailError('')}
+              onChange={clearEmailError}
             />
             {emailError && (
               <p className="text-xs text-destructive">{emailError}</p>

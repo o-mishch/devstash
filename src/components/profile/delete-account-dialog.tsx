@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState, type ChangeEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
+import type { HTMLProps } from '@base-ui/react/types'
 import { Button } from '@/components/ui/button'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
@@ -30,7 +31,7 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
 
-  const deleteMutation = useMutation({
+  const { mutate: deleteAccount, isPending } = useMutation({
     mutationFn: async () => {
       const { error } = await api.DELETE('/profile', { body: { password: hasPassword ? password : undefined } })
       if (error) throw new Error(error.message || 'Failed to delete account. Please try again.')
@@ -44,23 +45,37 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
     },
     onError: (error: Error) => toast.error(error.message || 'Failed to delete account. Please try again.'),
   })
-  const isPending = deleteMutation.isPending
 
-  function handleOpenChange(nextOpen: boolean) {
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen)
     if (!nextOpen) setPassword('')
-  }
+  }, [])
+
+  const renderTrigger = useCallback(
+    (triggerProps: HTMLProps<HTMLButtonElement>) => (
+      <Button variant="destructive" size="sm" {...triggerProps}>
+        <Trash2 className="mr-1.5 size-4" />
+        Delete Account
+      </Button>
+    ),
+    [],
+  )
+
+  const handlePasswordChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value)
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    handleOpenChange(false)
+  }, [handleOpenChange])
+
+  const handleConfirm = useCallback(() => {
+    deleteAccount()
+  }, [deleteAccount])
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button variant="destructive" size="sm">
-            <Trash2 className="mr-1.5 size-4" />
-            Delete Account
-          </Button>
-        }
-      />
+      <DialogTrigger render={renderTrigger} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Delete Account</DialogTitle>
@@ -76,14 +91,14 @@ export function DeleteAccountDialog({ hasPassword = false }: DeleteAccountDialog
               id="delete-account-password"
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={handlePasswordChange}
               disabled={isPending}
             />
           </div>
         )}
         <DestructiveDialogFooter
-          onCancel={() => handleOpenChange(false)}
-          onConfirm={() => deleteMutation.mutate()}
+          onCancel={handleCancel}
+          onConfirm={handleConfirm}
           isPending={isPending}
           confirmDisabled={hasPassword && !password.trim()}
           confirmText="Yes, Delete My Account"

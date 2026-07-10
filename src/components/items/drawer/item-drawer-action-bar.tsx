@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState, type MouseEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Star, Pin, Pencil, Trash2, XCircle, Sparkles, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -61,18 +61,18 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
 
   // The Parse trigger gates before doing any work: a non-Pro click opens the upgrade prompt (no token
   // spent); a Pro click opens the confirm dialog (a parse uses one of the hourly runs, so we ask first).
-  function openParse() {
+  const openParse = useCallback(() => {
     if (!isPro) {
       openPrompt(BRAIN_DUMP_UPGRADE_PROMPT)
       return
     }
     setParseConfirmOpen(true)
-  }
+  }, [isPro, openPrompt])
 
   // Runs the actual parse after the user confirms. On success the hook toasts + routes to the review
   // board; keep the drawer (and its spinner) up until the call resolves so a failure can reset the busy
   // state, then close only on success where the drawer would otherwise linger over the /parse navigation.
-  async function confirmParse() {
+  const confirmParse = useCallback(async () => {
     setIsParsing(true)
     const result = await startParse(item.id)
     if (!result.ok) {
@@ -84,12 +84,24 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     setIsParsing(false)
     setParseConfirmOpen(false)
     closeDrawer()
-  }
+  }, [startParse, item.id, closeDrawer])
   const { showError: showEditError, flash: flashEditError } = useRestrictedAction({
     title: 'Pro feature',
     description: 'Editing files and images requires a Pro plan.',
     onUpgrade: closeDrawer,
   })
+
+  const handleEditClick = useCallback(
+    (e: MouseEvent<HTMLButtonElement>) => {
+      if (isRestricted) {
+        e.preventDefault()
+        flashEditError()
+        return
+      }
+      onEdit()
+    },
+    [isRestricted, flashEditError, onEdit],
+  )
 
   const { value: isFavorite, toggle: handleFavoriteToggle } = useOptimisticToggle(
     item.isFavorite,
@@ -136,7 +148,9 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
     copyValue = item.url ?? item.title
   }
 
-  const deleteMutation = useMutation({
+  const openDeleteDialog = useCallback(() => setDeleteDialogOpen(true), [])
+
+  const { mutate: deleteItem, isPending } = useMutation({
     mutationFn: async () => {
       const { error } = await api.DELETE('/items/{id}', { params: { path: { id: item.id } } })
       if (error) throw new Error(error.message || 'Failed to delete item')
@@ -155,6 +169,14 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
       toast.error(error.message || 'Failed to delete item')
     },
   })
+
+  const confirmDelete = useCallback(() => {
+    deleteItem()
+  }, [deleteItem])
+
+  const handleConfirmParse = useCallback(() => {
+    void confirmParse()
+  }, [confirmParse])
 
   // The two Parse trigger variants — the active button, and a disabled clone wrapped in a span so the
   // rate-limit tooltip still resolves a hover target (Base UI tooltips need a non-disabled trigger).
@@ -202,14 +224,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         <span className={actionbarLabelClass(1)}>Pin</span>
       </Button>
       <CopyButton value={copyValue} text="Copy" textClassName={actionbarLabelClass(2)} isRestricted={isRestricted} onUpgrade={closeDrawer} />
-      <Button variant="ghost" size="sm" onClick={(e) => {
-        if (isRestricted) {
-          e.preventDefault()
-          flashEditError()
-          return
-        }
-        onEdit()
-      }} disabled={isLight}>
+      <Button variant="ghost" size="sm" onClick={handleEditClick} disabled={isLight}>
         {showEditError ? <XCircle className="size-4 text-destructive" /> : <Pencil className="size-4" />}
         <span className={actionbarLabelClass(3)}>Edit</span>
       </Button>
@@ -228,7 +243,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         variant="ghost"
         size="icon-sm"
         className={canParse ? 'text-destructive hover:text-destructive' : 'ml-auto text-destructive hover:text-destructive'}
-        onClick={() => setDeleteDialogOpen(true)}
+        onClick={openDeleteDialog}
       >
         <Trash2 className="size-4" />
       </Button>
@@ -239,8 +254,8 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         title="Delete item?"
         description={`Are you sure you want to delete this ${item.itemType.name}? This action cannot be undone.`}
         confirmLabel="Delete"
-        onConfirm={() => deleteMutation.mutate()}
-        isPending={deleteMutation.isPending}
+        onConfirm={confirmDelete}
+        isPending={isPending}
         cancelLabel="Cancel"
         destructive
       />
@@ -251,7 +266,7 @@ export function ItemDrawerActionBar({ item, isLight, fullItem, onEdit, onDeleted
         title="Start Brain Dump?"
         description={`AI will split this ${item.itemType.name} into ready-to-save items. This uses one of your hourly Brain Dump runs.`}
         confirmLabel="Start Brain Dump"
-        onConfirm={() => void confirmParse()}
+        onConfirm={handleConfirmParse}
         isPending={isParsing}
         cancelLabel="Cancel"
       />

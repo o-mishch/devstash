@@ -1,13 +1,34 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import type { Session } from 'next-auth'
+import type { redirect } from 'next/navigation'
+import type { withRateLimit, getActionIP } from '@/lib/infra/rate-limit'
+import type { signIn as SignInFn } from '@/auth'
+import type { rateLimitAction as RateLimitActionFn } from '@/lib/infra/rate-limit'
+import type {
+  getPendingLink as GetPendingLinkFn,
+  consumePendingLink as ConsumePendingLinkFn,
+} from '@/lib/auth/pending-link'
+import type {
+  validateUserPassword as ValidateUserPasswordFn,
+  linkPendingAccount as LinkPendingAccountFn,
+} from '@/lib/auth/auth-service'
+
+// `auth` from '@/auth' is NextAuth's overloaded universal helper (session getter, middleware
+// wrapper, API-route helper, ...). Only the zero-arg "get the current session" overload is
+// exercised in this file, so the mock is narrowed to that single call signature — `Mock<T>` can't
+// represent the full overloaded intersection type.
+type AuthSessionFn = () => Promise<Session | null>
 
 vi.mock('next/navigation', () => ({
-  redirect: vi.fn((url: string) => {
+  redirect: vi.fn<typeof redirect>((url: string) => {
     throw new Error(`REDIRECT:${url}`)
   }),
 }))
 
 vi.mock('next/headers', () => ({
-  cookies: vi.fn().mockResolvedValue({ delete: vi.fn() }),
+  cookies: vi
+    .fn<() => Promise<{ delete: (name: string) => void }>>()
+    .mockResolvedValue({ delete: vi.fn<() => void>() }),
 }))
 
 const { MockAuthError } = vi.hoisted(() => {
@@ -19,25 +40,25 @@ const { MockAuthError } = vi.hoisted(() => {
 
 vi.mock('next-auth', () => ({ AuthError: MockAuthError }))
 vi.mock('@/auth', () => ({
-  signIn: vi.fn(),
-  auth: vi.fn(),
+  signIn: vi.fn<typeof SignInFn>(),
+  auth: vi.fn<AuthSessionFn>(),
   LINK_INTENT_COOKIE: 'devstash_link_token',
 }))
 
 vi.mock('@/lib/infra/rate-limit', () => ({
-  withRateLimit: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
-  rateLimitAction: vi.fn().mockResolvedValue(null),
-  getActionIP: vi.fn().mockResolvedValue('127.0.0.1'),
+  withRateLimit: vi.fn<typeof withRateLimit>((_key, fn) => fn()),
+  rateLimitAction: vi.fn<typeof RateLimitActionFn>().mockResolvedValue(null),
+  getActionIP: vi.fn<typeof getActionIP>().mockResolvedValue('127.0.0.1'),
 }))
 
 vi.mock('@/lib/auth/pending-link', () => ({
-  getPendingLink: vi.fn(),
-  consumePendingLink: vi.fn(),
+  getPendingLink: vi.fn<typeof GetPendingLinkFn>(),
+  consumePendingLink: vi.fn<typeof ConsumePendingLinkFn>(),
 }))
 
 vi.mock('@/lib/auth/auth-service', () => ({
-  validateUserPassword: vi.fn(),
-  linkPendingAccount: vi.fn(),
+  validateUserPassword: vi.fn<typeof ValidateUserPasswordFn>(),
+  linkPendingAccount: vi.fn<typeof LinkPendingAccountFn>(),
 }))
 
 import { signIn, auth } from '@/auth'
@@ -46,13 +67,13 @@ import { getPendingLink, consumePendingLink } from '@/lib/auth/pending-link'
 import { validateUserPassword, linkPendingAccount } from '@/lib/auth/auth-service'
 import { linkAccountAction, autoLinkAccountAction } from './link'
 
-const mockGetPendingLink = getPendingLink as ReturnType<typeof vi.fn>
-const mockConsumePendingLink = consumePendingLink as ReturnType<typeof vi.fn>
-const mockRateLimitAction = rateLimitAction as ReturnType<typeof vi.fn>
-const mockValidateUserPassword = validateUserPassword as ReturnType<typeof vi.fn>
-const mockLinkPendingAccount = linkPendingAccount as ReturnType<typeof vi.fn>
-const mockSignIn = signIn as ReturnType<typeof vi.fn>
-const mockAuth = auth as ReturnType<typeof vi.fn>
+const mockGetPendingLink = vi.mocked(getPendingLink)
+const mockConsumePendingLink = vi.mocked(consumePendingLink)
+const mockRateLimitAction = vi.mocked(rateLimitAction)
+const mockValidateUserPassword = vi.mocked(validateUserPassword)
+const mockLinkPendingAccount = vi.mocked(linkPendingAccount)
+const mockSignIn = vi.mocked(signIn)
+const mockAuth = vi.mocked<AuthSessionFn>(auth)
 
 const pending = {
   email: 'user@example.com',
@@ -73,10 +94,24 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockGetPendingLink.mockResolvedValue(pending)
   mockConsumePendingLink.mockResolvedValue(pending)
-  mockValidateUserPassword.mockResolvedValue({ id: 'u1', email: pending.email })
+  mockValidateUserPassword.mockResolvedValue({
+    id: 'u1',
+    email: pending.email,
+    name: null,
+    image: null,
+    password: 'hashed',
+    emailVerified: null,
+    credentialEmail: null,
+    credentialEmailVerified: null,
+    matchedField: 'email',
+    matchedVerified: null,
+  })
   mockLinkPendingAccount.mockResolvedValue(undefined)
   mockSignIn.mockResolvedValue(undefined)
-  mockAuth.mockResolvedValue({ user: { id: 'u1', email: pending.email } })
+  mockAuth.mockResolvedValue({
+    user: { id: 'u1', email: pending.email, name: null, image: null, isPro: false },
+    expires: '2099-01-01T00:00:00.000Z',
+  })
 })
 
 describe('linkAccountAction', () => {
@@ -184,7 +219,10 @@ describe('autoLinkAccountAction', () => {
   })
 
   it('consumes the token and redirects when the session email mismatches', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'u1', email: 'other@example.com' } })
+    mockAuth.mockResolvedValue({
+      user: { id: 'u1', email: 'other@example.com', name: null, image: null, isPro: false },
+      expires: '2099-01-01T00:00:00.000Z',
+    })
     await expect(autoLinkAccountAction('tok')).rejects.toThrow('REDIRECT:/profile?toast=mismatch')
     expect(mockConsumePendingLink).toHaveBeenCalledWith('tok')
     expect(mockLinkPendingAccount).not.toHaveBeenCalled()

@@ -1,6 +1,6 @@
 'use client'
 
-import type { CSSProperties, MouseEvent, ReactNode } from 'react'
+import { memo, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -62,7 +62,12 @@ interface ResponsiveFormDialogProps {
 // Shared responsive shell: a centered Dialog on desktop, a swipe-to-dismiss BottomSheet on
 // mobile (`<768px`). Owns the single breakpoint + the title/description chrome so each create
 // flow only supplies its form body. Used by the item- and collection-create dialogs.
-export function ResponsiveFormDialog({
+const getMorphStyle = (morphOrigin: MorphOrigin) => ({
+  '--ds-morph-x': `${morphOrigin.x}px`,
+  '--ds-morph-y': `${morphOrigin.y}px`,
+} as CSSProperties)
+
+export const ResponsiveFormDialog = memo(function ResponsiveFormDialog({
   open,
   onOpenChange,
   title,
@@ -78,9 +83,7 @@ export function ResponsiveFormDialog({
   const isDesktop = useMediaQuery('(min-width: 768px)')
 
   if (isDesktop) {
-    const morphStyle = morphOrigin
-      ? ({ '--ds-morph-x': `${morphOrigin.x}px`, '--ds-morph-y': `${morphOrigin.y}px` } as CSSProperties)
-      : undefined
+    const morphStyle = morphOrigin ? getMorphStyle(morphOrigin) : undefined
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className={desktopClassName} morph={Boolean(morphOrigin)} elevated={elevated} style={morphStyle}>
@@ -99,4 +102,4 @@ export function ResponsiveFormDialog({
       {(scrolled) => children(false, scrolled)}
     </BottomSheet>
   )
-}
+})

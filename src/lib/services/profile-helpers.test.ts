@@ -1,29 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Prisma } from '@/generated/prisma'
+import type { verifyUserPasswordById } from '@/lib/auth/auth-service'
+import type { outboundEmailEnabled } from '@/lib/utils/auth'
 
 vi.mock('@/lib/auth/auth-service', () => ({
-  verifyUserPasswordById: vi.fn(),
+  verifyUserPasswordById: vi.fn<typeof verifyUserPasswordById>(),
 }))
 vi.mock('@/lib/db/profile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/db/profile')>()
   return {
-    getProfileData: vi.fn(),
-    updateUserEmail: vi.fn(),
+    getProfileData: vi.fn<typeof actual.getProfileData>(),
+    updateUserEmail: vi.fn<typeof actual.updateUserEmail>(),
     buildOwnedEmails: actual.buildOwnedEmails,
     getProfileAccountSummary: actual.getProfileAccountSummary,
   }
 })
-const { mockOutboundEmailEnabled } = vi.hoisted(() => ({ mockOutboundEmailEnabled: vi.fn() }))
+const { mockOutboundEmailEnabled } = vi.hoisted(() => ({
+  mockOutboundEmailEnabled: vi.fn<typeof outboundEmailEnabled>(),
+}))
 vi.mock('@/lib/utils/auth', () => ({ outboundEmailEnabled: mockOutboundEmailEnabled }))
-vi.mock('@/lib/db/users', () => ({
-  isEmailTakenByAnotherUser: vi.fn(),
-}))
-vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', () => ({
-  syncStripeCustomerEmailForUserSafe: vi.fn(),
-}))
-vi.mock('@/lib/infra/cache', () => ({
-  invalidateProfileCache: vi.fn(),
-}))
+vi.mock('@/lib/db/users', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/db/users')>()
+  return {
+    isEmailTakenByAnotherUser: vi.fn<typeof actual.isEmailTakenByAnotherUser>(),
+  }
+})
+vi.mock('@/lib/billing/lifecycle/stripe-billing-lifecycle', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/billing/lifecycle/stripe-billing-lifecycle')>()
+  return {
+    syncStripeCustomerEmailForUserSafe: vi.fn<typeof actual.syncStripeCustomerEmailForUserSafe>(),
+  }
+})
+vi.mock('@/lib/infra/cache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/infra/cache')>()
+  return {
+    invalidateProfileCache: vi.fn<typeof actual.invalidateProfileCache>(),
+  }
+})
 
 import { getProfileData, updateUserEmail } from '@/lib/db/profile'
 import { isEmailTakenByAnotherUser } from '@/lib/db/users'

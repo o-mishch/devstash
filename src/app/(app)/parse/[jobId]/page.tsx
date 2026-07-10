@@ -43,6 +43,19 @@ export default async function ParseJobPage({ params, searchParams }: ParseJobPag
   const suggestedCollectionName =
     (snapshot.sourceName && deriveCollectionName(snapshot.sourceName)) || deriveBrainDumpNoteTitle()
 
+  // Honest residual (react-perf/jsx-no-new-object-as-prop): built from request-scoped `snapshot` data,
+  // so it can't be hoisted to module scope, and this file has no 'use client' directive (Server
+  // Component — no useMemo available). Extracting to a local const is as far as this can honestly go.
+  const initialSnapshot = {
+    status: snapshot.status,
+    progress: snapshot.progress,
+    error: snapshot.error,
+    truncated: snapshot.truncated,
+    committedCount: snapshot.committedCount,
+    committedByType: snapshot.committedByType,
+    items: snapshot.items,
+  }
+
   return (
     <div className="app-page gap-4 p-3 sm:gap-6 sm:p-6">
       <Link
@@ -59,15 +72,7 @@ export default async function ParseJobPage({ params, searchParams }: ParseJobPag
         sourceItemId={snapshot.sourceItemId}
         sourceName={snapshot.sourceName}
         truncated={snapshot.truncated}
-        initialSnapshot={{
-          status: snapshot.status,
-          progress: snapshot.progress,
-          error: snapshot.error,
-          truncated: snapshot.truncated,
-          committedCount: snapshot.committedCount,
-          committedByType: snapshot.committedByType,
-          items: snapshot.items,
-        }}
+        initialSnapshot={initialSnapshot}
         highlightItemId={highlightItemId}
       />
     </div>

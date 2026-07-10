@@ -29,13 +29,18 @@ function SkeletonCardHeader({ icon: Icon, title, headerAction }: SkeletonCardHea
   )
 }
 
+// Hoisted module-level constant, not created per-render: the placeholder has no dependency on
+// props/state, so a single shared element instance is created once ever rather than a fresh one on
+// every render.
+const VIEW_ALL_SKELETON = <Skeleton className="h-4 w-12" />
+
 export function CollectionsGridSkeleton() {
   return (
     <Card className="overflow-visible bg-[var(--muted,var(--background))] border-l-2 border-l-accent">
       <SkeletonCardHeader
         icon={Folder}
         title="Collections"
-        headerAction={<Skeleton className="h-4 w-12" />}
+        headerAction={VIEW_ALL_SKELETON}
       />
       <CardContent className="overflow-visible pt-0">
         <div className="app-grid card-grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">

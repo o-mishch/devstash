@@ -2,6 +2,7 @@
 
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
+import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api/client'
 
@@ -21,11 +22,13 @@ export function ResendVerificationButton({ email }: ResendVerificationButtonProp
     onSuccess: () => router.push('/sign-in?resent=1'),
     onError: (error: Error) => toast.error(error.message || RESEND_ERROR),
   })
+  const { mutate } = resendMutation
+  const handleClick = useCallback(() => mutate(), [mutate])
 
   return (
     <button
       type="button"
-      onClick={() => resendMutation.mutate()}
+      onClick={handleClick}
       disabled={resendMutation.isPending}
       className="text-sm text-primary underline-offset-4 hover:underline disabled:opacity-50"
     >

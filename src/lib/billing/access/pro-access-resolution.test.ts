@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { LogFn } from 'pino'
+import type { getUserStripeInfo } from '@/lib/db/stripe'
 
 const reactCacheStore = new Map<string, unknown>()
 
@@ -6,8 +8,8 @@ const {
   mockGetCachedUserStripeInfo,
   mockGetFreshUserStripeInfo,
 } = vi.hoisted(() => ({
-  mockGetCachedUserStripeInfo: vi.fn(),
-  mockGetFreshUserStripeInfo: vi.fn(),
+  mockGetCachedUserStripeInfo: vi.fn<typeof getUserStripeInfo>(),
+  mockGetFreshUserStripeInfo: vi.fn<typeof getUserStripeInfo>(),
 }))
 
 vi.mock('react', () => ({
@@ -28,7 +30,7 @@ vi.mock('@/lib/billing/sync/user-billing-state', () => ({
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() }) },
 }))
 
 vi.unmock('@/lib/billing/access/pro-access-resolution')
@@ -48,6 +50,7 @@ const baseStripeRow = {
   email: 'user@example.com',
   stripeCustomerId: 'cus_1',
   stripeSubscriptionId: 'sub_1',
+  stripeSubscriptionStatus: 'active',
   isPro: true,
   stripeSubscriptionStart: new Date('2026-01-01T00:00:00.000Z'),
   stripeCurrentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),

@@ -1,37 +1,61 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { readJson } from '@/test/matchers'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { invalidateItemsCache, invalidateCollectionsCache } from '@/lib/infra/cache'
+import type { checkRateLimit as CheckRateLimitFn, deniedMessage } from '@/lib/infra/rate-limit'
+import type {
+  getRecentItemsPage as GetRecentItemsPageFn,
+  getItemsByTypePage as GetItemsByTypePageFn,
+  getItemsByCollectionPage as GetItemsByCollectionPageFn,
+  getFavoriteItemsPage as GetFavoriteItemsPageFn,
+  createItem as CreateItemFn,
+  getItemForAuth as GetItemForAuthFn,
+  updateItem as UpdateItemFn,
+  deleteItem as DeleteItemFn,
+  getItemDetails as GetItemDetailsFn,
+  getItemContent as GetItemContentFn,
+  toggleItemFavorite as ToggleItemFavoriteFn,
+  toggleItemPinned as ToggleItemPinnedFn,
+} from '@/lib/db/items'
+import type { canCreateItem as CanCreateItemFn } from '@/lib/db/usage'
+import type { deleteFromS3 } from '@/lib/storage/s3'
+import type { deleteStoredFile } from '@/lib/storage/image-thumbnails'
+import type { consumePendingUpload as ConsumePendingUploadFn } from '@/lib/storage/upload-tokens'
 
 // Route handlers are tested by invoking the exported handler with a mocked NextRequest and asserting
 // res.status + await res.json(). Session/Pro/db/storage are mocked as the oRPC items suite did.
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
+}))
 vi.mock('@/lib/infra/cache', () => ({
-  invalidateItemsCache: vi.fn(),
-  invalidateCollectionsCache: vi.fn(),
+  invalidateItemsCache: vi.fn<typeof invalidateItemsCache>(),
+  invalidateCollectionsCache: vi.fn<typeof invalidateCollectionsCache>(),
 }))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
+  deniedMessage: vi.fn<typeof deniedMessage>((retryAfter) => `Too many attempts (${retryAfter}s).`),
 }))
 vi.mock('@/lib/db/items', () => ({
-  getRecentItemsPage: vi.fn(),
-  getItemsByTypePage: vi.fn(),
-  getItemsByCollectionPage: vi.fn(),
-  getFavoriteItemsPage: vi.fn(),
-  createItem: vi.fn(),
-  getItemForAuth: vi.fn(),
-  updateItem: vi.fn(),
-  deleteItem: vi.fn(),
-  getItemDetails: vi.fn(),
-  getItemContent: vi.fn(),
-  toggleItemFavorite: vi.fn(),
-  toggleItemPinned: vi.fn(),
+  getRecentItemsPage: vi.fn<typeof GetRecentItemsPageFn>(),
+  getItemsByTypePage: vi.fn<typeof GetItemsByTypePageFn>(),
+  getItemsByCollectionPage: vi.fn<typeof GetItemsByCollectionPageFn>(),
+  getFavoriteItemsPage: vi.fn<typeof GetFavoriteItemsPageFn>(),
+  createItem: vi.fn<typeof CreateItemFn>(),
+  getItemForAuth: vi.fn<typeof GetItemForAuthFn>(),
+  updateItem: vi.fn<typeof UpdateItemFn>(),
+  deleteItem: vi.fn<typeof DeleteItemFn>(),
+  getItemDetails: vi.fn<typeof GetItemDetailsFn>(),
+  getItemContent: vi.fn<typeof GetItemContentFn>(),
+  toggleItemFavorite: vi.fn<typeof ToggleItemFavoriteFn>(),
+  toggleItemPinned: vi.fn<typeof ToggleItemPinnedFn>(),
 }))
-vi.mock('@/lib/db/usage', () => ({ canCreateItem: vi.fn(), FREE_TIER_ITEM_LIMIT: 50 }))
-vi.mock('@/lib/storage/s3', () => ({ deleteFromS3: vi.fn() }))
-vi.mock('@/lib/storage/image-thumbnails', () => ({ deleteStoredFile: vi.fn() }))
-vi.mock('@/lib/storage/upload-tokens', () => ({ consumePendingUpload: vi.fn() }))
+vi.mock('@/lib/db/usage', () => ({ canCreateItem: vi.fn<typeof CanCreateItemFn>(), FREE_TIER_ITEM_LIMIT: 50 }))
+vi.mock('@/lib/storage/s3', () => ({ deleteFromS3: vi.fn<typeof deleteFromS3>() }))
+vi.mock('@/lib/storage/image-thumbnails', () => ({ deleteStoredFile: vi.fn<typeof deleteStoredFile>() }))
+vi.mock('@/lib/storage/upload-tokens', () => ({ consumePendingUpload: vi.fn<typeof ConsumePendingUploadFn>() }))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
@@ -60,23 +84,23 @@ import { GET as GET_CONTENT } from './[id]/content/route'
 import { PATCH as PATCH_FAVORITE } from './[id]/favorite/route'
 import { PATCH as PATCH_PINNED } from './[id]/pinned/route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockRecent = getRecentItemsPage as ReturnType<typeof vi.fn>
-const mockByType = getItemsByTypePage as ReturnType<typeof vi.fn>
-const mockByCollection = getItemsByCollectionPage as ReturnType<typeof vi.fn>
-const mockFavorites = getFavoriteItemsPage as ReturnType<typeof vi.fn>
-const mockCreate = createItem as ReturnType<typeof vi.fn>
-const mockGetForAuth = getItemForAuth as ReturnType<typeof vi.fn>
-const mockUpdate = updateItem as ReturnType<typeof vi.fn>
-const mockDelete = deleteItem as ReturnType<typeof vi.fn>
-const mockGetDetails = getItemDetails as ReturnType<typeof vi.fn>
-const mockGetContent = getItemContent as ReturnType<typeof vi.fn>
-const mockToggleFavorite = toggleItemFavorite as ReturnType<typeof vi.fn>
-const mockTogglePinned = toggleItemPinned as ReturnType<typeof vi.fn>
-const mockCanCreate = canCreateItem as ReturnType<typeof vi.fn>
-const mockConsumeUpload = consumePendingUpload as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockIsPro = vi.mocked(getCachedVerifiedProAccess)
+const mockRateLimit = vi.mocked(checkRateLimit)
+const mockRecent = vi.mocked(getRecentItemsPage)
+const mockByType = vi.mocked(getItemsByTypePage)
+const mockByCollection = vi.mocked(getItemsByCollectionPage)
+const mockFavorites = vi.mocked(getFavoriteItemsPage)
+const mockCreate = vi.mocked(createItem)
+const mockGetForAuth = vi.mocked(getItemForAuth)
+const mockUpdate = vi.mocked(updateItem)
+const mockDelete = vi.mocked(deleteItem)
+const mockGetDetails = vi.mocked(getItemDetails)
+const mockGetContent = vi.mocked(getItemContent)
+const mockToggleFavorite = vi.mocked(toggleItemFavorite)
+const mockTogglePinned = vi.mocked(toggleItemPinned)
+const mockCanCreate = vi.mocked(canCreateItem)
+const mockConsumeUpload = vi.mocked(consumePendingUpload)
 
 const lightItem = {
   id: 'item-1',
@@ -110,7 +134,7 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) })
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: false }, expires: '2099-01-01T00:00:00.000Z' })
   mockIsPro.mockResolvedValue(false)
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
   mockCanCreate.mockResolvedValue(true)

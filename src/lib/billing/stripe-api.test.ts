@@ -1,9 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Stripe from 'stripe'
+import type { Logger } from 'pino'
+
+// Mirrors the real `stripe.subscriptions.retrieve` / `stripe.checkout.sessions.retrieve`
+// call signatures, minus the SDK's `Response<T>` wire-envelope (the `lastResponse` field) —
+// nothing in this file or in `stripe-api.ts` reads it, so fixtures stay plain `Stripe.Subscription` /
+// `Stripe.Checkout.Session` objects instead of fabricating a meaningless envelope.
+type SubscriptionsRetrieve = (
+  id: string,
+  params?: Stripe.SubscriptionRetrieveParams,
+  options?: Stripe.RequestOptions,
+) => Promise<Stripe.Subscription>
+
+type CheckoutSessionsRetrieve = (
+  id: string,
+  params?: Stripe.Checkout.SessionRetrieveParams,
+  options?: Stripe.RequestOptions,
+) => Promise<Stripe.Checkout.Session>
 
 const { mockSubscriptionsRetrieve, mockCheckoutSessionsRetrieve } = vi.hoisted(() => ({
-  mockSubscriptionsRetrieve: vi.fn(),
-  mockCheckoutSessionsRetrieve: vi.fn(),
+  mockSubscriptionsRetrieve: vi.fn<SubscriptionsRetrieve>(),
+  mockCheckoutSessionsRetrieve: vi.fn<CheckoutSessionsRetrieve>(),
 }))
 
 vi.mock('@/lib/infra/stripe', () => ({
@@ -14,7 +31,13 @@ vi.mock('@/lib/infra/stripe', () => ({
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: {
+    child: () => ({
+      info: vi.fn<Logger['info']>(),
+      warn: vi.fn<Logger['warn']>(),
+      error: vi.fn<Logger['error']>(),
+    }),
+  },
 }))
 
 import {
@@ -64,7 +87,7 @@ describe('fetchLiveSubscriptionState', () => {
       items: {
         data: [{ id: 'si_1', current_period_end: 1_700_000_000, price: { id: 'price_monthly', recurring: { interval: 'month' } } }],
       },
-    })
+    } as Stripe.Subscription)
 
     const result = await fetchLiveSubscriptionState('sub_123')
 
@@ -100,15 +123,16 @@ describe('fetchCheckoutSessionDetails', () => {
   })
 
   it('returns session ownership and subscription fields', async () => {
+    const subscriptionMetadata: Stripe.Metadata = { userId: 'user-1' }
     mockCheckoutSessionsRetrieve.mockResolvedValue({
       customer: 'cus_123',
       payment_status: 'paid',
       client_reference_id: 'user-1',
       subscription: {
         id: 'sub_123',
-        metadata: { userId: 'user-1' },
-      },
-    })
+        metadata: subscriptionMetadata,
+      } as Stripe.Subscription,
+    } as Stripe.Checkout.Session)
 
     const result = await fetchCheckoutSessionDetails('cs_123')
 

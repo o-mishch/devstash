@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Resend } from 'resend'
+import type { Logger } from 'pino'
 
-const mockSend = vi.fn()
+const mockSend = vi.fn<InstanceType<typeof Resend>['emails']['send']>()
 
 vi.mock('resend', () => ({
   Resend: class MockResend {
@@ -9,7 +11,9 @@ vi.mock('resend', () => ({
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ error: vi.fn(), info: vi.fn() }) },
+  logger: {
+    child: () => ({ error: vi.fn<Logger['error']>(), info: vi.fn<Logger['info']>() }),
+  },
 }))
 
 describe('resend helpers', () => {

@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { getUserStripeInfo } from '@/lib/db/stripe'
+import type { fetchLiveSubscriptionState } from '@/lib/billing/stripe-api'
 import {
   loadBillingDisplayContext,
   resolveNeedsBillingRecovery,
@@ -6,7 +8,7 @@ import {
 } from './user-billing-state'
 
 const { mockGetUserStripeInfo } = vi.hoisted(() => ({
-  mockGetUserStripeInfo: vi.fn(),
+  mockGetUserStripeInfo: vi.fn<typeof getUserStripeInfo>(),
 }))
 
 vi.mock('@/lib/db/stripe', () => ({
@@ -14,7 +16,7 @@ vi.mock('@/lib/db/stripe', () => ({
 }))
 
 vi.mock('@/lib/billing/stripe-api', () => ({
-  fetchLiveSubscriptionState: vi.fn(),
+  fetchLiveSubscriptionState: vi.fn<typeof fetchLiveSubscriptionState>(),
 }))
 
 const baseStripeInfo = {

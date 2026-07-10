@@ -1,5 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type Stripe from 'stripe'
+import type { getUserById } from '@/lib/db/users'
+import type { fetchSubscriptionDetails, retrieveStripeCharge, retrieveStripeCustomer } from '@/lib/billing/stripe-api'
+import type {
+  cancelAbandonedSubscription,
+  cancelSubscriptionImmediately,
+  createPortalSession,
+  isChargeFullyRefunded,
+} from '@/lib/infra/stripe'
+import type {
+  applySubscriptionStateWithBackfill,
+  persistSubscriptionFromStripe,
+  reconcileSubscriptionById,
+  upsertSubscriptionStateFromObject,
+} from '@/lib/billing/subscription/stripe-subscription-persist'
+import type {
+  clearStripeCustomerByCustomerId,
+  clearStripeSubscriptionBySubId,
+  resolveAppUserIdForSubscription,
+} from '@/lib/billing/subscription/subscription-state'
+import type { getUserIdByStripeCustomerId } from '@/lib/db/stripe'
+import type { sendBillingPaymentFailedEmail } from '@/lib/billing/emails/billing-payment-failed'
+import type { sendBillingCheckoutPaymentFailedEmail } from '@/lib/billing/emails/billing-checkout-payment-failed'
+import type { sendBillingTrialEndingEmail } from '@/lib/billing/emails/billing-trial-ending'
+import type { sendBillingDisputeAdminEmail } from '@/lib/billing/emails/billing-dispute-admin'
+import type { BillingRecoveryEmailSendArgs } from './stripe-webhook-event-handlers'
+import type { EmailSendResult } from '@/lib/infra/resend'
 
 const {
   mockFetchSubscriptionDetails,
@@ -21,24 +47,24 @@ const {
   mockGetUserIdByStripeCustomerId,
   mockGetUserById,
 } = vi.hoisted(() => ({
-  mockFetchSubscriptionDetails: vi.fn(),
-  mockPersistSubscriptionFromStripe: vi.fn(),
-  mockResolveAppUserIdForSubscription: vi.fn(),
-  mockCancelSubscriptionImmediately: vi.fn(),
-  mockIsChargeFullyRefunded: vi.fn(),
-  mockStripeChargesRetrieve: vi.fn(),
-  mockReconcileSubscriptionById: vi.fn(),
-  mockApplySubscriptionStateWithBackfill: vi.fn(),
-  mockClearStripeSubscriptionBySubId: vi.fn(),
-  mockSendBillingDisputeAdminEmail: vi.fn(),
-  mockCreatePortalSession: vi.fn(),
-  mockSendBillingPaymentFailedEmail: vi.fn(),
-  mockSendBillingTrialEndingEmail: vi.fn(),
-  mockStripeCustomersRetrieve: vi.fn(),
-  mockUpsertSubscriptionStateFromObject: vi.fn(),
-  mockClearStripeCustomerByCustomerId: vi.fn(),
-  mockGetUserIdByStripeCustomerId: vi.fn(),
-  mockGetUserById: vi.fn(),
+  mockFetchSubscriptionDetails: vi.fn<typeof fetchSubscriptionDetails>(),
+  mockPersistSubscriptionFromStripe: vi.fn<typeof persistSubscriptionFromStripe>(),
+  mockResolveAppUserIdForSubscription: vi.fn<typeof resolveAppUserIdForSubscription>(),
+  mockCancelSubscriptionImmediately: vi.fn<typeof cancelSubscriptionImmediately>(),
+  mockIsChargeFullyRefunded: vi.fn<typeof isChargeFullyRefunded>(),
+  mockStripeChargesRetrieve: vi.fn<typeof retrieveStripeCharge>(),
+  mockReconcileSubscriptionById: vi.fn<typeof reconcileSubscriptionById>(),
+  mockApplySubscriptionStateWithBackfill: vi.fn<typeof applySubscriptionStateWithBackfill>(),
+  mockClearStripeSubscriptionBySubId: vi.fn<typeof clearStripeSubscriptionBySubId>(),
+  mockSendBillingDisputeAdminEmail: vi.fn<typeof sendBillingDisputeAdminEmail>(),
+  mockCreatePortalSession: vi.fn<typeof createPortalSession>(),
+  mockSendBillingPaymentFailedEmail: vi.fn<typeof sendBillingPaymentFailedEmail>(),
+  mockSendBillingTrialEndingEmail: vi.fn<typeof sendBillingTrialEndingEmail>(),
+  mockStripeCustomersRetrieve: vi.fn<typeof retrieveStripeCustomer>(),
+  mockUpsertSubscriptionStateFromObject: vi.fn<typeof upsertSubscriptionStateFromObject>(),
+  mockClearStripeCustomerByCustomerId: vi.fn<typeof clearStripeCustomerByCustomerId>(),
+  mockGetUserIdByStripeCustomerId: vi.fn<typeof getUserIdByStripeCustomerId>(),
+  mockGetUserById: vi.fn<typeof getUserById>(),
 }))
 
 vi.mock('@/lib/db/users', () => ({
@@ -46,7 +72,13 @@ vi.mock('@/lib/db/users', () => ({
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: {
+    child: () => ({
+      info: vi.fn<(bindings: unknown, msg?: string) => void>(),
+      warn: vi.fn<(bindings: unknown, msg?: string) => void>(),
+      error: vi.fn<(bindings: unknown, msg?: string) => void>(),
+    }),
+  },
 }))
 
 vi.mock('@/lib/billing/stripe-api', async (importOriginal) => {
@@ -60,7 +92,7 @@ vi.mock('@/lib/billing/stripe-api', async (importOriginal) => {
 })
 
 vi.mock('@/lib/infra/stripe', () => ({
-  cancelAbandonedSubscription: vi.fn(),
+  cancelAbandonedSubscription: vi.fn<typeof cancelAbandonedSubscription>(),
   cancelSubscriptionImmediately: mockCancelSubscriptionImmediately,
   createPortalSession: mockCreatePortalSession,
   isChargeFullyRefunded: mockIsChargeFullyRefunded,
@@ -101,7 +133,7 @@ vi.mock('@/lib/billing/emails/billing-payment-failed', () => ({
 }))
 
 vi.mock('@/lib/billing/emails/billing-checkout-payment-failed', () => ({
-  sendBillingCheckoutPaymentFailedEmail: vi.fn(),
+  sendBillingCheckoutPaymentFailedEmail: vi.fn<typeof sendBillingCheckoutPaymentFailedEmail>(),
 }))
 
 vi.mock('@/lib/billing/emails/billing-trial-ending', () => ({
@@ -246,7 +278,7 @@ describe('getSubscriptionIdFromInvoice', () => {
 describe('handleCheckoutSessionCompleted', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFetchSubscriptionDetails.mockResolvedValue({ userId: 'user-1' })
+    mockFetchSubscriptionDetails.mockResolvedValue({ ...activeSubscription, userId: 'user-1' })
     mockPersistSubscriptionFromStripe.mockResolvedValue({
       persisted: true,
       grantsAccess: true,
@@ -296,10 +328,11 @@ describe('handleChargeRefunded', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockFetchSubscriptionDetails.mockResolvedValue({
+      ...activeSubscription,
       status: 'active',
       currentPeriodEnd: periodEnd,
     })
-    mockReconcileSubscriptionById.mockResolvedValue({ status: 'active' })
+    mockReconcileSubscriptionById.mockResolvedValue({ ...activeSubscription, status: 'active' })
     mockClearStripeSubscriptionBySubId.mockResolvedValue({ count: 1 })
     mockCancelSubscriptionImmediately.mockResolvedValue(undefined)
   })
@@ -313,7 +346,7 @@ describe('handleChargeRefunded', () => {
 
   it('cancels Stripe subscription and revokes local access on a full refund when still entitled', async () => {
     mockIsChargeFullyRefunded.mockReturnValue(true)
-    mockReconcileSubscriptionById.mockResolvedValue({ status: 'active', currentPeriodEnd: periodEnd })
+    mockReconcileSubscriptionById.mockResolvedValue({ ...activeSubscription, status: 'active', currentPeriodEnd: periodEnd })
 
     await handleChargeRefunded(makeCharge({ amount_refunded: 1000 }))
 
@@ -324,7 +357,7 @@ describe('handleChargeRefunded', () => {
 
   it('reconciles without clearing when full refund leaves subscription entitled', async () => {
     mockIsChargeFullyRefunded.mockReturnValue(true)
-    mockReconcileSubscriptionById.mockResolvedValue({ status: 'canceled' })
+    mockReconcileSubscriptionById.mockResolvedValue({ ...activeSubscription, status: 'canceled' })
 
     await handleChargeRefunded(makeCharge({ amount_refunded: 1000 }))
 
@@ -348,16 +381,17 @@ describe('handleChargeDisputeClosed', () => {
     vi.clearAllMocks()
     mockStripeChargesRetrieve.mockResolvedValue(makeCharge())
     mockFetchSubscriptionDetails.mockResolvedValue({
+      ...activeSubscription,
       status: 'active',
       currentPeriodEnd: periodEnd,
     })
     mockClearStripeSubscriptionBySubId.mockResolvedValue({ count: 1 })
     mockCancelSubscriptionImmediately.mockResolvedValue(undefined)
-    mockReconcileSubscriptionById.mockResolvedValue({ status: 'active' })
+    mockReconcileSubscriptionById.mockResolvedValue({ ...activeSubscription, status: 'active' })
   })
 
   it('revokes local access when dispute is lost', async () => {
-    mockReconcileSubscriptionById.mockResolvedValue({ status: 'active', currentPeriodEnd: periodEnd })
+    mockReconcileSubscriptionById.mockResolvedValue({ ...activeSubscription, status: 'active', currentPeriodEnd: periodEnd })
 
     await handleChargeDisputeClosed({
       id: 'dp_123',
@@ -453,7 +487,7 @@ describe('handleInvoicePaid', () => {
 describe('handleInvoiceBillingRecovery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
+    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' } as Stripe.BillingPortal.Session)
     mockSendBillingPaymentFailedEmail.mockResolvedValue('sent')
   })
 
@@ -484,9 +518,9 @@ describe('handleSubscriptionDeleted', () => {
 describe('handleSubscriptionTrialWillEnd', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockReconcileSubscriptionById.mockResolvedValue(undefined)
-    mockStripeCustomersRetrieve.mockResolvedValue({ email: 'user@example.com' })
-    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
+    mockReconcileSubscriptionById.mockResolvedValue(null)
+    mockStripeCustomersRetrieve.mockResolvedValue({ email: 'user@example.com' } as Stripe.Customer)
+    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' } as Stripe.BillingPortal.Session)
     mockSendBillingTrialEndingEmail.mockResolvedValue('sent')
   })
 
@@ -506,7 +540,7 @@ describe('handleSubscriptionTrialWillEnd', () => {
 
   it('resolves primary email from DB instead of retrieving from Stripe customer', async () => {
     mockGetUserIdByStripeCustomerId.mockResolvedValue('user-1')
-    mockGetUserById.mockResolvedValue({ email: 'db-primary@example.com' })
+    mockGetUserById.mockResolvedValue({ id: 'user-1', email: 'db-primary@example.com' })
 
     await handleSubscriptionTrialWillEnd(makeSubscription({ status: 'trialing' }))
 
@@ -547,16 +581,16 @@ describe('sendBillingPortalRecoveryEmail', () => {
         customerId: 'cus_123',
         email: 'user@example.com',
         contextId: 'inv_123',
-        sendEmail: vi.fn(),
+        sendEmail: vi.fn<(args: BillingRecoveryEmailSendArgs) => Promise<EmailSendResult>>(),
       }),
     ).rejects.toThrow('billing recovery portal session failed')
   })
 
   it('resolves and uses the user\'s primary email from DB when customer links exist', async () => {
-    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
+    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' } as Stripe.BillingPortal.Session)
     mockGetUserIdByStripeCustomerId.mockResolvedValue('user-1')
-    mockGetUserById.mockResolvedValue({ email: 'primary@example.com' })
-    const mockSend = vi.fn().mockResolvedValue('sent')
+    mockGetUserById.mockResolvedValue({ id: 'user-1', email: 'primary@example.com' })
+    const mockSend = vi.fn<(args: BillingRecoveryEmailSendArgs) => Promise<EmailSendResult>>().mockResolvedValue('sent')
 
     const { sendBillingPortalRecoveryEmail } = await import('./stripe-webhook-event-handlers')
 
@@ -576,10 +610,10 @@ describe('sendBillingPortalRecoveryEmail', () => {
   })
 
   it('resolves DB email even if the Stripe email parameter is null', async () => {
-    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
+    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' } as Stripe.BillingPortal.Session)
     mockGetUserIdByStripeCustomerId.mockResolvedValue('user-1')
-    mockGetUserById.mockResolvedValue({ email: 'db-resolved@example.com' })
-    const mockSend = vi.fn().mockResolvedValue('sent')
+    mockGetUserById.mockResolvedValue({ id: 'user-1', email: 'db-resolved@example.com' })
+    const mockSend = vi.fn<(args: BillingRecoveryEmailSendArgs) => Promise<EmailSendResult>>().mockResolvedValue('sent')
 
     const { sendBillingPortalRecoveryEmail } = await import('./stripe-webhook-event-handlers')
 
@@ -599,9 +633,9 @@ describe('sendBillingPortalRecoveryEmail', () => {
   })
 
   it('falls back to the stripe email when no database user is found', async () => {
-    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' })
+    mockCreatePortalSession.mockResolvedValue({ url: 'https://billing.stripe.com/portal' } as Stripe.BillingPortal.Session)
     mockGetUserIdByStripeCustomerId.mockResolvedValue(null)
-    const mockSend = vi.fn().mockResolvedValue('sent')
+    const mockSend = vi.fn<(args: BillingRecoveryEmailSendArgs) => Promise<EmailSendResult>>().mockResolvedValue('sent')
 
     const { sendBillingPortalRecoveryEmail } = await import('./stripe-webhook-event-handlers')
 

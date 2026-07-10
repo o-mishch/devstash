@@ -1,15 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type Stripe from 'stripe'
+import type { LogFn } from 'pino'
+import type { resolveStripeCustomerForUser as RealResolveStripeCustomerForUser } from '@/lib/billing/checkout/stripe-checkout'
+import type {
+  resolveAppUserIdForSubscription as RealResolveAppUserIdForSubscription,
+  touchUserLastStripeSyncAt as RealTouchUserLastStripeSyncAt,
+} from '@/lib/billing/subscription/subscription-state'
+import type {
+  getCachedUserStripeInfo as RealGetCachedUserStripeInfo,
+  getFreshUserStripeInfo as RealGetFreshUserStripeInfo,
+} from '@/lib/billing/sync/user-billing-state'
+import type { applySubscriptionAccessFromStripe as RealApplySubscriptionAccessFromStripe } from '@/lib/billing/subscription/stripe-subscription-persist'
+import type { fetchSubscriptionDetails as RealFetchSubscriptionDetails } from '@/lib/billing/stripe-api'
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn<LogFn>(), warn: vi.fn<LogFn>(), error: vi.fn<LogFn>() }) },
 }))
 
 vi.mock('@/lib/billing/checkout/stripe-checkout', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/billing/checkout/stripe-checkout')>()
   return {
     ...actual,
-    resolveStripeCustomerForUser: vi.fn(),
+    resolveStripeCustomerForUser: vi.fn<typeof RealResolveStripeCustomerForUser>(),
   }
 })
 
@@ -17,25 +29,25 @@ vi.mock('@/lib/billing/subscription/subscription-state', async (importOriginal) 
   const actual = await importOriginal<typeof import('@/lib/billing/subscription/subscription-state')>()
   return {
     ...actual,
-    touchUserLastStripeSyncAt: vi.fn(),
-    resolveAppUserIdForSubscription: vi.fn(),
+    touchUserLastStripeSyncAt: vi.fn<typeof RealTouchUserLastStripeSyncAt>(),
+    resolveAppUserIdForSubscription: vi.fn<typeof RealResolveAppUserIdForSubscription>(),
   }
 })
 
 vi.mock('@/lib/billing/sync/user-billing-state', () => ({
-  getCachedUserStripeInfo: vi.fn(),
-  getFreshUserStripeInfo: vi.fn(),
+  getCachedUserStripeInfo: vi.fn<typeof RealGetCachedUserStripeInfo>(),
+  getFreshUserStripeInfo: vi.fn<typeof RealGetFreshUserStripeInfo>(),
 }))
 
 vi.mock('@/lib/billing/subscription/stripe-subscription-persist', () => ({
-  applySubscriptionAccessFromStripe: vi.fn(),
+  applySubscriptionAccessFromStripe: vi.fn<typeof RealApplySubscriptionAccessFromStripe>(),
 }))
 
 vi.mock('@/lib/billing/stripe-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/billing/stripe-api')>()
   return {
     ...actual,
-    fetchSubscriptionDetails: vi.fn(),
+    fetchSubscriptionDetails: vi.fn<typeof RealFetchSubscriptionDetails>(),
   }
 })
 
@@ -49,11 +61,11 @@ import {
   reconcileOrphanStripeSubscriptionForUser,
 } from '@/lib/billing/sync/passive-billing-sync'
 
-const mockResolveAppUserIdForSubscription = resolveAppUserIdForSubscription as ReturnType<typeof vi.fn>
-const mockGetCachedUserStripeInfo = getCachedUserStripeInfo as ReturnType<typeof vi.fn>
-const mockResolveStripeCustomerForUser = resolveStripeCustomerForUser as ReturnType<typeof vi.fn>
-const mockApplySubscriptionAccessFromStripe = applySubscriptionAccessFromStripe as ReturnType<typeof vi.fn>
-const mockFetchSubscriptionDetails = fetchSubscriptionDetails as ReturnType<typeof vi.fn>
+const mockResolveAppUserIdForSubscription = vi.mocked(resolveAppUserIdForSubscription)
+const mockGetCachedUserStripeInfo = vi.mocked(getCachedUserStripeInfo)
+const mockResolveStripeCustomerForUser = vi.mocked(resolveStripeCustomerForUser)
+const mockApplySubscriptionAccessFromStripe = vi.mocked(applySubscriptionAccessFromStripe)
+const mockFetchSubscriptionDetails = vi.mocked(fetchSubscriptionDetails)
 
 const blockingSubscription = {
   id: 'sub_123',

@@ -1,6 +1,6 @@
 'use client' // required: controls Sheet open state with useState
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
@@ -14,8 +14,10 @@ interface MobileDrawerProps {
 
 export function MobileDrawer({ sidebarData }: MobileDrawerProps) {
   const [open, setOpen] = useState(false)
+  const openDrawer = useCallback(() => setOpen(true), [])
+  const closeDrawer = useCallback(() => setOpen(false), [])
   // Left-anchored: a leftward (right-to-left) swipe slides it off-screen to close.
-  const swipe = useSwipeToDismiss({ direction: 'left', onDismiss: () => setOpen(false) })
+  const swipe = useSwipeToDismiss({ direction: 'left', onDismiss: closeDrawer })
 
   return (
     <>
@@ -23,7 +25,7 @@ export function MobileDrawer({ sidebarData }: MobileDrawerProps) {
         variant="ghost"
         size="icon"
         className="size-11 shrink-0 lg:hidden"
-        onClick={() => setOpen(true)}
+        onClick={openDrawer}
         aria-label="Open navigation"
       >
         <Menu className="size-5" />
@@ -40,7 +42,7 @@ export function MobileDrawer({ sidebarData }: MobileDrawerProps) {
           {...swipe.handlers}
         >
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <SidebarContent sidebarData={sidebarData} onClose={() => setOpen(false)} />
+          <SidebarContent sidebarData={sidebarData} onClose={closeDrawer} />
         </SheetContent>
       </Sheet>
     </>

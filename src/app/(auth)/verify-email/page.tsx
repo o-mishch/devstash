@@ -6,6 +6,10 @@ interface VerifyEmailPageProps {
   searchParams: Promise<{ token?: string }>
 }
 
+// Static across every render of this Server Component — hoisted so the `action` prop is a stable
+// reference instead of a new object literal per request (both success and error states use it).
+const SIGN_IN_ACTION = { label: 'Sign in', href: '/sign-in' }
+
 export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageProps) {
   const { token } = await searchParams
 
@@ -24,7 +28,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
         variant="error"
         title="Link invalid or expired"
         description="This verification link is invalid, has expired, or was already used. Sign in to request a new one."
-        action={{ label: 'Sign in', href: '/sign-in' }}
+        action={SIGN_IN_ACTION}
       />
     )
   }
@@ -36,7 +40,7 @@ export default async function VerifyEmailPage({ searchParams }: VerifyEmailPageP
       variant="success"
       title="Email verified"
       description="Your email address has been confirmed. You can now sign in to your account."
-      action={{ label: 'Sign in', href: '/sign-in' }}
+      action={SIGN_IN_ACTION}
     />
   )
 }

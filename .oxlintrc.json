@@ -65,10 +65,10 @@
         "react/react-in-jsx-scope": "off",
         "import/no-anonymous-default-export": "error",
         "react/rules-of-hooks": "error",
-        "react-perf/jsx-no-new-function-as-prop": "warn",
-        "react-perf/jsx-no-new-object-as-prop": "warn",
-        "react-perf/jsx-no-new-array-as-prop": "warn",
-        "react-perf/jsx-no-jsx-as-prop": "warn"
+        "react-perf/jsx-no-new-function-as-prop": "error",
+        "react-perf/jsx-no-new-object-as-prop": "error",
+        "react-perf/jsx-no-new-array-as-prop": "error",
+        "react-perf/jsx-no-jsx-as-prop": "error"
       },
       "globals": {
         "AudioWorkletGlobalScope": "readonly",
@@ -219,6 +219,39 @@
       }
     },
     {
+      // These are async Server Components under skins/ that render once per request and
+      // never re-render client-side, so react-perf's "memoize this prop" rationale (avoid
+      // breaking a memoized child's re-render check) doesn't apply — there is no re-render
+      // to protect against. Excludes skin-widget.tsx and mission-control/charts(-island).tsx,
+      // which are 'use client' and get real react-perf fixes.
+      "files": [
+        "**/dashboard/skins/aurora-skin.tsx",
+        "**/dashboard/skins/classic-skin.tsx",
+        "**/dashboard/skins/command-deck-skin.tsx",
+        "**/dashboard/skins/editorial-skin.tsx",
+        "**/dashboard/skins/holographic-skin.tsx",
+        "**/dashboard/skins/mission-control-skin.tsx",
+        "**/dashboard/skins/neon-grid-skin.tsx",
+        "**/dashboard/skins/orbital-skin.tsx",
+        "**/dashboard/skins/spatial-skin.tsx",
+        "**/dashboard/skins/shared.tsx",
+        "**/src/app/\\(auth\\)/link-account/page.tsx",
+        "**/src/app/\\(app\\)/parse/\\[jobId\\]/page.tsx",
+        "**/src/app/\\(app\\)/collections/\\[id\\]/page.tsx",
+        "**/src/app/\\(app\\)/dashboard/page.tsx",
+        "**/src/components/items/item-create-dialog.tsx"
+      ],
+      "plugins": [
+        "react-perf"
+      ],
+      "rules": {
+        "react-perf/jsx-no-new-function-as-prop": "off",
+        "react-perf/jsx-no-new-object-as-prop": "off",
+        "react-perf/jsx-no-new-array-as-prop": "off",
+        "react-perf/jsx-no-jsx-as-prop": "off"
+      }
+    },
+    {
       "files": [
         "**/*.test.ts"
       ],
@@ -233,7 +266,7 @@
         "vitest/no-unneeded-async-expect-function": "error",
         "vitest/prefer-called-exactly-once-with": "error",
         "vitest/require-local-test-context-for-concurrent-snapshots": "error",
-        "vitest/require-mock-type-parameters": "warn",
+        "vitest/require-mock-type-parameters": "error",
         "vitest/valid-describe-callback": "error",
         "vitest/valid-expect": "error",
         "vitest/valid-expect-in-promise": "error",

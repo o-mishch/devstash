@@ -1,6 +1,6 @@
 'use client'
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { motion, useReducedMotion, type Transition } from 'motion/react'
 
 // Open/close slide timing. Easing mirrors the old Sheet shell's cubic-bezier.
@@ -49,7 +49,10 @@ interface MobileItemPaneSliderProps {
 // state, so `page` never changes parent type and is never remounted.
 export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: MobileItemPaneSliderProps) {
   const reduceMotion = useReducedMotion()
-  const transition = reduceMotion ? { duration: 0 } : SLIDE
+  // Memoized: `transition` feeds motion.div's `transition` prop below — a stable reference (instead of a
+  // fresh object every render) lets Motion's own prop-diffing skip re-evaluating the animation config on
+  // renders where `reduceMotion` hasn't changed.
+  const transition = useMemo(() => (reduceMotion ? { duration: 0 } : SLIDE), [reduceMotion])
 
   // A swipe-close has ALREADY animated the item off-screen via the drag's own `x`, so it must NOT trigger the
   // slider's reverse slide — that would re-render the item at x:0% (fully open) and slide it off again (the
@@ -166,12 +169,13 @@ export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: Mo
   //    on a `position: fixed` overflow container — during the swipe fly-off it reset the backdrop to the top, so
   //    the revealed board flashed its header. A transform is GPU-composited and behaves identically everywhere.
   // When `page` is null there is no managed backdrop; the pageLayer is omitted entirely.
+  const backdropStyle = useMemo(
+    () => (pageActsAsDocument ? undefined : { transform: `translateY(${-openScrollY}px)` }),
+    [pageActsAsDocument, openScrollY],
+  )
   const pageLayer = page !== null ? (
     <div className={pageActsAsDocument ? 'contents' : 'fixed inset-0 -z-10 w-screen overflow-hidden'}>
-      <div
-        className={pageActsAsDocument ? 'contents' : undefined}
-        style={pageActsAsDocument ? undefined : { transform: `translateY(${-openScrollY}px)` }}
-      >
+      <div className={pageActsAsDocument ? 'contents' : undefined} style={backdropStyle}>
         {page}
       </div>
     </div>
@@ -185,13 +189,26 @@ export function MobileItemPaneSlider({ page, open, openScrollY, renderPane }: Mo
   //  • settled (page mode) — the item is the sole DOCUMENT content (URL bar retracts). The page sits behind.
   //  • settled (noPage mode) — stays fixed inset-0 z-40 throughout (no backdrop to swap into document flow).
   const noPageMode = page === null
+
+  // Memoized: `initial`/`animate` feed motion.div's animation-target props — a stable reference per
+  // settled/open combination avoids re-triggering Motion's internal target diffing with an equivalent but
+  // referentially-new object on every render (e.g. renders caused by unrelated state elsewhere in the tree).
+  const initialAnimation = useMemo(() => (settled ? false : { x: open ? '100%' : '0%' }), [settled, open])
+  const animateAnimation = useMemo(() => (settled ? { x: '0%' } : { x: open ? '0%' : '100%' }), [settled, open])
+
+  // Stable across renders (setPhase is a React-guaranteed stable setter, openRef is a ref) — read via
+  // useCallback so `onAnimationComplete` below never receives a fresh function identity.
+  const handleAnimationComplete = useCallback(() => {
+    setPhase(openRef.current ? 'settled' : 'idle')
+  }, [])
+
   const pane = !pageIsDocument ? (
     <motion.div
       className={settled && !noPageMode ? '' : 'fixed inset-0 z-40 overflow-y-auto'}
-      initial={settled ? false : { x: open ? '100%' : '0%' }}
-      animate={settled ? { x: '0%' } : { x: open ? '0%' : '100%' }}
+      initial={initialAnimation}
+      animate={animateAnimation}
       transition={transition}
-      onAnimationComplete={reduceMotion ? undefined : () => setPhase(openRef.current ? 'settled' : 'idle')}
+      onAnimationComplete={reduceMotion ? undefined : handleAnimationComplete}
     >
       {renderPane({
         isSettled: settled,

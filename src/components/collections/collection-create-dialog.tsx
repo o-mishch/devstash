@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode } from 'react'
+import { type ComponentProps, type ReactNode, useCallback, useMemo } from 'react'
 import { FolderPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api/client'
@@ -12,6 +12,15 @@ interface CreatedCollection {
   id: string
   name: string
 }
+
+// Fully static — no props/state dependency — so it's hoisted once at module scope rather than
+// recreated (or useMemo'd) per render of the standalone, uncontrolled usage.
+const DEFAULT_TRIGGER = (
+  <Button variant="outline" size="sm" className="hidden sm:flex">
+    <FolderPlus className="size-4" />
+    New Collection
+  </Button>
+)
 
 interface CollectionCreateDialogProps {
   trigger?: ReactNode
@@ -33,14 +42,16 @@ export function CollectionCreateDialog({ trigger, open, onOpenChange, defaultNam
   const canCreateCollection = profile?.canCreateCollection ?? true
   // A controlled (parent-driven `open`) usage drives the dialog itself and needs no built-in button; only
   // inject the default "New Collection" trigger for the standalone, uncontrolled usage.
-  const triggerEl =
-    trigger ??
-    (open === undefined ? (
-      <Button variant="outline" size="sm" className="hidden sm:flex">
-        <FolderPlus className="size-4" />
-        New Collection
-      </Button>
-    ) : undefined)
+  const triggerEl = trigger ?? (open === undefined ? DEFAULT_TRIGGER : undefined)
+
+  const defaultValues = useMemo(() => ({ name: defaultName ?? '', description: '' }), [defaultName])
+
+  // Typed off CollectionFormDialog's own prop (not an inlined object type) so it stays in sync with
+  // whatever FormValues shape the form dialog expects.
+  const onSubmitAction: ComponentProps<typeof CollectionFormDialog>['onSubmitAction'] = useCallback(
+    (data) => api.POST('/collections', { body: { name: data.name, description: data.description ?? null } }),
+    [],
+  )
 
   return (
     <CollectionFormDialog
@@ -48,8 +59,8 @@ export function CollectionCreateDialog({ trigger, open, onOpenChange, defaultNam
       description="Organize your items into a new collection."
       submitText="Create Collection"
       successMessage="Collection created"
-      defaultValues={{ name: defaultName ?? '', description: '' }}
-      onSubmitAction={(data) => api.POST('/collections', { body: { name: data.name, description: data.description ?? null } })}
+      defaultValues={defaultValues}
+      onSubmitAction={onSubmitAction}
       trigger={triggerEl}
       open={open}
       onOpenChange={onOpenChange}

@@ -10,6 +10,7 @@ import { ItemDetailDrawer, ItemFullScreenView } from '@/components/items/drawer/
 import { MobileDrawerHost } from '@/components/items/drawer/drawer-shared'
 import type { WithChildren } from '@/types/common'
 import type { LightItem, FullItem } from '@/types/item'
+import type { SheetCloseRef } from '@/hooks/ui/use-register-sheet-close'
 
 // Keeps `?item=<id>` in the URL in sync with the drawer open state (shared `useItemUrlParamSync`):
 // - drawer opens (any source) → pushes `?item=<id>` so the URL is shareable/bookmarkable
@@ -58,13 +59,27 @@ export function ItemDrawerProvider({ children }: WithChildren) {
     cacheItemDetail(item)
   }, [cacheItemDetail])
 
-  const handleOpenChange = (newOpen: boolean) => {
+  // Stable reference (no external deps — reads the store via getState()) so it can be passed to the
+  // three non-memoized drawer hosts below without creating a new function identity every render.
+  const handleOpenChange = useCallback((newOpen: boolean) => {
     if (!newOpen) useItemDrawerStore.getState().closeDrawer()
-  }
+  }, [])
 
   // Latch the last non-null item so the closing slide keeps rendering it after the store clears `item`.
   const [paneItem, setPaneItem] = useState<LightItem | FullItem | null>(openItem)
   if (isOpen && openItem && openItem.id !== paneItem?.id) setPaneItem(openItem)
+
+  const renderMobileBody = useCallback(
+    ({ sheetCloseRef }: { sheetCloseRef: SheetCloseRef }) => (
+      <ItemFullScreenView
+        item={paneItem}
+        onOpenChange={handleOpenChange}
+        onFullItemFetched={handleFullItemFetched}
+        sheetCloseRef={sheetCloseRef}
+      />
+    ),
+    [paneItem, handleOpenChange, handleFullItemFetched],
+  )
 
   return (
     <>
@@ -81,14 +96,7 @@ export function ItemDrawerProvider({ children }: WithChildren) {
           decoration="blobs"
           resetKey={paneItem?.id ?? null}
           onOpenChange={handleOpenChange}
-          renderBody={({ sheetCloseRef }) => (
-            <ItemFullScreenView
-              item={paneItem}
-              onOpenChange={handleOpenChange}
-              onFullItemFetched={handleFullItemFetched}
-              sheetCloseRef={sheetCloseRef}
-            />
-          )}
+          renderBody={renderMobileBody}
         />
       ) : (
         children

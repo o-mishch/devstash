@@ -3,10 +3,15 @@ import { NextRequest } from 'next/server'
 
 // Exercises the per-item "Save now" route: auth (401), not-found (404), and the success path
 // (200 + cache invalidation), asserting the DB helper is called scoped to the session userId.
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/db/ai-parse-jobs', () => ({ commitDraftItem: vi.fn() }))
-vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn(), invalidateCollectionsCache: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof getCachedSession>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof getCachedVerifiedProAccess>(),
+}))
+vi.mock('@/lib/db/ai-parse-jobs', () => ({ commitDraftItem: vi.fn<typeof commitDraftItem>() }))
+vi.mock('@/lib/infra/cache', () => ({
+  invalidateItemsCache: vi.fn<typeof invalidateItemsCache>(),
+  invalidateCollectionsCache: vi.fn<typeof invalidateCollectionsCache>(),
+}))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
@@ -14,11 +19,11 @@ import { commitDraftItem } from '@/lib/db/ai-parse-jobs'
 import { invalidateItemsCache, invalidateCollectionsCache } from '@/lib/infra/cache'
 import { POST } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockCommit = commitDraftItem as ReturnType<typeof vi.fn>
-const mockInvalidateItems = invalidateItemsCache as ReturnType<typeof vi.fn>
-const mockInvalidateCollections = invalidateCollectionsCache as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockPro = vi.mocked(getCachedVerifiedProAccess)
+const mockCommit = vi.mocked(commitDraftItem)
+const mockInvalidateItems = vi.mocked(invalidateItemsCache)
+const mockInvalidateCollections = vi.mocked(invalidateCollectionsCache)
 
 function req(body?: unknown): NextRequest {
   return new NextRequest('http://localhost/api/ai/brain-dump/job-1/items/item-1/commit', {
@@ -30,7 +35,7 @@ const ctx = { params: Promise.resolve({ jobId: 'job-1', itemId: 'item-1' }) }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: new Date().toISOString() })
   mockPro.mockResolvedValue(true)
 })
 

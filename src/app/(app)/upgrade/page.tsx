@@ -18,6 +18,16 @@ interface UpgradePageProps {
   searchParams: Promise<{ billing?: string }>
 }
 
+// Hoisted to module scope: none of these depend on any per-request prop or
+// state, so they're created once per module load rather than once per JSX
+// evaluation — this also resolves react-perf/jsx-no-jsx-as-prop honestly
+// (not just cosmetically) since the reference is stable across renders.
+const proPriceSlot = <UpgradeProPrice />
+const freeCtaSlot = <div className={CURRENT_PLAN_CTA_CLASSNAME}>{CURRENT_PLAN_LABEL}</div>
+const proCtaSlot = <UpgradeProCheckout />
+const freeFeaturesSlot = <FreePricingFeatures />
+const proFeaturesSlot = <ProPricingFeatures />
+
 export default async function UpgradePage({ searchParams }: UpgradePageProps) {
   const session = await getCachedSession()
   if (!session?.user) redirect('/sign-in')
@@ -61,11 +71,11 @@ export default async function UpgradePage({ searchParams }: UpgradePageProps) {
         priceIdYearly={priceIdYearly}
       >
         <PricingCardsDisplay
-          proPrice={<UpgradeProPrice />}
-          freeCta={<div className={CURRENT_PLAN_CTA_CLASSNAME}>{CURRENT_PLAN_LABEL}</div>}
-          proCta={<UpgradeProCheckout />}
-          freeFeatures={<FreePricingFeatures />}
-          proFeatures={<ProPricingFeatures />}
+          proPrice={proPriceSlot}
+          freeCta={freeCtaSlot}
+          proCta={proCtaSlot}
+          freeFeatures={freeFeaturesSlot}
+          proFeatures={proFeaturesSlot}
         />
       </UpgradeBillingShell>
     </div>

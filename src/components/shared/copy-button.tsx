@@ -1,6 +1,6 @@
 'use client'
 
-import { type MouseEvent } from 'react'
+import { type MouseEvent, useCallback, memo } from 'react'
 import { Copy, Check, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/ui/use-copy-to-clipboard'
@@ -20,7 +20,7 @@ interface CopyButtonProps {
   onUpgrade?: () => void
 }
 
-export function CopyButton({
+export const CopyButton = memo(function CopyButton({
   value,
   className,
   iconClassName = 'size-4',
@@ -39,7 +39,7 @@ export function CopyButton({
     onUpgrade,
   })
 
-  function handleClick(e: MouseEvent) {
+  const handleClick = useCallback((e: MouseEvent) => {
     if (stopPropagation) e.stopPropagation()
     if (isRestricted) {
       e.preventDefault()
@@ -47,7 +47,7 @@ export function CopyButton({
       return
     }
     void copy(value)
-  }
+  }, [copy, value, stopPropagation, isRestricted, flash])
 
   return (
     <Button size={text ? 'sm' : 'icon'} variant="ghost" className={cn(!text && 'size-7', className)} onClick={handleClick} title={title}>
@@ -55,4 +55,4 @@ export function CopyButton({
       {text ? <span className={textClassName}>{text}</span> : null}
     </Button>
   )
-}
+})

@@ -7,17 +7,15 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-function Sheet({ ...props }: SheetPrimitive.Root.Props) {
+const Sheet = React.memo(function Sheet({ ...props }: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
-}
+})
 
-
-
-function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {
+const SheetPortal = React.memo(function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {
   return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />
-}
+})
 
-function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
+const SheetOverlay = React.memo(function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
   return (
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
@@ -28,9 +26,11 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
       {...props}
     />
   )
-}
+})
 
-function SheetContent({
+import type { HTMLProps } from "@base-ui/react/types"
+
+const SheetContent = React.memo(function SheetContent({
   className,
   children,
   side = "right",
@@ -45,6 +45,15 @@ function SheetContent({
   // above the z-50 drawer and `forceRender`s the backdrop so the surface behind is dimmed.
   elevated?: boolean
 }) {
+  const renderCloseButton = React.useCallback((buttonProps: HTMLProps) => (
+    <Button
+      {...buttonProps}
+      variant="ghost"
+      className="absolute top-3 right-3"
+      size="icon-sm"
+    />
+  ), [])
+
   return (
     <SheetPortal>
       <SheetOverlay forceRender={elevated || undefined} className={cn(elevated && "z-[60]")} />
@@ -62,27 +71,18 @@ function SheetContent({
         {showCloseButton && (
           <SheetPrimitive.Close
             data-slot="sheet-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-3 right-3"
-                size="icon-sm"
-              />
-            }
+            render={renderCloseButton}
           >
-            <XIcon
-            />
+            <XIcon />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Popup>
     </SheetPortal>
   )
-}
+})
 
-
-
-function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
+const SheetTitle = React.memo(function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
   return (
     <SheetPrimitive.Title
       data-slot="sheet-title"
@@ -93,9 +93,7 @@ function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
       {...props}
     />
   )
-}
-
-
+})
 
 export {
   Sheet,

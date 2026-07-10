@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Loader2, RotateCw, Save, Sparkles, CheckCircle2, AlertTriangle, Trash2, RefreshCw, type LucideIcon } from 'lucide-react'
+import type { HTMLProps } from '@base-ui/react/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -35,6 +36,17 @@ const PHASE_META: Record<BrainDumpPhase, PhaseMeta> = {
   completed: { Icon: CheckCircle2, label: 'Ready to review' },
   failed: { Icon: AlertTriangle, label: 'Something went wrong' },
 }
+
+// Fully static — no prop/state dependency — so it's hoisted once at module scope rather than
+// recreated per render. Base UI clones this element with the tooltip's own trigger props at use.
+const REPARSE_RATE_LIMITED_TRIGGER = (
+  <span className="inline-flex">
+    <Button variant="outline" size="sm" disabled>
+      <RefreshCw className="size-4" />
+      <span className="hidden @min-[390px]/progress:inline">Re-parse</span>
+    </Button>
+  </span>
+)
 
 interface ParseProgressProps {
   phase: BrainDumpPhase
@@ -86,6 +98,69 @@ export function ParseProgress({
   if (isStreaming) saveAllTooltip = 'Wait for parsing to finish, then save every draft into your stash at once.'
   else if (count === 0) saveAllTooltip = 'No drafts to save yet.'
 
+  // Base UI's `render` prop accepts a function for exactly this case — a stable reference (via
+  // useCallback) instead of a fresh element every render. Each level spreads the merged trigger
+  // props first, then its own explicit attrs, without overriding ref/onClick/aria-* Base UI sets.
+  const renderResumeTrigger = useCallback(
+    (props: HTMLProps<HTMLButtonElement>) => (
+      <Button {...props} variant="outline" size="sm" onClick={onResume}>
+        <RotateCw className="size-4" />
+        <span className="hidden @min-[390px]/progress:inline">Resume parsing</span>
+      </Button>
+    ),
+    [onResume],
+  )
+
+  const renderReparseButton = useCallback(
+    (props: HTMLProps<HTMLButtonElement>) => (
+      <Button {...props} variant="outline" size="sm" disabled={reparsing}>
+        {reparsing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+        <span className="hidden @min-[390px]/progress:inline">Re-parse</span>
+      </Button>
+    ),
+    [reparsing],
+  )
+  const renderReparseDialogTrigger = useCallback(
+    (props: HTMLProps<HTMLButtonElement>) => <DialogTrigger {...props} render={renderReparseButton} />,
+    [renderReparseButton],
+  )
+  const closeReparseDialog = useCallback(() => setReparseOpen(false), [])
+  const confirmReparse = useCallback(() => {
+    setReparseOpen(false)
+    onReparse()
+  }, [onReparse])
+
+  const renderDiscardButton = useCallback(
+    (props: HTMLProps<HTMLButtonElement>) => (
+      <Button {...props} variant="ghost" size="sm" className="text-muted-foreground" disabled={discarding}>
+        {discarding ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4 text-destructive" />}
+        <span className="hidden @min-[500px]/progress:inline">Discard and Delete</span>
+      </Button>
+    ),
+    [discarding],
+  )
+  const renderDiscardDialogTrigger = useCallback(
+    (props: HTMLProps<HTMLButtonElement>) => <DialogTrigger {...props} render={renderDiscardButton} />,
+    [renderDiscardButton],
+  )
+  const closeConfirmDialog = useCallback(() => setConfirmOpen(false), [])
+  const confirmDiscard = useCallback(() => {
+    setConfirmOpen(false)
+    onDiscard()
+  }, [onDiscard])
+
+  const renderSaveAllTrigger = useCallback(
+    (props: HTMLProps<HTMLSpanElement>) => (
+      <span {...props} className="inline-flex">
+        <Button size="sm" onClick={onCommitAll} disabled={committing || count === 0 || isStreaming}>
+          {committing ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          <span className="hidden @min-[620px]/progress:inline">Save all {count > 0 ? count : ''}</span>
+        </Button>
+      </span>
+    ),
+    [onCommitAll, committing, count, isStreaming],
+  )
+
   return (
     <TooltipProvider delay={150}>
       <div
@@ -128,14 +203,7 @@ export function ParseProgress({
           <div className="flex shrink-0 items-center gap-1">
             {resumable && (
               <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button variant="outline" size="sm" onClick={onResume}>
-                      <RotateCw className="size-4" />
-                      <span className="hidden @min-[390px]/progress:inline">Resume parsing</span>
-                    </Button>
-                  }
-                />
+                <TooltipTrigger render={renderResumeTrigger} />
                 <TooltipContent className="max-w-[260px]">
                   Pick up parsing where it stopped — continues this same job from the last saved point.
                 </TooltipContent>
@@ -148,16 +216,7 @@ export function ParseProgress({
                 the next slot opens — rather than letting the click 429. */}
             {done && reparseRateLimited && (
               <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="inline-flex">
-                      <Button variant="outline" size="sm" disabled>
-                        <RefreshCw className="size-4" />
-                        <span className="hidden @min-[390px]/progress:inline">Re-parse</span>
-                      </Button>
-                    </span>
-                  }
-                />
+                <TooltipTrigger render={REPARSE_RATE_LIMITED_TRIGGER} />
                 <TooltipContent className="max-w-[260px]">
                   Re-parse uses your hourly Brain Dump token, and you&apos;ve used this hour&apos;s —{' '}
                   {formatRenewIn(reparseQuota.resetAt)}.
@@ -167,18 +226,7 @@ export function ParseProgress({
             {done && !reparseRateLimited && (
               <Dialog open={reparseOpen} onOpenChange={setReparseOpen}>
                 <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <DialogTrigger
-                        render={
-                          <Button variant="outline" size="sm" disabled={reparsing}>
-                            {reparsing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-                            <span className="hidden @min-[390px]/progress:inline">Re-parse</span>
-                          </Button>
-                        }
-                      />
-                    }
-                  />
+                  <TooltipTrigger render={renderReparseDialogTrigger} />
                   <TooltipContent className="max-w-[260px]">
                     Run a fresh parse of the saved source in a new job — uses one hourly Brain Dump token.
                   </TooltipContent>
@@ -191,16 +239,10 @@ export function ParseProgress({
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
-                    <Button variant="outline" size="sm" onClick={() => setReparseOpen(false)}>
+                    <Button variant="outline" size="sm" onClick={closeReparseDialog}>
                       Cancel
                     </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setReparseOpen(false)
-                        onReparse()
-                      }}
-                    >
+                    <Button size="sm" onClick={confirmReparse}>
                       Use token and re-parse
                     </Button>
                   </DialogFooter>
@@ -210,18 +252,7 @@ export function ParseProgress({
 
             <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
               <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <DialogTrigger
-                      render={
-                        <Button variant="ghost" size="sm" className="text-muted-foreground" disabled={discarding}>
-                          {discarding ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4 text-destructive" />}
-                          <span className="hidden @min-[500px]/progress:inline">Discard and Delete</span>
-                        </Button>
-                      }
-                    />
-                  }
-                />
+                <TooltipTrigger render={renderDiscardDialogTrigger} />
                 <TooltipContent className="max-w-[260px]">
                   Permanently delete this parse job and its drafts, and stop parsing. Your saved source stays in your
                   stash to re-parse later.
@@ -236,17 +267,10 @@ export function ParseProgress({
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                  <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
+                  <Button variant="outline" size="sm" onClick={closeConfirmDialog}>
                     Cancel
                   </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => {
-                      setConfirmOpen(false)
-                      onDiscard()
-                    }}
-                  >
+                  <Button variant="destructive" size="sm" onClick={confirmDiscard}>
                     Discard and delete
                   </Button>
                 </DialogFooter>
@@ -254,16 +278,7 @@ export function ParseProgress({
             </Dialog>
 
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="inline-flex">
-                    <Button size="sm" onClick={onCommitAll} disabled={committing || count === 0 || isStreaming}>
-                      {committing ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                      <span className="hidden @min-[620px]/progress:inline">Save all {count > 0 ? count : ''}</span>
-                    </Button>
-                  </span>
-                }
-              />
+              <TooltipTrigger render={renderSaveAllTrigger} />
               <TooltipContent className="max-w-[260px]">{saveAllTooltip}</TooltipContent>
             </Tooltip>
           </div>

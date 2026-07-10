@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 import { BaseProfileDialog } from './base-profile-dialog'
 
@@ -32,12 +32,15 @@ export function ProfileFormDialog({
   const isControlled = controlledOpen !== undefined
   const open = isControlled ? controlledOpen : internalOpen
 
-  function handleOpenChange(next: boolean) {
-    if (!isControlled) {
-      setInternalOpen(next)
-    }
-    onOpenChange?.(next)
-  }
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (!isControlled) {
+        setInternalOpen(next)
+      }
+      onOpenChange?.(next)
+    },
+    [isControlled, onOpenChange],
+  )
 
   return (
     <BaseProfileDialog

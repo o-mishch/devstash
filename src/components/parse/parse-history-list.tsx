@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import type { HTMLAttributes } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ArrowRight, Loader2, Trash2 } from 'lucide-react'
@@ -68,7 +69,7 @@ function HistoryRow({ jobId, sourceName, committedCount, leftoverTrash }: Histor
   const [open, setOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
-  const onConfirmDelete = async () => {
+  const onConfirmDelete = useCallback(async () => {
     setDeleting(true)
     const ok = await deleteJob(jobId)
     setDeleting(false)
@@ -79,7 +80,26 @@ function HistoryRow({ jobId, sourceName, committedCount, leftoverTrash }: Histor
     setOpen(false)
     invalidateJobs()
     toast.success('History record deleted. Your committed items stay in your stash.')
-  }
+  }, [deleteJob, jobId, invalidateJobs])
+
+  const onKeepClick = useCallback(() => setOpen(false), [])
+  const onDeleteClick = useCallback(() => {
+    void onConfirmDelete()
+  }, [onConfirmDelete])
+
+  const renderDeleteTrigger = useCallback(
+    (triggerProps: HTMLAttributes<HTMLButtonElement>) => (
+      <Button
+        {...triggerProps}
+        variant="ghost"
+        size="icon"
+        className="size-8 text-muted-foreground hover:text-destructive"
+      >
+        <Trash2 className="size-4 text-destructive" />
+      </Button>
+    ),
+    [],
+  )
 
   return (
     <div className="card-surface card-hover group flex items-center gap-3 rounded-lg border border-border bg-card p-3">
@@ -94,13 +114,7 @@ function HistoryRow({ jobId, sourceName, committedCount, leftoverTrash }: Histor
       </Link>
       <ArrowRight className="card-icon size-4 shrink-0 text-muted-foreground" />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger
-          render={
-            <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive">
-              <Trash2 className="size-4 text-destructive" />
-            </Button>
-          }
-        />
+        <DialogTrigger render={renderDeleteTrigger} />
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete this history record?</DialogTitle>
@@ -110,10 +124,10 @@ function HistoryRow({ jobId, sourceName, committedCount, leftoverTrash }: Histor
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+            <Button variant="outline" size="sm" onClick={onKeepClick}>
               Keep
             </Button>
-            <Button variant="destructive" size="sm" onClick={() => void onConfirmDelete()} disabled={deleting}>
+            <Button variant="destructive" size="sm" onClick={onDeleteClick} disabled={deleting}>
               {deleting ? <Loader2 className="size-4 animate-spin" /> : 'Delete'}
             </Button>
           </DialogFooter>

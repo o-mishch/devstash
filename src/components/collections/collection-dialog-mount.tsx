@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useCollectionDialogsStore } from '@/stores/collection-dialogs'
 import { CollectionEditDialog } from './collection-edit-dialog'
 import { CollectionDeleteDialog } from './collection-delete-dialog'
@@ -20,17 +20,31 @@ export function CollectionDialogMount() {
     closeDelete()
   }, [closeEdit, closeDelete])
 
+  const handleEditOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) closeEdit()
+    },
+    [closeEdit],
+  )
+
+  const handleDeleteOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) closeDelete()
+    },
+    [closeDelete],
+  )
+
   return (
     <>
       <CollectionEditDialog
         collection={editCollection}
         open={!!editCollection}
-        onOpenChange={(open) => !open && closeEdit()}
+        onOpenChange={handleEditOpenChange}
       />
       <CollectionDeleteDialog
         collection={deleteCollection}
         open={!!deleteCollection}
-        onOpenChange={(open) => !open && closeDelete()}
+        onOpenChange={handleDeleteOpenChange}
       />
     </>
   )

@@ -1,3 +1,6 @@
+'use client'
+
+import { memo, useMemo } from 'react'
 import { Code, MessageSquare, Terminal, StickyNote, File, Image, Link } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { SYSTEM_TYPE_COLORS, SYSTEM_TYPE_ICON_NAMES } from '@/lib/utils/constants'
@@ -22,12 +25,15 @@ interface ItemTypeIconProps {
   className?: string
 }
 
-export function ItemTypeIcon({ typeName, iconName, color, className = 'size-3' }: ItemTypeIconProps) {
+export const ItemTypeIcon = memo(function ItemTypeIcon({ typeName, iconName, color, className = 'size-3' }: ItemTypeIconProps) {
   const resolvedIconName = typeName ? SYSTEM_TYPE_ICON_NAMES[typeName] : iconName
   const resolvedColor = typeName ? SYSTEM_TYPE_COLORS[typeName] : color
   const Icon = resolvedIconName ? ICON_MAP[resolvedIconName] : null
+
+  const style = useMemo(() => resolvedColor ? { color: resolvedColor } : undefined, [resolvedColor])
+
   if (!Icon) return null
   // `card-icon` so the icon grows when its enclosing card (.card-interactive / .group) is hovered —
   // the app-wide icon-grow affordance, applied centrally here rather than on every card.
-  return <Icon className={cn('card-icon', className)} style={{ color: resolvedColor ?? undefined }} />
-}
+  return <Icon className={cn('card-icon', className)} style={style} />
+})

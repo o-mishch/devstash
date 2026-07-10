@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useMemo, type ComponentProps } from 'react'
 import { Sparkles, Lightbulb, Tag, AlignLeft, Gauge, type LucideIcon } from 'lucide-react'
 import type { UiSkin } from '@/types/ui-skins'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -39,6 +40,10 @@ const SKIN_HEADER_CLASS: Partial<Record<UiSkin, string>> = {
 interface AiUsageWidgetProps {
   skin: UiSkin
 }
+
+// Hoisted module-level constant, not created per-render: the icon has no dependency on props/state,
+// so a single shared element instance is created once ever rather than a fresh one on every render.
+const GAUGE_ICON = <Gauge />
 
 /**
  * Per-skin AI Usage section (Pro-only). A compact, low-emphasis utility strip — one slim meter per
@@ -86,7 +91,7 @@ export function AiUsageWidget({ skin }: AiUsageWidgetProps) {
   return (
     <div className="@container">
       <SkinWidget
-        icon={<Gauge />}
+        icon={GAUGE_ICON}
         title="AI Usage"
         headerClassName={SKIN_HEADER_CLASS[skin]}
         skin={skin}
@@ -106,6 +111,25 @@ function UsageMeter({ feature, treatment }: UsageMeterProps) {
   const meta = FEATURE_META[feature.key] ?? { label: feature.key, icon: Gauge, description: '' }
   const Icon = meta.icon
   const pct = feature.limit > 0 ? Math.min(100, Math.round((feature.remaining / feature.limit) * 100)) : 0
+  const barStyle = useMemo(() => ({ width: `${pct}%` }), [pct])
+  // Function form (Base UI's documented perf pattern for the `render` prop) instead of a plain
+  // element — Base UI invokes this at render time with its own merged props, so no new element is
+  // constructed up front on every parent re-render. `useCallback` additionally keeps the function
+  // reference itself stable across renders where meta/treatment.card haven't changed.
+  const renderTrigger = useCallback(
+    (triggerProps: ComponentProps<'button'>) => (
+      <button
+        {...triggerProps}
+        type="button"
+        aria-label={`${meta.label} — ${meta.description}`}
+        className={cn(
+          'flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left cursor-help outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          treatment.card,
+        )}
+      />
+    ),
+    [meta.label, meta.description, treatment.card],
+  )
 
   // One Popover serves both surfaces: `openOnHover` opens it on hover (desktop), while the trigger's
   // click opens it on tap (mobile). Base UI tooltips are disabled on touch devices, so a Popover is
@@ -113,20 +137,7 @@ function UsageMeter({ feature, treatment }: UsageMeterProps) {
   // limit live here (not on the always-visible strip) to keep the demoted meter slim.
   return (
     <Popover>
-      <PopoverTrigger
-        openOnHover
-        delay={150}
-        render={
-          <button
-            type="button"
-            aria-label={`${meta.label} — ${meta.description}`}
-            className={cn(
-              'flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left cursor-help outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              treatment.card,
-            )}
-          />
-        }
-      >
+      <PopoverTrigger openOnHover delay={150} render={renderTrigger}>
         <Icon className="card-icon size-4 shrink-0 text-primary" />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-2">
@@ -139,7 +150,7 @@ function UsageMeter({ feature, treatment }: UsageMeterProps) {
           <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-foreground/10">
             <span
               className={cn('block h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none', treatment.bar)}
-              style={{ width: `${pct}%` }}
+              style={barStyle}
             />
           </span>
         </span>

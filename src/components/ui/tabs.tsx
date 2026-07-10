@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState, useCallback, memo } from "react"
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils/index"
 
-function Tabs({
+const Tabs = memo(function Tabs({
   className,
   orientation = "horizontal",
   defaultValue,
@@ -19,16 +19,18 @@ function Tabs({
   const [tabValue, setTabValue] = useState<unknown>(defaultValue || value)
   const resolvedValue: unknown = value !== undefined ? value : tabValue
 
+  const handleValueChange = useCallback<Required<TabsPrimitive.Root.Props>['onValueChange']>((v, e) => {
+    setTabValue(v)
+    if (onValueChange) onValueChange(v, e)
+  }, [onValueChange])
+
   return (
     <TabsPrimitive.Root
       orientation={orientation}
       data-slot="tabs"
       data-orientation={orientation}
       value={resolvedValue}
-      onValueChange={(v: unknown, e) => {
-        setTabValue(v)
-        if (onValueChange) onValueChange(v, e)
-      }}
+      onValueChange={handleValueChange}
       className={cn(
         "group/tabs flex gap-2 data-horizontal:flex-col",
         className
@@ -36,7 +38,7 @@ function Tabs({
       {...props}
     />
   )
-}
+})
 
 const tabsListVariants = cva(
   "group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
@@ -53,7 +55,7 @@ const tabsListVariants = cva(
   }
 )
 
-function TabsList({
+const TabsList = memo(function TabsList({
   className,
   variant = "default",
   ...props
@@ -66,9 +68,9 @@ function TabsList({
       {...props}
     />
   )
-}
+})
 
-function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
+const TabsTrigger = memo(function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   return (
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
@@ -82,9 +84,9 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
       {...props}
     />
   )
-}
+})
 
-function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
+const TabsContent = memo(function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-content"
@@ -92,6 +94,6 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
       {...props}
     />
   )
-}
+})
 
 export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { memo, useCallback, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Check, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
@@ -38,6 +39,26 @@ interface ChangeEmailVariables {
   currentPassword?: string
 }
 
+interface EmailMenuItemProps {
+  email: string
+  isCurrent: boolean
+  onSelect: (email: string) => void
+}
+
+// Extracted so the per-item onClick closure lives in a memoized child instead of being recreated
+// for every email on every parent render — the parent only ever passes the stable `onSelect`
+// reference plus primitive props.
+const EmailMenuItem = memo(function EmailMenuItem({ email, isCurrent, onSelect }: EmailMenuItemProps) {
+  const handleClick = useCallback(() => onSelect(email), [onSelect, email])
+
+  return (
+    <DropdownMenuItem onClick={handleClick} className="gap-2">
+      <Check className={`size-3 shrink-0 transition-opacity ${isCurrent ? 'opacity-100' : 'opacity-0'}`} />
+      <span className="truncate">{email}</span>
+    </DropdownMenuItem>
+  )
+})
+
 export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, isPro }: MainEmailSelectorProps) {
   const patchUserProfile = usePatchUserProfile()
   const patchProfile = usePatchProfile()
@@ -67,25 +88,50 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
     onError: (error: Error) => toast.error(error.message || 'Failed to update email.'),
   })
   const isPending = changeMutation.isPending
+  const mutate = changeMutation.mutate
 
-  function requestChange(newEmail: string) {
-    if (newEmail === currentDisplayEmail) return
-    if (hasPassword) {
-      setPassword('')
-      setPendingEmail(newEmail)
-    } else {
-      applyChange(newEmail)
-    }
-  }
+  const applyChange = useCallback(
+    (target: string, currentPassword?: string) => {
+      mutate({ target, currentPassword })
+    },
+    [mutate],
+  )
 
-  function applyChange(target: string, currentPassword?: string) {
-    changeMutation.mutate({ target, currentPassword })
-  }
+  const requestChange = useCallback(
+    (newEmail: string) => {
+      if (newEmail === currentDisplayEmail) return
+      if (hasPassword) {
+        setPassword('')
+        setPendingEmail(newEmail)
+      } else {
+        applyChange(newEmail)
+      }
+    },
+    [currentDisplayEmail, hasPassword, applyChange],
+  )
 
-  function confirmChange() {
+  const confirmChange = useCallback(() => {
     if (!pendingEmail) return
     applyChange(pendingEmail, password)
-  }
+  }, [pendingEmail, password, applyChange])
+
+  // Shared by the Cancel button and the dialog's onOpenChange(false) path — both just reset the
+  // confirm-dialog's local state.
+  const closeDialog = useCallback(() => {
+    setPendingEmail(null)
+    setPassword('')
+  }, [])
+
+  const handleDialogOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) closeDialog()
+    },
+    [closeDialog],
+  )
+
+  const handlePasswordChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value)
+  }, [])
 
   return (
     <>
@@ -101,15 +147,12 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
           <p className="px-2 py-1.5 text-xs text-muted-foreground">{hasPassword ? 'Set primary email' : 'Set display email'}</p>
           <DropdownMenuSeparator />
           {availableEmails.map((e) => (
-            <DropdownMenuItem key={e} onClick={() => requestChange(e)} className="gap-2">
-              <Check className={`size-3 shrink-0 transition-opacity ${e === currentDisplayEmail ? 'opacity-100' : 'opacity-0'}`} />
-              <span className="truncate">{e}</span>
-            </DropdownMenuItem>
+            <EmailMenuItem key={e} email={e} isCurrent={e === currentDisplayEmail} onSelect={requestChange} />
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={pendingEmail !== null} onOpenChange={(open) => { if (!open) { setPendingEmail(null); setPassword('') } }}>
+      <Dialog open={pendingEmail !== null} onOpenChange={handleDialogOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Change primary email?</DialogTitle>
@@ -137,13 +180,13 @@ export function MainEmailSelector({ currentEmail, availableEmails, hasPassword, 
               id="confirm-email-password"
               autoComplete="current-password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={handlePasswordChange}
               disabled={isPending}
             />
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => { setPendingEmail(null); setPassword('') }} disabled={isPending}>
+            <Button variant="ghost" onClick={closeDialog} disabled={isPending}>
               Cancel
             </Button>
             <SubmitButton isPending={isPending} onClick={confirmChange} disabled={!password.trim()}>

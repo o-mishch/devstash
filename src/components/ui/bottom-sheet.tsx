@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type UIEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, useMemo, memo, type CSSProperties, type ReactNode, type UIEvent, type PointerEvent } from 'react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useSwipeToDismiss } from '@/hooks/ui/use-swipe-to-dismiss'
 import { usePressHighlight } from '@/hooks/ui/use-press-highlight'
@@ -39,12 +39,12 @@ const DISMISS_OVERSHOOT_PX = 80
 // both feel identical on touch. Drag engages from the handle/header, or from the body once it's
 // scrolled to the top (see useSwipeToDismiss); otherwise the body scrolls normally. With
 // `resizable`, the handle instead drives a height drag (see BottomSheetProps.resizable).
-export function BottomSheet({ open, onOpenChange, title, description, children, className, resizable = false, elevated = false }: BottomSheetProps) {
+export const BottomSheet = memo(function BottomSheet({ open, onOpenChange, title, description, children, className, resizable = false, elevated = false }: BottomSheetProps) {
   const { dragStyle, handlers } = useSwipeToDismiss({
     direction: 'down',
     threshold: 0.3,
     enabled: !resizable,
-    onDismiss: () => onOpenChange(false),
+    onDismiss: useCallback(() => onOpenChange(false), [onOpenChange]),
   })
   // Press state for the plain (non-resizable) grab handle; the resizable handle uses `resizing`.
   const grip = usePressHighlight()
@@ -57,12 +57,13 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
 
   // Lift the sheet to rest directly on top of the keyboard and cap its height to the visible area,
   // so the footer and the focused field stay above the keyboard instead of hidden behind it.
-  const keyboardStyle: CSSProperties = viewport
-    ? {
-        bottom: viewport.keyboardHeight > 0 ? viewport.keyboardHeight : undefined,
-        maxHeight: viewport.height,
-      }
-    : {}
+  const keyboardStyle = useMemo<CSSProperties>(() => {
+    if (!viewport) return {}
+    return {
+      bottom: viewport.keyboardHeight > 0 ? viewport.keyboardHeight : undefined,
+      maxHeight: viewport.height,
+    }
+  }, [viewport])
 
   // Scroll the sheet's form body to reveal the focused field above the keyboard. iOS doesn't
   // scroll inputs into view correctly inside a fixed sheet, so we do it ourselves.
@@ -118,7 +119,7 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
     return () => cancelAnimationFrame(id)
   }, [keyboardOpen, centerFocusedField])
 
-  // …and immediately when focus moves between fields while the keyboard is already open.
+  // ...and immediately when focus moves between fields while the keyboard is already open.
   useEffect(() => {
     if (!open) return
     const onFocusIn = () => requestAnimationFrame(centerFocusedField)
@@ -142,36 +143,36 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
   const startYRef = useRef(0)
   const startHRef = useRef(0)
 
-  function applyHeight(value: number | null) {
+  const applyHeight = useCallback((value: number | null) => {
     dragHeightRef.current = value
     setDragHeight(value)
-  }
+  }, [])
 
-  function applyShift(value: number) {
+  const applyShift = useCallback((value: number) => {
     dragShiftRef.current = value
     setDragShift(value)
-  }
+  }, [])
 
   // Reset the pinned height each time the sheet opens so every open starts from the default height
   // (resetting on close would jump the height mid close-animation).
-  function handleSheetOpenChange(next: boolean) {
+  const handleSheetOpenChange = useCallback((next: boolean) => {
     if (next) {
       applyHeight(null)
       applyShift(0)
     }
     onOpenChange(next)
-  }
+  }, [onOpenChange, applyHeight, applyShift])
 
-  function handleResizeStart(e: PointerEvent<HTMLDivElement>) {
+  const handleResizeStart = useCallback((e: PointerEvent<HTMLDivElement>) => {
     resizingRef.current = true
     setResizing(true)
     sheetElRef.current = e.currentTarget.closest('[data-slot=sheet-content]')
     startYRef.current = e.clientY
     startHRef.current = sheetElRef.current?.getBoundingClientRect().height ?? 0
     e.currentTarget.setPointerCapture(e.pointerId)
-  }
+  }, [])
 
-  function handleResizeMove(e: PointerEvent<HTMLDivElement>) {
+  const handleResizeMove = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (!resizingRef.current) return
     // Dragging up (clientY decreases) grows the sheet. window.innerHeight is the only source of the
     // current viewport height during a pointer gesture — there is no React/Next equivalent.
@@ -186,9 +187,9 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
       applyHeight(MIN_USABLE_PX)
       applyShift(MIN_USABLE_PX - raw)
     }
-  }
+  }, [applyHeight, applyShift])
 
-  function handleResizeEnd(e: PointerEvent<HTMLDivElement>) {
+  const handleResizeEnd = useCallback((e: PointerEvent<HTMLDivElement>) => {
     if (!resizingRef.current) return
     resizingRef.current = false
     setResizing(false)
@@ -202,16 +203,27 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
       // Snap back up to the minimum usable height (transition re-enabled now resizing is false).
       applyShift(0)
     }
-  }
+  }, [onOpenChange, applyHeight, applyShift])
 
   // The form body inside `children` is the scroll container; scroll events don't bubble, so we
   // listen in the capture phase (onScrollCapture) to learn when it has moved off the top. Past a
   // few px we collapse the description and tighten the title so the header stops permanently
   // spending vertical space on context the user has already read.
-  function handleScrollCapture(e: UIEvent<HTMLDivElement>) {
+  const handleScrollCapture = useCallback((e: UIEvent<HTMLDivElement>) => {
     const target = e.target
     if (target instanceof HTMLElement) setScrolled(target.scrollTop > 4)
-  }
+  }, [])
+
+  const sheetContentStyle = useMemo<CSSProperties>(() => ({
+    ...(resizable
+      ? {
+          height: dragHeight ? `${dragHeight}px` : undefined,
+          transform: dragShift ? `translateY(${dragShift}px)` : undefined,
+          transition: resizing ? 'none' : undefined,
+        }
+      : dragStyle),
+    ...keyboardStyle,
+  }), [resizable, dragHeight, dragShift, resizing, dragStyle, keyboardStyle])
 
   return (
     <Sheet open={open} onOpenChange={handleSheetOpenChange}>
@@ -219,18 +231,7 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
         side="bottom"
         showCloseButton={false}
         elevated={elevated}
-        style={{
-          ...(resizable
-            ? {
-                height: dragHeight ? `${dragHeight}px` : undefined,
-                transform: dragShift ? `translateY(${dragShift}px)` : undefined,
-                transition: resizing ? 'none' : undefined,
-              }
-            : dragStyle),
-          // Lift above the keyboard last so it overrides the base `bottom-0` / `max-h` (compatible
-          // with the drag transform, which only sets `transform`).
-          ...keyboardStyle,
-        }}
+        style={sheetContentStyle}
         onScrollCapture={handleScrollCapture}
         {...(resizable ? {} : handlers)}
         // Timing (duration + easing) is inherited from the shared SheetContent base so the bottom
@@ -313,4 +314,4 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
       </SheetContent>
     </Sheet>
   )
-}
+})

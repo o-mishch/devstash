@@ -1,4 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type Stripe from 'stripe'
+import type {
+  clearStripeCustomerByCustomerId,
+  clearStripeSubscriptionBySubId,
+  getUserIdByStripeCustomerId,
+  updateSubscriptionState,
+  updateUserStripeSubscription,
+} from '@/lib/db/stripe'
+import type { getUserById } from '@/lib/db/users'
+import type { retrieveStripeCustomer } from '@/lib/billing/stripe-api'
+
+// Minimal-but-complete Stripe.Customer fixture builder — satisfies every required field so callers
+// can override just the properties a test cares about without an `as`/`as unknown as` cast.
+function stripeCustomerFixture(overrides: Partial<Stripe.Customer> = {}): Stripe.Customer {
+  return {
+    id: 'cus_1',
+    object: 'customer',
+    balance: 0,
+    created: 0,
+    default_source: null,
+    description: null,
+    email: null,
+    invoice_settings: {
+      custom_fields: null,
+      default_payment_method: null,
+      footer: null,
+      rendering_options: null,
+    },
+    livemode: false,
+    metadata: {},
+    shipping: null,
+    ...overrides,
+  }
+}
 
 const {
   mockClearStripeCustomerByCustomerIdInDb,
@@ -10,14 +44,14 @@ const {
   mockGetUserById,
   mockRetrieveStripeCustomer,
 } = vi.hoisted(() => ({
-  mockClearStripeCustomerByCustomerIdInDb: vi.fn(),
-  mockClearStripeSubscriptionBySubIdInDb: vi.fn(),
-  mockUpdateSubscriptionStateInDb: vi.fn(),
-  mockUpdateUserStripeSubscriptionInDb: vi.fn(),
-  mockTouchUserLastStripeSyncAtInDb: vi.fn(),
-  mockGetUserIdByStripeCustomerId: vi.fn(),
-  mockGetUserById: vi.fn(),
-  mockRetrieveStripeCustomer: vi.fn(),
+  mockClearStripeCustomerByCustomerIdInDb: vi.fn<typeof clearStripeCustomerByCustomerId>(),
+  mockClearStripeSubscriptionBySubIdInDb: vi.fn<typeof clearStripeSubscriptionBySubId>(),
+  mockUpdateSubscriptionStateInDb: vi.fn<typeof updateSubscriptionState>(),
+  mockUpdateUserStripeSubscriptionInDb: vi.fn<typeof updateUserStripeSubscription>(),
+  mockTouchUserLastStripeSyncAtInDb: vi.fn<typeof import('@/lib/db/stripe').touchUserLastStripeSyncAt>(),
+  mockGetUserIdByStripeCustomerId: vi.fn<typeof getUserIdByStripeCustomerId>(),
+  mockGetUserById: vi.fn<typeof getUserById>(),
+  mockRetrieveStripeCustomer: vi.fn<typeof retrieveStripeCustomer>(),
 }))
 
 vi.mock('@/lib/db/stripe', () => ({
@@ -58,8 +92,8 @@ describe('resolveAppUserIdForSubscription', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetUserIdByStripeCustomerId.mockResolvedValue(null)
-    mockGetUserById.mockResolvedValue({ id: 'user-sub' })
-    mockRetrieveStripeCustomer.mockResolvedValue({ id: 'cus_1', metadata: {} })
+    mockGetUserById.mockResolvedValue({ id: 'user-sub', email: 'user-sub@example.com' })
+    mockRetrieveStripeCustomer.mockResolvedValue(stripeCustomerFixture())
   })
 
   it('prefers subscription metadata when it matches the customer link', async () => {
@@ -111,11 +145,10 @@ describe('resolveAppUserIdForSubscription', () => {
   })
 
   it('falls back to Stripe customer metadata when DB has no link', async () => {
-    mockRetrieveStripeCustomer.mockResolvedValue({
-      id: 'cus_1',
-      metadata: { userId: 'user-meta' },
-    })
-    mockGetUserById.mockResolvedValue({ id: 'user-meta' })
+    mockRetrieveStripeCustomer.mockResolvedValue(
+      stripeCustomerFixture({ metadata: { userId: 'user-meta' } }),
+    )
+    mockGetUserById.mockResolvedValue({ id: 'user-meta', email: 'user-meta@example.com' })
 
     const userId = await resolveAppUserIdForSubscription({
       customerId: 'cus_1',

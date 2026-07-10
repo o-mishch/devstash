@@ -97,6 +97,11 @@ jobs:
         run: uv run --project infra/cli devstash-infra ci check-migrations
       - run: npm run lint
       - run: npm run test:run
+      - name: Build application (compile and typecheck check)
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+          SKIP_ENV_VALIDATION: true
 
   # ---- Gate: decide whether to BUILD at all (avoid wasteful repushes) ---------
   # The image build must run when the env is active (normal push) OR when the devstash-infra CLI is bringing

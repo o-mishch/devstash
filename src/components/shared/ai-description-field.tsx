@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, type ReactNode } from 'react'
+import { useState, useCallback, memo, type ReactNode } from 'react'
 import { Check, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -73,7 +73,7 @@ interface AiDescriptionFieldProps {
   children: ReactNode
 }
 
-export function AiDescriptionField({
+export const AiDescriptionField = memo(function AiDescriptionField({
   field,
   onApply,
   actionClassName,
@@ -83,11 +83,15 @@ export function AiDescriptionField({
   const isPro = useIsPro()
   const { isLoading, suggestedDescription, setSuggestedDescription, run, disabled } = field
 
-  const handleUse = () => {
+  const handleUse = useCallback(() => {
     if (!suggestedDescription) return
     onApply(suggestedDescription)
     setSuggestedDescription(null)
-  }
+  }, [suggestedDescription, onApply, setSuggestedDescription])
+
+  const handleDiscard = useCallback(() => {
+    setSuggestedDescription(null)
+  }, [setSuggestedDescription])
 
   return (
     <div className={cn('w-full space-y-2', fill && 'flex min-h-0 flex-1 flex-col')}>
@@ -134,7 +138,7 @@ export function AiDescriptionField({
                   type="button"
                   variant="outline"
                   size="xs"
-                  onClick={() => setSuggestedDescription(null)}
+                  onClick={handleDiscard}
                   className="gap-1.5"
                 >
                   <X className="size-3.5" />
@@ -147,7 +151,7 @@ export function AiDescriptionField({
       )}
     </div>
   )
-}
+})
 
 export const AI_DESCRIPTION_INPUT_CLASS =
   'border-0 bg-transparent pr-16 shadow-none focus-visible:ring-0'

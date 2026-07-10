@@ -22,6 +22,9 @@ const PROVIDER_ICONS: Record<string, { src: string; alt: string }> = {
   google: { src: googleSvg, alt: 'Google' },
 }
 
+// Static, no per-request dependency — hoisted once instead of allocated per render.
+const EXPIRED_LINK_ACTION = { label: 'Back to sign in', href: '/sign-in' }
+
 export default async function LinkAccountPage({ searchParams }: LinkAccountPageProps) {
   const { token } = await searchParams
 
@@ -33,10 +36,7 @@ export default async function LinkAccountPage({ searchParams }: LinkAccountPageP
 
   if (!pending) {
     return (
-      <ExpiredTokenPage
-        noun="account linking session"
-        action={{ label: 'Back to sign in', href: '/sign-in' }}
-      />
+      <ExpiredTokenPage noun="account linking session" action={EXPIRED_LINK_ACTION} />
     )
   }
 
@@ -47,12 +47,18 @@ export default async function LinkAccountPage({ searchParams }: LinkAccountPageP
 
   // Auto-link flow: user is already authenticated — skip password, just confirm
   if (isAlreadySignedIn) {
+    // Server Component — no useCallback available, and `token` is per-request request data
+    // (not hoistable to module scope), so `.bind` necessarily allocates a new function every
+    // render. jsx-no-new-function-as-prop is an honest residual here, not a memoization gap.
     const boundAction = autoLinkAccountAction.bind(null, token)
 
     return (
       <AuthFormLayout
         title={`Link your ${providerLabel} account`}
         description={
+          // Server Component — no useMemo available, and this JSX reads per-request data
+          // (providerLabel), so it can't be hoisted to a module-level const either.
+          // jsx-no-jsx-as-prop is an honest residual here.
           <span>
             Link your <strong className="text-foreground">{providerLabel}</strong> account to your
             DevStash account.
@@ -90,6 +96,9 @@ export default async function LinkAccountPage({ searchParams }: LinkAccountPageP
       <AuthFormLayout
         title="Sign in to continue"
         description={
+          // Server Component — no useMemo available, and this JSX reads per-request data
+          // (pending.email, providerLabel), so it can't be hoisted to a module-level const
+          // either. jsx-no-jsx-as-prop is an honest residual here.
           <span>
             An account for <strong className="text-foreground">{pending.email}</strong> already exists.
             Sign in below to link your <strong className="text-foreground">{providerLabel}</strong> account to it.
@@ -101,6 +110,10 @@ export default async function LinkAccountPage({ searchParams }: LinkAccountPageP
             const existingProvider = account.provider as OAuthProvider
             const existingProviderLabel = PROVIDER_LABELS[existingProvider] ?? existingProvider
             const icon = PROVIDER_ICONS[existingProvider]
+            // Server Component — no useCallback available, and both `existingProvider` (per
+            // iteration) and `token` (per-request) are required by `.bind`, so a new function
+            // is necessarily allocated per item. jsx-no-new-function-as-prop is an honest
+            // residual here, not a memoization gap.
             const boundAction = signInWithOAuthForLinkAction.bind(null, existingProvider, token)
             return (
               <form key={existingProvider} action={boundAction}>
@@ -122,12 +135,18 @@ export default async function LinkAccountPage({ searchParams }: LinkAccountPageP
   }
 
   // Password flow: user is not signed in — verify credentials before linking
+  // Server Component — no useCallback available, and `token` is per-request request data (not
+  // hoistable to module scope), so `.bind` necessarily allocates a new function every render.
+  // jsx-no-new-function-as-prop is an honest residual here, not a memoization gap.
   const boundAction = linkAccountAction.bind(null, token)
 
   return (
     <AuthFormLayout
       title={`Link your ${providerLabel} account`}
       description={
+        // Server Component — no useMemo available, and this JSX reads per-request data
+        // (pending.email, providerLabel), so it can't be hoisted to a module-level const
+        // either. jsx-no-jsx-as-prop is an honest residual here.
         <span>
           A DevStash account already exists for{' '}
           <strong className="text-foreground">{pending.email}</strong>. Enter your password to link

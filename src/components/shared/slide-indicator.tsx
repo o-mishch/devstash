@@ -1,5 +1,6 @@
 'use client'
 
+import { memo, useMemo } from 'react'
 import { motion, useReducedMotion, type Transition } from 'motion/react'
 
 interface SlideIndicatorProps {
@@ -10,10 +11,14 @@ interface SlideIndicatorProps {
 // the spring + prefers-reduced-motion gate so every segmented control animates identically and honors
 // reduced motion. Each consumer must pass a UNIQUE `layoutId` — motion shared-layout treats a reused id
 // across two mounted controls as the same element and animates the fill flying between them.
-export function SlideIndicator({ layoutId }: SlideIndicatorProps) {
-  const transition: Transition = useReducedMotion()
+export const SlideIndicator = memo(function SlideIndicator({ layoutId }: SlideIndicatorProps) {
+  const shouldReduce = useReducedMotion()
+  
+  const transition: Transition = useMemo(() => shouldReduce
     ? { duration: 0 }
     : { type: 'spring', stiffness: 380, damping: 30 }
+  , [shouldReduce])
+
   return (
     <motion.div
       layoutId={layoutId}
@@ -21,4 +26,4 @@ export function SlideIndicator({ layoutId }: SlideIndicatorProps) {
       transition={transition}
     />
   )
-}
+})

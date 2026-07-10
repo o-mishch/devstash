@@ -12,6 +12,15 @@ import { useCollections } from '@/hooks/items/use-collections'
 
 type CollectionComparator = (a: CollectionWithTypes, b: CollectionWithTypes) => number
 
+// Static — no prop/state dependency, so it's hoisted to module scope (created once ever) instead of
+// re-created per render or wrapped in useMemo.
+const createFirstCollectionTrigger = (
+  <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
+    Create your first collection <ArrowRight className="ml-2 h-4 w-4" />
+  </Button>
+)
+const emptyStateAction = <CollectionCreateDialog trigger={createFirstCollectionTrigger} />
+
 interface CollectionsGridProps {
   collections: CollectionWithTypes[]
 }
@@ -39,19 +48,7 @@ export function CollectionsGrid({ collections: initialCollections }: Collections
   const { collections } = useCollections({ initialData: initialCollections })
 
   if (collections.length === 0) {
-    return (
-      <EmptyCard
-        action={
-          <CollectionCreateDialog
-            trigger={
-              <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                Create your first collection <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            }
-          />
-        }
-      />
-    )
+    return <EmptyCard action={emptyStateAction} />
   }
 
   // Client-side sorting: when a secondary sort (az/za/oldest) is chosen, favorites are pinned to the

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Edit2, Trash2, Star } from 'lucide-react'
 
@@ -15,6 +15,19 @@ import type { CollectionWithTypes } from '@/types/collection'
 interface CollectionHeaderActionsProps {
   collection: CollectionWithTypes
 }
+
+// Fully static — no prop/state dependency — so hoisted to module scope instead of recreated per render.
+const editTrigger = (
+  <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" title="Edit collection">
+    <Edit2 className="size-4" />
+  </Button>
+)
+
+const deleteTrigger = (
+  <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" title="Delete collection">
+    <Trash2 className="size-4 text-destructive" />
+  </Button>
+)
 
 export function CollectionHeaderActions({ collection }: CollectionHeaderActionsProps) {
   const router = useRouter()
@@ -37,6 +50,11 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
       errorLabel: 'Failed to toggle favorite',
     },
   )
+  // toggleFavorite is already a useCallback-memoized zero-arg function (see useOptimisticToggle),
+  // so it can be passed directly as the handler without an extra inline arrow wrapper.
+  const handleDeleteSuccess = useCallback(() => {
+    router.push('/collections')
+  }, [router])
 
   return (
     <div className="flex items-center gap-2">
@@ -44,7 +62,7 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
         variant="ghost"
         size="icon"
         className={`size-8 ${isFavorite ? 'text-yellow-500 hover:text-yellow-500' : 'text-muted-foreground hover:text-foreground'}`}
-        onClick={() => toggleFavorite()}
+        onClick={toggleFavorite}
         title={isFavorite ? 'Remove favorite' : 'Add to favorites'}
       >
         <Star className={`size-4 ${isFavorite ? 'fill-yellow-500 text-yellow-500' : ''}`} />
@@ -54,35 +72,15 @@ export function CollectionHeaderActions({ collection }: CollectionHeaderActionsP
         collection={collection}
         open={editOpen}
         onOpenChange={setEditOpen}
-        trigger={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 text-muted-foreground hover:text-foreground"
-            title="Edit collection"
-          >
-            <Edit2 className="size-4" />
-          </Button>
-        }
+        trigger={editTrigger}
       />
 
       <CollectionDeleteDialog
         collection={collection}
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        onSuccess={() => {
-          router.push('/collections')
-        }}
-        trigger={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 text-muted-foreground hover:text-destructive"
-            title="Delete collection"
-          >
-            <Trash2 className="size-4 text-destructive" />
-          </Button>
-        }
+        onSuccess={handleDeleteSuccess}
+        trigger={deleteTrigger}
       />
     </div>
   )

@@ -1,6 +1,7 @@
 'use client'
 
-import { useId, useRef, useState, type MouseEvent } from 'react'
+import { useId, useRef, useState, useCallback, memo, type MouseEvent } from 'react'
+import type { HTMLProps } from '@base-ui/react/types'
 import { X, ChevronsUpDown, Plus, Eraser } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,7 +29,79 @@ interface CollectionSelectorProps {
   placeholder?: string
 }
 
-export function CollectionSelector({ selectedIds, onChange, collections: collectionsProp, creatable = false, suggestedName, placeholder = 'Search and select collections...' }: CollectionSelectorProps) {
+// Hoisted helpers to avoid jsx-no-jsx-as-prop/jsx-no-new-function-as-prop warnings
+const filterInitialFocus = (openType: string) => openType !== 'touch' && openType !== 'pen'
+const renderDiv = (props: HTMLProps) => <div {...props} />
+
+interface SelectedCollectionBadgeProps {
+  id: string
+  name: string
+  onRemove: (id: string, e: MouseEvent<HTMLButtonElement>) => void
+}
+
+const SelectedCollectionBadge = memo(function SelectedCollectionBadge({
+  id,
+  name,
+  onRemove,
+}: SelectedCollectionBadgeProps) {
+  const handleRemove = useCallback((e: MouseEvent<HTMLButtonElement>) => {
+    onRemove(id, e)
+  }, [id, onRemove])
+
+  return (
+    <Badge
+      variant="outline"
+      className="px-2 py-0.5 text-xs font-medium bg-foreground/10 text-foreground border-foreground/20"
+    >
+      {name}
+      <button
+        type="button"
+        className="ml-1.5 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-foreground/10 p-0.5"
+        onClick={handleRemove}
+      >
+        <X className="size-3" />
+        <span className="sr-only">Remove {name}</span>
+      </button>
+    </Badge>
+  )
+})
+
+interface CollectionOptionItemProps {
+  id: string
+  name: string
+  isSelected: boolean
+  onToggle: (id: string) => void
+}
+
+const CollectionOptionItem = memo(function CollectionOptionItem({
+  id,
+  name,
+  isSelected,
+  onToggle,
+}: CollectionOptionItemProps) {
+  const handleSelect = useCallback(() => {
+    onToggle(id)
+  }, [id, onToggle])
+
+  return (
+    <CommandItem
+      value={name}
+      onSelect={handleSelect}
+      data-checked={isSelected || undefined}
+    >
+      {name}
+    </CommandItem>
+  )
+})
+
+export const CollectionSelector = memo(function CollectionSelector({
+  selectedIds,
+  onChange,
+  collections: collectionsProp,
+  creatable = false,
+  suggestedName,
+  placeholder = 'Search and select collections...',
+}: CollectionSelectorProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const listboxId = useId()
@@ -47,31 +120,31 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
 
   const selectedCollections = collections.filter(c => selectedIds.includes(c.id))
 
-  const toggleCollection = (id: string) => {
+  const toggleCollection = useCallback((id: string) => {
     if (selectedIds.includes(id)) {
       onChange(selectedIds.filter(sid => sid !== id))
     } else {
       onChange([...selectedIds, id])
     }
-  }
+  }, [selectedIds, onChange])
 
-  const unselect = (id: string, e: MouseEvent<HTMLButtonElement>) => {
+  const unselect = useCallback((id: string, e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault()
     e.stopPropagation()
     toggleCollection(id)
-  }
+  }, [toggleCollection])
 
-  const handleOpenChange = (next: boolean) => {
+  const handleOpenChange = useCallback((next: boolean) => {
     setOpen(next)
     if (!next) setSearch('')
-  }
+  }, [])
 
   // Auto-select the freshly created collection (it lands in the shared cache via the dialog's seeder, so
   // it also appears in `collections` here) and close the dialog.
-  const handleCreated = (collection: CollectionPickerItem) => {
+  const handleCreated = useCallback((collection: CollectionPickerItem) => {
     setCreateName(null)
     if (!selectedIds.includes(collection.id)) onChange([...selectedIds, collection.id])
-  }
+  }, [selectedIds, onChange])
 
   // The name a "Create" would use: the typed query, or the suggestion when the box is empty. Hidden when
   // it already names an existing collection (case-insensitive) so the matching row is the obvious target.
@@ -80,29 +153,51 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
   const hasExactMatch = collections.some(c => c.name.toLowerCase() === candidateName.toLowerCase())
   const showCreate = creatable && candidateName.length > 0 && !hasExactMatch
 
+  const handlePointerDownCreate = useCallback((e: React.PointerEvent) => {
+    createOriginRef.current = morphOriginFromClick(e)
+  }, [])
+
+  const handleSelectCreate = useCallback(() => {
+    setCreateOrigin(createOriginRef.current)
+    createOriginRef.current = null
+    setCreateName(candidateName)
+    handleOpenChange(false)
+  }, [candidateName, handleOpenChange])
+
+  const handleClearSearch = useCallback(() => {
+    setSearch('')
+  }, [])
+
+  const handleCreateOpenChange = useCallback((o: boolean) => {
+    if (!o) setCreateName(null)
+  }, [])
+
+  const renderTriggerButton = useCallback((triggerProps: HTMLProps) => (
+    <Button
+      {...triggerProps}
+      render={renderDiv}
+      nativeButton={false}
+      variant="outline"
+      // This is a listbox-style multiselect combobox (Popover + Command list), not a
+      // free-text or single-value input, so a native <input>/<select> can't represent it.
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+      role="combobox"
+      aria-expanded={open}
+      aria-controls={listboxId}
+      // touch:h-auto + touch:min-h-11 override the Button's default `touch:h-11` (a fixed
+      // 44px tap height): on mobile that fixed height clipped this multiselect so several
+      // wrapped collection badges overflowed the box and spilled over the label above. We
+      // keep the 44px floor as a min-height so an empty trigger stays an easy tap target.
+      className="@container/collection-trigger w-full min-h-9 h-auto touch:h-auto touch:min-h-11 justify-between font-normal hover:bg-transparent"
+    />
+  ), [open, listboxId])
+
   return (
     <>
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger
           nativeButton={false}
-          render={
-            <Button
-              render={<div />}
-              nativeButton={false}
-              variant="outline"
-              // This is a listbox-style multiselect combobox (Popover + Command list), not a
-              // free-text or single-value input, so a native <input>/<select> can't represent it.
-              // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-              role="combobox"
-              aria-expanded={open}
-              aria-controls={listboxId}
-              // touch:h-auto + touch:min-h-11 override the Button's default `touch:h-11` (a fixed
-              // 44px tap height): on mobile that fixed height clipped this multiselect so several
-              // wrapped collection badges overflowed the box and spilled over the label above. We
-              // keep the 44px floor as a min-height so an empty trigger stays an easy tap target.
-              className="@container/collection-trigger w-full min-h-9 h-auto touch:h-auto touch:min-h-11 justify-between font-normal hover:bg-transparent"
-            />
-          }
+          render={renderTriggerButton}
         >
           <span className="flex min-w-0 flex-1 flex-wrap gap-1.5">
             {selectedCollections.length === 0 ? (
@@ -111,21 +206,12 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
               <>
                 <span className="flex min-w-0 flex-1 flex-wrap gap-1.5 @max-[22rem]/collection-trigger:hidden">
                   {selectedCollections.map((col) => (
-                    <Badge
+                    <SelectedCollectionBadge
                       key={col.id}
-                      variant="outline"
-                      className="px-2 py-0.5 text-xs font-medium bg-foreground/10 text-foreground border-foreground/20"
-                    >
-                      {col.name}
-                      <button
-                        type="button"
-                        className="ml-1.5 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-foreground/10 p-0.5"
-                        onClick={(e) => unselect(col.id, e)}
-                      >
-                        <X className="size-3" />
-                        <span className="sr-only">Remove {col.name}</span>
-                      </button>
-                    </Badge>
+                      id={col.id}
+                      name={col.name}
+                      onRemove={unselect}
+                    />
                   ))}
                 </span>
                 <span className="hidden min-w-0 flex-1 truncate text-left text-foreground @max-[22rem]/collection-trigger:block">
@@ -150,7 +236,7 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
           // On touch/pen, don't move focus to the search input on open — auto-focusing it pops the
           // mobile keyboard, which lifts/resizes the bottom sheet and drags this anchored popover
           // upward (a jump). Desktop keeps default focus for type-to-search.
-          initialFocus={(openType) => openType !== 'touch' && openType !== 'pen'}
+          initialFocus={filterInitialFocus}
         >
           <Command>
             <CommandInput placeholder="Search or name a collection..." value={search} onValueChange={setSearch} />
@@ -163,14 +249,13 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
                   {collections.map((col) => {
                     const isSelected = selectedIds.includes(col.id)
                     return (
-                      <CommandItem
+                      <CollectionOptionItem
                         key={col.id}
-                        value={col.name}
-                        onSelect={() => toggleCollection(col.id)}
-                        data-checked={isSelected || undefined}
-                      >
-                        {col.name}
-                      </CommandItem>
+                        id={col.id}
+                        name={col.name}
+                        isSelected={isSelected}
+                        onToggle={toggleCollection}
+                      />
                     )
                   })}
                 </CommandGroup>
@@ -182,21 +267,14 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
                     <CommandItem
                       forceMount
                       value={`__create__${candidateName}`}
-                      onPointerDown={(e) => {
-                        createOriginRef.current = morphOriginFromClick(e)
-                      }}
-                      onSelect={() => {
-                        setCreateOrigin(createOriginRef.current)
-                        createOriginRef.current = null
-                        setCreateName(candidateName)
-                        handleOpenChange(false)
-                      }}
+                      onPointerDown={handlePointerDownCreate}
+                      onSelect={handleSelectCreate}
                     >
                       <Plus className="text-muted-foreground" />
                       Create “{candidateName}”
                     </CommandItem>
                     {trimmedSearch.length > 0 && (
-                      <CommandItem forceMount value="__clear__" onSelect={() => setSearch('')}>
+                      <CommandItem forceMount value="__clear__" onSelect={handleClearSearch}>
                         <Eraser className="text-muted-foreground" />
                         Clear
                       </CommandItem>
@@ -211,9 +289,7 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
       {creatable && (
         <CollectionCreateDialog
           open={createName !== null}
-          onOpenChange={(o) => {
-            if (!o) setCreateName(null)
-          }}
+          onOpenChange={handleCreateOpenChange}
           defaultName={createName ?? ''}
           morphOrigin={createOrigin}
           onCreated={handleCreated}
@@ -221,4 +297,4 @@ export function CollectionSelector({ selectedIds, onChange, collections: collect
       )}
     </>
   )
-}
+})

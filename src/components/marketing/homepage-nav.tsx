@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { Menu, X, Hexagon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,11 @@ export function HomepageNav({ isAuthenticated = false }: HomepageNavProps) {
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
+
+  // Functional update means these never depend on `menuOpen`/other changing
+  // values, so an empty dep array keeps the reference stable across renders.
+  const toggleMenu = useCallback(() => setMenuOpen((prev) => !prev), [])
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
 
   return (
     <>
@@ -85,7 +90,7 @@ export function HomepageNav({ isAuthenticated = false }: HomepageNavProps) {
                 variant="ghost"
                 size="icon"
                 className="md:hidden -mr-1 text-muted-foreground hover:text-foreground"
-                onClick={() => setMenuOpen(!menuOpen)}
+                onClick={toggleMenu}
                 aria-label="Toggle menu"
               >
                 {menuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -100,7 +105,7 @@ export function HomepageNav({ isAuthenticated = false }: HomepageNavProps) {
             'md:hidden fixed inset-0 top-16 z-40 bg-black/30 backdrop-blur-sm transition-opacity duration-300',
             menuOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
           )}
-          onClick={() => setMenuOpen(false)}
+          onClick={closeMenu}
           aria-hidden="true"
         />
         {/* Panel — smooth slide-down via animating grid-template-rows (0fr -> 1fr) */}
@@ -115,14 +120,14 @@ export function HomepageNav({ isAuthenticated = false }: HomepageNavProps) {
               <a
                 href="#features"
                 className="rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-                onClick={() => setMenuOpen(false)}
+                onClick={closeMenu}
               >
                 Features
               </a>
               <a
                 href="#pricing"
                 className="rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-                onClick={() => setMenuOpen(false)}
+                onClick={closeMenu}
               >
                 Pricing
               </a>
@@ -130,7 +135,7 @@ export function HomepageNav({ isAuthenticated = false }: HomepageNavProps) {
                 <Link
                   href="/sign-in"
                   className="rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground sm:hidden"
-                  onClick={() => setMenuOpen(false)}
+                  onClick={closeMenu}
                 >
                   Sign In
                 </Link>

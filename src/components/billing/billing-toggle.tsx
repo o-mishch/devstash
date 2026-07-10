@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import type { BillingPeriod } from '@/lib/billing/config/billing-pricing.client'
 import { PRICING } from '@/lib/billing/config/billing-pricing.client'
@@ -14,6 +15,8 @@ interface BillingToggleProps {
 
 export function BillingToggle({ billing, onChange }: BillingToggleProps) {
   const isYearly = billing === 'yearly'
+  const handleMonthlyClick = useCallback(() => onChange('monthly'), [onChange])
+  const handleYearlyClick = useCallback(() => onChange('yearly'), [onChange])
   return (
     <div className="relative inline-grid grid-cols-2 rounded-lg border border-border bg-card p-1">
       <button
@@ -22,7 +25,7 @@ export function BillingToggle({ billing, onChange }: BillingToggleProps) {
           'relative flex items-center justify-center rounded-md px-4 py-1.5 text-sm font-medium transition-colors duration-300',
           !isYearly ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
         )}
-        onClick={() => onChange('monthly')}
+        onClick={handleMonthlyClick}
       >
         {!isYearly && <SlideIndicator layoutId="billingToggleIndicator" />}
         <span className="relative z-10">Monthly</span>
@@ -33,7 +36,7 @@ export function BillingToggle({ billing, onChange }: BillingToggleProps) {
           'relative flex items-center justify-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors duration-300',
           isYearly ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
         )}
-        onClick={() => onChange('yearly')}
+        onClick={handleYearlyClick}
       >
         {isYearly && <SlideIndicator layoutId="billingToggleIndicator" />}
         <span className="relative z-10 flex items-center justify-center gap-2">

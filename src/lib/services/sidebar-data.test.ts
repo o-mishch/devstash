@@ -4,8 +4,8 @@ vi.mock('@/lib/billing/sync/passive-billing-sync', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/billing/sync/passive-billing-sync')>()
   return {
     ...actual,
-    maybeReconcileBillingStateForUser: vi.fn(),
-    maybeReconcileOrphanSubscriptionForUser: vi.fn(),
+    maybeReconcileBillingStateForUser: vi.fn<typeof maybeReconcileBillingStateForUser>(),
+    maybeReconcileOrphanSubscriptionForUser: vi.fn<typeof maybeReconcileOrphanSubscriptionForUser>(),
   }
 })
 
@@ -23,15 +23,17 @@ const mockMaybeReconcileBilling = vi.mocked(maybeReconcileBillingStateForUser)
 const mockMaybeReconcileOrphan = vi.mocked(maybeReconcileOrphanSubscriptionForUser)
 
 vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
-  resolveProAccessForBillingContext: vi.fn(),
+  resolveProAccessForBillingContext: vi.fn<typeof resolveProAccessForBillingContext>(),
 }))
 
 vi.mock('@/lib/db/sidebar', () => ({
-  fetchSidebarData: vi.fn((user: unknown) => ({
-    collections: [],
-    itemTypes: [],
-    user,
-  })),
+  fetchSidebarData: vi.fn<typeof fetchSidebarData>((user) =>
+    Promise.resolve({
+      collections: [],
+      itemTypes: [],
+      user,
+    })
+  ),
 }))
 
 import { resolveProAccessForBillingContext } from '@/lib/billing/access/pro-access-resolution'

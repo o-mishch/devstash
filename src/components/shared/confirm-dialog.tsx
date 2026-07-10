@@ -1,5 +1,6 @@
 'use client'
 
+import { memo, useCallback } from 'react'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -26,9 +27,11 @@ interface ConfirmDialogProps {
 }
 
 // Shared confirm/guard dialog for the AI Explain + Optimize flows (replace-existing confirm and
+import type { HTMLProps } from '@base-ui/react/types'
+
 // unsaved-on-close guard). The optional Discard button is the only structural difference between the
 // two layouts.
-export function ConfirmDialog({
+export const ConfirmDialog = memo(function ConfirmDialog({
   open,
   onOpenChange,
   title,
@@ -41,9 +44,13 @@ export function ConfirmDialog({
   discardLabel = 'Discard',
   destructive = false,
 }: ConfirmDialogProps) {
+  const renderCloseButton = useCallback((props: HTMLProps) => (
+    <Button {...props} variant="outline" size="sm" />
+  ), [])
+
   const actions = (
     <div className="flex gap-2">
-      <AlertDialog.Close render={<Button variant="outline" size="sm" />}>
+      <AlertDialog.Close render={renderCloseButton}>
         {cancelLabel}
       </AlertDialog.Close>
       <Button size="sm" variant={destructive ? 'destructiveSolid' : 'default'} disabled={isPending} onClick={onConfirm} className="gap-1.5">
@@ -67,4 +74,4 @@ export function ConfirmDialog({
       )}
     </NestedAlertDialog>
   )
-}
+})

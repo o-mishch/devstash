@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useMemo, type ComponentProps } from 'react'
 import Link from 'next/link'
 import { Sparkles, ArrowRight, RotateCw, Clock } from 'lucide-react'
 import type { UiSkin } from '@/types/ui-skins'
@@ -74,6 +75,22 @@ export function BrainDumpWidget({ skin, className }: BrainDumpWidgetProps) {
   const usePips = limit > 0 && limit <= 12
   const valueText = `${remaining} of ${limit} ${limit === 1 ? 'split' : 'splits'} left this hour`
   const renewLabel = meter ? formatRenewIn(meter.resetAt) : null
+  const barStyle = useMemo(() => ({ width: `${Math.max(pct, isEmpty ? 0 : 4)}%` }), [pct, isEmpty])
+  // Function form (Base UI's documented perf pattern for the `render` prop) instead of a plain
+  // element, wrapped in `useCallback` so the function reference itself is also stable across renders
+  // where mounted/valueText haven't changed.
+  const renderTrigger = useCallback(
+    (triggerProps: ComponentProps<'button'>) => (
+      <button
+        {...triggerProps}
+        type="button"
+        suppressHydrationWarning
+        aria-label={mounted ? `Brain Dump quota — ${valueText}. Show details.` : 'Brain Dump quota. Show details.'}
+        className="pointer-events-auto relative z-10 -mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors outline-none hover:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-ring"
+      />
+    ),
+    [mounted, valueText],
+  )
 
   return (
     <div className={cn('group/bd card-interactive flex h-full flex-col justify-center gap-2.5 px-3.5 py-2.5', chrome.panel, chrome.font, className)}>
@@ -123,19 +140,7 @@ export function BrainDumpWidget({ skin, className }: BrainDumpWidgetProps) {
         {/* openOnHover (+ delays) belong on the Trigger per Base UI; click/touch open is the default —
             so the details surface on hover AND on press/tap, as requested. */}
         <Popover>
-          <PopoverTrigger
-            openOnHover
-            delay={120}
-            closeDelay={80}
-            render={
-              <button
-                type="button"
-                suppressHydrationWarning
-                aria-label={mounted ? `Brain Dump quota — ${valueText}. Show details.` : 'Brain Dump quota. Show details.'}
-                className="pointer-events-auto relative z-10 -mx-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors outline-none hover:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            }
-          >
+          <PopoverTrigger openOnHover delay={120} closeDelay={80} render={renderTrigger}>
             <span className="flex shrink-0 items-baseline gap-1 leading-none">
               <NumberTicker value={mounted ? remaining : 0} className={cn('text-sm font-bold tabular-nums', mounted && isEmpty ? 'text-muted-foreground' : 'text-foreground')} suppressHydrationWarning />
               <span className="text-[11px] font-medium tabular-nums text-muted-foreground">left</span>
@@ -182,7 +187,7 @@ export function BrainDumpWidget({ skin, className }: BrainDumpWidgetProps) {
                 <span aria-hidden="true" className="relative block h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-foreground/[0.08] ring-1 ring-inset ring-foreground/[0.06]">
                   <span
                     className={cn('block h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none', isEmpty ? 'bg-muted-foreground/40' : chrome.bar)}
-                    style={{ width: `${Math.max(pct, isEmpty ? 0 : 4)}%` }}
+                    style={barStyle}
                   />
                 </span>
               )}

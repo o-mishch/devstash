@@ -30,6 +30,10 @@ export default async function CollectionPage({ params, searchParams }: Collectio
   if (!collection) notFound()
 
   const mainTypeName = collection.types[0]?.name || 'mixed'
+  // Honest residual (react-perf/jsx-no-jsx-as-prop): built from request-scoped `mainTypeName`, so it
+  // can't be hoisted to module scope, and this file has no 'use client' directive (Server Component —
+  // no useMemo available). Extracting to a local const is as far as this can honestly go.
+  const itemsSkeleton = <ItemsTypeSkeleton typeName={mainTypeName} />
 
   return (
     <div className="app-page gap-6 p-6">
@@ -44,7 +48,7 @@ export default async function CollectionPage({ params, searchParams }: Collectio
 
       <CollectionDetailHeader initialCollection={collection} />
 
-      <Suspense fallback={<ItemsTypeSkeleton typeName={mainTypeName} />}>
+      <Suspense fallback={itemsSkeleton}>
         <CollectionItemsFetcher collectionId={id} userId={userId} />
       </Suspense>
     </div>

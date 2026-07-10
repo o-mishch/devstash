@@ -31,7 +31,11 @@ interface DonutSegment {
   color: string
   length: number
   offset: number
+  animate: { strokeDasharray: string }
 }
+
+// Fully static — no dependency on props/state — so it's created once ever, not per render.
+const DONUT_INITIAL = { strokeDasharray: `0 ${DONUT_CIRCUMFERENCE}` }
 
 export function MissionControlDonut({ distribution }: MissionControlDonutProps) {
   const reduceMotion = useReducedMotion()
@@ -49,9 +53,25 @@ export function MissionControlDonut({ distribution }: MissionControlDonutProps) 
       const length = Math.max(fraction * DONUT_CIRCUMFERENCE - gap, 0)
       const offset = -start * DONUT_CIRCUMFERENCE
       start += fraction
-      return { name: d.name, color: SYSTEM_TYPE_COLORS[d.name] ?? 'var(--primary)', length, offset }
+      return {
+        name: d.name,
+        color: SYSTEM_TYPE_COLORS[d.name] ?? 'var(--primary)',
+        length,
+        offset,
+        animate: { strokeDasharray: `${length} ${DONUT_CIRCUMFERENCE - length}` },
+      }
     })
   }, [data, total])
+
+  // Precomputed once per segment-set/reduceMotion change (not per render) — each segment's own
+  // per-index stagger delay is baked in here so the JSX below only reads a stable array member.
+  const transitions = useMemo(
+    () =>
+      segments.map((_, i) =>
+        reduceMotion ? { duration: 0 } : { duration: 0.8, delay: i * 0.08, ease: 'easeOut' as const },
+      ),
+    [segments, reduceMotion],
+  )
 
   if (total === 0) {
     return <div className="grid h-[150px] place-items-center text-sm text-muted-foreground">No items yet</div>
@@ -71,10 +91,10 @@ export function MissionControlDonut({ distribution }: MissionControlDonutProps) 
             stroke={s.color}
             strokeWidth={DONUT_STROKE}
             strokeDashoffset={s.offset}
-            initial={{ strokeDasharray: `0 ${DONUT_CIRCUMFERENCE}` }}
-            animate={{ strokeDasharray: `${s.length} ${DONUT_CIRCUMFERENCE - s.length}` }}
+            initial={DONUT_INITIAL}
+            animate={s.animate}
             // Reduced-motion: snap straight to the final ring (no sweep) instead of animating in.
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.8, delay: i * 0.08, ease: 'easeOut' }}
+            transition={transitions[i]}
           />
         ))}
       </svg>
@@ -138,6 +158,15 @@ export function MissionControlSparkline({ activity }: ActivityChartProps) {
   )
 }
 
+// Explicit hex scales (5 = maxLevel + 1). react-activity-calendar parses these internally, so CSS
+// variables can't be used here — keep concrete colors in the brand-blue ramp. Fully static, hoisted
+// to module scope rather than recreated per render.
+const HEATMAP_THEME = {
+  light: ['#eceef2', '#bfdbfe', '#60a5fa', '#3b82f6', '#1d4ed8'],
+  dark: ['#1b1e29', '#27407a', '#3b62c4', '#4f7cff', '#7aa2ff'],
+}
+const HEATMAP_LABELS = { totalCount: '{{count}} items in the last 12 weeks' }
+
 export function MissionControlHeatmap({ activity }: ActivityChartProps) {
   return (
     <ActivityCalendar
@@ -147,13 +176,8 @@ export function MissionControlHeatmap({ activity }: ActivityChartProps) {
       showTotalCount={false}
       showColorLegend
       maxLevel={4}
-      // Explicit hex scales (5 = maxLevel + 1). react-activity-calendar parses these internally, so
-      // CSS variables can't be used here — keep concrete colors in the brand-blue ramp.
-      theme={{
-        light: ['#eceef2', '#bfdbfe', '#60a5fa', '#3b82f6', '#1d4ed8'],
-        dark: ['#1b1e29', '#27407a', '#3b62c4', '#4f7cff', '#7aa2ff'],
-      }}
-      labels={{ totalCount: '{{count}} items in the last 12 weeks' }}
+      theme={HEATMAP_THEME}
+      labels={HEATMAP_LABELS}
     />
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import type { CSSProperties, KeyboardEvent } from 'react'
+import { memo, useCallback, useMemo, type CSSProperties, type KeyboardEvent } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { CopyButton } from '@/components/shared/copy-button'
 import { ItemIconWrapper } from '@/components/shared/item-icon-wrapper'
@@ -16,20 +16,32 @@ interface ItemCardProps {
   item: LightItem
 }
 
-export function ItemCard({ item }: ItemCardProps) {
+// Rendered per-row inside the virtualized items grid (TanStackVirtualGrid re-renders visible rows
+// on every scroll frame). Memoized so a row only re-renders when its own `item` reference changes —
+// the narrowed `openDrawer` selector below keeps that action reference stable across unrelated
+// drawer state changes (isOpen/selectedItemId/item/openScrollY), mirroring the dashboard ItemRow fix.
+export const ItemCard = memo(function ItemCard({ item }: ItemCardProps) {
   const { itemType } = item
-  const { openDrawer } = useItemDrawerStore()
+  const openDrawer = useItemDrawerStore((state) => state.openDrawer)
   const isPro = useIsPro()
   const hasFile = ITEM_TYPES_WITH_FILE.has(itemType.name)
   const isRestricted = !isPro && PRO_ITEM_TYPE_NAMES.has(itemType.name)
   const copyValue = hasFile ? `${getBaseUrl()}/api/download/${item.id}` : (item.url ?? item.title)
   const subtitle = item.descriptionPreview || item.contentPreview || item.url
+  const cardStyle = useMemo(
+    () => ({ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties),
+    [itemType.name],
+  )
+  const handleClick = useCallback(() => openDrawer(item), [openDrawer, item])
 
-  function handleCardKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    openDrawer(item)
-  }
+  const handleCardKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      openDrawer(item)
+    },
+    [openDrawer, item],
+  )
 
   return (
     <Card
@@ -39,8 +51,8 @@ export function ItemCard({ item }: ItemCardProps) {
       role="button"
       tabIndex={0}
       className="card-interactive group/card relative h-full min-h-20 min-w-0 gap-0 overflow-visible py-0 border-l-2 border-l-[var(--item-color)] ring-border focus-visible:ring-2 focus-visible:ring-ring"
-      style={{ '--item-color': SYSTEM_TYPE_COLORS[itemType.name] } as CSSProperties}
-      onClick={() => openDrawer(item)}
+      style={cardStyle}
+      onClick={handleClick}
       onKeyDown={handleCardKeyDown}
     >
       <CardContent className="flex h-full items-center p-4">
@@ -67,4 +79,4 @@ export function ItemCard({ item }: ItemCardProps) {
       />
     </Card>
   )
-}
+})

@@ -12,6 +12,49 @@ interface ConfirmLoginEmailPageProps {
 const SINGLE_USE_NOTE =
   ' This link works once — if confirmation fails, request a new one from your profile.'
 
+// Static — hoisted to module scope so TokenGatedPage never receives a fresh object per render
+// (jsx-no-new-object-as-prop).
+const INVALID_ACTION = { label: 'Go to profile', href: '/profile' }
+
+// `CredentialEmailPayload` isn't exported from tokens.ts; derive it structurally from the
+// peek function's own return type instead of duplicating the shape.
+type CredentialEmailPayload = NonNullable<Awaited<ReturnType<typeof peekCredentialEmailPayload>>>
+
+// Hoisted to module scope — this Server Component has no props/state to close over, so the
+// function reference is stable across requests (jsx-no-new-function-as-prop).
+async function resolveConfirmLoginEmail(t: string, payload: CredentialEmailPayload) {
+  const methods = await getUserAuthMethods(payload.userId)
+  if (!methods) return null
+
+  // Derive add-vs-change from the user's CURRENT password state — the same signal
+  // `confirmCredentialEmail` uses — so a stale token never shows a form the server rejects.
+  const isChange = Boolean(methods.password)
+  const primaryMoveNote = credentialEmailPrimaryMoveNote(
+    isChange && primaryEmailMovesWithCredential({
+      email: methods.email,
+      credentialEmail: methods.credentialEmail,
+    }),
+  )
+
+  return {
+    title: isChange ? 'Confirm your new sign-in email' : 'Confirm sign-in email',
+    description: isChange
+      ? `Confirm to switch your email & password sign-in to this address. Your password and other sign-in methods stay the same.${primaryMoveNote}${SINGLE_USE_NOTE}`
+      : `Set a password to finish adding email & password sign-in on this address.${SINGLE_USE_NOTE}`,
+    children: isChange ? (
+      <ConfirmEmailChangeForm token={t} />
+    ) : (
+      <TokenPasswordForm
+        token={t}
+        path="/auth/confirm-login-email"
+        successMessage="Sign-in email confirmed! You can now sign in with email & password."
+        passwordLabel="Password"
+        submitLabel="Confirm & set password"
+      />
+    ),
+  }
+}
+
 export default async function ConfirmLoginEmailPage({ searchParams }: ConfirmLoginEmailPageProps) {
   const { token } = await searchParams
 
@@ -21,39 +64,8 @@ export default async function ConfirmLoginEmailPage({ searchParams }: ConfirmLog
       peekPayload={peekCredentialEmailPayload}
       missingNoun="confirmation token"
       invalidDescription="This confirmation link is invalid, has expired, or was already used. Request a new one from your profile."
-      invalidAction={{ label: 'Go to profile', href: '/profile' }}
-      resolve={async (t, payload) => {
-        const methods = await getUserAuthMethods(payload.userId)
-        if (!methods) return null
-
-        // Derive add-vs-change from the user's CURRENT password state — the same signal
-        // `confirmCredentialEmail` uses — so a stale token never shows a form the server rejects.
-        const isChange = Boolean(methods.password)
-        const primaryMoveNote = credentialEmailPrimaryMoveNote(
-          isChange && primaryEmailMovesWithCredential({
-            email: methods.email,
-            credentialEmail: methods.credentialEmail,
-          }),
-        )
-
-        return {
-          title: isChange ? 'Confirm your new sign-in email' : 'Confirm sign-in email',
-          description: isChange
-            ? `Confirm to switch your email & password sign-in to this address. Your password and other sign-in methods stay the same.${primaryMoveNote}${SINGLE_USE_NOTE}`
-            : `Set a password to finish adding email & password sign-in on this address.${SINGLE_USE_NOTE}`,
-          children: isChange ? (
-            <ConfirmEmailChangeForm token={t} />
-          ) : (
-            <TokenPasswordForm
-              token={t}
-              path="/auth/confirm-login-email"
-              successMessage="Sign-in email confirmed! You can now sign in with email & password."
-              passwordLabel="Password"
-              submitLabel="Confirm & set password"
-            />
-          ),
-        }
-      }}
+      invalidAction={INVALID_ACTION}
+      resolve={resolveConfirmLoginEmail}
     />
   )
 }

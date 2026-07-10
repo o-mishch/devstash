@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState, type HTMLAttributes } from 'react'
 import { toast } from 'sonner'
 import { KeyRound } from 'lucide-react'
 import { Button, SubmitButton } from '@/components/ui/button'
@@ -34,9 +34,26 @@ export function ChangePasswordForm() {
     }
   })
 
+  const renderTrigger = useCallback(
+    (triggerProps: HTMLAttributes<HTMLButtonElement>) => (
+      <Button
+        {...triggerProps}
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground max-sm:h-10 max-sm:w-full max-sm:justify-start max-sm:px-3 max-sm:text-sm"
+      >
+        <KeyRound className="mr-1 size-3 max-sm:size-4" />
+        Change password
+      </Button>
+    ),
+    [],
+  )
+
+  const onCancelClick = useCallback(() => setOpen(false), [])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground max-sm:h-10 max-sm:w-full max-sm:justify-start max-sm:px-3 max-sm:text-sm"><KeyRound className="mr-1 size-3 max-sm:size-4" />Change password</Button>} />
+      <DialogTrigger render={renderTrigger} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Change Password</DialogTitle>
@@ -75,7 +92,7 @@ export function ChangePasswordForm() {
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+            <Button type="button" variant="ghost" onClick={onCancelClick}>
               Cancel
             </Button>
             <SubmitButton isPending={isPending}>

@@ -1,6 +1,6 @@
 'use client'
 
-import { type CSSProperties } from 'react'
+import { type CSSProperties, useMemo } from 'react'
 import { Folder } from 'lucide-react'
 import { useCollection } from '@/hooks/items/use-collections'
 import { ItemTypeIcon } from '@/components/shared/item-type-icon'
@@ -16,10 +16,15 @@ export function CollectionDetailHeader({ initialCollection }: CollectionDetailHe
   const { collection } = useCollection(initialCollection.id, initialCollection)
   const currentCollection = collection || initialCollection
 
+  const headerStyle = useMemo(
+    () => ({ '--item-color': currentCollection.dominantColor ?? undefined }) as CSSProperties,
+    [currentCollection.dominantColor],
+  )
+
   return (
     <div
       className="flex items-center gap-3 border-l-2 border-l-[var(--item-color)] pl-3 sm:pl-4"
-      style={{ '--item-color': currentCollection.dominantColor ?? undefined } as CSSProperties}
+      style={headerStyle}
     >
       <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--item-color)]/12 text-[var(--item-color)]">
         <Folder className="size-5" />

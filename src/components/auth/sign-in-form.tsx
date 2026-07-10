@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
@@ -73,9 +73,13 @@ export function SignInForm({ successMessage }: SignInFormProps) {
       toast.error(error.message || 'Something went wrong. Please try again.')
     },
   })
-  const formAction = (formData: FormData) => loginMutation.mutate(formData)
-  const isPending = loginMutation.isPending
-
+  const { mutate: login, isPending } = loginMutation
+  // Optimized using destructured stable `login` from useMutation.
+  const formAction = useCallback(
+    (formData: FormData) => login(formData),
+    [login],
+  )
+  
   useEffect(() => {
     if (successMessage) toast.success(successMessage)
   }, [successMessage])
@@ -93,6 +97,12 @@ export function SignInForm({ successMessage }: SignInFormProps) {
       toast.error(error.message || 'Failed to send verification email. Please try again later.'),
   })
 
+  const { mutate: resend } = resendMutation
+  // Optimized using destructured stable `resend` from useMutation.
+  const handleResendClick = useCallback(() => {
+    resend()
+  }, [resend])
+
   return (
     <div className="flex flex-col gap-4">
       {unverifiedEmail && (
@@ -102,7 +112,7 @@ export function SignInForm({ successMessage }: SignInFormProps) {
             Please check your inbox or{' '}
             <button
               type="button"
-              onClick={() => resendMutation.mutate()}
+              onClick={handleResendClick}
               className="text-primary underline-offset-4 hover:underline"
             >
               resend the verification email

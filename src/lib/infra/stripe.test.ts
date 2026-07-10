@@ -1,8 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { Logger } from 'pino'
 
-const mockRetrieve = vi.fn()
-const mockUpdate = vi.fn()
-const mockCreate = vi.fn()
+// Narrow, test-shaped stand-ins for Stripe.Customer — the mocked resolved values here are
+// deliberately partial fixtures, not full SDK objects, so we type against actual test usage
+// rather than the real (much larger) Stripe.CustomerResource method signatures.
+interface MockStripeCustomer {
+  id?: string
+  deleted?: boolean
+  metadata?: Record<string, string>
+}
+
+interface UpdateCustomerParams {
+  metadata: Record<string, string>
+}
+
+interface CreateCustomerParams {
+  email: string
+  metadata: Record<string, string>
+}
+
+interface IdempotencyOptions {
+  idempotencyKey: string
+}
+
+const mockRetrieve = vi.fn<(customerId: string) => Promise<MockStripeCustomer>>()
+const mockUpdate = vi.fn<(customerId: string, params: UpdateCustomerParams) => Promise<MockStripeCustomer>>()
+const mockCreate = vi.fn<(params: CreateCustomerParams, options: IdempotencyOptions) => Promise<MockStripeCustomer>>()
 
 vi.mock('stripe', () => ({
   default: class MockStripe {
@@ -11,7 +34,13 @@ vi.mock('stripe', () => ({
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) },
+  logger: {
+    child: () => ({
+      warn: vi.fn<Logger['warn']>(),
+      info: vi.fn<Logger['info']>(),
+      error: vi.fn<Logger['error']>(),
+    }),
+  },
 }))
 
 import { isChargeFullyRefunded, ensureStripeCustomerUserId, createStripeCustomer } from '@/lib/infra/stripe'

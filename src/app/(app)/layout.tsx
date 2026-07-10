@@ -29,6 +29,37 @@ import { RootProviderShell } from '@/components/shared/root-provider-shell'
 import { ThemeInitializer } from '@/components/shared/theme-initializer'
 import { normalizeEditorPreferences } from '@/lib/utils/editor-preferences'
 
+/**
+ * Fully static — neither slot's content depends on request data (`Topbar`/`Sidebar` take no
+ * props and self-fetch via the shared `loadChromeData()` cache), so these element trees are
+ * safe to build once at module load instead of once per request. Hoisting them avoids passing
+ * a JSX literal as the `topbar`/`sidebar` prop on every render.
+ */
+const topbarSlot = (
+  <Suspense fallback={<TopbarSkeleton />}>
+    <Topbar />
+  </Suspense>
+)
+
+const sidebarSlot = (
+  <Suspense fallback={<SidebarSkeleton collapsible />}>
+    <Sidebar />
+  </Suspense>
+)
+
+/** Fully static (no request data) — hoisted so the Base UI `render` prop below receives a
+ * stable reference instead of a fresh JSX literal every render. */
+const favoritesLink = (
+  <Link
+    href="/favorites"
+    prefetch={false}
+    aria-label="Favorites"
+    className="card-interactive flex size-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+  >
+    <Star className="size-4" />
+  </Link>
+)
+
 export default function DashboardLayout({ children }: WithChildren) {
   const { appTheme, colorMode } = normalizeEditorPreferences(null)
 
@@ -145,18 +176,7 @@ function TopbarSkeleton() {
 function DashboardLayoutInner({ children }: WithChildren) {
   return (
     <UpgradePromptProvider>
-      <AppShell
-        topbar={
-          <Suspense fallback={<TopbarSkeleton />}>
-            <Topbar />
-          </Suspense>
-        }
-        sidebar={
-          <Suspense fallback={<SidebarSkeleton collapsible />}>
-            <Sidebar />
-          </Suspense>
-        }
-      >
+      <AppShell topbar={topbarSlot} sidebar={sidebarSlot}>
         {children}
       </AppShell>
     </UpgradePromptProvider>
@@ -207,16 +227,7 @@ async function Topbar() {
 
         <TooltipProvider delay={400}>
           <Tooltip>
-            <TooltipTrigger render={
-              <Link
-                href="/favorites"
-                prefetch={false}
-                aria-label="Favorites"
-                className="card-interactive flex size-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
-              >
-                <Star className="size-4" />
-              </Link>
-            } />
+            <TooltipTrigger render={favoritesLink} />
             <TooltipContent>Favorites</TooltipContent>
           </Tooltip>
         </TooltipProvider>

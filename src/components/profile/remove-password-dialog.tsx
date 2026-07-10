@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState, type ChangeEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
@@ -16,14 +16,18 @@ interface RemovePasswordDialogProps {
   onCredentialRemoved: () => void
 }
 
+// Fully static — no props/state dependency — so it's hoisted once at module scope
+// instead of recreated on every render (jsx-no-jsx-as-prop).
+const removeIcon = <Trash2 className="mr-1 size-3 text-destructive max-sm:size-4" />
+
 export function RemovePasswordDialog({ onCredentialRemoved }: RemovePasswordDialogProps) {
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
 
-  function handleOpenChange(nextOpen: boolean) {
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
     setOpen(nextOpen)
     if (!nextOpen) setPassword('')
-  }
+  }, [])
 
   const removeMutation = useMutation({
     mutationFn: async () => {
@@ -39,12 +43,24 @@ export function RemovePasswordDialog({ onCredentialRemoved }: RemovePasswordDial
     onError: (error: Error) => toast.error(error.message || 'Failed to delete sign-in.'),
   })
 
+  const handlePasswordChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setPassword(event.target.value)
+  }, [])
+
+  const handleCancel = useCallback(() => {
+    handleOpenChange(false)
+  }, [handleOpenChange])
+
+  const handleConfirm = useCallback(() => {
+    removeMutation.mutate()
+  }, [removeMutation])
+
   return (
     <BaseProfileDialog
       title="Delete Email & Password sign-in"
       description="This permanently removes your password and your separate login email. You'll no longer be able to sign in with email & password — only your linked accounts. Your items and collections are not affected."
       triggerText="Delete"
-      triggerIcon={<Trash2 className="mr-1 size-3 text-destructive max-sm:size-4" />}
+      triggerIcon={removeIcon}
       open={open}
       onOpenChange={handleOpenChange}
       triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-destructive max-sm:h-10 max-sm:w-full max-sm:justify-start max-sm:px-3 max-sm:text-sm"
@@ -54,13 +70,13 @@ export function RemovePasswordDialog({ onCredentialRemoved }: RemovePasswordDial
         <PasswordInput
           id="remove-password"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={handlePasswordChange}
           autoComplete="current-password"
         />
       </div>
       <DestructiveDialogFooter
-        onCancel={() => handleOpenChange(false)}
-        onConfirm={() => removeMutation.mutate()}
+        onCancel={handleCancel}
+        onConfirm={handleConfirm}
         isPending={removeMutation.isPending}
         confirmText="Delete"
       />

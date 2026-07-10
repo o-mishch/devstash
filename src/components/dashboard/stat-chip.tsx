@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import type { LucideIcon } from 'lucide-react'
 
 // Responsive: two-up on mobile (so labels never truncate), even strip on sm+.
@@ -34,13 +34,16 @@ interface StatChipBodyProps {
 }
 
 export function StatChipBody({ icon: Icon, value, label, color }: StatChipBodyProps) {
+  const badgeStyle = useMemo(() => ({ backgroundColor: `${color}1f` }), [color])
+  const iconStyle = useMemo(() => ({ color }), [color])
+
   return (
     <>
       <span
         className="flex size-8 shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover/chip:scale-105"
-        style={{ backgroundColor: `${color}1f` }}
+        style={badgeStyle}
       >
-        <Icon className="size-[18px]" style={{ color }} aria-hidden="true" />
+        <Icon className="size-[18px]" style={iconStyle} aria-hidden="true" />
       </span>
       <div className="min-w-0 text-left">
         <p className="text-lg font-semibold leading-none tabular-nums">{value}</p>

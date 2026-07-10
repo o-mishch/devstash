@@ -1,20 +1,27 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { listParseSourceCandidates as ListParseSourceCandidatesFn } from '@/lib/db/ai-parse-jobs'
 
 // Exercises the source picker route: auth (401), Pro gate (403), and that the listing is scoped
 // to the session userId (200).
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/db/ai-parse-jobs', () => ({ listParseSourceCandidates: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
+}))
+vi.mock('@/lib/db/ai-parse-jobs', () => ({
+  listParseSourceCandidates: vi.fn<typeof ListParseSourceCandidatesFn>(),
+}))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { listParseSourceCandidates } from '@/lib/db/ai-parse-jobs'
 import { GET } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockList = listParseSourceCandidates as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockPro = vi.mocked(getCachedVerifiedProAccess)
+const mockList = vi.mocked(listParseSourceCandidates)
 
 function getReq(type?: string): NextRequest {
   const url = type
@@ -25,7 +32,7 @@ function getReq(type?: string): NextRequest {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: '2099-01-01' })
   mockPro.mockResolvedValue(true)
 })
 

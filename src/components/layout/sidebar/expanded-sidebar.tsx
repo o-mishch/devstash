@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
+import { memo, useCallback, useMemo, useState, type CSSProperties, type MouseEvent } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -23,6 +23,9 @@ import { Badge } from '@/components/ui/badge'
 import { UserAvatar } from '@/components/shared/user-avatar'
 import { PRO_ITEM_TYPE_NAMES } from '@/lib/utils/constants'
 import type { SidebarData } from '@/types/sidebar'
+import type { SidebarItemType } from '@/types/item'
+import type { CollectionWithTypes } from '@/types/collection'
+import type { UserProfileFlagsResponse } from '@/lib/api/schemas/profile'
 import { useUpgradePromptStore } from '@/stores/upgrade-prompt'
 import { useUserProfile, useIsPro } from '@/hooks/profile/use-user-profile'
 import { useCollections } from '@/hooks/items/use-collections'
@@ -35,6 +38,91 @@ interface ExpandedSidebarProps {
   onToggle?: () => void
 }
 
+// Stable fallback so `profile ?? EMPTY_PROFILE_NAME_FIELDS` never allocates a new object per render
+// while `profile` is still loading — module-level, created once ever (not per render/useMemo).
+const EMPTY_PROFILE_NAME_FIELDS: Pick<UserProfileFlagsResponse, 'name' | 'email' | 'image'> = {
+  name: null,
+  email: null,
+  image: null,
+}
+
+interface SidebarTypeLinkProps {
+  type: SidebarItemType
+  pathname: string
+  isPro: boolean
+  onUpgrade: (opts: { title: string; description: string }) => void
+  onClose?: () => void
+}
+
+// One per-item link extracted out of the `itemTypes.map()` loop so the click handler is created once
+// per row's own render (scoped to its own props) instead of a new closure on every parent re-render.
+const SidebarTypeLink = memo(function SidebarTypeLink({
+  type: t,
+  pathname,
+  isPro,
+  onUpgrade,
+  onClose,
+}: SidebarTypeLinkProps) {
+  const typeHref = getTypeHref(t.name)
+  const isCurrentPage = pathname === typeHref
+  const isProGated = PRO_ITEM_TYPE_NAMES.has(t.name)
+
+  const handleClick = useCallback(
+    (e: MouseEvent<HTMLAnchorElement>) => {
+      const blocked = handleProGatedTypeClick(e, { isPro, typeName: t.name, showUpgradePrompt: onUpgrade })
+      if (!blocked) onClose?.()
+    },
+    [isPro, t.name, onUpgrade, onClose],
+  )
+
+  return (
+    <Link
+      href={typeHref}
+      // Eager-prefetch the route's RSC payload so navigation is instant; skip
+      // Pro-gated routes for non-Pro users (they can't open them anyway).
+      prefetch={!isProGated || isPro}
+      onClick={handleClick}
+      className={sidebarLinkClass(isCurrentPage)}
+    >
+      <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
+      {isProGated && (
+        <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60 mr-1.5">PRO</Badge>
+      )}
+      <span className="flex-1">{getTypeLabel(t.name)}</span>
+      <span className="text-xs tabular-nums pr-2">{t.count}</span>
+    </Link>
+  )
+})
+
+interface RecentCollectionLinkProps {
+  collection: CollectionWithTypes
+  pathname: string
+  onClose?: () => void
+}
+
+// One per-item link extracted out of the `recentCollections.map()` loop so the `--item-color` style
+// object is memoized against its own `dominantColor` instead of being a fresh object literal created
+// once per row on every parent re-render.
+const RecentCollectionLink = memo(function RecentCollectionLink({
+  collection: c,
+  pathname,
+  onClose,
+}: RecentCollectionLinkProps) {
+  const href = `/collections/${c.id}`
+  const dotStyle = useMemo(
+    () => ({ '--item-color': c.dominantColor ?? '#6b7280' }) as CSSProperties,
+    [c.dominantColor],
+  )
+
+  return (
+    <Link href={href} prefetch={true} onClick={onClose} className={sidebarLinkClass(pathname === href)}>
+      <span className="size-2 shrink-0 rounded-full bg-[var(--item-color)]" style={dotStyle} />
+      <span className="flex-1 truncate">{c.name}</span>
+      <span className="text-xs tabular-nums pr-2">{c.itemCount}</span>
+    </Link>
+  )
+})
+
 export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSidebarProps) {
   const pathname = usePathname()
   const { openPrompt } = useUpgradePromptStore()
@@ -42,12 +130,20 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
   const [collectionsOpen, setCollectionsOpen] = useState(true)
 
   const { data: profile } = useUserProfile()
-  const { name = null, email = null, image = null } = profile ?? {}
+  const { name, email, image } = profile ?? EMPTY_PROFILE_NAME_FIELDS
   const isPro = useIsPro()
   const { collections } = useCollections({ initialData: sidebarData.collections })
 
   const favoriteCollections = collections.filter((c) => c.isFavorite)
   const recentCollections = collections.filter((c) => !c.isFavorite).slice(0, 5)
+
+  const handleBrainDumpLinkClick = useCallback(
+    (e: MouseEvent<HTMLAnchorElement>) => {
+      const blocked = handleBrainDumpClick(e, { isPro, showUpgradePrompt: openPrompt })
+      if (!blocked) onClose?.()
+    },
+    [isPro, openPrompt, onClose],
+  )
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -70,10 +166,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
             // Non-Pro users can't open Brain Dump — block the nav and show the Pro gate instead,
             // matching the file/image type links; skip prefetch for them (they can't open it anyway).
             prefetch={isPro}
-            onClick={(e) => {
-              const blocked = handleBrainDumpClick(e, { isPro, showUpgradePrompt: openPrompt })
-              if (!blocked) onClose?.()
-            }}
+            onClick={handleBrainDumpLinkClick}
             className={sidebarLinkClass(pathname === '/parse' || pathname.startsWith('/parse/'))}
           >
             <Sparkles className="size-4 shrink-0 card-icon" />
@@ -114,37 +207,16 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
             <ChevronDown className={cn('size-3 transition-transform duration-300 ease-in-out', !typesOpen && '-rotate-90')} />
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-0.5 px-2">
-            {sidebarData.itemTypes.map((t) => {
-              const typeHref = getTypeHref(t.name)
-              const isCurrentPage = pathname === typeHref
-              const isProGated = PRO_ITEM_TYPE_NAMES.has(t.name)
-
-              return (
-              <Link
+            {sidebarData.itemTypes.map((t) => (
+              <SidebarTypeLink
                 key={t.id}
-                href={typeHref}
-                // Eager-prefetch the route's RSC payload so navigation is instant; skip
-                // Pro-gated routes for non-Pro users (they can't open them anyway).
-                prefetch={!isProGated || isPro}
-                onClick={(e) => {
-                  const blocked = handleProGatedTypeClick(e, {
-                    isPro: isPro,
-                    typeName: t.name,
-                    showUpgradePrompt: openPrompt,
-                  })
-                  if (!blocked) onClose?.()
-                }}
-                className={sidebarLinkClass(isCurrentPage)}
-              >
-                <ItemTypeIcon iconName={t.icon} color={t.color} className="size-4 shrink-0" />
-                {PRO_ITEM_TYPE_NAMES.has(t.name) && (
-                  <Badge variant="outline" className="h-4 px-1 text-[10px] font-semibold text-muted-foreground/60 mr-1.5">PRO</Badge>
-                )}
-                <span className="flex-1">{getTypeLabel(t.name)}</span>
-                <span className="text-xs tabular-nums pr-2">{t.count}</span>
-              </Link>
-              )
-            })}
+                type={t}
+                pathname={pathname}
+                isPro={isPro}
+                onUpgrade={openPrompt}
+                onClose={onClose}
+              />
+            ))}
           </CollapsibleContent>
         </Collapsible>
 
@@ -186,20 +258,7 @@ export function ExpandedSidebar({ sidebarData, onClose, onToggle }: ExpandedSide
                 </p>
                 <div className="space-y-0.5 px-2">
                   {recentCollections.map((c) => (
-                    <Link
-                      key={c.id}
-                      href={`/collections/${c.id}`}
-                      prefetch={true}
-                      onClick={onClose}
-                      className={sidebarLinkClass(pathname === `/collections/${c.id}`)}
-                    >
-                      <span
-                        className="size-2 shrink-0 rounded-full bg-[var(--item-color)]"
-                        style={{ '--item-color': c.dominantColor ?? '#6b7280' } as CSSProperties}
-                      />
-                      <span className="flex-1 truncate">{c.name}</span>
-                      <span className="text-xs tabular-nums pr-2">{c.itemCount}</span>
-                    </Link>
+                    <RecentCollectionLink key={c.id} collection={c} pathname={pathname} onClose={onClose} />
                   ))}
                 </div>
               </>

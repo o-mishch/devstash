@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useState, useMemo, memo, type CSSProperties, type ReactNode } from 'react'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 import { CollapseChevron } from '@/components/shared/collapse-chevron'
@@ -40,7 +40,7 @@ const TIER_CLASS = { 1: 'card-tier-1', 2: 'card-tier-2', 3: 'card-tier-3' } as c
 // border + hover highlight via `card-surface`/`card-hover`, `group` so the header icon grows on hover),
 // a header that doubles as the collapse toggle, and an animated body (Base UI Collapsible). Collapsed
 // state is per-session in-memory only.
-export function CollapsibleCard({
+export const CollapsibleCard = memo(function CollapsibleCard({
   title,
   icon,
   subtitle,
@@ -54,11 +54,15 @@ export function CollapsibleCard({
 }: CollapsibleCardProps) {
   const [open, setOpen] = useState(defaultOpen)
 
+  const style = useMemo(() => {
+    return accentColor ? ({ '--card-accent': accentColor } as CSSProperties) : undefined
+  }, [accentColor])
+
   return (
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      style={accentColor ? ({ '--card-accent': accentColor } as CSSProperties) : undefined}
+      style={style}
       className={cn(
         'card-surface card-hover group rounded-xl border',
         TIER_CLASS[tier],
@@ -86,4 +90,4 @@ export function CollapsibleCard({
       </CollapsibleContent>
     </Collapsible>
   )
-}
+})

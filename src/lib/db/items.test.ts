@@ -30,7 +30,7 @@ vi.mock('@/lib/infra/cache', () => ({
   },
 }))
 
-import { prisma } from '@/lib/infra/prisma'
+import { prisma, type PrismaTransactionClient } from '@/lib/infra/prisma'
 import { asPrismaMock } from '@/test/prisma-mock'
 import { compareBySystemTypeOrder } from '@/lib/utils/constants'
 import { createItem, getSidebarItemTypes, deleteItem, getRecentItemsPage, getItemsByTypePage, getItemsByCollectionPage, getDownloadItem, getItemTypeDistribution, getDashboardActivity, updateItem } from './items'
@@ -304,7 +304,7 @@ describe('createItem', () => {
     mockFindMany.mockResolvedValue([
       { id: 'type-snippet', name: 'snippet', icon: 'Code', color: '#3b82f6', isSystem: true, userId: null },
     ])
-    const txCreate = vi.fn().mockResolvedValue({
+    const txCreate = vi.fn<PrismaTransactionClient['item']['create']>().mockResolvedValue({
       id: 'item-tx',
       title: 'In tx',
       createdAt: new Date('2024-01-01T00:00:00.000Z'),
@@ -313,7 +313,7 @@ describe('createItem', () => {
       itemType: { name: 'snippet' },
       tags: [],
     })
-    const txFindFirst = vi.fn()
+    const txFindFirst = vi.fn<PrismaTransactionClient['itemType']['findFirst']>()
     const tx = { item: { create: txCreate }, itemType: { findFirst: txFindFirst } } as never
 
     const result = await createItem(

@@ -1,26 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { Logger } from 'pino'
 import { finalizeCheckoutReturn } from '@/lib/billing/checkout/finalize-checkout-return'
 import { finalizeCheckoutSessionForUser } from '@/lib/billing/checkout/stripe-checkout'
+import type { revalidatePath as RevalidatePathFn } from 'next/cache'
+import type { finalizeCheckoutSessionForUser as FinalizeCheckoutSessionForUserFn } from '@/lib/billing/checkout/stripe-checkout'
+import type { syncSubscriptionStateForUser as SyncSubscriptionStateForUserFn } from '@/lib/billing/sync/passive-billing-sync'
 
 vi.mock('next/cache', () => ({
-  revalidatePath: vi.fn(),
+  revalidatePath: vi.fn<typeof RevalidatePathFn>(),
 }))
 
 vi.mock('@/lib/billing/checkout/stripe-checkout', () => ({
-  finalizeCheckoutSessionForUser: vi.fn(),
+  finalizeCheckoutSessionForUser: vi.fn<typeof FinalizeCheckoutSessionForUserFn>(),
 }))
 
 vi.mock('@/lib/billing/sync/passive-billing-sync', () => ({
-  syncSubscriptionStateForUser: vi.fn(),
+  syncSubscriptionStateForUser: vi.fn<typeof SyncSubscriptionStateForUserFn>(),
 }))
 
 vi.mock('@/lib/infra/pino', () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn<Logger['info']>(), warn: vi.fn<Logger['warn']>(), error: vi.fn<Logger['error']>() }) },
 }))
 
 import { syncSubscriptionStateForUser } from '@/lib/billing/sync/passive-billing-sync'
 
-const mockSyncSubscriptionStateForUser = syncSubscriptionStateForUser as ReturnType<typeof vi.fn>
+const mockSyncSubscriptionStateForUser = vi.mocked(syncSubscriptionStateForUser)
 
 describe('finalizeCheckoutReturn', () => {
   beforeEach(() => {

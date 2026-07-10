@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Dialog } from '@base-ui/react/dialog'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -13,6 +13,11 @@ import { cn } from '@/lib/utils'
 import { SWIPE_GRIP_PILL_CLASS } from './drawer-shared'
 import { SHEET_CONTENT_SELECTOR } from '@/lib/dom/drawer-selectors'
 import type { SheetCloseRef } from '@/hooks/ui/use-register-sheet-close'
+
+// Static — the rail's initial off-screen position before the first RAF sync frame runs (see the
+// mirrored-transform effect below). No prop/state dependency, so it's hoisted once at module scope
+// rather than re-created every render.
+const RAIL_INITIAL_STYLE: CSSProperties = { transform: 'translateX(100vw)' }
 
 interface DrawerShellProps {
   open: boolean
@@ -55,7 +60,7 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
   // Keyboard equivalent for the desktop resize handle's mouse drag: the handle sits on the drawer's
   // left edge, so dragging left (mouse moving toward smaller clientX) widens the drawer — ArrowLeft
   // mirrors that. Shift steps in larger increments, matching common resizable-pane conventions.
-  function handleResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+  const handleResizeKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? 40 : 10
     if (event.key === 'ArrowLeft') {
       event.preventDefault()
@@ -64,7 +69,7 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
       event.preventDefault()
       setWidth(width - step)
     }
-  }
+  }, [width, setWidth])
 
   // Outside-press / Esc / swipe all funnel through here. The body content registers a mode-aware guarded
   // close in sheetCloseRef, so every dismissal is intercepted: edit mode prompts to discard unsaved
@@ -72,7 +77,7 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
   // a backdrop click or swipe felt broken; routing through the guard shows the discard dialog instead.
   const sheetCloseRef = useRef<(() => void) | null>(null)
 
-  function handleSheetOpenChange(nextOpen: boolean, eventDetails?: Dialog.Root.ChangeEventDetails) {
+  const handleSheetOpenChange = useCallback((nextOpen: boolean, eventDetails?: Dialog.Root.ChangeEventDetails) => {
     if (nextOpen) return
     // The markdown editor/viewer is portaled OUT of the drawer's DOM (on touch and in fullscreen), so a
     // press inside it reads as a base-ui "outside press". Ignore those — interacting with the editor must
@@ -89,7 +94,7 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
     } else {
       onOpenChange(false)
     }
-  }
+  }, [onOpenChange])
 
   // Swipe-to-dismiss from within the drawer body (anywhere inside the sheet content). The grab handle
   // uses a separate bidirectional hook below — this covers gestures that begin inside the drawer itself.
@@ -117,6 +122,8 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
   // Body swipe drives the sheet transform for gestures that start inside the drawer content area.
   // The grab handle writes transforms directly to the DOM, so it doesn't contribute to this style.
   const sheetDragStyle: CSSProperties = swipe.dragStyle
+  const sheetStyle = useMemo<CSSProperties>(() => ({ width, maxWidth: 'none', ...sheetDragStyle }), [width, sheetDragStyle])
+  const handleStopPropagation = useCallback((event: MouseEvent) => event.stopPropagation(), [])
 
   // The grab handle is portaled to <body> (it must paint above the editor/viewer overlay, itself a body
   // portal that covers the drawer), so it lives OUTSIDE the drawer's DOM and can't inherit the drawer's
@@ -158,7 +165,7 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
         className="flex flex-col gap-0 p-0 max-sm:!w-full"
         // sheetDragStyle drives the touch swipe-to-dismiss drag (a gesture can't be expressed with
         // classes); width/maxWidth are the resize sizing.
-        style={{ width, maxWidth: 'none', ...sheetDragStyle }}
+        style={sheetStyle}
         showCloseButton={false}
         {...swipe.handlers}
       >
@@ -208,7 +215,7 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
         // elements) from bubbling up the REACT tree to the draft card's clickable root. It needs no
         // keyboard handling of its own.
         // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-        <div onClick={(event) => event.stopPropagation()}>{sheet}</div>
+        <div onClick={handleStopPropagation}>{sheet}</div>
       ) : sheet}
 
       {/* Touch grab handle, PORTALED to <body> at z-[55]. It must live above the markdown
@@ -223,7 +230,7 @@ export function DrawerShell({ open, onOpenChange, defaultWidth = 560, stopPropag
         createPortal(
           <div
             ref={railRef}
-            style={{ transform: 'translateX(100vw)' }}
+            style={RAIL_INITIAL_STYLE}
             className="pointer-events-none fixed inset-y-0 left-0 z-[55] hidden items-center [@media(pointer:coarse)]:flex"
           >
             <div

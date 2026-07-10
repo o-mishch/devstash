@@ -1,24 +1,42 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import type OpenAI from 'openai'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type {
+  checkRateLimit as CheckRateLimitFn,
+  deniedMessage as DeniedMessageFn,
+  getAiUsage as GetAiUsageFn,
+  getBrainDumpUsage as GetBrainDumpUsageFn,
+  AiFeatureUsage,
+} from '@/lib/infra/rate-limit'
+import type {
+  runProAiGeneration as RunProAiGenerationFn,
+  runOpenAiCompletion as RunOpenAiCompletionFn,
+  resolveItemImageDimensions as ResolveItemImageDimensionsFn,
+} from '@/lib/ai/description-generation'
+import type { getItemExplainContext as GetItemExplainContextFn } from '@/lib/db/items'
 
 // The route handlers parse + delegate to runProAiGeneration, then map its result to a response.
 // runProAiGeneration (the Pro/rate-limit/OpenAI orchestration) is mocked here so the tests exercise
 // the route's parse (422), auth (401), and result→response mapping (200/403/429 + Retry-After).
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
+}))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
-  getAiUsage: vi.fn(),
-  getBrainDumpUsage: vi.fn(),
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
+  deniedMessage: vi.fn<typeof DeniedMessageFn>((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  getAiUsage: vi.fn<typeof GetAiUsageFn>(),
+  getBrainDumpUsage: vi.fn<typeof GetBrainDumpUsageFn>(),
 }))
 vi.mock('@/lib/ai/description-generation', () => ({
-  runProAiGeneration: vi.fn(),
-  runOpenAiCompletion: vi.fn(),
-  resolveItemImageDimensions: vi.fn(),
+  runProAiGeneration: vi.fn<typeof RunProAiGenerationFn>(),
+  runOpenAiCompletion: vi.fn<typeof RunOpenAiCompletionFn>(),
+  resolveItemImageDimensions: vi.fn<typeof ResolveItemImageDimensionsFn>(),
 }))
 // Keeps the explain route from importing Prisma; the DB read lives inside the mocked runProAiGeneration.
-vi.mock('@/lib/db/items', () => ({ getItemExplainContext: vi.fn() }))
+vi.mock('@/lib/db/items', () => ({ getItemExplainContext: vi.fn<typeof GetItemExplainContextFn>() }))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
@@ -34,23 +52,23 @@ import { POST as EXPLAIN } from './explain/route'
 import { POST as OPTIMIZE } from './optimize/route'
 import { GET as USAGE } from './usage/route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockIsPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockRun = runProAiGeneration as ReturnType<typeof vi.fn>
-const mockCompletion = runOpenAiCompletion as ReturnType<typeof vi.fn>
-const mockGetContext = getItemExplainContext as ReturnType<typeof vi.fn>
-const mockGetAiUsage = getAiUsage as ReturnType<typeof vi.fn>
-const mockGetBrainDumpUsage = getBrainDumpUsage as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockIsPro = vi.mocked(getCachedVerifiedProAccess)
+const mockRun = vi.mocked(runProAiGeneration)
+const mockCompletion = vi.mocked(runOpenAiCompletion)
+const mockGetContext = vi.mocked(getItemExplainContext)
+const mockGetAiUsage = vi.mocked(getAiUsage)
+const mockGetBrainDumpUsage = vi.mocked(getBrainDumpUsage)
 
 // Capture the `execute` callback the route hands to runProAiGeneration so the route's own DB read,
 // null-content guard, and content truncation (which the full mock above would otherwise skip) are
 // exercised directly. Returns the captured callback.
-type ExecuteFn = (client: unknown, data: { itemId: string }) => Promise<unknown>
+type ExecuteFn = (client: OpenAI, data: { itemId: string }) => Promise<unknown>
 async function runExplainExecute(payload: unknown): Promise<ExecuteFn> {
   let captured: ExecuteFn | null = null
   mockRun.mockImplementation(({ execute }: { execute: ExecuteFn }) => {
     captured = execute
-    return { ok: true, value: { explanation: 'unused' } }
+    return Promise.resolve({ ok: true, value: { explanation: 'unused' } })
   })
   await EXPLAIN(req(payload))
   if (!captured) throw new Error('execute callback was never passed to runProAiGeneration')
@@ -63,7 +81,7 @@ async function runOptimizeExecute(payload: unknown): Promise<ExecuteFn> {
   let captured: ExecuteFn | null = null
   mockRun.mockImplementation(({ execute }: { execute: ExecuteFn }) => {
     captured = execute
-    return { ok: true, value: { prompt: 'unused' } }
+    return Promise.resolve({ ok: true, value: { prompt: 'unused' } })
   })
   await OPTIMIZE(req(payload))
   if (!captured) throw new Error('execute callback was never passed to runProAiGeneration')
@@ -76,7 +94,7 @@ function req(payload: unknown): NextRequest {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: '2099-01-01T00:00:00.000Z' })
   mockIsPro.mockResolvedValue(true)
 })
 
@@ -177,7 +195,7 @@ describe('POST /ai/explain', () => {
     mockGetContext.mockResolvedValue({ itemType: 'snippet', content: null, language: null })
     const execute = await runExplainExecute({ itemId: 'item-1' })
 
-    await expect(execute({}, { itemId: 'item-1' })).resolves.toBeNull()
+    await expect(execute({} as OpenAI, { itemId: 'item-1' })).resolves.toBeNull()
     // IDOR-safe: the DB read is scoped to the session userId, not anything from the request body.
     expect(mockGetContext).toHaveBeenCalledWith('user-1', 'item-1')
     expect(mockCompletion).not.toHaveBeenCalled()
@@ -189,7 +207,7 @@ describe('POST /ai/explain', () => {
     mockCompletion.mockResolvedValue({ explanation: 'done' })
     const execute = await runExplainExecute({ itemId: 'item-1' })
 
-    await expect(execute({}, { itemId: 'item-1' })).resolves.toEqual({ explanation: 'done' })
+    await expect(execute({} as OpenAI, { itemId: 'item-1' })).resolves.toEqual({ explanation: 'done' })
     const userMessage = (mockCompletion.mock.calls[0][1] as { input: string }).input
     expect(userMessage).toContain('a'.repeat(EXPLAIN_MAX_INPUT_CHARS))
     expect(userMessage).not.toContain('a'.repeat(EXPLAIN_MAX_INPUT_CHARS + 1))
@@ -242,7 +260,7 @@ describe('POST /ai/optimize', () => {
     mockGetContext.mockResolvedValue({ itemType: 'prompt', content: null, language: null })
     const execute = await runOptimizeExecute({ itemId: 'item-1' })
 
-    await expect(execute({}, { itemId: 'item-1' })).resolves.toBeNull()
+    await expect(execute({} as OpenAI, { itemId: 'item-1' })).resolves.toBeNull()
     // IDOR-safe: the DB read is scoped to the session userId, not anything from the request body.
     expect(mockGetContext).toHaveBeenCalledWith('user-1', 'item-1')
     expect(mockCompletion).not.toHaveBeenCalled()
@@ -254,7 +272,7 @@ describe('POST /ai/optimize', () => {
     mockCompletion.mockResolvedValue({ prompt: 'done' })
     const execute = await runOptimizeExecute({ itemId: 'item-1' })
 
-    await expect(execute({}, { itemId: 'item-1' })).resolves.toEqual({ prompt: 'done' })
+    await expect(execute({} as OpenAI, { itemId: 'item-1' })).resolves.toEqual({ prompt: 'done' })
     const userMessage = (mockCompletion.mock.calls[0][1] as { input: string }).input
     expect(userMessage).toContain('a'.repeat(OPTIMIZE_MAX_INPUT_CHARS))
     expect(userMessage).not.toContain('a'.repeat(OPTIMIZE_MAX_INPUT_CHARS + 1))
@@ -295,7 +313,7 @@ describe('GET /ai/usage', () => {
   })
 
   it('returns 200 with the per-feature usage + brain-dump quota, read for the session userId (IDOR-safe)', async () => {
-    const features = [{ key: 'aiOptimize', limit: 20, remaining: 13, resetAt: 0 }]
+    const features: AiFeatureUsage[] = [{ key: 'aiOptimize', limit: 20, remaining: 13, resetAt: 0 }]
     const brainDump = { key: 'aiBrainDump', limit: 1, remaining: 1, resetAt: 0 }
     mockGetAiUsage.mockResolvedValue(features)
     mockGetBrainDumpUsage.mockResolvedValue(brainDump)

@@ -1,6 +1,6 @@
 'use client'
 
-import type { CSSProperties } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import Link from 'next/link'
 import { Folder, Star } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -20,11 +20,15 @@ export function CollectionCard({ collection }: CollectionCardProps) {
   // accent falls back to the skin accent (--primary) when a collection has no dominant color, so the
   // card always reads as part of the active skin.
   const isEmpty = collection.itemCount === 0
+  const cardStyle = useMemo(
+    () => ({ '--item-color': collection.dominantColor ?? 'var(--primary)' }) as CSSProperties,
+    [collection.dominantColor],
+  )
 
   return (
     <Card
       className="card-interactive group/collection-card relative h-20 gap-0 overflow-visible py-0 border-l-2 border-l-[var(--item-color)] ring-border transition-colors hover:border-l-[var(--item-color)]"
-      style={{ '--item-color': collection.dominantColor ?? 'var(--primary)' } as CSSProperties}
+      style={cardStyle}
     >
       <Link href={href} className="absolute inset-0 z-10 rounded-xl" aria-label={`View ${collection.name}`} />
       <CardContent className="flex h-full items-center gap-3 p-3 sm:p-4 pr-20">

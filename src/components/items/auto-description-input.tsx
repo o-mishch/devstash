@@ -64,12 +64,15 @@ export function AutoDescriptionInput({
   variant = 'dialog',
   aiField,
 }: AutoDescriptionInputProps) {
+  const handleApply = useCallback(
+    (description: string) => form.setValue('description', description, { shouldDirty: true, shouldValidate: true }),
+    [form],
+  )
+
   return (
     <AiDescriptionField
       field={aiField}
-      onApply={(description) =>
-        form.setValue('description', description, { shouldDirty: true, shouldValidate: true })
-      }
+      onApply={handleApply}
       // Top-align the AI action since the field is a multi-line textarea in both variants.
       actionClassName="right-1.5 top-1.5"
     >

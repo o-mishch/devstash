@@ -1,6 +1,6 @@
 'use client'
 
-import type { MouseEvent } from 'react'
+import { memo, useCallback, type MouseEvent } from 'react'
 import { Sun, Moon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { startThemeTransition } from '@/lib/dom/theme-transition'
@@ -12,10 +12,10 @@ interface DarkLightSwitchProps {
   className?: string
 }
 
-export function DarkLightSwitch({ colorMode, onColorModeChange, className }: DarkLightSwitchProps) {
+export const DarkLightSwitch = memo(function DarkLightSwitch({ colorMode, onColorModeChange, className }: DarkLightSwitchProps) {
   const isLight = colorMode === 'light'
 
-  const handleClick = (e: MouseEvent<HTMLButtonElement>, mode: 'light' | 'dark') => {
+  const handleClick = useCallback((e: MouseEvent<HTMLButtonElement>, mode: 'light' | 'dark') => {
     startThemeTransition(e, () => {
       // Update the DOM synchronously so startViewTransition captures the new theme in its
       // "new" snapshot. ThemeInitializer's useEffect runs asynchronously after the React
@@ -30,7 +30,15 @@ export function DarkLightSwitch({ colorMode, onColorModeChange, className }: Dar
       }
       onColorModeChange(mode)
     })
-  }
+  }, [onColorModeChange])
+
+  const handleLightClick = useCallback((e: MouseEvent<HTMLButtonElement>) => {
+    handleClick(e, 'light')
+  }, [handleClick])
+
+  const handleDarkClick = useCallback((e: MouseEvent<HTMLButtonElement>) => {
+    handleClick(e, 'dark')
+  }, [handleClick])
 
   return (
     <div
@@ -42,7 +50,7 @@ export function DarkLightSwitch({ colorMode, onColorModeChange, className }: Dar
           'relative z-10 flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-500',
           isLight ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
         )}
-        onClick={(e) => handleClick(e, 'light')}
+        onClick={handleLightClick}
       >
         {isLight && <SlideIndicator layoutId="colorModeIndicator" />}
         <span className="relative z-10 flex items-center gap-1.5">
@@ -56,7 +64,7 @@ export function DarkLightSwitch({ colorMode, onColorModeChange, className }: Dar
           'relative z-10 flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-500',
           !isLight ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
         )}
-        onClick={(e) => handleClick(e, 'dark')}
+        onClick={handleDarkClick}
       >
         {!isLight && <SlideIndicator layoutId="colorModeIndicator" />}
         <span className="relative z-10 flex items-center gap-1.5">
@@ -66,4 +74,4 @@ export function DarkLightSwitch({ colorMode, onColorModeChange, className }: Dar
       </button>
     </div>
   )
-}
+})

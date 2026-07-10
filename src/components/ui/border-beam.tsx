@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { motion, MotionStyle, Transition } from "motion/react"
 
 import { cn } from "@/lib/utils/index"
@@ -51,7 +52,37 @@ interface BorderBeamProps {
   borderWidth?: number
 }
 
-export const BorderBeam = ({
+const getOuterStyle = (borderWidth: number) => ({
+  "--border-beam-width": `${borderWidth}px`,
+} as React.CSSProperties)
+
+const getInnerStyle = (size: number, colorFrom: string, colorTo: string, style?: React.CSSProperties) => ({
+  width: size,
+  offsetPath: `rect(0 auto auto 0 round ${size}px)`,
+  "--color-from": colorFrom,
+  "--color-to": colorTo,
+  ...style,
+} as MotionStyle)
+
+const getInitial = (initialOffset: number) => ({
+  offsetDistance: `${initialOffset}%`
+})
+
+const getAnimate = (initialOffset: number, reverse: boolean) => ({
+  offsetDistance: reverse
+    ? [`${100 - initialOffset}%`, `${-initialOffset}%`]
+    : [`${initialOffset}%`, `${100 + initialOffset}%`],
+})
+
+const getBorderBeamTransition = (duration: number, delay: number, transition?: Transition): Transition => ({
+  repeat: Infinity,
+  ease: "linear" as const,
+  duration,
+  delay: -delay,
+  ...transition,
+})
+
+export const BorderBeam = React.memo(function BorderBeam({
   className,
   size = 50,
   delay = 0,
@@ -63,15 +94,11 @@ export const BorderBeam = ({
   reverse = false,
   initialOffset = 0,
   borderWidth = 1,
-}: BorderBeamProps) => {
+}: BorderBeamProps) {
   return (
     <div
       className="pointer-events-none absolute inset-0 rounded-[inherit] border-(length:--border-beam-width) border-transparent mask-[linear-gradient(transparent,transparent),linear-gradient(#000,#000)] mask-intersect [mask-clip:padding-box,border-box]"
-      style={
-        {
-          "--border-beam-width": `${borderWidth}px`,
-        } as React.CSSProperties
-      }
+      style={getOuterStyle(borderWidth)}
     >
       <motion.div
         className={cn(
@@ -79,29 +106,11 @@ export const BorderBeam = ({
           "bg-linear-to-l from-(--color-from) via-(--color-to) to-transparent",
           className
         )}
-        style={
-          {
-            width: size,
-            offsetPath: `rect(0 auto auto 0 round ${size}px)`,
-            "--color-from": colorFrom,
-            "--color-to": colorTo,
-            ...style,
-          } as MotionStyle
-        }
-        initial={{ offsetDistance: `${initialOffset}%` }}
-        animate={{
-          offsetDistance: reverse
-            ? [`${100 - initialOffset}%`, `${-initialOffset}%`]
-            : [`${initialOffset}%`, `${100 + initialOffset}%`],
-        }}
-        transition={{
-          repeat: Infinity,
-          ease: "linear",
-          duration,
-          delay: -delay,
-          ...transition,
-        }}
+        style={getInnerStyle(size, colorFrom, colorTo, style)}
+        initial={getInitial(initialOffset)}
+        animate={getAnimate(initialOffset, reverse)}
+        transition={getBorderBeamTransition(duration, delay, transition)}
       />
     </div>
   )
-}
+})

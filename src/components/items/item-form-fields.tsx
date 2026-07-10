@@ -1,7 +1,7 @@
 'use client'
 
-import type { ReactNode } from 'react'
-import { Controller, type UseFormReturn } from 'react-hook-form'
+import { useCallback, useMemo, type ReactNode } from 'react'
+import { Controller, type ControllerRenderProps, type UseFormReturn } from 'react-hook-form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ItemContentInput, LanguageInput } from '@/components/shared/item-content-input'
@@ -95,6 +95,17 @@ export function ItemFormFields({
   const { itemType } = itemContext
   const Field = variant === 'drawer' ? DrawerField : DialogField
   const descAiField = useAutoDescriptionField(form, itemContext)
+  // Memoized so the Description label (passed as a JSX prop to Field) only changes reference
+  // when the underlying AI-badge state actually changes, not on every unrelated re-render.
+  const descriptionLabel = useMemo(
+    () => (
+      <span className="inline-flex items-center gap-2">
+        Description
+        <AiFieldBadgeIfPro onClick={descAiField.run} disabled={descAiField.disabled} tooltip={descAiField.tooltip} />
+      </span>
+    ),
+    [descAiField.run, descAiField.disabled, descAiField.tooltip],
+  )
   const showContent = ITEM_TYPES_WITH_CONTENT.has(itemType)
   const showLanguage = ITEM_TYPES_WITH_LANGUAGE.has(itemType)
   const showUrl = ITEM_TYPES_WITH_URL.has(itemType)
@@ -131,43 +142,56 @@ export function ItemFormFields({
     contentTextareaClassName = 'min-h-[100px] font-mono text-sm'
   }
 
+  // Stable render callbacks for the Controller fields below: LanguageInput/ItemContentInput/
+  // CollectionSelector are non-trivial combobox/editor components that are reasonable
+  // React.memo candidates, so their Controller `render` prop is memoized with a narrow,
+  // correct dependency array rather than recreated as an inline closure every render.
+  const renderLanguageField = useCallback(
+    ({ field }: { field: ControllerRenderProps<ItemFormBaseValues, 'language'> }) => (
+      <LanguageInput
+        id="language"
+        value={field.value || ''}
+        onChange={field.onChange}
+        placeholder="Select language..."
+        itemType={itemType}
+      />
+    ),
+    [itemType],
+  )
+
+  const renderContentField = useCallback(
+    ({ field }: { field: ControllerRenderProps<ItemFormBaseValues, 'content'> }) => (
+      <ItemContentInput
+        id={variant === 'dialog' ? 'content' : undefined}
+        itemType={itemType}
+        value={field.value || ''}
+        onChange={field.onChange}
+        language={watchedLanguage}
+        placeholder={variant === 'drawer' ? 'Content' : 'Paste your content here...'}
+        contentEditorClassName={contentEditorClassName}
+        contentEditorWrapperClassName={contentEditorWrapperClassName}
+        textareaClassName={contentTextareaClassName}
+        enableFullscreen
+      />
+    ),
+    [
+      variant,
+      itemType,
+      watchedLanguage,
+      contentEditorClassName,
+      contentEditorWrapperClassName,
+      contentTextareaClassName,
+    ],
+  )
+
   const languageField = showLanguage && variant === 'dialog' && (
     <Field name="language" label="Language" error={form.formState.errors.language?.message}>
-      <Controller
-        control={form.control}
-        name="language"
-        render={({ field }) => (
-          <LanguageInput
-            id="language"
-            value={field.value || ''}
-            onChange={field.onChange}
-            placeholder="Select language..."
-            itemType={itemType}
-          />
-        )}
-      />
+      <Controller control={form.control} name="language" render={renderLanguageField} />
     </Field>
   )
 
   const contentEditorNode = showContent && (
-    <Controller
-      control={form.control}
-      name="content"
-      render={({ field }) => (
-        <ItemContentInput
-          id={variant === 'dialog' ? 'content' : undefined}
-          itemType={itemType}
-          value={field.value || ''}
-          onChange={field.onChange}
-          language={watchedLanguage}
-          placeholder={variant === 'drawer' ? 'Content' : 'Paste your content here...'}
-          contentEditorClassName={contentEditorClassName}
-          contentEditorWrapperClassName={contentEditorWrapperClassName}
-          textareaClassName={contentTextareaClassName}
-          enableFullscreen
-        />
-      )}
-    />
+    <Controller control={form.control} name="content" render={renderContentField} />
   )
 
   const contentField = showContent && (
@@ -207,16 +231,7 @@ export function ItemFormFields({
   const descriptionField = (
     <Field
       name="description"
-      label={
-        <span className="inline-flex items-center gap-2">
-          Description
-          <AiFieldBadgeIfPro
-            onClick={descAiField.run}
-            disabled={descAiField.disabled}
-            tooltip={descAiField.tooltip}
-          />
-        </span>
-      }
+      label={descriptionLabel}
       error={form.formState.errors.description?.message}
       className={variant === 'drawer' ? 'space-y-1.5' : undefined}
     >
@@ -250,6 +265,15 @@ export function ItemFormFields({
       <span className="text-xs text-muted-foreground">No collection set — this item won’t be added to one.</span>
     )
 
+  // Stable render callback for the CollectionSelector Controller — no closure deps beyond the
+  // field props react-hook-form provides, so it never needs to change reference.
+  const renderCollectionsField = useCallback(
+    ({ field }: { field: ControllerRenderProps<ItemFormBaseValues, 'collectionIds'> }) => (
+      <CollectionSelector creatable selectedIds={field.value} onChange={field.onChange} />
+    ),
+    [],
+  )
+
   // Always show the field. Editable mode lets you create from the dropdown even with none; read-only
   // mode (the Brain Dump draft drawer) always shows the shared save target, with an empty state.
   const collectionsField = (
@@ -274,17 +298,7 @@ export function ItemFormFields({
       ) : (
         // Self-sources from the shared collections cache and owns its own create flow (Create row →
         // dialog → auto-select), so no `collections` prop is threaded here.
-        <Controller
-          control={form.control}
-          name="collectionIds"
-          render={({ field }) => (
-            <CollectionSelector
-              creatable
-              selectedIds={field.value}
-              onChange={field.onChange}
-            />
-          )}
-        />
+        <Controller control={form.control} name="collectionIds" render={renderCollectionsField} />
       )}
     </Field>
   )

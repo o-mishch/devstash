@@ -1,5 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type {
+  claimStripeWebhookEventInDb,
+  markStripeWebhookEventProcessedInDb,
+  pruneOldStripeWebhookEvents,
+  releaseStaleStripeWebhookEvents,
+  releaseStripeWebhookEventInDb,
+} from '@/lib/db/stripe-webhook-events'
+
+// Mirrors the module-private `RedisWebhookEventMarker` shape stored under the
+// Redis key. The real `@upstash/redis` client's `set`/`get` are generic over
+// `TData`, which `vi.fn()` can't preserve as a settable mock property — these
+// concrete literal types describe exactly how the idempotency module under
+// test calls `.set`/`.get`/`.del` on the client `getRedis()` returns.
+interface WebhookEventMarker {
+  type: string
+  status: 'processing' | 'processed'
+  claimedAt?: string
+  processedAt?: string
+}
+
+interface MockRedisSetOptions {
+  nx?: boolean
+  ex: number
+}
+
+interface MockRedisClient {
+  set: (key: string, value: WebhookEventMarker, opts: MockRedisSetOptions) => Promise<'OK' | null>
+  get: (key: string) => Promise<WebhookEventMarker | undefined>
+  del: (key: string) => Promise<number>
+}
+
 const {
   mockGetRedis,
   mockSet,
@@ -11,15 +42,15 @@ const {
   mockPruneOldStripeWebhookEvents,
   mockReleaseStaleStripeWebhookEvents,
 } = vi.hoisted(() => ({
-  mockGetRedis: vi.fn(),
-  mockSet: vi.fn(),
-  mockGet: vi.fn(),
-  mockDel: vi.fn(),
-  mockClaimStripeWebhookEventInDb: vi.fn(),
-  mockMarkStripeWebhookEventProcessedInDb: vi.fn(),
-  mockReleaseStripeWebhookEventInDb: vi.fn(),
-  mockPruneOldStripeWebhookEvents: vi.fn(),
-  mockReleaseStaleStripeWebhookEvents: vi.fn(),
+  mockGetRedis: vi.fn<() => MockRedisClient | null>(),
+  mockSet: vi.fn<MockRedisClient['set']>(),
+  mockGet: vi.fn<MockRedisClient['get']>(),
+  mockDel: vi.fn<MockRedisClient['del']>(),
+  mockClaimStripeWebhookEventInDb: vi.fn<typeof claimStripeWebhookEventInDb>(),
+  mockMarkStripeWebhookEventProcessedInDb: vi.fn<typeof markStripeWebhookEventProcessedInDb>(),
+  mockReleaseStripeWebhookEventInDb: vi.fn<typeof releaseStripeWebhookEventInDb>(),
+  mockPruneOldStripeWebhookEvents: vi.fn<typeof pruneOldStripeWebhookEvents>(),
+  mockReleaseStaleStripeWebhookEvents: vi.fn<typeof releaseStaleStripeWebhookEvents>(),
 }))
 
 vi.mock('@/lib/infra/redis', () => ({

@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, startTransition, useEffect, useEffectEvent, type SyntheticEvent, type ReactNode, type TouchEvent } from 'react'
+import { useCallback, useMemo, useRef, useState, startTransition, useEffect, useEffectEvent, type SyntheticEvent, type MouseEvent, type ReactNode, type TouchEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Plus, FolderPlus } from 'lucide-react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -151,7 +151,7 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
     isDirty,
   })
 
-  function handleTypeChange(val: string | null) {
+  const handleTypeChange = useCallback((val: string | null) => {
     if (!val) return
     if (val === COLLECTION_TYPE_VALUE && !canCreateCollection) {
       openPrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
@@ -171,7 +171,7 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
     startTransition(() => {
       setItemType(val)
     })
-  }
+  }, [canCreateCollection, openPrompt, isPro, handleOpenChange, form, collectionForm])
 
   // Inline collection-create routes through useMutation (openapi-fetch never throws, so the success/403/
   // error branching stays in onSuccess on the result — mirrors CollectionFormDialog).
@@ -257,15 +257,21 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
       <>Add a new item to your stash. <span className="text-red-500/80">*</span> Indicates a required field.</>
     )
 
-  const itemContext = {
-    itemType,
-    ...(uploadedFile ? { fileName: uploadedFile.fileName, fileSize: uploadedFile.fileSize } : {}),
-  }
-  const fieldProps = { form, itemContext, watchedLanguage, variant: 'dialog' as const }
+  const itemContext = useMemo(
+    () => ({
+      itemType,
+      ...(uploadedFile ? { fileName: uploadedFile.fileName, fileSize: uploadedFile.fileSize } : {}),
+    }),
+    [itemType, uploadedFile],
+  )
+  const fieldProps = useMemo(
+    () => ({ form, itemContext, watchedLanguage, variant: 'dialog' as const }),
+    [form, itemContext, watchedLanguage],
+  )
 
   const typeSwipe = useSelectTouchSwipe()
 
-  const typeField = (
+  const typeField = useMemo(() => (
     <div className="grid gap-2">
       <Label htmlFor="type">Type</Label>
       <Select value={itemType} onValueChange={handleTypeChange}>
@@ -317,15 +323,27 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
         </SelectContent>
       </Select>
     </div>
-  )
+  ), [itemType, handleTypeChange, isCollectionMode, selectedType, canCreateCollection, canCreateItem, itemTypes, typeSwipe])
 
-  const titleField = (
+  const titleError = form.formState.errors.title
+  const titleField = useMemo(() => (
     <div className="grid gap-2">
       <Label htmlFor="title">Title <span className="text-red-500">*</span></Label>
       <Input id="title" placeholder="Item title" {...form.register('title')} />
-      {form.formState.errors.title && <p className="text-red-500 text-xs mt-1">{form.formState.errors.title.message}</p>}
+      {titleError && <p className="text-red-500 text-xs mt-1">{titleError.message}</p>}
     </div>
-  )
+  ), [titleError, form])
+
+  const handleFileUpload = useCallback((file: UploadedFile) => {
+    if (uploadedFile) void deleteOrphanedFile(uploadedFile)
+    setUploadedFile(file)
+    setFileError(null)
+  }, [uploadedFile])
+
+  const handleFileClear = useCallback(() => {
+    if (uploadedFile) void deleteOrphanedFile(uploadedFile)
+    setUploadedFile(null)
+  }, [uploadedFile])
 
   const fileField = showFile ? (
     <div className="grid gap-2">
@@ -333,15 +351,8 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
       <FileUpload
         itemType={itemType as FileItemType}
         value={uploadedFile}
-        onUpload={(file) => {
-          if (uploadedFile) void deleteOrphanedFile(uploadedFile)
-          setUploadedFile(file)
-          setFileError(null)
-        }}
-        onClear={() => {
-          if (uploadedFile) void deleteOrphanedFile(uploadedFile)
-          setUploadedFile(null)
-        }}
+        onUpload={handleFileUpload}
+        onClear={handleFileClear}
       />
       {fileError && <p className="text-red-500 text-xs mt-1">{fileError}</p>}
     </div>
@@ -397,6 +408,25 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
     typeSpecificBody = heroBody
   }
 
+  // Honest residuals (react-perf/jsx-no-jsx-as-prop): these elements wrap ItemFormFields which
+  // internally accesses React Hook Form's dynamic `formState.errors` (e.g. language/collectionIds/content).
+  // If they were memoized, validation errors would not display in the UI because the subtrees would
+  // fail to re-evaluate when errors are updated. Scoped disable is configured in `.oxlintrc.json`.
+  const contentSplitLeft = (
+    <div className="flex min-w-0 flex-col gap-4 pr-1">
+      {typeField}
+      {titleField}
+      {/* Language lives here (under Title), so the right column is purely the editor. */}
+      <ItemFormFields {...fieldProps} section="language" />
+      <ItemFormFields {...fieldProps} section="meta" />
+    </div>
+  )
+  const contentSplitRight = (
+    <div className="flex min-h-0 flex-1 flex-col pl-1">
+      <ItemFormFields {...fieldProps} section="content" editorFill />
+    </div>
+  )
+
   // Content types fill the dialog height and let the editor own the right column;
   // the divider between the two columns is draggable (and keyboard-resizable).
   const contentSplitBody = (
@@ -414,20 +444,8 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
         defaultLeftPct={32}
         minLeftPct={28}
         maxLeftPct={60}
-        left={
-          <div className="flex min-w-0 flex-col gap-4 pr-1">
-            {typeField}
-            {titleField}
-            {/* Language lives here (under Title), so the right column is purely the editor. */}
-            <ItemFormFields {...fieldProps} section="language" />
-            <ItemFormFields {...fieldProps} section="meta" />
-          </div>
-        }
-        right={
-          <div className="flex min-h-0 flex-1 flex-col pl-1">
-            <ItemFormFields {...fieldProps} section="content" editorFill />
-          </div>
-        }
+        left={contentSplitLeft}
+        right={contentSplitRight}
       />
     </div>
   )
@@ -462,10 +480,12 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
   const submitText = isCollectionMode ? 'Create Collection' : 'Create Item'
   const isPending = isCollectionMode ? collectionForm.formState.isSubmitting : form.formState.isSubmitting
 
+  const handleCancel = useCallback(() => handleOpenChange(false), [handleOpenChange])
+
   const footer = (
     <FormDialogFooter
       submitText={submitText}
-      onCancel={() => handleOpenChange(false)}
+      onCancel={handleCancel}
       isPending={isPending}
       className="shrink-0 pt-2"
     />
@@ -482,7 +502,7 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
         type="button"
         variant="outline"
         className={cn('flex-1 transition-all duration-200', scrolled ? 'h-8 touch:h-8' : 'h-10 touch:h-10')}
-        onClick={() => handleOpenChange(false)}
+        onClick={handleCancel}
       >
         Cancel
       </Button>
@@ -509,6 +529,16 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
     </div>
   )
 
+  const handleTriggerClick = useCallback((e: MouseEvent<HTMLSpanElement>) => {
+    if (!canCreateItem && !canCreateCollection) {
+      e.preventDefault()
+      openPrompt({ title: 'Limits reached', description: `You've used all free items and collections. Please upgrade to Pro.` })
+      return
+    }
+    setMorphOrigin(morphOriginFromClick(e))
+    handleOpenChange(true)
+  }, [canCreateItem, canCreateCollection, openPrompt, handleOpenChange])
+
   return (
     <>
       {/* This wrapper only intercepts a mouse click to gate on the create limit and capture the click
@@ -517,15 +547,7 @@ export function CreateItemDialog({ itemTypes, initialCollections, initialType, i
           empty fragment that renders no box at all), so Enter/Space on the real trigger already fires
           a native `click` event that bubbles up to this handler. */}
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <span onClick={(e) => {
-        if (!canCreateItem && !canCreateCollection) {
-          e.preventDefault()
-          openPrompt({ title: 'Limits reached', description: `You've used all free items and collections. Please upgrade to Pro.` })
-          return
-        }
-        setMorphOrigin(morphOriginFromClick(e))
-        handleOpenChange(true)
-      }} className="contents">{triggerEl}</span>
+      <span onClick={handleTriggerClick} className="contents">{triggerEl}</span>
       <ResponsiveFormDialog
         open={open}
         onOpenChange={handleOpenChange}

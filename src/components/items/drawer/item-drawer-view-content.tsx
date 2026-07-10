@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, type MouseEvent } from 'react'
+import { useState, useCallback, useMemo, type MouseEvent } from 'react'
 import { ExternalLink, Tag, Download, FileIcon, XCircle, RotateCcw } from 'lucide-react'
 import { useRestrictedDownload } from '@/hooks/billing/use-restricted'
 import { showFileNotFoundToast } from '@/lib/dom/toast-error'
@@ -24,6 +24,10 @@ import { useItemDrawerStore } from '@/stores/item-drawer-store'
 import { useIsPro } from '@/hooks/profile/use-user-profile'
 import { isFullItem } from '@/types/item'
 import type { LightItem, FullItem } from '@/types/item'
+
+// Static section icon — no prop/state dependency, so hoisted once rather than re-created on every
+// render (mirrors FOLDER_OPEN_ICON / CALENDAR_ICON in drawer-shared.tsx).
+const TAG_ICON = <Tag className="size-3" />
 
 interface FileSectionProps {
   item: LightItem | FullItem
@@ -50,14 +54,14 @@ function FileSectionContent({ item }: FileSectionProps) {
     closeDrawer
   )
 
-  function handleImageError() {
+  const handleImageError = useCallback(() => {
     markPreviewFailed(item.id, previewSrc ?? undefined)
     setImageError(true)
     setIsImageReloading(false)
     showFileNotFoundToast()
-  }
+  }, [item.id, previewSrc])
 
-  async function handleImageReload(e: MouseEvent) {
+  const handleImageReload = useCallback(async (e: MouseEvent) => {
     e.stopPropagation()
     setFreshImageSrc(null)
     setIsImageReloading(true)
@@ -75,7 +79,15 @@ function FileSectionContent({ item }: FileSectionProps) {
       setIsImageReloading(false)
       showFileNotFoundToast()
     }
-  }
+  }, [item.id, refresh])
+
+  const handleReloadClick = useCallback((e: MouseEvent) => { void handleImageReload(e) }, [handleImageReload])
+  const handleDownloadClick = useCallback((e: MouseEvent) => { void handleDownload(e) }, [handleDownload])
+  const openLightbox = useCallback(() => setLightboxOpen(true), [])
+  const handleImageLoad = useCallback(() => {
+    setLoadedSrc(previewSrc)
+    setIsImageReloading(false)
+  }, [previewSrc])
 
   if (item.itemType.name === 'image') {
     return (
@@ -97,7 +109,7 @@ function FileSectionContent({ item }: FileSectionProps) {
             // mirroring the previous `isImageLoaded` click gate.
             <button
               type="button"
-              onClick={() => setLightboxOpen(true)}
+              onClick={openLightbox}
               disabled={!isImageLoaded}
               aria-label={`View full-size image: ${item.fileName ?? item.title}`}
               className="contents"
@@ -107,10 +119,7 @@ function FileSectionContent({ item }: FileSectionProps) {
                 src={previewSrc}
                 alt={item.fileName ?? item.title}
                 crossOrigin="anonymous"
-                onLoad={() => {
-                  setLoadedSrc(previewSrc)
-                  setIsImageReloading(false)
-                }}
+                onLoad={handleImageLoad}
                 onError={handleImageError}
                 className={`w-full max-h-[50vh] object-contain ${isImageLoaded ? 'cursor-zoom-in' : 'absolute inset-0 opacity-0 pointer-events-none'}`}
               />
@@ -129,7 +138,7 @@ function FileSectionContent({ item }: FileSectionProps) {
           {(imageError || previewKnownFailed || isImageReloading) && (
             <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
               <button
-                onClick={(e) => void handleImageReload(e)}
+                onClick={handleReloadClick}
                 disabled={isImageReloading}
                 className="pointer-events-auto flex size-10 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white/80 disabled:cursor-not-allowed"
                 title="Reload image"
@@ -139,7 +148,7 @@ function FileSectionContent({ item }: FileSectionProps) {
             </div>
           )}
           <button
-            onClick={(e) => void handleDownload(e)}
+            onClick={handleDownloadClick}
             className="absolute right-2 top-2 rounded-md bg-background/50 p-1.5 backdrop-blur-sm transition-colors hover:bg-background/80 opacity-0 group-hover:opacity-100 focus:opacity-100 touch:opacity-100"
             title={isRestricted ? "Pro required" : "Download image"}
           >
@@ -159,7 +168,7 @@ function FileSectionContent({ item }: FileSectionProps) {
           <p className="text-xs text-muted-foreground">{formatBytes(item.fileSize)}</p>
         )}
       </div>
-      <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" onClick={(e) => void handleDownload(e)} title={isRestricted ? "Pro required" : "Download"}>
+      <Button type="button" variant="ghost" size="icon" className="size-7 shrink-0" onClick={handleDownloadClick} title={isRestricted ? "Pro required" : "Download"}>
         {showError ? <XCircle className="size-3.5 text-destructive" /> : <Download className="size-3.5" />}
       </Button>
     </div>
@@ -239,48 +248,55 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
   // mode. Both must confirm first, but they proceed to different places.
   const [pendingIntent, setPendingIntent] = useState<'close' | 'edit'>('close')
 
-  const requestClose = () => {
+  const requestClose = useCallback(() => {
     setPendingIntent('close')
     handleOpenChange(false)
-  }
+  }, [handleOpenChange])
 
   // Edit entry point (action bar, "Add tags…", collections): confirm first when an AI result is
   // unsaved, otherwise switch to edit mode immediately.
-  const requestEdit = () => {
+  const requestEdit = useCallback(() => {
     if (hasUnsavedAi) {
       setPendingIntent('edit')
       handleConfirmOpenChange(true)
     } else {
       onEdit()
     }
-  }
+  }, [hasUnsavedAi, handleConfirmOpenChange, onEdit])
 
   // Route Esc/backdrop/swipe (handled by the parent Sheet) through the close guard. Cleared on unmount.
   useRegisterSheetClose(sheetCloseRef, requestClose)
 
   // After the user resolves the unsaved-AI dialog, proceed to the recorded destination.
-  const proceedAfterGuard = () => {
+  const proceedAfterGuard = useCallback(() => {
     handleConfirmOpenChange(false)
     if (pendingIntent === 'edit') {
       onEdit()
     } else {
       handleOpenChange(false, true)
     }
-  }
+  }, [handleConfirmOpenChange, pendingIntent, onEdit, handleOpenChange])
 
-  const handleGuardSave = async () => {
+  const handleGuardSave = useCallback(async () => {
     const ok = canOptimize ? await optimize.save() : await explain.save()
     if (ok) proceedAfterGuard()
-  }
+  }, [canOptimize, optimize, explain, proceedAfterGuard])
 
-  const handleGuardDiscard = () => {
+  const handleGuardDiscard = useCallback(() => {
     if (pendingIntent === 'edit') {
       handleConfirmOpenChange(false)
       onEdit()
     } else {
       handleDiscard()
     }
-  }
+  }, [pendingIntent, handleConfirmOpenChange, onEdit, handleDiscard])
+
+  const handleConfirmSaveClick = useCallback(() => { void handleGuardSave() }, [handleGuardSave])
+
+  const actionArea = useMemo(
+    () => <ItemDrawerActionBar item={item} isLight={isLight} fullItem={fullItem} onEdit={requestEdit} onDeleted={onDeleted} />,
+    [item, isLight, fullItem, requestEdit, onDeleted],
+  )
 
   return (
     <>
@@ -297,15 +313,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
           </div>
         </>
       }
-      actionArea={
-        <ItemDrawerActionBar
-          item={item}
-          isLight={isLight}
-          fullItem={fullItem}
-          onEdit={requestEdit}
-          onDeleted={onDeleted}
-        />
-      }
+      actionArea={actionArea}
     >
       {ITEM_TYPES_WITH_CONTENT.has(itemType.name) && (
         // No "Content" section label: the editor's own chrome header already identifies the block,
@@ -358,7 +366,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
         </DrawerSection>
       )}
 
-      <DrawerSection label="Tags" icon={<Tag className="size-3" />}>
+      <DrawerSection label="Tags" icon={TAG_ICON}>
         {item.tags.length > 0 ? (
           <ItemTags tags={item.tags} />
         ) : (
@@ -394,7 +402,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
             ? 'This code explanation hasn’t been saved. Save it as the item’s description (replacing the current one) or it will be lost.'
             : 'This code explanation hasn’t been saved. Save it as the item’s description or it will be lost.'}
           confirmLabel="Save as description"
-          onConfirm={() => void handleGuardSave()}
+          onConfirm={handleConfirmSaveClick}
           onDiscard={handleGuardDiscard}
           cancelLabel="Keep open"
           isPending={explain.isSaving}
@@ -418,7 +426,7 @@ export function ItemDrawerViewContent({ item, isLight, contentLoading = false, o
           title="Unsaved optimized prompt"
           description="This optimized prompt hasn’t been applied. Apply it as the item’s content (replacing the current prompt) or it will be lost."
           confirmLabel="Apply"
-          onConfirm={() => void handleGuardSave()}
+          onConfirm={handleConfirmSaveClick}
           onDiscard={handleGuardDiscard}
           cancelLabel="Keep open"
           isPending={optimize.isSaving}

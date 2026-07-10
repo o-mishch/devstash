@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode } from 'react'
+import { useCallback, type ReactNode } from 'react'
 import { FileText, Scissors, Loader2 } from 'lucide-react'
 import { useCopyToClipboard } from '@/hooks/ui/use-copy-to-clipboard'
 import { useOpenItemInDrawer, useItemDetail } from '@/hooks/items/use-item-detail'
@@ -33,9 +33,13 @@ export function ParseSourceBanner({ sourceItemId, sourceName, truncated, footer,
   const itemQuery = useItemDetail(sourceItemId)
   const label = itemQuery.data?.title || sourceName || 'your source'
 
-  function handleTagClick() {
+  const handleTagClick = useCallback(() => {
     void copy(BRAIN_DUMP_SOURCE_TAG)
-  }
+  }, [copy])
+
+  const handleSourceClick = useCallback(() => {
+    if (sourceItemId) void openSource(sourceItemId)
+  }, [openSource, sourceItemId])
 
   return (
     <div
@@ -53,7 +57,7 @@ export function ParseSourceBanner({ sourceItemId, sourceName, truncated, footer,
             {sourceItemId ? (
               <button
                 type="button"
-                onClick={() => void openSource(sourceItemId)}
+                onClick={handleSourceClick}
                 disabled={opening}
                 className="inline-flex max-w-full items-center gap-1 align-bottom font-medium text-foreground underline-offset-2 hover:underline disabled:opacity-70"
               >

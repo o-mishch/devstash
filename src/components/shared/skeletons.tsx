@@ -1,3 +1,6 @@
+'use client'
+
+import { memo, useMemo } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Card, CardContent } from '@/components/ui/card'
 import { ITEM_TYPES_WITH_IMAGE_GRID, ITEM_TYPES_WITH_FILE_LIST } from '@/lib/utils/constants'
@@ -6,7 +9,7 @@ interface PageHeaderSkeletonProps {
   actionWidthClass?: string
 }
 
-export function PageHeaderSkeleton({ actionWidthClass = 'w-36' }: PageHeaderSkeletonProps) {
+export const PageHeaderSkeleton = memo(function PageHeaderSkeleton({ actionWidthClass = 'w-36' }: PageHeaderSkeletonProps) {
   return (
     <div className="flex items-center justify-between">
       <div className="space-y-1.5">
@@ -16,13 +19,13 @@ export function PageHeaderSkeleton({ actionWidthClass = 'w-36' }: PageHeaderSkel
       <Skeleton className={`h-8 rounded-md ${actionWidthClass}`} />
     </div>
   )
-}
+})
 
 interface CardGridSkeletonProps {
   count?: number
 }
 
-export function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
+export const CardGridSkeleton = memo(function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
   return (
     // Columns mirror the loaded list grid (getListGridColumns): 1/2/3 at <640/<1024/>=1024px.
     // Cell height uses the grid's ABSOLUTE px (itemHeight=100, touchItemHeight=96) — not
@@ -67,9 +70,9 @@ export function CardGridSkeleton({ count = 6 }: CardGridSkeletonProps) {
       ))}
     </div>
   )
-}
+})
 
-export function CollectionCardSkeleton() {
+export const CollectionCardSkeleton = memo(function CollectionCardSkeleton() {
   return (
     // Mirrors the loaded CollectionCard: size-10 icon tile + text column (name, description, meta row).
     <Card className="relative h-20 gap-0 overflow-visible py-0 border-l-2 border-l-muted/20">
@@ -90,9 +93,9 @@ export function CollectionCardSkeleton() {
       </CardContent>
     </Card>
   )
-}
+})
 
-export function ImageCardSkeleton() {
+export const ImageCardSkeleton = memo(function ImageCardSkeleton() {
   return (
     <Card className="relative h-full min-w-0 w-full overflow-visible p-0">
       <div className="relative aspect-video h-full w-full overflow-hidden rounded-xl bg-muted/30">
@@ -100,27 +103,28 @@ export function ImageCardSkeleton() {
       </div>
     </Card>
   )
-}
+})
 
 interface ImageGridSkeletonProps {
   count?: number
   itemHeight?: number
 }
 
-export function ImageGridSkeleton({ count = 6, itemHeight = 240 }: ImageGridSkeletonProps) {
+export const ImageGridSkeleton = memo(function ImageGridSkeleton({ count = 6, itemHeight = 240 }: ImageGridSkeletonProps) {
+  const style = useMemo(() => ({ height: `${itemHeight}px`, width: '100%', minWidth: 0 }), [itemHeight])
   return (
     // Columns mirror the loaded image grid (getImageGridColumns): 2/3 at <1024/>=1024px.
     <div className="grid w-full min-w-0 grid-cols-2 gap-3 lg:grid-cols-3">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} style={{ height: `${itemHeight}px`, width: '100%', minWidth: 0 }}>
+        <div key={i} style={style}>
           <ImageCardSkeleton />
         </div>
       ))}
     </div>
   )
-}
+})
 
-export function FileRowSkeleton() {
+export const FileRowSkeleton = memo(function FileRowSkeleton() {
   return (
     // Absolute px (grid itemHeight=48, touchItemHeight=64) — not rem h-10/h-16 which font-scale.
     <div className="w-full flex items-center gap-3 rounded-lg border border-border bg-muted px-4 py-2.5 h-[48px] touch:h-[64px]">
@@ -136,16 +140,17 @@ export function FileRowSkeleton() {
       <Skeleton className="size-8 shrink-0 rounded" />
     </div>
   )
-}
+})
 
 interface FileListSkeletonProps {
   count?: number
   rowGap?: number
 }
 
-export function FileListSkeleton({ count = 6, rowGap = 10 }: FileListSkeletonProps) {
+export const FileListSkeleton = memo(function FileListSkeleton({ count = 6, rowGap = 10 }: FileListSkeletonProps) {
+  const style = useMemo(() => ({ display: 'flex', flexDirection: 'column' as const, gap: `${rowGap}px`, width: '100%', minWidth: 0 }), [rowGap])
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: `${rowGap}px`, width: '100%', minWidth: 0 }}>
+    <div style={style}>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="h-[48px] w-full touch:h-[64px]">
           <FileRowSkeleton />
@@ -153,13 +158,13 @@ export function FileListSkeleton({ count = 6, rowGap = 10 }: FileListSkeletonPro
       ))}
     </div>
   )
-}
+})
 
 interface ItemsTypeSkeletonProps {
   typeName: string
 }
 
-export function ItemsTypeSkeleton({ typeName }: ItemsTypeSkeletonProps) {
+export const ItemsTypeSkeleton = memo(function ItemsTypeSkeleton({ typeName }: ItemsTypeSkeletonProps) {
   if (ITEM_TYPES_WITH_IMAGE_GRID.has(typeName)) {
     return <ImageGridSkeleton />
   }
@@ -167,4 +172,4 @@ export function ItemsTypeSkeleton({ typeName }: ItemsTypeSkeletonProps) {
     return <FileListSkeleton />
   }
   return <CardGridSkeleton />
-}
+})

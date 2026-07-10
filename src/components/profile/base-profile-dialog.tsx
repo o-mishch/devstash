@@ -9,7 +9,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import type { ReactNode } from 'react'
+import { useCallback, type ComponentProps, type ReactNode } from 'react'
 
 export interface BaseProfileDialogProps {
   title: string
@@ -34,16 +34,24 @@ export function BaseProfileDialog({
   triggerVariant = "ghost",
   triggerClassName = "h-7 px-2 text-xs",
 }: BaseProfileDialogProps) {
+  const renderTrigger = useCallback(
+    (triggerProps: ComponentProps<typeof Button>) => (
+      <Button
+        {...triggerProps}
+        variant={triggerVariant}
+        size="sm"
+        className={triggerClassName}
+      >
+        {triggerIcon}
+        {triggerText}
+      </Button>
+    ),
+    [triggerVariant, triggerClassName, triggerIcon, triggerText],
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger
-        render={
-          <Button variant={triggerVariant} size="sm" className={triggerClassName}>
-            {triggerIcon}
-            {triggerText}
-          </Button>
-        }
-      />
+      <DialogTrigger render={renderTrigger} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

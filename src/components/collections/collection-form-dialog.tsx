@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useEffect, useCallback, useRef, useState } from 'react'
+import { type ReactNode, type MouseEvent, type SyntheticEvent, useEffect, useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
@@ -125,17 +125,26 @@ export function CollectionFormDialog({
     },
   })
 
-  async function onSubmit(data: FormValues) {
-    await submitMutation.mutateAsync(data)
-  }
+  const onSubmit = useCallback(
+    async (data: FormValues) => {
+      await submitMutation.mutateAsync(data)
+    },
+    [submitMutation],
+  )
 
-  const triggerEl = trigger ? (
-    // This wrapper only intercepts a mouse click to gate on the collection limit and capture the click
-    // point for the desktop morph animation — it never needs its own keyboard handling. Every call site
-    // passes a real, natively keyboard-accessible <button>, so Enter/Space on it already fires a native
-    // `click` event that bubbles up to this handler.
-    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-    <span onClick={(e) => {
+  const handleFormSubmit = useCallback(
+    (e: SyntheticEvent<HTMLFormElement>) => {
+      void form.handleSubmit(onSubmit)(e)
+    },
+    [form, onSubmit],
+  )
+
+  const handleCancel = useCallback(() => {
+    handleOpenChange(false)
+  }, [handleOpenChange])
+
+  const handleTriggerClick = useCallback(
+    (e: MouseEvent<HTMLSpanElement>) => {
       if (!canCreate) {
         e.preventDefault()
         openPrompt({ title: 'Collection limit reached', description: `You've used all ${FREE_TIER_COLLECTION_LIMIT} free collections.` })
@@ -143,7 +152,17 @@ export function CollectionFormDialog({
       }
       setTriggerMorphOrigin(morphOriginFromClick(e))
       handleOpenChange(true)
-    }} className="contents">
+    },
+    [canCreate, openPrompt, handleOpenChange],
+  )
+
+  const triggerEl = trigger ? (
+    // This wrapper only intercepts a mouse click to gate on the collection limit and capture the click
+    // point for the desktop morph animation — it never needs its own keyboard handling. Every call site
+    // passes a real, natively keyboard-accessible <button>, so Enter/Space on it already fires a native
+    // `click` event that bubbles up to this handler.
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <span onClick={handleTriggerClick} className="contents">
       {trigger}
     </span>
   ) : null
@@ -167,23 +186,23 @@ export function CollectionFormDialog({
       >
         {(isDesktop) =>
           isDesktop ? (
-            <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}>
+            <form onSubmit={handleFormSubmit}>
               <div className="grid gap-4 py-4">{fields}</div>
               <FormDialogFooter
                 submitText={submitText}
-                onCancel={() => handleOpenChange(false)}
+                onCancel={handleCancel}
                 isPending={submitMutation.isPending}
               />
             </form>
           ) : (
             // flex-1 so the form fills the resizable sheet; the Description field inside flex-grows,
             // so dragging the handle up enlarges it. Name + footer stay fixed (shrink-0).
-            <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="flex min-h-0 flex-1 flex-col gap-4 pt-4">
+            <form onSubmit={handleFormSubmit} className="flex min-h-0 flex-1 flex-col gap-4 pt-4">
               {mobileFields}
               <FormDialogFooter
                 mobile
                 submitText={submitText}
-                onCancel={() => handleOpenChange(false)}
+                onCancel={handleCancel}
                 isPending={submitMutation.isPending}
                 className="shrink-0 pt-2"
               />

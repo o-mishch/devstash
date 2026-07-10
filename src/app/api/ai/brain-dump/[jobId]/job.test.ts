@@ -1,16 +1,27 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import type { OpenAI } from 'openai'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type {
+  getParseJobSnapshot as GetParseJobSnapshotFn,
+  updateJobCollections as UpdateJobCollectionsFn,
+  deleteJob as DeleteJobFn,
+} from '@/lib/db/ai-parse-jobs'
+import type { getOpenAIClient as GetOpenAIClientFn } from '@/lib/ai/openai'
 
 // Exercises the per-job route: snapshot GET (404/200) and the collection-target PATCH
 // (401/422/404/204), asserting the DB helpers are called scoped to the session userId.
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/db/ai-parse-jobs', () => ({
-  getParseJobSnapshot: vi.fn(),
-  updateJobCollections: vi.fn(),
-  deleteJob: vi.fn(),
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
 }))
-vi.mock('@/lib/ai/openai', () => ({ getOpenAIClient: vi.fn() }))
+vi.mock('@/lib/db/ai-parse-jobs', () => ({
+  getParseJobSnapshot: vi.fn<typeof GetParseJobSnapshotFn>(),
+  updateJobCollections: vi.fn<typeof UpdateJobCollectionsFn>(),
+  deleteJob: vi.fn<typeof DeleteJobFn>(),
+}))
+vi.mock('@/lib/ai/openai', () => ({ getOpenAIClient: vi.fn<typeof GetOpenAIClientFn>() }))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
@@ -18,12 +29,12 @@ import { getParseJobSnapshot, updateJobCollections, deleteJob } from '@/lib/db/a
 import { getOpenAIClient } from '@/lib/ai/openai'
 import { GET, PATCH, DELETE } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockSnapshot = getParseJobSnapshot as ReturnType<typeof vi.fn>
-const mockUpdate = updateJobCollections as ReturnType<typeof vi.fn>
-const mockDeleteJob = deleteJob as ReturnType<typeof vi.fn>
-const mockOpenAI = getOpenAIClient as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockPro = vi.mocked(getCachedVerifiedProAccess)
+const mockSnapshot = vi.mocked(getParseJobSnapshot)
+const mockUpdate = vi.mocked(updateJobCollections)
+const mockDeleteJob = vi.mocked(deleteJob)
+const mockOpenAI = vi.mocked(getOpenAIClient)
 
 function patchReq(payload: unknown): NextRequest {
   return new NextRequest('http://localhost/api/ai/brain-dump/job-1', { method: 'PATCH', body: JSON.stringify(payload) })
@@ -38,7 +49,7 @@ const ctx = { params: Promise.resolve({ jobId: 'job-1' }) }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: '2099-01-01T00:00:00.000Z' })
   mockPro.mockResolvedValue(true)
 })
 
@@ -84,7 +95,20 @@ describe('GET /ai/brain-dump/{jobId}', () => {
   })
 
   it('returns 200 with the snapshot for an owned job', async () => {
-    const snap = { status: 'processing', progress: 0, error: null, collectionName: null, collectionIds: [], items: [] }
+    const snap = {
+      status: 'processing' as const,
+      progress: 0,
+      error: null,
+      collectionName: null,
+      collectionIds: [],
+      sourceItemId: null,
+      sourceItemType: null,
+      sourceName: null,
+      truncated: false,
+      committedCount: 0,
+      committedByType: null,
+      items: [],
+    }
     mockSnapshot.mockResolvedValue(snap)
     const res = await GET(getReq(), ctx)
     expect(res.status).toBe(200)
@@ -116,18 +140,21 @@ describe('DELETE /ai/brain-dump/{jobId} (discard)', () => {
   })
 
   it('best-effort cancels the background run when the job was still processing', async () => {
-    const cancel = vi.fn().mockResolvedValue(undefined)
+    const cancel = vi.fn<(responseId: string) => Promise<void>>().mockResolvedValue(undefined)
     mockDeleteJob.mockResolvedValue({ openaiResponseId: 'resp_1' })
-    mockOpenAI.mockReturnValue({ responses: { cancel } })
+    // The real client is a class with private fields that a plain test double can't structurally
+    // satisfy; only `responses.cancel` is ever called by the route, so that's all we stub here.
+    mockOpenAI.mockReturnValue({ responses: { cancel } } as unknown as OpenAI)
     const res = await DELETE(delReq(), ctx)
     expect(res.status).toBe(204)
     expect(cancel).toHaveBeenCalledWith('resp_1')
   })
 
   it('still returns 204 when the best-effort cancel throws (the job is gone either way)', async () => {
-    const cancel = vi.fn().mockRejectedValue(new Error('already finished'))
+    const cancel = vi.fn<(responseId: string) => Promise<void>>().mockRejectedValue(new Error('already finished'))
     mockDeleteJob.mockResolvedValue({ openaiResponseId: 'resp_1' })
-    mockOpenAI.mockReturnValue({ responses: { cancel } })
+    // Same rationale as above: stub only the method the route actually calls.
+    mockOpenAI.mockReturnValue({ responses: { cancel } } as unknown as OpenAI)
     const res = await DELETE(delReq(), ctx)
     expect(res.status).toBe(204)
   })

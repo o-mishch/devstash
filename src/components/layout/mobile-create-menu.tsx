@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,14 @@ export function MobileCreateMenu({ itemTypes, initialCollections }: MobileCreate
   const initialType = getInitialTypeFromPathname(pathname, itemTypes)
   const initialCollectionId = getCollectionIdFromPathname(pathname)
 
+  const handleCreateClick = useCallback(() => {
+    if (!canCreateItem && !canCreateCollection) {
+      openPrompt({ title: 'Limits reached', description: `You've used all free items and collections. Please upgrade to Pro.` })
+      return
+    }
+    setItemOpen(true)
+  }, [canCreateItem, canCreateCollection, openPrompt])
+
   return (
     <>
       {/* Kept always mounted (not `{itemOpen && …}`) so the sheet exists in the closed state
@@ -46,13 +54,7 @@ export function MobileCreateMenu({ itemTypes, initialCollections }: MobileCreate
         size="icon"
         className="size-9 touch:size-11 lg:hidden"
         aria-label="Create new"
-        onClick={() => {
-          if (!canCreateItem && !canCreateCollection) {
-            openPrompt({ title: 'Limits reached', description: `You've used all free items and collections. Please upgrade to Pro.` })
-            return
-          }
-          setItemOpen(true)
-        }}
+        onClick={handleCreateClick}
       >
         <Plus className="size-4" />
       </Button>

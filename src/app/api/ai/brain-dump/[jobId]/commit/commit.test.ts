@@ -1,12 +1,24 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { commitJob as CommitJobFn } from '@/lib/db/ai-parse-jobs'
+import type {
+  invalidateItemsCache as InvalidateItemsCacheFn,
+  invalidateCollectionsCache as InvalidateCollectionsCacheFn,
+} from '@/lib/infra/cache'
 
 // Exercises the batch "Save all" route: auth (401), Pro gate (403), not-found (404), and the success
 // path (200 + cache invalidation), asserting the DB helper is called scoped to the session userId.
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/db/ai-parse-jobs', () => ({ commitJob: vi.fn() }))
-vi.mock('@/lib/infra/cache', () => ({ invalidateItemsCache: vi.fn(), invalidateCollectionsCache: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>(),
+}))
+vi.mock('@/lib/db/ai-parse-jobs', () => ({ commitJob: vi.fn<typeof CommitJobFn>() }))
+vi.mock('@/lib/infra/cache', () => ({
+  invalidateItemsCache: vi.fn<typeof InvalidateItemsCacheFn>(),
+  invalidateCollectionsCache: vi.fn<typeof InvalidateCollectionsCacheFn>(),
+}))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
@@ -14,10 +26,10 @@ import { commitJob } from '@/lib/db/ai-parse-jobs'
 import { invalidateItemsCache } from '@/lib/infra/cache'
 import { POST } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockCommit = commitJob as ReturnType<typeof vi.fn>
-const mockInvalidateItems = invalidateItemsCache as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockPro = vi.mocked(getCachedVerifiedProAccess)
+const mockCommit = vi.mocked(commitJob)
+const mockInvalidateItems = vi.mocked(invalidateItemsCache)
 
 function req(): NextRequest {
   return new NextRequest('http://localhost/api/ai/brain-dump/job-1/commit', { method: 'POST' })
@@ -26,7 +38,7 @@ const ctx = { params: Promise.resolve({ jobId: 'job-1' }) }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', isPro: true }, expires: new Date().toISOString() })
   mockPro.mockResolvedValue(true)
 })
 

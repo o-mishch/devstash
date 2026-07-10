@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useMemo } from 'react'
 import { Mail, Unlink } from 'lucide-react'
 import { ProviderIcon } from '@/components/shared/provider-icon'
 import { PROVIDER_LABELS, SUPPORTED_OAUTH_PROVIDERS } from '@/lib/utils'
@@ -63,6 +64,10 @@ function EmailRow({ email, alsoMovesPrimaryEmail, canUnlink, verificationDisable
   )
 }
 
+// Fully static — no prop/state dependency — so it's hoisted once at module scope
+// instead of re-created (and re-memoized) on every render of every row.
+const UNLINK_TRIGGER_ICON = <Unlink className="mr-1 size-3 max-sm:size-4" />
+
 interface ProviderAccountRowProps {
   account: LinkedAccount
   canUnlink: boolean
@@ -71,6 +76,10 @@ interface ProviderAccountRowProps {
 
 function ProviderAccountRow({ account, canUnlink, onUnlinked }: ProviderAccountRowProps) {
   const label = PROVIDER_LABELS[account.provider] ?? account.provider
+  const accountId = account.id
+  const handleUnlinked = useCallback(() => {
+    onUnlinked(accountId)
+  }, [onUnlinked, accountId])
 
   return (
     <div className="card-surface card-hover group flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
@@ -88,13 +97,13 @@ function ProviderAccountRow({ account, canUnlink, onUnlinked }: ProviderAccountR
           title={`Unlink ${label}`}
           description={`Your ${label} account will be disconnected. You can still sign in with your other linked methods.`}
           triggerText="Unlink"
-          triggerIcon={<Unlink className="mr-1 size-3 max-sm:size-4" />}
+          triggerIcon={UNLINK_TRIGGER_ICON}
           triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-destructive max-sm:h-9 max-sm:px-2.5 max-sm:text-sm"
           confirmText={`Unlink ${label}`}
           accountId={account.id}
           successMessage={`${label} account unlinked.`}
           errorMessage="Failed to unlink account."
-          onSuccess={() => onUnlinked(account.id)}
+          onSuccess={handleUnlinked}
         />
       ) : (
         <span className="text-xs text-muted-foreground shrink-0">Connected</span>
@@ -110,7 +119,7 @@ interface AddProviderRowProps {
 function AddProviderRow({ provider }: AddProviderRowProps) {
   const label = PROVIDER_LABELS[provider] ?? provider
 
-  const action = linkWithProviderAction.bind(null, provider)
+  const action = useMemo(() => linkWithProviderAction.bind(null, provider), [provider])
 
   return (
     <div className="card-hover group flex items-center justify-between gap-3 rounded-lg border border-dashed border-border px-3 py-2.5">

@@ -1,5 +1,6 @@
 'use client'
 
+import { memo, useCallback } from 'react'
 import { AlertDialog } from '@base-ui/react/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { NestedAlertDialog } from '@/components/shared/nested-alert-dialog'
@@ -10,7 +11,18 @@ interface UnsavedChangesDialogProps {
   onDiscard: () => void
 }
 
-export function UnsavedChangesDialog({ open, onOpenChange, onDiscard }: UnsavedChangesDialogProps) {
+import type { HTMLProps } from '@base-ui/react/types'
+
+export const UnsavedChangesDialog = memo(function UnsavedChangesDialog({ open, onOpenChange, onDiscard }: UnsavedChangesDialogProps) {
+  const renderCloseButton = useCallback((props: HTMLProps) => (
+    <Button {...props} variant="outline" size="sm" />
+  ), [])
+
+  const handleDiscard = useCallback(() => {
+    onOpenChange(false)
+    onDiscard()
+  }, [onOpenChange, onDiscard])
+
   return (
     <NestedAlertDialog
       open={open}
@@ -19,20 +31,17 @@ export function UnsavedChangesDialog({ open, onOpenChange, onDiscard }: UnsavedC
       description="Your unsaved changes will be lost."
     >
       <div className="flex justify-end gap-2">
-        <AlertDialog.Close render={<Button variant="outline" size="sm" />}>
+        <AlertDialog.Close render={renderCloseButton}>
           Keep editing
         </AlertDialog.Close>
         <Button
           variant="destructive"
           size="sm"
-          onClick={() => {
-            onOpenChange(false)
-            onDiscard()
-          }}
+          onClick={handleDiscard}
         >
           Discard
         </Button>
       </div>
     </NestedAlertDialog>
   )
-}
+})

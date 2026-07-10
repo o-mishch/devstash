@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { type ComponentProps } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -8,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 
-function InputGroup({ className, ...props }: ComponentProps<"div">) {
+const InputGroup = React.memo(function InputGroup({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="input-group"
@@ -24,7 +25,7 @@ function InputGroup({ className, ...props }: ComponentProps<"div">) {
       {...props}
     />
   )
-}
+})
 
 const inputGroupAddonVariants = cva(
   "flex h-auto cursor-text items-center justify-center gap-2 py-1.5 text-sm font-medium text-muted-foreground select-none group-data-[disabled=true]/input-group:opacity-50 [&>kbd]:rounded-[calc(var(--radius)-5px)] [&>svg:not([class*='size-'])]:size-4",
@@ -47,11 +48,18 @@ const inputGroupAddonVariants = cva(
   }
 )
 
-function InputGroupAddon({
+const InputGroupAddon = React.memo(function InputGroupAddon({
   className,
   align = "inline-start",
   ...props
 }: ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
+  const handleClick = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("button")) {
+      return
+    }
+    e.currentTarget.parentElement?.querySelector("input")?.focus()
+  }, [])
+
   return (
     // The onClick below is a mouse-only convenience mirroring a <label>: it widens the input's hit
     // area to the whole addon (skipping nested buttons). It adds no functionality a keyboard user
@@ -66,16 +74,11 @@ function InputGroupAddon({
       data-slot="input-group-addon"
       data-align={align}
       className={cn(inputGroupAddonVariants({ align }), className)}
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest("button")) {
-          return
-        }
-        e.currentTarget.parentElement?.querySelector("input")?.focus()
-      }}
+      onClick={handleClick}
       {...props}
     />
   )
-}
+})
 
 const inputGroupButtonVariants = cva(
   "flex items-center gap-2 text-sm shadow-none",
@@ -95,7 +98,7 @@ const inputGroupButtonVariants = cva(
   }
 )
 
-function InputGroupButton({
+const InputGroupButton = React.memo(function InputGroupButton({
   className,
   type = "button",
   variant = "ghost",
@@ -114,9 +117,9 @@ function InputGroupButton({
       {...props}
     />
   )
-}
+})
 
-function InputGroupText({ className, ...props }: ComponentProps<"span">) {
+const InputGroupText = React.memo(function InputGroupText({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       className={cn(
@@ -126,9 +129,9 @@ function InputGroupText({ className, ...props }: ComponentProps<"span">) {
       {...props}
     />
   )
-}
+})
 
-function InputGroupInput({
+const InputGroupInput = React.memo(function InputGroupInput({
   className,
   ...props
 }: ComponentProps<"input">) {
@@ -142,9 +145,9 @@ function InputGroupInput({
       {...props}
     />
   )
-}
+})
 
-function InputGroupTextarea({
+const InputGroupTextarea = React.memo(function InputGroupTextarea({
   className,
   ...props
 }: ComponentProps<"textarea">) {
@@ -158,7 +161,7 @@ function InputGroupTextarea({
       {...props}
     />
   )
-}
+})
 
 export {
   InputGroup,

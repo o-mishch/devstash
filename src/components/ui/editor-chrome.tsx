@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useEffect, useLayoutEffect, useCallback, type CSSProperties, type ReactNode } from 'react'
+import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo, memo, type CSSProperties, type ReactNode, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, useMotionValue, animate } from 'motion/react'
 import { Maximize2, Minimize2 } from 'lucide-react'
@@ -153,7 +153,7 @@ interface EditorChromeShellProps {
 // On touch devices, when a fullscreenLabel is set, tapping anywhere in the content area expands to
 // fullscreen — editable editors keep their natural tap-focus (keyboard up), readonly viewers have
 // no focusable field so no keyboard appears.
-export function EditorChromeShell({ header, children, className, style, fullscreenLabel, expandRef, fullscreenRef }: EditorChromeShellProps) {
+export const EditorChromeShell = memo(function EditorChromeShell({ header, children, className, style, fullscreenLabel, expandRef, fullscreenRef }: EditorChromeShellProps) {
   const [fullscreen, setFullscreen] = useState(false)
   const viewport = useVisualViewport()
   const isTouch = useIsTouch()
@@ -184,8 +184,8 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   const inlineRef = useRef<HTMLDivElement>(null)
 
   // Combined bounds of the sentinel's overflow-clipping ancestors, used to clip the collapsed touch
-  // overlay so it never paints over the form header/footer when the body scrolls. The ancestor list
-  // is stable while mounted, so it's computed once (lazily) and only the rects are re-read per frame.
+  // overlay so it never paints over (or intercepts taps on) the form header/footer when the body scrolls or the keyboard
+  // reflows the form. The ancestor list is stable while mounted, so it's computed once (lazily) and only the rects are re-read per frame.
   const clipAncestorsRef = useRef<HTMLElement[] | null>(null)
   // The mobile full-screen drawer's pinned sticky header (when this editor lives inside one). Cached
   // alongside the clip ancestors and reset on cleanup; used to clamp the overlay's clip top below it.
@@ -366,8 +366,8 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     direction: 'down',
     thresholdPx: COLLAPSE_DRAG_PX,
     flickVelocity: COLLAPSE_FLICK_VELOCITY,
-    onTrigger: () => changeFullscreen(false),
-    onClickWithoutDrag: () => changeFullscreen(false),
+    onTrigger: useCallback(() => changeFullscreen(false), [changeFullscreen]),
+    onClickWithoutDrag: useCallback(() => changeFullscreen(false), [changeFullscreen]),
     onDragOffset: setDragY,
   })
 
@@ -376,14 +376,14 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     direction: 'up',
     thresholdPx: COLLAPSE_DRAG_PX,
     flickVelocity: COLLAPSE_FLICK_VELOCITY,
-    onTrigger: () => changeFullscreen(true),
-    onClickWithoutDrag: () => changeFullscreen(true),
+    onTrigger: useCallback(() => changeFullscreen(true), [changeFullscreen]),
+    onClickWithoutDrag: useCallback(() => changeFullscreen(true), [changeFullscreen]),
   })
 
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     setDragY(0)
     changeFullscreen(!fullscreen)
-  }
+  }, [fullscreen, changeFullscreen])
 
   useLayoutEffect(() => {
     if (!expandRef) return
@@ -440,17 +440,28 @@ export function EditorChromeShell({ header, children, className, style, fullscre
   // box, so it never disturbs the editor's flex layout, yet still receives the bubbled pointerdown.
   // We don't preventDefault, so an editable field keeps its natural focus and the keyboard stays up.
   const tapToExpand = Boolean(fullscreenLabel) && isTouch && !fullscreen
+
+  const handleTapToExpand = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') return
+    changeFullscreen(true)
+  }, [changeFullscreen])
+
   const content = (
     <div
       className="contents"
-      onPointerDown={tapToExpand ? (e) => {
-        if (e.pointerType === 'mouse') return
-        changeFullscreen(true)
-      } : undefined}
+      onPointerDown={tapToExpand ? handleTapToExpand : undefined}
     >
       {children}
     </div>
   )
+
+  const handleCollapse = useCallback(() => {
+    changeFullscreen(false)
+  }, [changeFullscreen])
+
+  const handleExpand = useCallback(() => {
+    toggleFullscreen()
+  }, [toggleFullscreen])
 
   const shellContent = (
     <>
@@ -459,8 +470,8 @@ export function EditorChromeShell({ header, children, className, style, fullscre
           fullscreenLabel ? 'touch-none cursor-grab active:cursor-grabbing select-none' : undefined,
           fullscreen ? 'touch:py-3' : undefined,
         )}
-        onCollapse={fullscreen ? () => changeFullscreen(false) : undefined}
-        onExpand={!fullscreen && fullscreenLabel ? toggleFullscreen : undefined}
+        onCollapse={fullscreen ? handleCollapse : undefined}
+        onExpand={!fullscreen && fullscreenLabel ? handleExpand : undefined}
         dragHandlers={headerDragHandlers}
       >
         {header}
@@ -559,6 +570,16 @@ export function EditorChromeShell({ header, children, className, style, fullscre
     mvPadding.set(0)
   }, [fullscreen, portaled, morphing, mvLeft, mvTop, mvWidth, mvHeight, mvPadding])
 
+  const motionStyle = useMemo(() => ({
+    position: 'fixed' as const,
+    left: mvLeft,
+    top: mvTop,
+    width: mvWidth,
+    height: mvHeight,
+    padding: mvPadding,
+    clipPath,
+  }), [mvLeft, mvTop, mvWidth, mvHeight, mvPadding, clipPath])
+
   // Desktop, collapsed: render inline in the normal flow so the dialog's overflow clips it and the
   // footer stays above it. No fixed overlay, no portal.
   if (!portaled) {
@@ -587,7 +608,7 @@ export function EditorChromeShell({ header, children, className, style, fullscre
           // morph effect (expand/collapse). No declarative `animate`, so React/Motion never re-applies
           // a frame-late rect over the live one. clipPath stays state-derived (a mask; its lag is
           // imperceptible). morphFromRect is seeded into the values in changeFullscreen (desktop).
-          style={{ position: 'fixed', left: mvLeft, top: mvTop, width: mvWidth, height: mvHeight, padding: mvPadding, clipPath }}
+          style={motionStyle}
           // The overlay is portaled to document.body, but its touch events still bubble through the
           // React tree to an enclosing sheet/drawer's swipe-to-dismiss handlers. This marker lets
           // that gesture handler ignore swipes that begin inside the editor, so dragging the
@@ -604,4 +625,4 @@ export function EditorChromeShell({ header, children, className, style, fullscre
       )}
     </>
   )
-}
+})

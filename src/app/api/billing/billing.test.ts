@@ -1,44 +1,75 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { readJson } from '@/test/matchers'
 import { NextRequest } from 'next/server'
+import type Stripe from 'stripe'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type {
+  getCachedVerifiedProAccess,
+  resolveProAccessBypassingCache as ResolveProAccessBypassingCacheFn,
+} from '@/lib/billing/access/pro-access-resolution'
+import type { checkRateLimit as CheckRateLimitFn, deniedMessage } from '@/lib/infra/rate-limit'
+import type {
+  createCheckoutSession as CreateCheckoutSessionFn,
+  createPortalSession as CreatePortalSessionFn,
+  updateStripeCustomerEmail as UpdateStripeCustomerEmailFn,
+} from '@/lib/infra/stripe'
+import type {
+  cancelIncompleteSubscriptionsForCustomer as CancelIncompleteSubscriptionsForCustomerFn,
+  resolveOrCreateStripeCustomer as ResolveOrCreateStripeCustomerFn,
+  validateCheckoutEligibility as ValidateCheckoutEligibilityFn,
+} from '@/lib/billing/checkout/stripe-checkout'
+import type {
+  getCachedUserStripeInfo as GetCachedUserStripeInfoFn,
+  loadBillingPageContext as LoadBillingPageContextFn,
+  BillingPageContext,
+} from '@/lib/billing/sync/user-billing-state'
+import type { UserStripeInfo } from '@/lib/db/stripe'
+import type { getUserUsageStats as GetUserUsageStatsFn } from '@/lib/db/usage'
+import type { getExistingSubscriptionMessage } from '@/lib/billing/messages/billing-messages'
+import type { reconcileOrphanStripeSubscriptionForUser } from '@/lib/billing/sync/passive-billing-sync'
+import type {
+  isAllowedCheckoutPriceId as IsAllowedCheckoutPriceIdFn,
+  isStripeCheckoutConfigured as IsStripeCheckoutConfiguredFn,
+} from '@/lib/billing/config/billing-pricing'
+import type { toggleSubscriptionCancellation as ToggleSubscriptionCancellationFn } from '@/lib/billing/subscription/toggle-cancellation'
 
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
 vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
-  getCachedVerifiedProAccess: vi.fn(),
-  resolveProAccessBypassingCache: vi.fn(),
+  getCachedVerifiedProAccess: vi.fn<typeof getCachedVerifiedProAccess>(),
+  resolveProAccessBypassingCache: vi.fn<typeof ResolveProAccessBypassingCacheFn>(),
 }))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
+  deniedMessage: vi.fn<typeof deniedMessage>((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
 }))
 vi.mock('@/lib/infra/stripe', () => ({
-  createCheckoutSession: vi.fn(),
-  createPortalSession: vi.fn(),
-  updateStripeCustomerEmail: vi.fn(),
+  createCheckoutSession: vi.fn<typeof CreateCheckoutSessionFn>(),
+  createPortalSession: vi.fn<typeof CreatePortalSessionFn>(),
+  updateStripeCustomerEmail: vi.fn<typeof UpdateStripeCustomerEmailFn>(),
 }))
 vi.mock('@/lib/billing/checkout/stripe-checkout', () => ({
-  cancelIncompleteSubscriptionsForCustomer: vi.fn(),
-  resolveOrCreateStripeCustomer: vi.fn(),
-  validateCheckoutEligibility: vi.fn(),
+  cancelIncompleteSubscriptionsForCustomer: vi.fn<typeof CancelIncompleteSubscriptionsForCustomerFn>(),
+  resolveOrCreateStripeCustomer: vi.fn<typeof ResolveOrCreateStripeCustomerFn>(),
+  validateCheckoutEligibility: vi.fn<typeof ValidateCheckoutEligibilityFn>(),
 }))
 vi.mock('@/lib/billing/sync/user-billing-state', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/billing/sync/user-billing-state')>()
   return {
-    getCachedUserStripeInfo: vi.fn(),
-    loadBillingPageContext: vi.fn(),
+    getCachedUserStripeInfo: vi.fn<typeof GetCachedUserStripeInfoFn>(),
+    loadBillingPageContext: vi.fn<typeof LoadBillingPageContextFn>(),
     // Use the real pure serializer so the route's wire contract (Date→ISO, dropped server-only config
     // fields, correct arg order) is exercised rather than a pass-through stub.
     toBillingContextResponse: actual.toBillingContextResponse,
   }
 })
-vi.mock('@/lib/db/usage', () => ({ getUserUsageStats: vi.fn() }))
-vi.mock('@/lib/billing/messages/billing-messages', () => ({ getExistingSubscriptionMessage: vi.fn(() => 'You already have a subscription.') }))
-vi.mock('@/lib/billing/sync/passive-billing-sync', () => ({ reconcileOrphanStripeSubscriptionForUser: vi.fn() }))
+vi.mock('@/lib/db/usage', () => ({ getUserUsageStats: vi.fn<typeof GetUserUsageStatsFn>() }))
+vi.mock('@/lib/billing/messages/billing-messages', () => ({ getExistingSubscriptionMessage: vi.fn<typeof getExistingSubscriptionMessage>(() => 'You already have a subscription.') }))
+vi.mock('@/lib/billing/sync/passive-billing-sync', () => ({ reconcileOrphanStripeSubscriptionForUser: vi.fn<typeof reconcileOrphanStripeSubscriptionForUser>() }))
 vi.mock('@/lib/billing/config/billing-pricing', () => ({
-  isAllowedCheckoutPriceId: vi.fn(),
-  isStripeCheckoutConfigured: vi.fn(),
+  isAllowedCheckoutPriceId: vi.fn<typeof IsAllowedCheckoutPriceIdFn>(),
+  isStripeCheckoutConfigured: vi.fn<typeof IsStripeCheckoutConfiguredFn>(),
 }))
-vi.mock('@/lib/billing/subscription/toggle-cancellation', () => ({ toggleSubscriptionCancellation: vi.fn() }))
+vi.mock('@/lib/billing/subscription/toggle-cancellation', () => ({ toggleSubscriptionCancellation: vi.fn<typeof ToggleSubscriptionCancellationFn>() }))
 
 import { getCachedSession } from '@/lib/session'
 import { resolveProAccessBypassingCache } from '@/lib/billing/access/pro-access-resolution'
@@ -56,21 +87,21 @@ import { POST as CANCEL } from './cancel/route'
 import { POST as REACTIVATE } from './reactivate/route'
 import { GET as CONTEXT } from './context/route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockResolvePro = resolveProAccessBypassingCache as ReturnType<typeof vi.fn>
-const mockRateLimit = checkRateLimit as ReturnType<typeof vi.fn>
-const mockCreateCheckout = createCheckoutSession as ReturnType<typeof vi.fn>
-const mockCreatePortal = createPortalSession as ReturnType<typeof vi.fn>
-const mockEligibility = validateCheckoutEligibility as ReturnType<typeof vi.fn>
-const mockStripeInfo = getCachedUserStripeInfo as ReturnType<typeof vi.fn>
-const mockAllowedPrice = isAllowedCheckoutPriceId as ReturnType<typeof vi.fn>
-const mockConfigured = isStripeCheckoutConfigured as ReturnType<typeof vi.fn>
-const mockToggle = toggleSubscriptionCancellation as ReturnType<typeof vi.fn>
-const mockResolveOrCreateCustomer = resolveOrCreateStripeCustomer as ReturnType<typeof vi.fn>
-const mockUpdateCustomerEmail = updateStripeCustomerEmail as ReturnType<typeof vi.fn>
-const mockCancelIncomplete = cancelIncompleteSubscriptionsForCustomer as ReturnType<typeof vi.fn>
-const mockLoadBillingPage = loadBillingPageContext as ReturnType<typeof vi.fn>
-const mockUsageStats = getUserUsageStats as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockResolvePro = vi.mocked(resolveProAccessBypassingCache)
+const mockRateLimit = vi.mocked(checkRateLimit)
+const mockCreateCheckout = vi.mocked(createCheckoutSession)
+const mockCreatePortal = vi.mocked(createPortalSession)
+const mockEligibility = vi.mocked(validateCheckoutEligibility)
+const mockStripeInfo = vi.mocked(getCachedUserStripeInfo)
+const mockAllowedPrice = vi.mocked(isAllowedCheckoutPriceId)
+const mockConfigured = vi.mocked(isStripeCheckoutConfigured)
+const mockToggle = vi.mocked(toggleSubscriptionCancellation)
+const mockResolveOrCreateCustomer = vi.mocked(resolveOrCreateStripeCustomer)
+const mockUpdateCustomerEmail = vi.mocked(updateStripeCustomerEmail)
+const mockCancelIncomplete = vi.mocked(cancelIncompleteSubscriptionsForCustomer)
+const mockLoadBillingPage = vi.mocked(loadBillingPageContext)
+const mockUsageStats = vi.mocked(getUserUsageStats)
 
 function post(path: string, payload?: unknown): NextRequest {
   return new NextRequest(`http://localhost/api/billing/${path}`, {
@@ -81,7 +112,7 @@ function post(path: string, payload?: unknown): NextRequest {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSession.mockResolvedValue({ user: { id: 'user-1', email: 'me@example.com' } })
+  mockSession.mockResolvedValue({ user: { id: 'user-1', email: 'me@example.com', isPro: false }, expires: '2099-01-01T00:00:00.000Z' })
   mockRateLimit.mockResolvedValue({ success: true, retryAfter: 0 })
   mockResolvePro.mockResolvedValue(false)
   mockAllowedPrice.mockReturnValue(true)
@@ -117,7 +148,7 @@ describe('POST /billing/checkout', () => {
   })
 
   it('returns 200 with the Stripe checkout URL', async () => {
-    mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_1' })
+    mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_1' } as Stripe.Checkout.Session)
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(200)
     expect((await readJson(res)).url).toBe('https://stripe/checkout')
@@ -130,7 +161,7 @@ describe('POST /billing/checkout', () => {
   })
 
   it('returns 500 when the session has no email to resolve a customer', async () => {
-    mockSession.mockResolvedValue({ user: { id: 'user-1', email: null } })
+    mockSession.mockResolvedValue({ user: { id: 'user-1', email: null, isPro: false }, expires: '2099-01-01T00:00:00.000Z' })
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(500)
     expect(mockResolveOrCreateCustomer).not.toHaveBeenCalled()
@@ -146,7 +177,7 @@ describe('POST /billing/checkout', () => {
 
   it('passes the resolved/created customer id through to the Stripe session', async () => {
     mockResolveOrCreateCustomer.mockResolvedValue({ status: 'ok', customerId: 'cus_new' })
-    mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_2' })
+    mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_2' } as Stripe.Checkout.Session)
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(200)
     expect(mockResolveOrCreateCustomer).toHaveBeenCalledWith(
@@ -157,7 +188,7 @@ describe('POST /billing/checkout', () => {
 
   it('refreshes the Stripe customer email and cancels incomplete subs for the resolved customer', async () => {
     mockResolveOrCreateCustomer.mockResolvedValue({ status: 'ok', customerId: 'cus_linked' })
-    mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_3' })
+    mockCreateCheckout.mockResolvedValue({ url: 'https://stripe/checkout', id: 'cs_3' } as Stripe.Checkout.Session)
     const res = await CHECKOUT(post('checkout', { priceId: 'price_1' }))
     expect(res.status).toBe(200)
     expect(mockUpdateCustomerEmail).toHaveBeenCalledWith('cus_linked', 'me@example.com')
@@ -173,8 +204,20 @@ describe('POST /billing/portal', () => {
   })
 
   it('returns 200 with the Stripe portal URL', async () => {
-    mockStripeInfo.mockResolvedValue({ stripeCustomerId: 'cus_1' })
-    mockCreatePortal.mockResolvedValue({ url: 'https://stripe/portal' })
+    mockStripeInfo.mockResolvedValue({
+      email: 'user@example.com',
+      stripeCustomerId: 'cus_1',
+      stripeSubscriptionId: null,
+      stripeSubscriptionStatus: null,
+      isPro: false,
+      stripeSubscriptionStart: null,
+      stripeCurrentPeriodEnd: null,
+      stripeSubscriptionInterval: null,
+      stripeCancelAtPeriodEnd: false,
+      stripeLastSyncAt: null,
+      proExpiredAt: null,
+    } satisfies UserStripeInfo)
+    mockCreatePortal.mockResolvedValue({ url: 'https://stripe/portal' } as Stripe.BillingPortal.Session)
     const res = await PORTAL(post('portal'))
     expect(res.status).toBe(200)
     expect((await readJson(res)).url).toBe('https://stripe/portal')
@@ -204,7 +247,7 @@ describe('GET /billing/context', () => {
     checkoutConfigured: true,
     priceIdMonthly: 'price_m',
     priceIdYearly: 'price_y',
-  }
+  } satisfies BillingPageContext
 
   it('returns 401 when not signed in', async () => {
     mockSession.mockResolvedValue(null)

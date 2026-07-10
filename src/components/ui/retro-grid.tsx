@@ -1,3 +1,4 @@
+import React from 'react'
 import type { CSSProperties, HTMLAttributes } from 'react'
 import { cn } from '@/lib/utils/index'
 
@@ -18,7 +19,21 @@ interface RetroGridProps extends HTMLAttributes<HTMLDivElement> {
   darkLineColor?: string
 }
 
-export function RetroGrid({
+const getGridStyles = (
+  angle: number,
+  cellSize: number,
+  opacity: number,
+  lightLineColor: string,
+  darkLineColor: string
+) => ({
+  '--grid-angle': `${angle}deg`,
+  '--cell-size': `${cellSize}px`,
+  '--opacity': opacity,
+  '--light-line': lightLineColor,
+  '--dark-line': darkLineColor,
+} as CSSProperties)
+
+export const RetroGrid = React.memo(function RetroGrid({
   className,
   angle = 65,
   cellSize = 60,
@@ -27,21 +42,13 @@ export function RetroGrid({
   darkLineColor = 'gray',
   ...props
 }: RetroGridProps) {
-  const gridStyles = {
-    '--grid-angle': `${angle}deg`,
-    '--cell-size': `${cellSize}px`,
-    '--opacity': opacity,
-    '--light-line': lightLineColor,
-    '--dark-line': darkLineColor,
-  } as CSSProperties
-
   return (
     <div
       className={cn(
         'pointer-events-none absolute size-full overflow-hidden opacity-[var(--opacity)] [perspective:200px]',
         className,
       )}
-      style={gridStyles}
+      style={getGridStyles(angle, cellSize, opacity, lightLineColor, darkLineColor)}
       {...props}
     >
       <div className="absolute inset-0 [transform:rotateX(var(--grid-angle))]">
@@ -50,4 +57,4 @@ export function RetroGrid({
       <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent to-90%" />
     </div>
   )
-}
+})

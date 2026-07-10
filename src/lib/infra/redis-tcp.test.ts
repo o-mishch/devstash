@@ -1,30 +1,56 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { GoogleAuth } from 'google-auth-library'
+
+// Structural shape of the fake node-redis client below. node-redis's real `createClient()`
+// return type (RedisClientType) carries the full command surface (hundreds of methods across
+// every Redis data type), which this test double intentionally does not implement — it only
+// exposes the handful of methods redis-tcp.ts actually calls. Typing against the real,
+// all-commands RedisClientType would force an `as unknown as` cast to bridge the structural
+// gap, which the project bans; this named interface keeps every vi.fn() here honestly typed
+// against what the fake object actually is instead.
+interface FakeRedisClient {
+  isOpen: boolean
+  options: Record<string, unknown>
+  on: (event: string, listener: (err: Error) => void) => void
+  quit: () => Promise<string>
+  connect: () => Promise<FakeRedisClient>
+  get: (key: string) => Promise<string | null>
+  set: (key: string, value: string, options?: { EX?: number; NX?: boolean }) => Promise<string | null>
+  getDel: (key: string) => Promise<string | null>
+  del: (keys: string[]) => Promise<number>
+  incr: (key: string) => Promise<number>
+  decr: (key: string) => Promise<number>
+  scan: (cursor: string, options?: { MATCH?: string; COUNT?: number }) => Promise<{ cursor: string; keys: string[] }>
+  expire: (key: string, seconds: number) => Promise<number>
+  eval: (script: string, options: { keys: string[]; arguments: string[] }) => Promise<unknown>
+  ping: () => Promise<string>
+}
 
 // Fake node-redis client: records the createClient() options + command args and returns
 // canned values. connect() mirrors node-redis by invoking the credentialsProvider so the IAM
 // wiring is exercised end-to-end. Declared via vi.hoisted so it exists before vi.mock runs.
 const { calls, getLastOpts, getLastCredentials, createClient } = vi.hoisted(() => {
   const calls = {
-    get: vi.fn(),
-    set: vi.fn(),
-    getDel: vi.fn(),
-    del: vi.fn(),
-    incr: vi.fn(),
-    decr: vi.fn(),
-    scan: vi.fn(),
-    expire: vi.fn(),
-    eval: vi.fn(),
-    ping: vi.fn(),
+    get: vi.fn<FakeRedisClient['get']>(),
+    set: vi.fn<FakeRedisClient['set']>(),
+    getDel: vi.fn<FakeRedisClient['getDel']>(),
+    del: vi.fn<FakeRedisClient['del']>(),
+    incr: vi.fn<FakeRedisClient['incr']>(),
+    decr: vi.fn<FakeRedisClient['decr']>(),
+    scan: vi.fn<FakeRedisClient['scan']>(),
+    expire: vi.fn<FakeRedisClient['expire']>(),
+    eval: vi.fn<FakeRedisClient['eval']>(),
+    ping: vi.fn<FakeRedisClient['ping']>(),
   }
   let lastOpts: Record<string, unknown> | null = null
   let lastCredentials: { username?: string; password?: string } | null = null
-  const createClient = vi.fn((opts: Record<string, unknown>) => {
+  const createClient = vi.fn<(opts: Record<string, unknown>) => FakeRedisClient>((opts: Record<string, unknown>) => {
     lastOpts = opts
-    const client = {
+    const client: FakeRedisClient = {
       isOpen: false,
       options: opts,
-      on: vi.fn(),
-      quit: vi.fn().mockResolvedValue('OK'),
+      on: vi.fn<FakeRedisClient['on']>(),
+      quit: vi.fn<FakeRedisClient['quit']>().mockResolvedValue('OK'),
       async connect() {
         // node-redis calls the provider's credentials() on connect to obtain AUTH creds.
         const provider = opts.credentialsProvider as
@@ -53,7 +79,7 @@ const { calls, getLastOpts, getLastCredentials, createClient } = vi.hoisted(() =
 vi.mock('redis', () => ({ createClient }))
 
 // Fake google-auth-library: redis-tcp dynamically imports it only on the IAM path.
-const getAccessToken = vi.hoisted(() => vi.fn())
+const getAccessToken = vi.hoisted(() => vi.fn<GoogleAuth['getAccessToken']>())
 vi.mock('google-auth-library', () => ({
   GoogleAuth: class {
     getAccessToken = getAccessToken

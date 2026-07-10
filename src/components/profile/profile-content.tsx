@@ -20,6 +20,12 @@ interface ProfileContentProps {
   toast?: ToastCode
 }
 
+// Static icon nodes — no props/state dependency, hoisted so they're created once ever
+// (not once per render) and don't trip react-perf/jsx-no-jsx-as-prop.
+const accountInfoIcon = <UserRound />
+const signInMethodsIcon = <KeyRound />
+const usageIcon = <BarChart3 />
+
 export function ProfileContent({ initialData, toast }: ProfileContentProps) {
   const { data: profile } = useProfile({ initialData })
 
@@ -42,7 +48,7 @@ export function ProfileContent({ initialData, toast }: ProfileContentProps) {
 
       {toast && <ProfileToast code={toast} />}
 
-      <CollapsibleCard title="Account Information" icon={<UserRound />}>
+      <CollapsibleCard title="Account Information" icon={accountInfoIcon}>
         <div className="space-y-4">
           <div className="flex items-center gap-4">
             <UserAvatar name={name} image={image} className="size-14 shrink-0" />
@@ -62,7 +68,7 @@ export function ProfileContent({ initialData, toast }: ProfileContentProps) {
         </div>
       </CollapsibleCard>
 
-      <CollapsibleCard title="Sign-in Methods" icon={<KeyRound />}>
+      <CollapsibleCard title="Sign-in Methods" icon={signInMethodsIcon}>
         <ConnectedAccounts
           currentEmail={email}
           availableEmails={availableEmails}
@@ -73,7 +79,7 @@ export function ProfileContent({ initialData, toast }: ProfileContentProps) {
         />
       </CollapsibleCard>
 
-      <CollapsibleCard title="Usage" icon={<BarChart3 />}>
+      <CollapsibleCard title="Usage" icon={usageIcon}>
         <div className="space-y-4">
           <div className="app-grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="card-tier-2 group flex items-center gap-3 rounded-lg border p-3 transition-colors">

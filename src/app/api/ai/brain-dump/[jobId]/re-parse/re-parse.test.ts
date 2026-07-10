@@ -1,22 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
+import type { getCachedSession as GetCachedSessionFn } from '@/lib/session'
+import type { getCachedVerifiedProAccess as GetCachedVerifiedProAccessFn } from '@/lib/billing/access/pro-access-resolution'
+import type { checkRateLimit as CheckRateLimitFn, resetRateLimit as ResetRateLimitFn } from '@/lib/infra/rate-limit'
+import type {
+  createParseJob as CreateParseJobFn,
+  getReparseEligibility as GetReparseEligibilityFn,
+  getSourceItemForParse as GetSourceItemForParseFn,
+  getSourceText as GetSourceTextFn,
+  sweepAbandonedParseJobs as SweepAbandonedParseJobsFn,
+} from '@/lib/db/ai-parse-jobs'
 
 // `after` runs the abandoned-job sweep post-response; stub it to a no-op so the handler doesn't register
 // a real callback outside a request scope in tests.
-vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }))
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
+vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn<() => void>() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof GetCachedSessionFn>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn<typeof GetCachedVerifiedProAccessFn>() }))
 vi.mock('@/lib/infra/rate-limit', () => ({
-  checkRateLimit: vi.fn(),
-  resetRateLimit: vi.fn(),
-  deniedMessage: vi.fn((retryAfter: number) => `Too many attempts (${retryAfter}s).`),
+  checkRateLimit: vi.fn<typeof CheckRateLimitFn>(),
+  resetRateLimit: vi.fn<typeof ResetRateLimitFn>(),
+  deniedMessage: vi.fn<(retryAfter: number) => string>((retryAfter) => `Too many attempts (${retryAfter}s).`),
 }))
 vi.mock('@/lib/db/ai-parse-jobs', () => ({
-  createParseJob: vi.fn(),
-  getReparseEligibility: vi.fn(),
-  getSourceItemForParse: vi.fn(),
-  getSourceText: vi.fn(),
-  sweepAbandonedParseJobs: vi.fn(),
+  createParseJob: vi.fn<typeof CreateParseJobFn>(),
+  getReparseEligibility: vi.fn<typeof GetReparseEligibilityFn>(),
+  getSourceItemForParse: vi.fn<typeof GetSourceItemForParseFn>(),
+  getSourceText: vi.fn<typeof GetSourceTextFn>(),
+  sweepAbandonedParseJobs: vi.fn<typeof SweepAbandonedParseJobsFn>(),
 }))
 
 import { after } from 'next/server'

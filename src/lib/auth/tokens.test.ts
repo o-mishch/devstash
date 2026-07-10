@@ -7,44 +7,48 @@ import { createHash } from 'crypto'
 const store = new Map<string, unknown>()
 const ttls = new Map<string, number | undefined>()
 const fakeRedis = {
-  set: vi.fn((key: string, value: unknown, options?: { ex?: number }) => {
-    store.set(key, value)
-    ttls.set(key, options?.ex)
-    return 'OK'
-  }),
-  get: vi.fn((key: string) => store.get(key) ?? null),
-  del: vi.fn((key: string) => {
+  set: vi.fn<(key: string, value: unknown, options?: { ex?: number }) => string>(
+    (key, value, options) => {
+      store.set(key, value)
+      ttls.set(key, options?.ex)
+      return 'OK'
+    },
+  ),
+  get: vi.fn<(key: string) => unknown>((key) => store.get(key) ?? null),
+  del: vi.fn<(key: string) => number>((key) => {
     store.delete(key)
     return 1
   }),
-  incr: vi.fn((key: string) => {
+  incr: vi.fn<(key: string) => number>((key) => {
     const next = (Number(store.get(key) ?? 0) + 1)
     store.set(key, next)
     return next
   }),
-  expire: vi.fn((key: string, seconds: number) => {
+  expire: vi.fn<(key: string, seconds: number) => number>((key, seconds) => {
     ttls.set(key, seconds)
     return 1
   }),
-  getdel: vi.fn((key: string) => {
+  getdel: vi.fn<(key: string) => unknown>((key) => {
     const v = store.get(key) ?? null
     store.delete(key)
     return v
   }),
-  eval: vi.fn((_script: string, keys: string[], args: (string | number)[]) => {
-    const genKey = keys[0]
-    const tokenKey = keys[1]
-    const expectedGen = Number(args[0])
-    const current = store.get(genKey)
-    if (current === undefined || Number(current) !== expectedGen) return null
-    const v = store.get(tokenKey) ?? null
-    store.delete(tokenKey)
-    return v
-  }),
+  eval: vi.fn<(script: string, keys: string[], args: (string | number)[]) => unknown>(
+    (_script, keys, args) => {
+      const genKey = keys[0]
+      const tokenKey = keys[1]
+      const expectedGen = Number(args[0])
+      const current = store.get(genKey)
+      if (current === undefined || Number(current) !== expectedGen) return null
+      const v = store.get(tokenKey) ?? null
+      store.delete(tokenKey)
+      return v
+    },
+  ),
 }
 
 vi.mock('@/lib/infra/redis', () => ({
-  getRedis: vi.fn(() => fakeRedis),
+  getRedis: vi.fn<() => typeof fakeRedis>(() => fakeRedis),
 }))
 
 import {

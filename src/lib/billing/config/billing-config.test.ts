@@ -1,3 +1,4 @@
+import type Stripe from 'stripe'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseBillingPeriodParam } from './billing-pricing'
 import {
@@ -10,9 +11,12 @@ import {
   subscriptionNeedsBillingPortalRecovery,
   validateStripeWebhookConfiguration,
 } from './billing-config'
+import type { StripeWebhookEndpointSummary } from './stripe-webhook-config'
 
 const { mockWebhookEndpointsList } = vi.hoisted(() => ({
-  mockWebhookEndpointsList: vi.fn(),
+  mockWebhookEndpointsList: vi.fn<
+    (params?: Stripe.WebhookEndpointListParams) => Promise<{ data: StripeWebhookEndpointSummary[] }>
+  >(),
 }))
 
 vi.mock('@/lib/infra/stripe', () => ({

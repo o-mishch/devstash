@@ -3,19 +3,24 @@ import { NextRequest } from 'next/server'
 
 // Exercises the per-draft edit/reclassify (PATCH) and delete (DELETE) routes: auth (401), validation
 // (422), 404 for a foreign draft, and that the DB helpers are scoped to the session userId.
-vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn() }))
-vi.mock('@/lib/billing/access/pro-access-resolution', () => ({ getCachedVerifiedProAccess: vi.fn() }))
-vi.mock('@/lib/db/ai-parse-jobs', () => ({ patchDraftItem: vi.fn(), deleteDraftItem: vi.fn() }))
+vi.mock('@/lib/session', () => ({ getCachedSession: vi.fn<typeof getCachedSession>() }))
+vi.mock('@/lib/billing/access/pro-access-resolution', () => ({
+  getCachedVerifiedProAccess: vi.fn<typeof getCachedVerifiedProAccess>(),
+}))
+vi.mock('@/lib/db/ai-parse-jobs', () => ({
+  patchDraftItem: vi.fn<typeof patchDraftItem>(),
+  deleteDraftItem: vi.fn<typeof deleteDraftItem>(),
+}))
 
 import { getCachedSession } from '@/lib/session'
 import { getCachedVerifiedProAccess } from '@/lib/billing/access/pro-access-resolution'
 import { patchDraftItem, deleteDraftItem } from '@/lib/db/ai-parse-jobs'
 import { PATCH, DELETE } from './route'
 
-const mockSession = getCachedSession as ReturnType<typeof vi.fn>
-const mockPro = getCachedVerifiedProAccess as ReturnType<typeof vi.fn>
-const mockPatch = patchDraftItem as ReturnType<typeof vi.fn>
-const mockDelete = deleteDraftItem as ReturnType<typeof vi.fn>
+const mockSession = vi.mocked(getCachedSession)
+const mockPro = vi.mocked(getCachedVerifiedProAccess)
+const mockPatch = vi.mocked(patchDraftItem)
+const mockDelete = vi.mocked(deleteDraftItem)
 
 function patchReq(payload: unknown): NextRequest {
   return new NextRequest('http://localhost/api/ai/brain-dump/job-1/items/item-1', { method: 'PATCH', body: JSON.stringify(payload) })
