@@ -1,5 +1,5 @@
 Get recommendations, best practices, and modern approaches from websearch, eventually from context7
-ask questions untill you would have full context.
+Ask questions until you would have full context.
 
 
 Allow, and add all commands for which you are asking for permissions to allowed-tools in:
@@ -8,7 +8,14 @@ Allow, and add all commands for which you are asking for permissions to allowed-
 
 
 Critically and very precisely review everything in the directory `backend`.
-Make sure the patterns are strictly aligned with native Golang native best practices and modern approaches.
+Make sure the project structure, design, patterns, and idioms strictly follow native Golang modern best practices.
+the boilerplater covered with widely used libs in the Golang ecosystem.
+
+Search for unnecessary complexity in any shape or layer.
+KISS, DRY, SOLID
+
+
+Do not copy/paste the nextjs native design.
 
 
 @.agents/agents/refactor-scanner.md 

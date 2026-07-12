@@ -1,6 +1,6 @@
 // Package db embeds the goose SQL migrations so the compiled binary is
 // self-contained: `api migrate` applies them without shipping loose .sql files
-// next to the binary. This matters for buildpacks builds, whose run image
+// next to the binary. This matters for the distroless runtime image, which
 // contains only the compiled binary and no arbitrary non-Go files.
 package db
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -16,6 +17,14 @@ import (
 )
 
 func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
+
+// startRedis brings up an in-process miniredis and returns its redis:// URL, torn
+// down via t.Cleanup. Used by serve integration tests, which need the session
+// store + rate limiter without a live Redis.
+func startRedis(t *testing.T) string {
+	t.Helper()
+	return "redis://" + miniredis.RunT(t).Addr()
+}
 
 // startPostgres brings up a throwaway Postgres and returns its DSN; torn down via
 // t.Cleanup. Isolated per test, so migrate/serve integration never touches Neon.
@@ -91,6 +100,7 @@ func TestRunServeGracefulShutdown(t *testing.T) {
 	cfg := &config.Config{
 		Port:        freePort(t),
 		DatabaseURL: startPostgres(t),
+		RedisURL:    startRedis(t),
 		Env:         "test",
 	}
 

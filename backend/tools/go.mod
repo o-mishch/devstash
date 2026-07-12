@@ -1,6 +1,8 @@
 module github.com/o-mishch/devstash/backend/tools
 
-go 1.26.5
+go 1.26
+
+toolchain go1.26.5
 
 tool (
 	github.com/air-verse/air

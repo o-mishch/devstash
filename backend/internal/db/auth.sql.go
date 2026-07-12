@@ -7,13 +7,154 @@ package sqlcdb
 
 import (
 	"context"
+	"time"
 )
+
+const bootstrapCredentialLogin = `-- name: BootstrapCredentialLogin :exec
+UPDATE users
+SET password = $2,
+    "emailVerified" = now(),
+    "credentialEmail" = $3,
+    "credentialEmailVerified" = now(),
+    "updatedAt" = now()
+WHERE id = $1
+`
+
+type BootstrapCredentialLoginParams struct {
+	ID              string  `json:"id"`
+	Password        *string `json:"password"`
+	CredentialEmail *string `json:"credentialEmail"`
+}
+
+// Reset path for an OAuth-only account (no prior password): set the password and
+// verify both the primary and credential email in lockstep.
+func (q *Queries) BootstrapCredentialLogin(ctx context.Context, arg BootstrapCredentialLoginParams) error {
+	_, err := q.db.Exec(ctx, bootstrapCredentialLogin, arg.ID, arg.Password, arg.CredentialEmail)
+	return err
+}
+
+const changeCredentialEmail = `-- name: ChangeCredentialEmail :exec
+UPDATE users
+SET "credentialEmail" = $2,
+    "credentialEmailVerified" = now(),
+    email = CASE WHEN email = "credentialEmail" THEN $2 ELSE email END,
+    "updatedAt" = now()
+WHERE id = $1
+`
+
+type ChangeCredentialEmailParams struct {
+	ID              string  `json:"id"`
+	CredentialEmail *string `json:"credentialEmail"`
+}
+
+// Confirm-login-email (user already has a password): re-point the credential email
+// and verify it. If the primary email was in sync with the old credential email,
+// move it too. Unique violation → 23505.
+func (q *Queries) ChangeCredentialEmail(ctx context.Context, arg ChangeCredentialEmailParams) error {
+	_, err := q.db.Exec(ctx, changeCredentialEmail, arg.ID, arg.CredentialEmail)
+	return err
+}
+
+const getProviderAccount = `-- name: GetProviderAccount :one
+SELECT id, "userId", type, provider, "providerAccountId", refresh_token, access_token, expires_at, token_type, scope, id_token, session_state, email FROM accounts
+WHERE provider = $1 AND "providerAccountId" = $2
+`
+
+type GetProviderAccountParams struct {
+	Provider          string `json:"provider"`
+	ProviderAccountId string `json:"providerAccountId"`
+}
+
+// OAuth callback lookup: is this exact (provider, providerAccountId) already linked,
+// and to whom? Drives the link-intent / conflict branches.
+func (q *Queries) GetProviderAccount(ctx context.Context, arg GetProviderAccountParams) (Account, error) {
+	row := q.db.QueryRow(ctx, getProviderAccount, arg.Provider, arg.ProviderAccountId)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.UserId,
+		&i.Type,
+		&i.Provider,
+		&i.ProviderAccountId,
+		&i.RefreshToken,
+		&i.AccessToken,
+		&i.ExpiresAt,
+		&i.TokenType,
+		&i.Scope,
+		&i.IDToken,
+		&i.SessionState,
+		&i.Email,
+	)
+	return i, err
+}
+
+const getUnverifiedUserByEmail = `-- name: GetUnverifiedUserByEmail :one
+SELECT id, "emailVerified" FROM users
+WHERE email = $1 AND "emailVerified" IS NULL
+`
+
+type GetUnverifiedUserByEmailRow struct {
+	ID            string     `json:"id"`
+	EmailVerified *time.Time `json:"emailVerified"`
+}
+
+// Resend-verification target: an account registered with credentials whose primary
+// email is not yet verified. Returns nothing for verified or non-existent accounts.
+func (q *Queries) GetUnverifiedUserByEmail(ctx context.Context, email string) (GetUnverifiedUserByEmailRow, error) {
+	row := q.db.QueryRow(ctx, getUnverifiedUserByEmail, email)
+	var i GetUnverifiedUserByEmailRow
+	err := row.Scan(&i.ID, &i.EmailVerified)
+	return i, err
+}
+
+const getUserByAccountEmail = `-- name: GetUserByAccountEmail :one
+SELECT users.id, users.email, users."emailVerified", users.name, users.image, users.password, users."isPro", users."stripeCustomerId", users."stripeSubscriptionId", users."createdAt", users."updatedAt", users."editorPreferences", users."stripeSubscriptionStart", users."stripeCurrentPeriodEnd", users."proExpiredAt", users."stripeCancelAtPeriodEnd", users."stripeSubscriptionInterval", users."stripeLastSyncAt", users."stripeSubscriptionStatus", users."credentialEmail", users."credentialEmailVerified" FROM users
+JOIN accounts ON accounts."userId" = users.id
+WHERE accounts.email = $1
+ORDER BY users."createdAt" ASC, users.id ASC
+LIMIT 1
+`
+
+// Any-email resolution fallback: the user who owns a linked OAuth account whose
+// provider email matches. Used by register/forgot-password to find an existing
+// account behind an OAuth-only identity.
+// ORDER BY makes the single-row pick deterministic when the same provider email is
+// linked to more than one user (accounts.email is nullable and not unique per user):
+// always resolve to the oldest account rather than an arbitrary one.
+func (q *Queries) GetUserByAccountEmail(ctx context.Context, email *string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByAccountEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.EmailVerified,
+		&i.Name,
+		&i.Image,
+		&i.Password,
+		&i.IsPro,
+		&i.StripeCustomerId,
+		&i.StripeSubscriptionId,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EditorPreferences,
+		&i.StripeSubscriptionStart,
+		&i.StripeCurrentPeriodEnd,
+		&i.ProExpiredAt,
+		&i.StripeCancelAtPeriodEnd,
+		&i.StripeSubscriptionInterval,
+		&i.StripeLastSyncAt,
+		&i.StripeSubscriptionStatus,
+		&i.CredentialEmail,
+		&i.CredentialEmailVerified,
+	)
+	return i, err
+}
 
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, "emailVerified", name, image, password, "isPro", "stripeCustomerId", "stripeSubscriptionId", "createdAt", "updatedAt", "editorPreferences", "stripeSubscriptionStart", "stripeCurrentPeriodEnd", "proExpiredAt", "stripeCancelAtPeriodEnd", "stripeSubscriptionInterval", "stripeLastSyncAt", "stripeSubscriptionStatus", "credentialEmail", "credentialEmailVerified" FROM users WHERE email = $1
 `
 
-// Credentials login / account lookup by email.
+// Credentials login / account lookup by email (primary email, unique).
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, email)
 	var i User
@@ -75,4 +216,173 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.CredentialEmailVerified,
 	)
 	return i, err
+}
+
+const getUserByVerifiedCredentialEmail = `-- name: GetUserByVerifiedCredentialEmail :one
+SELECT id, email, "emailVerified", name, image, password, "isPro", "stripeCustomerId", "stripeSubscriptionId", "createdAt", "updatedAt", "editorPreferences", "stripeSubscriptionStart", "stripeCurrentPeriodEnd", "proExpiredAt", "stripeCancelAtPeriodEnd", "stripeSubscriptionInterval", "stripeLastSyncAt", "stripeSubscriptionStatus", "credentialEmail", "credentialEmailVerified" FROM users
+WHERE "credentialEmail" = $1 AND "credentialEmailVerified" IS NOT NULL
+`
+
+// Credentials-login fallback: a *verified* credential sign-in email that differs
+// from the primary email. Unverified credential emails never authenticate, so the
+// NOT NULL guard is part of the match, not a post-filter.
+func (q *Queries) GetUserByVerifiedCredentialEmail(ctx context.Context, credentialemail *string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByVerifiedCredentialEmail, credentialemail)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.EmailVerified,
+		&i.Name,
+		&i.Image,
+		&i.Password,
+		&i.IsPro,
+		&i.StripeCustomerId,
+		&i.StripeSubscriptionId,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EditorPreferences,
+		&i.StripeSubscriptionStart,
+		&i.StripeCurrentPeriodEnd,
+		&i.ProExpiredAt,
+		&i.StripeCancelAtPeriodEnd,
+		&i.StripeSubscriptionInterval,
+		&i.StripeLastSyncAt,
+		&i.StripeSubscriptionStatus,
+		&i.CredentialEmail,
+		&i.CredentialEmailVerified,
+	)
+	return i, err
+}
+
+const insertCredentialUser = `-- name: InsertCredentialUser :one
+INSERT INTO users (
+    id, email, name, password, "emailVerified", "credentialEmail", "credentialEmailVerified", "updatedAt"
+) VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+RETURNING id, email, "emailVerified", name, image, password, "isPro", "stripeCustomerId", "stripeSubscriptionId", "createdAt", "updatedAt", "editorPreferences", "stripeSubscriptionStart", "stripeCurrentPeriodEnd", "proExpiredAt", "stripeCancelAtPeriodEnd", "stripeSubscriptionInterval", "stripeLastSyncAt", "stripeSubscriptionStatus", "credentialEmail", "credentialEmailVerified"
+`
+
+type InsertCredentialUserParams struct {
+	ID                      string     `json:"id"`
+	Email                   string     `json:"email"`
+	Name                    *string    `json:"name"`
+	Password                *string    `json:"password"`
+	EmailVerified           *time.Time `json:"emailVerified"`
+	CredentialEmail         *string    `json:"credentialEmail"`
+	CredentialEmailVerified *time.Time `json:"credentialEmailVerified"`
+}
+
+// Register a new credentials account. emailVerified/credentialEmailVerified are
+// set (now) when verification is disabled, NULL otherwise. A unique violation on
+// email/credentialEmail surfaces as 23505 → the caller maps it to "in use".
+func (q *Queries) InsertCredentialUser(ctx context.Context, arg InsertCredentialUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, insertCredentialUser,
+		arg.ID,
+		arg.Email,
+		arg.Name,
+		arg.Password,
+		arg.EmailVerified,
+		arg.CredentialEmail,
+		arg.CredentialEmailVerified,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.EmailVerified,
+		&i.Name,
+		&i.Image,
+		&i.Password,
+		&i.IsPro,
+		&i.StripeCustomerId,
+		&i.StripeSubscriptionId,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EditorPreferences,
+		&i.StripeSubscriptionStart,
+		&i.StripeCurrentPeriodEnd,
+		&i.ProExpiredAt,
+		&i.StripeCancelAtPeriodEnd,
+		&i.StripeSubscriptionInterval,
+		&i.StripeLastSyncAt,
+		&i.StripeSubscriptionStatus,
+		&i.CredentialEmail,
+		&i.CredentialEmailVerified,
+	)
+	return i, err
+}
+
+const markEmailVerifiedByEmail = `-- name: MarkEmailVerifiedByEmail :exec
+UPDATE users
+SET "emailVerified" = now(),
+    "credentialEmailVerified" = CASE WHEN "credentialEmail" = email THEN now() ELSE "credentialEmailVerified" END,
+    "updatedAt" = now()
+WHERE email = $1 AND "emailVerified" IS NULL
+`
+
+// Verify-email link consume: mark the primary email verified (and the credential
+// email too when they match). No-op if already verified or the account is gone.
+func (q *Queries) MarkEmailVerifiedByEmail(ctx context.Context, email string) error {
+	_, err := q.db.Exec(ctx, markEmailVerifiedByEmail, email)
+	return err
+}
+
+const setCredentialEmailLogin = `-- name: SetCredentialEmailLogin :exec
+UPDATE users
+SET password = $2,
+    "credentialEmail" = $3,
+    "credentialEmailVerified" = now(),
+    "updatedAt" = now()
+WHERE id = $1
+`
+
+type SetCredentialEmailLoginParams struct {
+	ID              string  `json:"id"`
+	Password        *string `json:"password"`
+	CredentialEmail *string `json:"credentialEmail"`
+}
+
+// Confirm-login-email (OAuth-only account adding a password): set the password and
+// the verified credential email. Unique violation on credentialEmail → 23505.
+func (q *Queries) SetCredentialEmailLogin(ctx context.Context, arg SetCredentialEmailLoginParams) error {
+	_, err := q.db.Exec(ctx, setCredentialEmailLogin, arg.ID, arg.Password, arg.CredentialEmail)
+	return err
+}
+
+const setPasswordAndVerifyEmail = `-- name: SetPasswordAndVerifyEmail :exec
+UPDATE users
+SET password = $2,
+    "emailVerified" = now(),
+    "credentialEmailVerified" = CASE WHEN "credentialEmail" = $3 THEN now() ELSE "credentialEmailVerified" END,
+    "updatedAt" = now()
+WHERE id = $1
+`
+
+type SetPasswordAndVerifyEmailParams struct {
+	ID              string  `json:"id"`
+	Password        *string `json:"password"`
+	CredentialEmail *string `json:"credentialEmail"`
+}
+
+// Reset path for an unverified credential account: set the password, verify the
+// primary email, and verify the credential email too iff it equals $3 (in sync).
+func (q *Queries) SetPasswordAndVerifyEmail(ctx context.Context, arg SetPasswordAndVerifyEmailParams) error {
+	_, err := q.db.Exec(ctx, setPasswordAndVerifyEmail, arg.ID, arg.Password, arg.CredentialEmail)
+	return err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users SET password = $2, "updatedAt" = now() WHERE id = $1
+`
+
+type UpdateUserPasswordParams struct {
+	ID       string  `json:"id"`
+	Password *string `json:"password"`
+}
+
+// Reset the password of an already-verified credential account (id from a consumed
+// reset token, never user input).
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateUserPassword, arg.ID, arg.Password)
+	return err
 }

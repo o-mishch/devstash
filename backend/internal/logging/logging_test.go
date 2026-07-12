@@ -36,7 +36,14 @@ func TestNewLevelAndHandlerPerEnv(t *testing.T) {
 				t.Error("Enabled(Info) = false, want true")
 			}
 
-			switch h := logger.Handler().(type) {
+			// New wraps the format handler in ctxHandler (request-id injection); the
+			// underlying format is still a real contract for prod log parsing, so unwrap
+			// and assert the inner type.
+			wrapper, ok := logger.Handler().(ctxHandler)
+			if !ok {
+				t.Fatalf("handler = %T, want ctxHandler wrapper", logger.Handler())
+			}
+			switch h := wrapper.Handler.(type) {
 			case *slog.JSONHandler:
 				if !tc.wantJSON {
 					t.Errorf("handler = *slog.JSONHandler, want *slog.TextHandler")

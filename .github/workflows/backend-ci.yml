@@ -93,10 +93,13 @@ jobs:
           working-directory: backend
 
       # Formatter check (gofumpt + goimports + golines) — the action only runs the
-      # linters, so without this a formatting drift would merge unnoticed. Uses the
-      # binary the action just put on PATH.
+      # linters, so without this a formatting drift would merge unnoticed. Runs via the
+      # pinned golangci-lint/go.mod tool module (same `go tool -modfile=` pattern as
+      # `task backend:fmt:check`, govulncheck, air, sqlc) rather than relying on the
+      # binary the action happened to leave on PATH — self-contained and drift-proof.
+      # `fmt --diff` exits non-zero when any file would change, so drift fails CI.
       - name: Format check
-        run: golangci-lint fmt --diff
+        run: go tool -modfile=golangci-lint/go.mod golangci-lint fmt --diff
 
       # Known-vulnerability scan. govulncheck is pinned in the isolated tools/go.mod
       # (same `go tool -modfile=` pattern as air/sqlc), so CI and `task backend:vuln`

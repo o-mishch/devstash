@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+# Floating minor tag (not a digest) so patch/alpine rebuilds are picked up automatically.
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
@@ -7,10 +8,11 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source and build the single binary. -trimpath strips local filesystem
-# paths for reproducible builds (and keeps them out of the binary/panics).
+# Copy source and build the single binary. -trimpath strips local filesystem paths
+# for reproducible builds (and keeps them out of the binary/panics); -mod=readonly
+# refuses to mutate go.mod/go.sum during the build (matches CI's readonly posture).
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=readonly -trimpath -ldflags="-s -w" -o /api ./cmd/api
 
 # ─── Runtime image ────────────────────────────────────────────────────────────
 # distroless/static ships CA certificates, tzdata, and a nonroot /etc/passwd entry,

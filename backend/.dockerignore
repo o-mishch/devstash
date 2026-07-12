@@ -1,5 +1,6 @@
-# Keep the build context minimal: only Go sources + module files are needed.
-# Compiled artifacts and dev-only files bloat the context and bust layer caching.
+# Keep the build context minimal: only the production Go sources + module files are
+# needed (the image builds ./cmd/api). Compiled artifacts, tests, the isolated tool
+# modules, and the unrelated learning course bloat the context and bust layer caching.
 /api
 /tmp/
 .git
@@ -8,5 +9,16 @@
 .air.toml
 .golangci.yml
 .taplo.toml
+.testcoverage.yml
 Taskfile.yml
+sqlc.yaml
 openapi.json
+cover.out
+cover.html
+# Isolated tool modules (golangci-lint / sqlc / air / govulncheck) — never built into the image.
+tools/
+golangci-lint/
+# Independent Go learning course — not part of the DevStash module.
+exercise/
+# Test files are not needed to build the binary.
+**/*_test.go

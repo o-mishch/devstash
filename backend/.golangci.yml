@@ -108,6 +108,37 @@ linters:
       - path: db/embed\.go
         linters:
           - gochecknoglobals
+      # ratelimit.go: the bucket->limit table is declarative config. gochecknoglobals
+      # (an immutable package-level lookup) and mnd (the numbers ARE the rate config,
+      # naming each would be noise) are structurally wrong for a config table.
+      - path: internal/ratelimit/ratelimit\.go
+        linters:
+          - gochecknoglobals
+          - mnd
+      # auth request handlers: json/format/query keys ("email", "token", "sent", …)
+      # recur as inline literals in struct tags and url.Values. Struct tags cannot be
+      # constants, so goconst is structurally wrong for these HTTP-shape files.
+      - path: internal/auth/(register|password|login)\.go
+        linters:
+          - goconst
+      # UserStore is the auth data-access interface (a dozen sqlc query methods), not
+      # a behavioral one — interfacebloat targets sprawling behavior interfaces.
+      - path: internal/auth/auth\.go
+        linters:
+          - interfacebloat
+      # Tokens is the one-time-token store: create/peek/consume triples per token type
+      # (verification, reset, credential-email) plus the two anti-spam markers. It is a
+      # cohesive data-access surface, not sprawling behavior — the same rationale as
+      # UserStore above; interfacebloat's 10-method cap is structurally wrong here.
+      - path: internal/auth/tokens\.go
+        linters:
+          - interfacebloat
+      # contextcheck can't model Huma's middleware API (it hands the closure a
+      # huma.Context, not a context.Context); RequireSession correctly threads
+      # ctx.Context() into every downstream call.
+      - linters:
+          - contextcheck
+        text: RequireSession
 
 formatters:
   enable:

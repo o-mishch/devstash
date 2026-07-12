@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,16 +11,31 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
+
+	"github.com/o-mishch/devstash/backend/internal/auth"
+	"github.com/o-mishch/devstash/backend/internal/session"
 )
+
+// newTestSessions builds a session.Manager backed by an in-memory miniredis, so
+// router/wiring tests exercise the real scs store without a live Redis.
+func newTestSessions(t *testing.T) *session.Manager {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	return session.New(client, session.Config{Lifetime: session.MaxAge, IdleTimeout: session.IdleTimeout})
+}
 
 // TestHealthRoute exercises the registered /health operation through Huma's own
 // test harness (real request routing + response validation), not a hand-rolled
 // handler call — so it also catches operation-registration and schema mistakes.
 func TestHealthRoute(t *testing.T) {
 	_, api := humatest.New(t)
-	registerRoutes(api)
+	registerRoutes(api, auth.Deps{}, nil)
 
 	resp := api.Get("/health")
 
@@ -46,13 +62,13 @@ func TestNewHumaAPIProducesSpec(t *testing.T) {
 	}
 }
 
-// TestNewRouterServesHealth exercises the full chi+humachi router (not just the API
+// TestNewRouterServesHealth exercises the full stdlib-mux + humago router (not just the API
 // object) end to end via httptest, covering newRouter/mountAPI wiring.
 func TestNewRouterServesHealth(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 
-	newRouter().ServeHTTP(rr, req)
+	newRouter(newTestSessions(t), auth.Deps{}, nil, nil, nil, true, slog.New(slog.DiscardHandler)).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET /health status = %d, want %d", rr.Code, http.StatusOK)
@@ -62,17 +78,33 @@ func TestNewRouterServesHealth(t *testing.T) {
 	}
 }
 
-// TestHumaConfig pins the two settings the migration relies on: SwaggerUI served
-// in-process at /docs, and both server URLs present in the emitted spec.
+// TestHumaConfig pins the settings the migration relies on: SwaggerUI served
+// in-process at /docs when enabled, both server URLs present, and — when docs are
+// disabled (production) — the docs/spec/schema routes all switched off so the auth
+// attack surface isn't published.
 func TestHumaConfig(t *testing.T) {
-	cfg := humaConfig()
+	t.Run("docs enabled", func(t *testing.T) {
+		cfg := humaConfig(true)
+		if cfg.DocsPath != "/docs" {
+			t.Errorf("DocsPath = %q, want /docs", cfg.DocsPath)
+		}
+		if len(cfg.Servers) != 2 {
+			t.Fatalf("Servers count = %d, want 2 (prod + local)", len(cfg.Servers))
+		}
+	})
 
-	if cfg.DocsPath != "/docs" {
-		t.Errorf("DocsPath = %q, want /docs", cfg.DocsPath)
-	}
-	if len(cfg.Servers) != 2 {
-		t.Fatalf("Servers count = %d, want 2 (prod + local)", len(cfg.Servers))
-	}
+	t.Run("docs disabled hides docs and spec routes", func(t *testing.T) {
+		cfg := humaConfig(false)
+		if cfg.DocsPath != "" {
+			t.Errorf("DocsPath = %q, want empty (disabled)", cfg.DocsPath)
+		}
+		if cfg.OpenAPIPath != "" {
+			t.Errorf("OpenAPIPath = %q, want empty (disabled)", cfg.OpenAPIPath)
+		}
+		if cfg.SchemasPath != "" {
+			t.Errorf("SchemasPath = %q, want empty (disabled)", cfg.SchemasPath)
+		}
+	})
 }
 
 // TestSkipConfigLoad checks the annotation walk against the real command tree: the

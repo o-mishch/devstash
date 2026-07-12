@@ -24,5 +24,7 @@ func New(env string) *slog.Logger {
 	if isProd {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	}
-	return slog.New(handler)
+	// Wrap so every *Context log call automatically carries the request correlation id
+	// (set by the RequestID middleware) — see ctxHandler.
+	return slog.New(ctxHandler{handler})
 }

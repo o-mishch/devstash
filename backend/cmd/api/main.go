@@ -57,8 +57,8 @@ func rootCmd() *cobra.Command {
 		SilenceUsage: true, // a runtime error from serve shouldn't dump command usage
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// `help` and the `openapi` tree are pure/offline — loading config
-			// there would force every secret (DATABASE_URL, AUTH_SECRET, OAuth)
-			// to be set just to emit the spec, which breaks CI contract generation.
+			// there would force the required secrets (DATABASE_URL, REDIS_URL) to
+			// be set just to emit the spec, which breaks CI contract generation.
 			if cmd.Name() == "help" || skipConfigLoad(cmd) {
 				return nil
 			}

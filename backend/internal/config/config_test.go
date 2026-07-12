@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // testLogger returns a logger that discards output — Load's dotenv warnings are
@@ -25,6 +27,14 @@ func setRequiredEnv(t *testing.T) {
 	t.Setenv("AUTH_GITHUB_SECRET", "gh-secret")
 	t.Setenv("AUTH_GOOGLE_ID", "goog-id")
 	t.Setenv("AUTH_GOOGLE_SECRET", "goog-secret")
+	t.Setenv("REDIS_URL", "redis://localhost:6379")
+	// Required in production (validate()): without it the CSRF guard would 403 every
+	// cross-origin SPA write. Set here so the ENV=production tests below boot cleanly.
+	t.Setenv("ALLOWED_ORIGINS", "https://devstash.one")
+	// Required in production when email verification is on (validate()): the app would
+	// otherwise gate logins on a verification email the no-op emailer never sends.
+	t.Setenv("RESEND_API_KEY", "re_test")
+	t.Setenv("EMAIL_FROM", "noreply@devstash.one")
 }
 
 func TestLoadParsesRequiredEnvAndDefaults(t *testing.T) {
@@ -47,6 +57,77 @@ func TestLoadParsesRequiredEnvAndDefaults(t *testing.T) {
 	}
 	if cfg.AppURL != "http://localhost:3000" {
 		t.Errorf("AppURL = %q, want default localhost:3000", cfg.AppURL)
+	}
+	// TrustedProxyDepth defaults to 0 (Cloud Run direct: real client IP is rightmost).
+	if cfg.TrustedProxyDepth != 0 {
+		t.Errorf("TrustedProxyDepth = %d, want default 0", cfg.TrustedProxyDepth)
+	}
+	if diff := cmp.Diff([]string{"https://devstash.one"}, cfg.AllowedOrigins); diff != "" {
+		t.Errorf("AllowedOrigins mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestLoadFailsWhenProductionMissingAllowedOrigins guards the boot-time check: in
+// production an empty ALLOWED_ORIGINS is fatal (an empty CSRF allowlist would 403 every
+// cross-origin SPA write), so Load must refuse to start rather than warn and continue.
+func TestLoadFailsWhenProductionMissingAllowedOrigins(t *testing.T) {
+	t.Setenv("ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db")
+	t.Setenv("REDIS_URL", "redis://localhost:6379")
+	t.Setenv("ALLOWED_ORIGINS", "") // explicit empty — the shell may otherwise export it
+
+	if _, err := Load(testLogger()); err == nil {
+		t.Fatal("Load() error = nil, want an error for empty ALLOWED_ORIGINS in production")
+	}
+}
+
+// TestLoadOnlyDatabaseAndRedisAreRequired proves that AUTH_SECRET and the four OAuth
+// vars are optional: with just the two truly-required vars set, Load succeeds. This
+// guards against a regression that re-adds `,required` to secrets no code reads yet.
+func TestLoadOnlyDatabaseAndRedisAreRequired(t *testing.T) {
+	t.Setenv("ENV", "production") // skip the dotenv walk
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db")
+	t.Setenv("REDIS_URL", "redis://localhost:6379")
+	t.Setenv("ALLOWED_ORIGINS", "https://devstash.one,https://www.devstash.one")
+	// Production with verification on also requires email config (validate()); set it so
+	// this test stays focused on what it guards — that the OAuth/AUTH_SECRET secrets don't.
+	t.Setenv("RESEND_API_KEY", "re_test")
+	t.Setenv("EMAIL_FROM", "noreply@devstash.one")
+
+	// No AUTH_SECRET / AUTH_GITHUB_* / AUTH_GOOGLE_* set here — Load must still succeed,
+	// proving they carry no `,required`. (We don't assert they're empty: the shell
+	// running the suite may export them, and that's not what this test guards.)
+	cfg, err := Load(testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil (OAuth/AUTH_SECRET are optional)", err)
+	}
+	want := []string{"https://devstash.one", "https://www.devstash.one"}
+	if diff := cmp.Diff(want, cfg.AllowedOrigins); diff != "" {
+		t.Errorf("AllowedOrigins mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestLoadFailsWhenProductionEmailMisconfigured guards the boot-time invariant that a
+// production deploy with email verification ON must carry a real sender: without
+// RESEND_API_KEY/EMAIL_FROM the emailer silently no-ops while the app still gates logins
+// on a verification email that never arrives, so Load must refuse to start. The explicit
+// kill-switch (DISABLE_EMAIL_VERIFICATION=true) is the sanctioned opt-out.
+func TestLoadFailsWhenProductionEmailMisconfigured(t *testing.T) {
+	t.Setenv("ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db")
+	t.Setenv("REDIS_URL", "redis://localhost:6379")
+	t.Setenv("ALLOWED_ORIGINS", "https://devstash.one")
+	t.Setenv("RESEND_API_KEY", "") // explicit empty — the shell may otherwise export it
+	t.Setenv("EMAIL_FROM", "")
+
+	if _, err := Load(testLogger()); err == nil {
+		t.Fatal("Load() error = nil, want an error for missing email config in production")
+	}
+
+	// With the kill-switch on, the same config boots — email is intentionally off.
+	t.Setenv("DISABLE_EMAIL_VERIFICATION", "true")
+	if _, err := Load(testLogger()); err != nil {
+		t.Fatalf("Load() error = %v, want nil when DISABLE_EMAIL_VERIFICATION=true", err)
 	}
 }
 
@@ -71,6 +152,7 @@ func TestLoadFailsWhenRequiredMissing(t *testing.T) {
 	t.Setenv("AUTH_GITHUB_SECRET", "gh-secret")
 	t.Setenv("AUTH_GOOGLE_ID", "goog-id")
 	t.Setenv("AUTH_GOOGLE_SECRET", "goog-secret")
+	t.Setenv("REDIS_URL", "redis://localhost:6379")
 
 	if _, err := Load(testLogger()); err == nil {
 		t.Fatal("Load() error = nil, want an error for missing DATABASE_URL")
@@ -89,6 +171,7 @@ func TestLoadDevWithoutRepoRootStillParses(t *testing.T) {
 	t.Setenv("AUTH_GITHUB_SECRET", "gh-secret")
 	t.Setenv("AUTH_GOOGLE_ID", "goog-id")
 	t.Setenv("AUTH_GOOGLE_SECRET", "goog-secret")
+	t.Setenv("REDIS_URL", "redis://localhost:6379")
 
 	cfg, err := Load(testLogger())
 	if err != nil {
@@ -126,6 +209,7 @@ func TestLoadDevReadsDotenvFromRepoRoot(t *testing.T) {
 	t.Setenv("AUTH_GITHUB_SECRET", "gh-secret")
 	t.Setenv("AUTH_GOOGLE_ID", "goog-id")
 	t.Setenv("AUTH_GOOGLE_SECRET", "goog-secret")
+	t.Setenv("REDIS_URL", "redis://localhost:6379")
 
 	cfg, err := Load(testLogger())
 	if err != nil {
