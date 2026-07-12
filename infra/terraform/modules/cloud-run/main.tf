@@ -76,6 +76,11 @@ resource "google_cloud_run_v2_service" "app" {
       # client.knative.dev/user-image) on every revision — these churn independently of any
       # config Terraform actually owns.
       template[0].annotations,
+      # Cloud Build's `gcloud run services update --labels=...` stamps per-build labels
+      # (commit-sha, gcb-build-id, gcb-trigger-id, managed-by) onto the revision template on
+      # every deploy. Terraform doesn't own these, so without ignoring them every apply would
+      # spawn a new revision to strip them — a perpetual fight with the deploy pipeline.
+      template[0].labels,
     ]
   }
 }
