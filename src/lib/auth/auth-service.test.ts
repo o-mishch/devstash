@@ -294,7 +294,7 @@ describe('auth-service', () => {
       expect(mockSendPasswordResetRequest).not.toHaveBeenCalled()
     })
 
-    it('resends verification when the existing account has a password but is unverified', async () => {
+    it('sends a password-reset link when the existing account has a password but is unverified', async () => {
       mockEmailVerificationEnabled.mockReturnValue(true)
       mockFindUserByAnyEmail.mockResolvedValue({ id: '1', email: 'test@example.com', password: 'hash', emailVerified: null })
 
@@ -303,8 +303,8 @@ describe('auth-service', () => {
       expect(result.sendEmail).toBeDefined()
       if (result.sendEmail) await result.sendEmail()
       expect(mockCreateCredentialUser).not.toHaveBeenCalled()
-      expect(mockResendVerification).toHaveBeenCalledWith('test@example.com')
-      expect(mockSendPasswordResetRequest).not.toHaveBeenCalled()
+      expect(mockSendPasswordResetRequest).toHaveBeenCalledWith('test@example.com')
+      expect(mockResendVerification).not.toHaveBeenCalled()
     })
 
     it('sends the set-password email for an existing OAuth-only account matched by primary', async () => {

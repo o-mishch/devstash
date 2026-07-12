@@ -8,11 +8,7 @@ import { invalidateProfileCache } from '@/lib/infra/cache'
 import { syncStripeCustomerEmailForUserSafe } from '@/lib/billing/lifecycle/stripe-billing-lifecycle'
 import type { PendingLinkData } from '@/lib/auth/pending-link'
 import { outboundEmailEnabled } from '@/lib/utils/auth'
-import {
-  sendRegistrationVerification,
-  resendVerification,
-  type VerificationResult,
-} from '@/lib/emails/verification'
+import { sendRegistrationVerification, type VerificationResult } from '@/lib/emails/verification'
 import { sendPasswordResetRequest } from '@/lib/emails/password-reset'
 import { sendCredentialEmailLink } from '@/lib/emails/credential-email'
 import { sendSecurityNotification } from '@/lib/emails/security-notification'
@@ -187,20 +183,16 @@ export async function registerUser(
 
   // Verification on: mirror a successful 'sent' in every branch (enumeration-safe), sending whatever
   // email fits the account's state — always to the account's PRIMARY inbox, never the typed address.
-  if (!existing.password) {
-    // OAuth-only → set-password link; confirming it proves ownership, sets the password, and merges the
-    // credential login into the existing account.
-    log.info({ userId: existing.id }, 'register over OAuth-only account — sending set-password email')
+  if (!existing.password || !existing.emailVerified) {
+    // OAuth-only, or has a password but unverified: nudge toward password reset either way —
+    // confirming it proves ownership, sets/changes the password, AND marks emailVerified when null
+    // (applyPasswordReset), so a re-registration attempt on an incomplete account resolves both
+    // problems in one link. A plain verification-resend would leave the owner unable to log in if
+    // they don't remember the password from the abandoned attempt either.
+    log.info({ userId: existing.id }, 'register re-attempt on incomplete account — sending password-reset link')
     return {
       result: 'sent',
       sendEmail: () => sendPasswordResetRequest(existing.email),
-    }
-  } else if (!existing.emailVerified) {
-    // Has a password but unverified → resend the verification link so the owner can finish signing up.
-    log.info({ userId: existing.id }, 'register re-attempt on unverified email — resending verification')
-    return {
-      result: 'sent',
-      sendEmail: () => resendVerification(existing.email),
     }
   } else {
     // Has a password and verified → neutral no-op.
