@@ -346,16 +346,16 @@ third_party_secrets = {
 > ```bash
 > # Знайти org ID (числовий):
 > gcloud organizations list
-> # → nastrsoft-org  395045689813
+> # → <ORG_NAME>  <ORG_ID>
 >
 > # Призначити роль на рівні організації:
-> gcloud organizations add-iam-policy-binding 395045689813 \
->   --member=user:nastrsoft@gmail.com \
+> gcloud organizations add-iam-policy-binding <ORG_ID> \
+>   --member=user:operator@example.com \
 >   --role=roles/orgpolicy.policyAdmin
 > ```
 >
 > Перевірити, що роль видана:
-> `gcloud organizations get-iam-policy 395045689813 --flatten="bindings[].members" --filter="bindings.members:nastrsoft@gmail.com" --format="table(bindings.role)"`
+> `gcloud organizations get-iam-policy <ORG_ID> --flatten="bindings[].members" --filter="bindings.members:operator@example.com" --format="table(bindings.role)"`
 
 ```bash
 cd infra/terraform/envs/dev

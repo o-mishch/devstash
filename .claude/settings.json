@@ -15,7 +15,7 @@
     "soft_deny": [
       "$defaults",
       "Never use prisma db push — schema changes must go through prisma migrate dev",
-      "Never modify the production Neon branch (br-royal-poetry-ale2q4pb)"
+      "Never modify the production Neon branch (<NEON_PROD_BRANCH_ID>)"
     ],
     "hard_deny": [
       "$defaults",

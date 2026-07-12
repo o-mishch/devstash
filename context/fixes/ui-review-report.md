@@ -214,7 +214,7 @@
 | P-2 | **Medium** | **No name editing**: The profile shows "Demo User" but there's no way to edit the display name directly on this page. Only email and password are editable. |
 | P-3 | **Medium** | **Email shown as a dropdown (chevron)** suggests it's interactive but the UI makes it unclear what the dropdown does — it leads to a "Change email" inline form. The pattern is non-standard and could confuse users who expect a simple "Edit" button. |
 | P-4 | **Low** | **No avatar upload**: The avatar section only shows initials — there's no way to upload a profile picture (potentially a PRO feature but should be surfaced as such). |
-| P-5 | **Low** | **Add GitHub shows two rows**: There are two "Add GitHub" rows visible simultaneously — one for linking and one that already has `nastrsoft@gmail.com` linked. The duplicate "Add GitHub" entry below the already-linked GitHub is confusing UX. |
+| P-5 | **Low** | **Add GitHub shows two rows**: There are two "Add GitHub" rows visible simultaneously — one for linking and one that already has `operator@example.com` linked. The duplicate "Add GitHub" entry below the already-linked GitHub is confusing UX. |
 
 ---
 

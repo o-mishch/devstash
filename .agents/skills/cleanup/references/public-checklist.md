@@ -44,7 +44,7 @@ Do not downgrade a finding because the value "looks like a placeholder." Verify:
 - Code, docs, or comments describing a secret's *shape/pattern* (e.g. a regex, a `grep` pattern, a written-out example like `sk_live_...`) with no real trailing characters.
 - Seed/fixture/mock data clearly meant to be fake (`prisma/seed.ts`, `src/test/prisma-mock.ts`, anything under `**/fixtures/**`, `**/mocks/**`) unless it embeds a real-looking Tier 1 credential (fixtures should never contain a value that validates against a real provider — flag if unsure).
 - Public, non-sensitive IDs: Stripe `pk_live_`/`pk_test_` publishable keys, OAuth client IDs (not secrets), public S3 bucket names already documented in `CLAUDE.md`/`infra/docs/`.
-- Neon project/branch IDs already published in `CLAUDE.md` (`wandering-lab-34213896`, `br-dry-scene-al1ir5ie`, `br-royal-poetry-ale2q4pb`) — these are non-secret identifiers, not credentials.
+- Neon project/branch IDs and the GCP org ID/name are non-secret identifiers, not credentials — but this repo deliberately redacts them to placeholders in tracked docs (`<NEON_PROJECT_ID>`, `<NEON_DEV_BRANCH_ID>`, `<NEON_PROD_BRANCH_ID>`, `<ORG_ID>`, `<ORG_NAME>`). Treat a real literal value for any of these appearing in a tracked file as a finding to redact.
 
 ## Tooling
 

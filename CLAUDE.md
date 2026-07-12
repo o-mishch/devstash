@@ -34,9 +34,9 @@ npm run test:run  # Vitest single run
 
 ## Neon Database
 
-- Project: `devstash` (ID: `wandering-lab-34213896`)
-- **Always use the `dev` branch** (ID: `br-dry-scene-al1ir5ie`) for all Neon MCP operations
-- **Never touch the `production` branch** (`br-royal-poetry-ale2q4pb`) unless explicitly told to
+- Project: `devstash` (ID: `<NEON_PROJECT_ID>`)
+- **Always use the `dev` branch** (ID: `<NEON_DEV_BRANCH_ID>`) for all Neon MCP operations
+- **Never touch the `production` branch** (`<NEON_PROD_BRANCH_ID>`) unless explicitly told to
 
 ## Current feature
 

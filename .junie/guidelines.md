@@ -34,7 +34,7 @@ npm run test:run  # Vitest single run
 
 ## Neon Database
 
-- Project: `devstash` (ID: `wandering-lab-34213896`)
+- Project: `devstash` (ID: `<NEON_PROJECT_ID>`)
 - **Always use the `dev` branch** for all database operations — never the `production` branch
 - Always use `prisma migrate dev` for schema changes — never `prisma db push`
 
