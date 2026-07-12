@@ -1,19 +1,10 @@
 # Artifact Registry — Docker repository the CI pipeline pushes images to and GKE
 # pulls from. Replaces "where does the image live" (Docker Hub / ECR equivalent).
 
-# Repo name is a static constant, NOT a computed attribute. The module's outputs derive from
-# this so they resolve even when the repo resource is gated off (var.create = false during
-# deep-suspend) — see outputs.tf and variables.tf. Consumers (the root repository_url output,
-# the IAM module's binding target) must keep resolving to the repo name whether the repo
-# currently exists or not.
-locals {
-  repository_id = "devstash"
-}
-
 resource "google_artifact_registry_repository" "docker" {
   count = var.create ? 1 : 0
 
-  repository_id = local.repository_id
+  repository_id = var.repository_id
   location      = var.region
   format        = "DOCKER"
   description   = "DevStash container images"
@@ -25,7 +16,7 @@ resource "google_artifact_registry_repository" "docker" {
   # GCP requires a DELETE policy AND a KEEP policy: KEEP marks what to preserve,
   # DELETE removes everything else. A KEEP-only policy never deletes anything.
   #
-  # $0-IDLE GOAL. The dominant Artifact Registry cost was NEVER the images — it was the
+  # $0-IDLE GOAL (dev). The dominant Artifact Registry cost was NEVER the images — it was the
   # buildx mode=max cache. type=registry,mode=max pushed a ~900 MB :buildcache blob per
   # image; being tagged it dodged every untagged policy, and being rewritten each build it
   # never aged out. ~1.8 GB no cleanup policy could evict. That cache now lives in the
@@ -33,18 +24,16 @@ resource "google_artifact_registry_repository" "docker" {
   # policies below only govern the runtime images, whose deduped compressed storage fits
   # the 0.5 GB free tier → $0.
   #
-  # Two KEEP guards prevent running pods from losing their image during a deploy storm:
-  #   1. keep-recent: retain only the 1 newest push per package (1×web + 1×migrate). Rollback
-  #      depth is intentionally traded away: this env is ephemeral (suspend/resume rebuilds
-  #      from CI), so "roll back" == re-run the pipeline, not pull a stale digest. keep-young
-  #      below still protects any image a pod could be mid-pull. Raise for prod, where
-  #      rollback-to-previous-digest matters.
-  #   2. keep-young:  always retain TAGGED images pushed within the last 1 day regardless of
-  #      count — a rapid-push burst can't evict an image a pod is currently pulling. Scoped to
-  #      tag_state = "TAGGED" so it does NOT shield untagged garbage (superseded :latest
-  #      targets, orphaned manifests): those fall straight to delete-old on the next daily
-  #      cleanup run. Shortened 2 d → 1 d so a churn burst ages out within ~a day. 1 d
-  #      comfortably covers an active demo/deploy cycle (the hard uptime cap is 90 min).
+  # Two KEEP guards prevent running pods/services from losing their image during a deploy storm:
+  #   1. keep-recent: retain only var.keep_count newest push(es) per package. Dev trades away
+  #      rollback depth (default 1 — ephemeral, suspend/resume rebuilds from CI): "roll back"
+  #      == re-run the pipeline, not pull a stale digest. Prod raises keep_count so a Cloud Run
+  #      rollback can reach back further than "the last push".
+  #   2. keep-young: always retain TAGGED images pushed within var.keep_young_seconds regardless
+  #      of count — a rapid-push burst can't evict an image a consumer is currently pulling.
+  #      Scoped to tag_state = "TAGGED" so it does NOT shield untagged garbage (superseded
+  #      :latest targets, orphaned manifests): those fall straight to delete-old on the next
+  #      cleanup run.
   #
   # ── condition is MANDATORY on a DELETE policy — DO NOT remove ─────────────────
   # The Artifact Registry API rejects any DELETE policy that has neither a
@@ -69,7 +58,7 @@ resource "google_artifact_registry_repository" "docker" {
     id     = "keep-recent"
     action = "KEEP"
     most_recent_versions {
-      keep_count = 1
+      keep_count = var.keep_count
     }
   }
   cleanup_policies {
@@ -77,7 +66,7 @@ resource "google_artifact_registry_repository" "docker" {
     action = "KEEP"
     condition {
       tag_state  = "TAGGED"
-      newer_than = "86400s" # 1 day
+      newer_than = "${var.keep_young_seconds}s"
     }
   }
 

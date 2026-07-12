@@ -5,12 +5,12 @@
 # repository_url output and the IAM module's binding target both must resolve to the repo name
 # whether the repo currently exists or not.
 output "repository_id" {
-  value = local.repository_id
+  value = var.repository_id
 }
 
 # Full image path prefix: REGION-docker.pkg.dev/PROJECT/devstash
 output "repository_url" {
-  value = "${var.region}-docker.pkg.dev/${var.project_id}/${local.repository_id}"
+  value = "${var.region}-docker.pkg.dev/${var.project_id}/${var.repository_id}"
 }
 
 # ORDERING-ONLY handle on the repo resource itself (not its attributes). Consumers pass this
