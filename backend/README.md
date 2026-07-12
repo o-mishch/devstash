@@ -67,11 +67,16 @@ In development the service auto-loads `.env` / `.env.local` from the **repo root
 
 ### Required config
 
-Loaded via `caarlos0/env` in [`internal/config`](internal/config/config.go). Required:
-`DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`,
-`AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (the NextAuth v5 auto-inferred names, shared
-verbatim with the existing app — no renames). `PORT` defaults to `8080`; the rest
-(S3, Resend, Stripe, OpenAI, Redis) are optional until their phase lands.
+Loaded via `caarlos0/env` in [`internal/config`](internal/config/config.go). Truly
+required: `DATABASE_URL` and `REDIS_URL` (sessions, rate-limit, one-time tokens all
+hard-depend on Redis). `AUTH_SECRET` / `AUTH_GITHUB_*` / `AUTH_GOOGLE_*` are read but
+not required yet (OAuth isn't built). `PORT` defaults to `8080`. Two dev-convenience
+toggles worth knowing when exercising the auth flows below:
+
+- `DISABLE_EMAIL_VERIFICATION=true` — skip the verify-email step entirely (accounts
+  are auto-verified on register, and no outbound email is sent at all).
+- Without it, a real `RESEND_API_KEY` + `EMAIL_FROM` send real verification/reset
+  emails — grab the token from the emailed link's `?token=` query param.
 
 ## Call it
 
@@ -81,15 +86,89 @@ curl localhost:8080/openapi.json    # the full OpenAPI spec (source of the front
 open http://localhost:8080/docs     # SwaggerUI — pick an endpoint and "Try it out"
 ```
 
-Only `GET /health` exists today; auth / items / collections land in Phase 1+.
+## Auth endpoints (Phase 1)
+
+All bodies are JSON (`Content-Type: application/json`). The session is an opaque
+httpOnly cookie (`devstash_session`, Redis-backed via scs) — no bearer token yet.
+
+| Method | Path                        | Auth           | Body                                     | Success                          |
+| ------ | --------------------------- | -------------- | ---------------------------------------- | -------------------------------- |
+| POST   | `/auth/register`            | —              | `name, email, password, confirmPassword` | `200 {redirectTo}`               |
+| POST   | `/auth/verify-email`        | —              | `token`                                  | `204`                            |
+| POST   | `/auth/resend-verification` | —              | `email`                                  | `204` (always, enumeration-safe) |
+| POST   | `/auth/login`               | —              | `email, password`                        | `204` + `Set-Cookie`             |
+| GET    | `/auth/session`             | session cookie | —                                        | `200 {user, expires}`            |
+| POST   | `/auth/logout`              | session cookie | —                                        | `204`                            |
+| POST   | `/auth/forgot-password`     | —              | `email`                                  | `200 {redirectTo}` (always)      |
+| POST   | `/auth/reset-password`      | —              | `token, password, confirmPassword`       | `204`                            |
+| POST   | `/auth/confirm-login-email` | —              | `token, password?, confirmPassword?`     | `204`                            |
+
+### Try the full flow: register → verify → login → session → logout
+
+```bash
+BASE=http://localhost:8080
+# against the deployed API instead: BASE=https://api.devstash.one
+# (running against prod for real? `source .env._production` first for matching
+# RESEND_API_KEY / DATABASE_URL etc. if you're also driving it from local scripts)
+
+# 1. Register
+curl -s -X POST "$BASE/auth/register" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Ada Lovelace","email":"ada@example.com","password":"correct-horse","confirmPassword":"correct-horse"}'
+# -> 200 {"redirectTo":"/register?pending=1&email=ada%40example.com&sent=1"}
+# (with DISABLE_EMAIL_VERIFICATION=true: {"redirectTo":"/sign-in"} — account is already
+# verified, so skip straight to step 3)
+
+# 2. Verify email — take `token` from the emailed link's ?token= query param
+curl -s -X POST "$BASE/auth/verify-email" \
+  -H 'Content-Type: application/json' \
+  -d '{"token":"https://api.devstash.one/verify-email?token=accf86aa6216696c980b7a37a09985a240b7a01155c5c754c9383534e1fb11e3"}'
+# -> 204
+
+# 3. Log in — -c writes the session cookie to a local jar file
+curl -s -i -c cookies.txt -X POST "$BASE/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"ada@example.com","password":"correct-horse"}'
+# -> 204, Set-Cookie: devstash_session=...
+
+# 4. Get the current session — -b sends the cookie back
+curl -s -b cookies.txt "$BASE/auth/session"
+# -> 200 {"user":{"id":"...","email":"ada@example.com","name":"Ada Lovelace","image":null,"isPro":false},"expires":"..."}
+
+# 5. Log out
+curl -s -i -b cookies.txt -X POST "$BASE/auth/logout"
+# -> 204, cookie cleared
+```
+
+### Password recovery and other flows
+
+```bash
+# Request a reset link (always 200, regardless of whether the account exists)
+curl -s -X POST "$BASE/auth/forgot-password" \
+  -H 'Content-Type: application/json' -d '{"email":"ada@example.com"}'
+
+# Apply it with the token from the emailed link
+curl -s -X POST "$BASE/auth/reset-password" \
+  -H 'Content-Type: application/json' \
+  -d '{"token":"<token>","password":"new-correct-horse","confirmPassword":"new-correct-horse"}'
+
+# Re-send a verification email (rate-limited, enumeration-safe — always 204)
+curl -s -X POST "$BASE/auth/resend-verification" \
+  -H 'Content-Type: application/json' -d '{"email":"ada@example.com"}'
+
+# Confirm a credential-email change/add link (password only required when adding
+# sign-in to an OAuth-only account, not when changing an existing one)
+curl -s -X POST "$BASE/auth/confirm-login-email" \
+  -H 'Content-Type: application/json' -d '{"token":"<token>"}'
+```
 
 ## Subcommands
 
-| Command | Purpose |
-|---|---|
-| `api serve` (or bare `api`) | Start the HTTP server (graceful shutdown on SIGINT/SIGTERM) |
-| `api migrate up` / `down` / `status` | Apply / roll back / show goose migrations (needs `DATABASE_URL`) |
-| `api openapi emit [file]` | Write the OpenAPI spec to a file (default `openapi.json`). **Offline** — no DB or secrets needed, so CI can generate the contract |
+| Command                              | Purpose                                                                                                                           |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `api serve` (or bare `api`)          | Start the HTTP server (graceful shutdown on SIGINT/SIGTERM)                                                                       |
+| `api migrate up` / `down` / `status` | Apply / roll back / show goose migrations (needs `DATABASE_URL`)                                                                  |
+| `api openapi emit [file]`            | Write the OpenAPI spec to a file (default `openapi.json`). **Offline** — no DB or secrets needed, so CI can generate the contract |
 
 ## Migrations
 

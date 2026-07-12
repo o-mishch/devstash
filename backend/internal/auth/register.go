@@ -148,23 +148,19 @@ func (s *Service) nudgeExistingAccount(ctx context.Context, user sqlcdb.User) (b
 	if !s.Cfg.OutboundEmailEnabled {
 		return true, nil
 	}
-	switch {
-	case user.Password == nil:
-		// OAuth-only account: offer to set a password via the reset flow.
+	if user.Password == nil || user.EmailVerified == nil {
+		// OAuth-only, or has a password but unverified: nudge toward password reset either
+		// way — completing it also verifies the email (applyPasswordReset), so a
+		// re-registration attempt on an incomplete account resolves both problems in one
+		// link. A plain verification resend would leave the owner unable to log in if they
+		// don't remember the password from the abandoned attempt either. Parity: auth-service.ts.
 		if err := s.sendPasswordReset(ctx, user.Email); err != nil {
 			return false, err
 		}
 		return false, nil
-	case user.EmailVerified == nil:
-		// Has a password but unverified: resend the verification email.
-		if err := s.sendVerification(ctx, user.Email); err != nil {
-			return false, err
-		}
-		return false, nil
-	default:
-		// Fully set up: say nothing (the response is identical either way).
-		return false, nil
 	}
+	// Fully set up: say nothing (the response is identical either way).
+	return false, nil
 }
 
 // findUserByAnyEmail resolves an account by primary email, then verified credential

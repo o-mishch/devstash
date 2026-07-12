@@ -39,7 +39,7 @@ func buildEmailer(cfg *config.Config) auth.Emailer {
 	if !cfg.OutboundEmailEnabled() {
 		return email.Noop{}
 	}
-	return email.New(cfg.ResendAPIKey, cfg.EmailFrom)
+	return email.New(cfg.ResendAPIKey, cfg.EmailFrom, cfg.AppURL)
 }
 
 func serveCmd(app *appState) *cobra.Command {

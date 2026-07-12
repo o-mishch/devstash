@@ -35,35 +35,51 @@ func TestSecurityCopy(t *testing.T) {
 		auth.SecurityEvent("unknown"),
 	}
 	for _, e := range events {
-		subject, body := securityCopy(e)
-		if subject == "" || body == "" {
-			t.Errorf("securityCopy(%q) = %q, %q; want non-empty subject and body", e, subject, body)
+		subject, heading, message := securityCopy(e)
+		if subject == "" || heading == "" || message == "" {
+			t.Errorf("securityCopy(%q) = %q, %q, %q; want all non-empty", e, subject, heading, message)
 		}
 	}
 }
 
-func TestButtonEscapesAndIncludesURL(t *testing.T) {
+func TestBuildEmailTemplateFillsTitleAndBody(t *testing.T) {
 	t.Parallel()
-	html := button("Do it", "Intro <text>", "https://app.test/x?token=a&b=1")
-	if !strings.Contains(html, "https://app.test/x?token=a&amp;b=1") {
-		t.Errorf("button did not include the escaped url: %s", html)
+	got := buildEmailTemplate("My Subject", "<p>body</p>")
+	if !strings.Contains(got, "<title>My Subject</title>") {
+		t.Errorf("buildEmailTemplate did not fill TITLE: %s", got)
 	}
-	if strings.Contains(html, "<text>") {
-		t.Error("button did not escape the intro text")
+	if !strings.Contains(got, "<p>body</p>") {
+		t.Errorf("buildEmailTemplate did not fill BODY: %s", got)
 	}
 }
 
-func TestParagraph(t *testing.T) {
+func TestRenderLinkEmailIncludesURLAndCopy(t *testing.T) {
 	t.Parallel()
-	if got := paragraph("hello & goodbye"); !strings.Contains(got, "hello &amp; goodbye") {
-		t.Errorf("paragraph = %s, want escaped body", got)
+	linkCopy := verificationCopy()
+	got := renderLinkEmail(linkCopy, "https://app.test/verify-email?token=abc")
+	if !strings.Contains(got, "https://app.test/verify-email?token=abc") {
+		t.Errorf("renderLinkEmail did not include the URL: %s", got)
+	}
+	if !strings.Contains(got, linkCopy.heading) || !strings.Contains(got, linkCopy.cta) {
+		t.Errorf("renderLinkEmail did not include the heading/cta copy: %s", got)
+	}
+}
+
+func TestRenderSecurityEmailIncludesSettingsURL(t *testing.T) {
+	t.Parallel()
+	got := renderSecurityEmail("Subject", "Heading", "Message", "https://app.test/profile")
+	if !strings.Contains(got, "https://app.test/profile") {
+		t.Errorf("renderSecurityEmail did not include the settings URL: %s", got)
+	}
+	if !strings.Contains(got, "Heading") || !strings.Contains(got, "Message") {
+		t.Errorf("renderSecurityEmail did not include heading/message: %s", got)
 	}
 }
 
 // newTestClient builds a Client whose Resend base URL points at srv.
 func newTestClient(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
-	c := New("test-key", "from@devstash.test")
+	c := New("test-key", "from@devstash.test", "https://app.test")
 	base, err := url.Parse(srv.URL + "/")
 	if err != nil {
 		t.Fatalf("parse base url: %v", err)

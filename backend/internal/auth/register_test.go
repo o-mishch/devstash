@@ -97,10 +97,10 @@ func TestRegisterExistingAccountIsEnumerationSafe(t *testing.T) {
 			wantVerifies: 0,
 		},
 		{
-			name:         "unverified credential account gets a verification email",
+			name:         "unverified credential account gets a reset email",
 			existing:     sqlcdb.User{ID: "u1", Email: "taken@example.com", Password: new(hashPassword(t, "pw"))},
-			wantResets:   0,
-			wantVerifies: 1,
+			wantResets:   1,
+			wantVerifies: 0,
 		},
 		{
 			name: "fully set up account gets nothing",

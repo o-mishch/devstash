@@ -2,9 +2,11 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -191,6 +193,31 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// hydrateFromAppConfig splits the consolidated JSON secret in APP_CONFIG into individual
+// environment variables. Its keys are env-var names (DATABASE_URL, REDIS_URL, …) mapping to
+// their values. A var that's already set wins, so the blob only fills gaps — that keeps local
+// dev, tests, and explicit per-var overrides authoritative. A missing/empty APP_CONFIG is a
+// no-op (the normal case outside Cloud Run), so this is inert in dev and local.
+func hydrateFromAppConfig() error {
+	blob := os.Getenv("APP_CONFIG")
+	if blob == "" {
+		return nil
+	}
+	var vars map[string]string
+	if err := json.Unmarshal([]byte(blob), &vars); err != nil {
+		return fmt.Errorf("config: parse APP_CONFIG: %w", err)
+	}
+	for k, v := range maps.All(vars) {
+		if _, ok := os.LookupEnv(k); ok {
+			continue
+		}
+		if err := os.Setenv(k, v); err != nil {
+			return fmt.Errorf("config: set %s from APP_CONFIG: %w", k, err)
+		}
+	}
+	return nil
+}
+
 // Load reads .env / .env.local from the repo root (the shared file both Next.js
 // and Go use), then parses environment variables into Config. Only loads dotenv
 // files in development — in production the platform injects vars natively. The
@@ -213,6 +240,17 @@ func Load(logger *slog.Logger) (*Config, error) {
 				}
 			}
 		}
+	}
+
+	// Consolidated-secret hydration. In production Cloud Run mounts a single Secret Manager
+	// secret as APP_CONFIG (a JSON object of every sensitive var) so the whole app needs only
+	// ONE active secret version — Cloud Run, unlike dev's GKE + External Secrets Operator, can't
+	// split one secret into many env vars, so the app does the split here. This keeps the billing
+	// account inside Secret Manager's 6-free-version tier ($0). It runs before ParseAs so the
+	// values are just os.Getenv by parse time; anything already exported (local .env, a test, an
+	// explicit override) wins, so APP_CONFIG is a fallback layer, never an override.
+	if err := hydrateFromAppConfig(); err != nil {
+		return nil, err
 	}
 
 	cfg, err := env.ParseAs[Config]()

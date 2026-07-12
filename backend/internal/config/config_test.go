@@ -37,6 +37,71 @@ func setRequiredEnv(t *testing.T) {
 	t.Setenv("EMAIL_FROM", "noreply@devstash.one")
 }
 
+// unsetEnv clears a var the shell running the suite may have exported, restoring it on cleanup
+// — needed for tests that assert a var is populated only via a specific path (APP_CONFIG, etc.).
+// t.Setenv can't unset, and os.Unsetenv can't run inside t.Cleanup's t.Setenv, so this restores
+// with os.Setenv directly.
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	orig, had := os.LookupEnv(key)
+	if !had {
+		return
+	}
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("unset %s: %v", key, err)
+	}
+	t.Cleanup(func() { _ = os.Setenv(key, orig) }) //nolint:usetesting // can't unset/restore via t.Setenv
+}
+
+// TestLoadHydratesFromAppConfig proves the consolidated-secret path: a required var supplied
+// ONLY in the APP_CONFIG JSON blob (and unset in the environment) reaches Config — so Cloud Run
+// can mount one secret instead of one-per-var.
+func TestLoadHydratesFromAppConfig(t *testing.T) {
+	unsetEnv(t, "REDIS_URL") // prove it comes from the blob, not a shell export
+
+	t.Setenv("ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://user:pass@localhost:5432/db")
+	t.Setenv("ALLOWED_ORIGINS", "https://beta.devstash.one")
+	t.Setenv("RESEND_API_KEY", "re_test")
+	t.Setenv("EMAIL_FROM", "noreply@devstash.one")
+	t.Setenv("APP_CONFIG", `{"REDIS_URL":"redis://from-blob:6379"}`)
+
+	cfg, err := Load(testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.RedisURL != "redis://from-blob:6379" {
+		t.Errorf("RedisURL = %q, want the value hydrated from APP_CONFIG", cfg.RedisURL)
+	}
+}
+
+// TestLoadAppConfigDoesNotOverrideExplicitEnv proves the blob is a FALLBACK: an env var already
+// set (here via setRequiredEnv) wins over the same key in APP_CONFIG, so explicit per-var
+// overrides and local dev stay authoritative.
+func TestLoadAppConfigDoesNotOverrideExplicitEnv(t *testing.T) {
+	setRequiredEnv(t) // sets REDIS_URL=redis://localhost:6379
+	t.Setenv("APP_CONFIG", `{"REDIS_URL":"redis://from-blob:6379"}`)
+
+	cfg, err := Load(testLogger())
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.RedisURL != "redis://localhost:6379" {
+		t.Errorf("RedisURL = %q, want the explicit env value to win over APP_CONFIG", cfg.RedisURL)
+	}
+}
+
+// TestLoadFailsOnMalformedAppConfig guards the error branch: a non-JSON APP_CONFIG must fail
+// Load loudly at boot rather than silently leaving required vars unset.
+func TestLoadFailsOnMalformedAppConfig(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("APP_CONFIG", "{not-valid-json")
+
+	if _, err := Load(testLogger()); err == nil {
+		t.Fatal("Load() error = nil, want an error for malformed APP_CONFIG")
+	}
+}
+
 func TestLoadParsesRequiredEnvAndDefaults(t *testing.T) {
 	setRequiredEnv(t)
 
