@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
@@ -77,15 +78,57 @@ func TestNewRouterServesHealth(t *testing.T) {
 	}
 }
 
+// TestNewRouterServesDocs verifies that the Huma out-of-the-box Swagger UI is served
+// at /docs with correct CSP and content headers when enabled.
+func TestNewRouterServesDocs(t *testing.T) {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/docs", nil)
+
+	newRouter(newTestSessions(t), domains{}, nil, nil, nil, true, slog.New(slog.DiscardHandler)).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /docs status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if contentType := rr.Header().Get("Content-Type"); !strings.Contains(contentType, "text/html") {
+		t.Errorf("GET /docs Content-Type = %q, want it to contain \"text/html\"", contentType)
+	}
+	if csp := rr.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "connect-src 'self'") {
+		t.Errorf("GET /docs CSP = %q, want it to contain \"connect-src 'self'\"", csp)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "swagger-ui") {
+		t.Errorf("GET /docs body missing Swagger UI container")
+	}
+}
+
+// TestNewRouterHidesDocs verifies that the /docs route returns 404 Not Found
+// when docs are disabled (to protect the auth attack surface in production).
+func TestNewRouterHidesDocs(t *testing.T) {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/docs", nil)
+
+	newRouter(newTestSessions(t), domains{}, nil, nil, nil, false, slog.New(slog.DiscardHandler)).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("GET /docs status = %d, want %d (Not Found)", rr.Code, http.StatusNotFound)
+	}
+}
+
 // TestHumaConfig pins the settings the migration relies on: SwaggerUI served
 // in-process at /docs when enabled, both server URLs present, and — when docs are
 // disabled (production) — the docs/spec/schema routes all switched off so the auth
 // attack surface isn't published.
 func TestHumaConfig(t *testing.T) {
-	t.Run("docs enabled", func(t *testing.T) {
+	t.Run("docs enabled serves SwaggerUI + spec", func(t *testing.T) {
 		cfg := humaConfig(true)
-		if cfg.DocsPath != "/docs" {
-			t.Errorf("DocsPath = %q, want /docs", cfg.DocsPath)
+		if cfg.DocsRenderer != huma.DocsRendererSwaggerUI {
+			t.Errorf("DocsRenderer = %q, want %q (SwaggerUI)", cfg.DocsRenderer, huma.DocsRendererSwaggerUI)
+		}
+		if cfg.DocsPath == "" {
+			t.Error("DocsPath is empty, want the docs route enabled")
+		}
+		if cfg.OpenAPIPath == "" {
+			t.Error("OpenAPIPath is empty, want the spec route enabled for Swagger UI")
 		}
 		if len(cfg.Servers) != 2 {
 			t.Fatalf("Servers count = %d, want 2 (prod + local)", len(cfg.Servers))

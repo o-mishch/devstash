@@ -83,7 +83,7 @@ toggles worth knowing when exercising the auth flows below:
 ```bash
 curl localhost:8080/health          # -> {"status":"ok"}
 curl localhost:8080/openapi.json    # the full OpenAPI spec (source of the frontend's types)
-open http://localhost:8080/docs     # SwaggerUI — pick an endpoint and "Try it out"
+open http://localhost:8080/docs     # Scalar API reference (dark) — pick an endpoint and "Try it out"
 ```
 
 ## Auth endpoints (Phase 1)

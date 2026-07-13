@@ -1,5 +1,10 @@
 version: '3'
 
+# Load the repo-root .env so tasks that boot the API (dev, migrate:*) get
+# DATABASE_URL/REDIS_URL/... which caarlos0/env reads at startup. The path is
+# resolved relative to this Taskfile's directory, not the current working dir.
+dotenv: ['../.env']
+
 tasks:
   dev:
     desc: "Start the Go API with air hot-reload"
@@ -78,4 +83,4 @@ tasks:
   openapi:emit:
     desc: "Emit OpenAPI document"
     cmds:
-      - go run ./cmd/api openapi emit ../openapi.json
+      - go run ./cmd/api openapi emit ../web/openapi.json

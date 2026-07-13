@@ -19,7 +19,9 @@ import (
 // description-bearing edit (descriptionSet), letting an edit clear description to null without
 // the favorite-only PATCH wiping it.
 type updateCollectionInput struct {
-	idPath
+	// ID inlined (not embedded idPath): Huma drops an anonymously embedded path struct
+	// from the OpenAPI params when the input also has a Body. See items/favorite.go.
+	ID string `doc:"Collection id" path:"id"`
 
 	Body struct {
 		Name        *string `json:"name,omitempty"`

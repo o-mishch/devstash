@@ -186,6 +186,17 @@ module "web_cloudbuild_trigger" {
       args       = ["ci"]
     },
     {
+      # Fail the build on any lint error before spending time on the Vite build.
+      # Same self-contained `oxlint .` (type-aware via tsgolint) as web's pre-commit
+      # gate and `npm run lint` — no Next, own plugins. Mirrors the backend trigger's
+      # golangci-lint discipline.
+      id         = "Lint"
+      name       = "mirror.gcr.io/library/node:24"
+      entrypoint = "npm"
+      dir        = "web"
+      args       = ["run", "lint"]
+    },
+    {
       id         = "Build"
       name       = "mirror.gcr.io/library/node:24"
       entrypoint = "npm"

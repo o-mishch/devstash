@@ -21,7 +21,9 @@ import (
 // normalization/validation runs in Resolve; the auth/Pro/retype-source gates stay in the
 // handler (they need DB reads and non-422 statuses).
 type updateItemInput struct {
-	idPath
+	// ID inlined (not embedded idPath): Huma drops an anonymously embedded path struct
+	// from the OpenAPI params when the input also has a Body. See items/favorite.go.
+	ID string `doc:"Item id" path:"id"`
 
 	Body struct {
 		Title         string   `json:"title"                       minLength:"1"                 required:"true"`

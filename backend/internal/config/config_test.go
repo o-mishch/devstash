@@ -184,6 +184,7 @@ func TestLoadFailsWhenProductionEmailMisconfigured(t *testing.T) {
 	t.Setenv("ALLOWED_ORIGINS", "https://devstash.one")
 	t.Setenv("RESEND_API_KEY", "") // explicit empty — the shell may otherwise export it
 	t.Setenv("EMAIL_FROM", "")
+	t.Setenv("DISABLE_EMAIL_VERIFICATION", "")
 
 	if _, err := Load(testLogger()); err == nil {
 		t.Fatal("Load() error = nil, want an error for missing email config in production")
@@ -251,6 +252,7 @@ func TestLoadDevWithoutRepoRootStillParses(t *testing.T) {
 // marker is found as the repo root, and a .env there populates a non-required var, proving
 // godotenv.Load actually ran (the missing .env.local exercises the os.IsNotExist skip).
 func TestLoadDevReadsDotenvFromRepoRoot(t *testing.T) {
+	unsetEnv(t, "EMAIL_FROM") // clear pre-existing to verify godotenv loads it
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatalf("mkdir .git: %v", err)

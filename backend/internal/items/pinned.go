@@ -12,7 +12,9 @@ import (
 
 // pinnedInput is the PATCH /items/{id}/pinned body.
 type pinnedInput struct {
-	idPath
+	// ID inlined (not embedded idPath): Huma drops an anonymously embedded path struct
+	// from the OpenAPI params when the input also has a Body. See items/favorite.go.
+	ID string `doc:"Item id" path:"id"`
 
 	Body struct {
 		IsPinned bool `json:"isPinned" required:"true"`

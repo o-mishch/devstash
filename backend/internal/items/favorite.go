@@ -15,7 +15,11 @@ type noContent struct{}
 
 // favoriteInput is the PATCH /items/{id}/favorite body.
 type favoriteInput struct {
-	idPath
+	// ID is declared inline (not via embedded idPath): Huma omits an anonymously
+	// embedded path struct from the OpenAPI parameters when the input also has a Body,
+	// which left the generated client unable to fill {id}. Runtime binding worked
+	// either way; this keeps the emitted spec honest.
+	ID string `doc:"Item id" path:"id"`
 
 	Body struct {
 		IsFavorite bool `json:"isFavorite" required:"true"`

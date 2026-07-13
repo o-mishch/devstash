@@ -12,7 +12,7 @@ Strangler migration of the Next.js app into a Go API (`backend/`, Huma v2 + sqlc
 - ✅ **Frontend F2 (Phase-2 slice)** — dashboard, `/items/[type]`, `/collections` + `/collections/[id]`, `/favorites`. (`/profile`, `/settings` still blocked on Phase 4/5.)
 - ✅ **Frontend F3** — marketing homepage with per-route static prerender of `/`.
 - ⬜ **Next** — Phases 3–6 (backend), then F2 `/profile` (Phase 4) + `/settings` (Phase 5).
-- [/] **Web Linting Hardening** — Review and harden the oxlint config in `web/` workspace.
+- ✅ **Web Linting Hardening** — Review and harden the oxlint config in `web/` workspace.
 - Pending cutovers (external, not backend code) tracked in [Remaining / cutover](#remaining--cutover).
 
 ### Frontend build (shipped)

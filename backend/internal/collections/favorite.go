@@ -12,7 +12,9 @@ import (
 
 // favoriteInput is the PATCH /collections/{id}/favorite body.
 type favoriteInput struct {
-	idPath
+	// ID inlined (not embedded idPath): Huma drops an anonymously embedded path struct
+	// from the OpenAPI params when the input also has a Body. See items/favorite.go.
+	ID string `doc:"Collection id" path:"id"`
 
 	Body struct {
 		IsFavorite bool `json:"isFavorite" required:"true"`

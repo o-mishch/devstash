@@ -107,7 +107,7 @@ func mountAPI(
 	return api
 }
 
-// humaConfig builds the Huma config. When docsEnabled is false the SwaggerUI page and
+// humaConfig builds the Huma config. When docsEnabled is false the docs page and
 // the raw OpenAPI/JSON-schema routes are disabled — in production they'd publish the
 // auth attack surface, and the build-time `openapi emit` subcommand produces the spec
 // for client codegen regardless of this runtime flag.
@@ -118,8 +118,7 @@ func humaConfig(docsEnabled bool) huma.Config {
 		{URL: "http://localhost:8080", Description: "Local dev"},
 	}
 	if docsEnabled {
-		// SwaggerUI at /docs — served in-process, no npm/Node dependency.
-		cfg.DocsPath = "/docs"
+		cfg.DocsRenderer = huma.DocsRendererSwaggerUI
 	} else {
 		cfg.DocsPath = ""
 		cfg.OpenAPIPath = ""
