@@ -7,8 +7,24 @@ Strangler migration of the Next.js app into a Go API (`backend/`, Huma v2 + sqlc
 - ✅ **Phase 0** — Go skeleton + Cloud Run deploy (live, `/health` 200).
 - ✅ **Phase 1** — Auth/session foundation (credentials, email/password, OAuth github/google).
 - ✅ **Phase 2** — Items + Collections + Search backend (15 secured ops). Gates green (lint 0, race pass, coverage 88.7%). Merged to `feature/go-backend-vite-spa`.
-- ⬜ **Frontend F0** — unblocked, next up. Then F1/F2/F3, and Phases 3–6.
+- ✅ **Frontend F0** — Vite SPA foundation built + verified (see [Frontend build (shipped)](#frontend-build-shipped)).
+- ✅ **Frontend F1** — auth pages (all 6, driving Phase-1 endpoints).
+- ✅ **Frontend F2 (Phase-2 slice)** — dashboard, `/items/[type]`, `/collections` + `/collections/[id]`, `/favorites`. (`/profile`, `/settings` still blocked on Phase 4/5.)
+- ✅ **Frontend F3** — marketing homepage with per-route static prerender of `/`.
+- ⬜ **Next** — Phases 3–6 (backend), then F2 `/profile` (Phase 4) + `/settings` (Phase 5).
+- [/] **Web Linting Hardening** — Review and harden the oxlint config in `web/` workspace.
 - Pending cutovers (external, not backend code) tracked in [Remaining / cutover](#remaining--cutover).
+
+### Frontend build (shipped)
+
+Uncommitted on `feature/go-backend-vite-spa`. Gates green: `tsc --noEmit` 0, `oxlint .` 0, `vite build` OK; runtime-verified in a browser (marketing renders + hydrates under CSP with no violations; client routing works).
+
+- **Stack (latest, per user):** Vite 8 + `@vitejs/plugin-react` 6 (**React Compiler ON** via `@rolldown/plugin-babel` + `reactCompilerPreset` — `useMemoCache` confirmed in bundle), TanStack Start 1.168 (SPA mode) + Router 1.170 + Query 5.101, Zustand 5 (UI state only), Tailwind v4, Hey API `@hey-api/openapi-ts` 0.99 client + TanStack Query plugin. TypeScript pinned `^5.9.3` and `exactOptionalPropertyTypes` OFF — both for generated-client compat (the other 5 new strict flags pass).
+- **Design:** FRESH REDESIGN, "dark developer" aesthetic (user chose — NOT a port of the shadcn/base-nova app). Own small UI kit in `web/src/components/ui`.
+- **F0:** `__root` (public) + `router.tsx` (`getRouter`, QueryClient in context + `Wrap` provider) + `_app/route.tsx` (pathless guard; needs ≥1 child or it collides with `index` at `/`). `sessionQueryOptions` (401→null, 5xx→throw) + `resolveOptionalSession` (public auth pages must render even if the session check fails) + `safeRelative` open-redirect guard + auth-change invalidation + 401 response interceptor. **CSP:** `vite-plugin-csp-guard` is INCOMPATIBLE with Start's build → replaced by post-build `scripts/inject-csp.mjs` that sha256-hashes the 2 inline shell scripts and injects a `<meta>` CSP (`script-src 'self' <hashes>`, not strict-dynamic). Security headers + `frame-ancestors`(X-Frame-Options) in `firebase.json`. Serve `dist/client`, rewrite `**→/_shell.html`.
+- **F3 prerender gotcha:** SPA mode pushes a shell page at `spa.maskPath` (default `/`) which collides with the `/` content page in the path-keyed prerender dedup → only `_shell.html`, no real homepage. Fix: `maskPath: '/shell'` (a tiny real `routes/shell.tsx` mask route) + `pages:[{path:'/', prerender:{outputPath:'/index.html', crawlLinks:false}}]` → both `index.html` (marketing) and `_shell.html` (pending) emit.
+- **Backend fix made:** Huma omitted the `{id}` path param from OpenAPI for the 5 PATCH ops that embed `idPath` alongside a `Body` (spec-only; runtime fine) → broke the client. Inlined `ID string path:"id"` in `internal/items/{favorite,pinned,update}.go` + `internal/collections/{favorite,update}.go`; backend build + tests still green.
+- **Code-quality hardening pass 5:** `web/.oxlintrc.json` tightened with the measured zero-cost style/import/promise/TypeScript/Unicorn rule batch, plus `prefer-template`, `unicorn/prefer-string-replace-all`, `no-negated-condition`, `promise/prefer-await-to-then`, and top-level type-import style. `no-void` remains intentionally rejected because it conflicts with sanctioned fire-and-forget `void queryClient.invalidateQueries(...)`; `no-continue` remains intentionally rejected for the CSP build script.
 
 `feature/go-backend-vite-spa` is the integration branch (off `main`'s Vercel deploy path).
 
