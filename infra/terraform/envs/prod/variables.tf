@@ -57,9 +57,13 @@ variable "cloud_run_max_instances" {
 # initial stand-up (the domain is still mapped to the live europe-west1 service, and a domain
 # maps to one service at a time). Keep false until the new service is healthy and the old
 # mapping is deleted; then set true and re-apply. See the plan file's cutover runbook.
+# Cutover DONE 2026-07-13: api.devstash.one now maps to the us-central1 service. Flipped true
+# after both preconditions were met — us-central1 healthy (serving the ko-built image) and the
+# old europe-west1 service + its mapping gone. (The mapping had actually vanished, taking
+# api.devstash.one down; enabling this recreates it against us-central1.)
 variable "enable_domain_mapping" {
   type    = bool
-  default = false
+  default = true
 }
 
 # Bootstrap image for the FIRST apply only — the Cloud Run module's lifecycle.ignore_changes

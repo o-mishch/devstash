@@ -48,9 +48,11 @@ module "cloud_run" {
   env                 = var.app_env_vars
   domain              = var.app_domain
   deletion_protection = true
-  # OFF by default — api.devstash.one is still mapped to the live europe-west1 service. Flip
-  # var.enable_domain_mapping true ONLY after: (1) the us-central1 service is deployed + healthy,
-  # (2) the old europe-west1 domain mapping is deleted. See the plan file's cutover runbook.
+  # ON since the 2026-07-13 cutover (var.enable_domain_mapping default flipped to true): maps
+  # api.devstash.one -> this us-central1 service. Both preconditions were met — us-central1
+  # healthy + the old europe-west1 service/mapping gone (its disappearance had taken
+  # api.devstash.one down). Creating this remaps the hostname; Cloud Run then provisions a fresh
+  # cert (~15min-few hours), during which api.devstash.one is unavailable.
   create_domain_mapping = var.enable_domain_mapping
   # Matches the live service (startup-cpu-boost on, 1 vCPU / 512Mi).
   startup_cpu_boost = true

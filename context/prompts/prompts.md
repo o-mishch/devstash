@@ -2,10 +2,6 @@ Get recommendations, best practices, and modern approaches from websearch, event
 Ask questions until you would have full context.
 
 
-Allow, and add all commands for which you are asking for permissions to allowed-tools in:
-.claude/settings.local.json
-.agents/skills/cleanup 
-
 
 Critically and very precisely review everything in the directory `backend`.
 Make sure the project structure, design, patterns, and idioms strictly follow native Golang modern best practices.
