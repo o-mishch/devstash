@@ -16,7 +16,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/cobra"
 
-	"github.com/o-mishch/devstash/backend/internal/auth"
 	"github.com/o-mishch/devstash/backend/internal/session"
 )
 
@@ -35,7 +34,7 @@ func newTestSessions(t *testing.T) *session.Manager {
 // handler call — so it also catches operation-registration and schema mistakes.
 func TestHealthRoute(t *testing.T) {
 	_, api := humatest.New(t)
-	registerRoutes(api, auth.Deps{}, nil)
+	registerRoutes(api, domains{}, nil)
 
 	resp := api.Get("/health")
 
@@ -68,7 +67,7 @@ func TestNewRouterServesHealth(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 
-	newRouter(newTestSessions(t), auth.Deps{}, nil, nil, nil, true, slog.New(slog.DiscardHandler)).ServeHTTP(rr, req)
+	newRouter(newTestSessions(t), domains{}, nil, nil, nil, true, slog.New(slog.DiscardHandler)).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET /health status = %d, want %d", rr.Code, http.StatusOK)

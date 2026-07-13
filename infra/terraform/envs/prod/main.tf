@@ -32,7 +32,7 @@ module "artifact_registry" {
   # and this is a SHARED project, so prod must not reuse it. Same cleanup-policy shape as dev, but
   # keep_count raised for real Cloud Run rollback depth.
   repository_id = "devstash-prod"
-  keep_count    = 5
+  keep_count    = 3
   labels        = local.common_labels
   depends_on    = [google_project_service.apis]
 }

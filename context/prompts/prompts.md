@@ -1,4 +1,6 @@
-Get recommendations, best practices, and modern approaches from websearch, eventually from context7
+Get recommendations, best practices, and modern approaches from websearch, eventually from context7.
+Continue asking me until you have everything clear. During implementation, if you have any doubts, also ask me; do not imagine.
+
 Ask questions until you would have full context.
 
 
@@ -12,6 +14,13 @@ KISS, DRY, SOLID
 
 
 Do not copy/paste the nextjs native design.
+
+
+Critically and very precisely review F0 → F1 → F2 → F3 against modern best practices.
+Make sure the project structure, design, patterns, and idioms does not copy/paste from the nextjs.
+Make sure described decisions strictly complient with modern best practices.
+Adhering to modern best security practices.
+
 
 
 @.agents/agents/refactor-scanner.md 

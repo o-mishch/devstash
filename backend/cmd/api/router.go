@@ -8,10 +8,23 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/o-mishch/devstash/backend/internal/auth"
+	"github.com/o-mishch/devstash/backend/internal/collections"
 	"github.com/o-mishch/devstash/backend/internal/health"
+	"github.com/o-mishch/devstash/backend/internal/items"
 	"github.com/o-mishch/devstash/backend/internal/middleware"
+	"github.com/o-mishch/devstash/backend/internal/search"
 	"github.com/o-mishch/devstash/backend/internal/session"
 )
+
+// domains bundles every domain's Deps so the router signatures stay stable as domains are
+// added. Each domain owns its own Register/Deps; this is just the wiring container threaded
+// through newRouter → mountAPI → registerRoutes.
+type domains struct {
+	auth        auth.Deps
+	items       items.Deps
+	collections collections.Deps
+	search      search.Deps
+}
 
 // newRouter builds the HTTP handler: the Huma API on the stdlib net/http.ServeMux
 // (via humago — no third-party router), wrapped in scs.LoadAndSave (session cookie
@@ -40,7 +53,7 @@ import (
 // rate-limit bypass that the rightmost-trusted middleware.clientIP was written to close.
 func newRouter(
 	sm *session.Manager,
-	deps auth.Deps,
+	d domains,
 	users middleware.UserByIDStore,
 	readiness health.Pinger,
 	allowedOrigins []string,
@@ -48,7 +61,7 @@ func newRouter(
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
-	mountAPI(mux, sm, deps, users, readiness, docsEnabled, logger)
+	mountAPI(mux, sm, d, users, readiness, docsEnabled, logger)
 	handler := middleware.CrossOrigin(allowedOrigins, logger)(sm.LoadAndSave(mux))
 	return middleware.RequestID(middleware.Recover(logger)(handler))
 }
@@ -64,11 +77,11 @@ func newRouter(
 // given deploy configures. Serving still registers OAuth per-configured-provider (see
 // buildOAuthProviders); this fixed set is the spec-generation input only.
 func newHumaAPI() huma.API {
-	deps := auth.Deps{Providers: map[string]auth.OAuthProvider{
+	d := domains{auth: auth.Deps{Providers: map[string]auth.OAuthProvider{
 		"github": auth.NewGitHubProvider("", "", ""),
 		"google": auth.NewGoogleProvider("", "", ""),
-	}}
-	return mountAPI(http.NewServeMux(), nil, deps, nil, nil, true, slog.Default())
+	}}}
+	return mountAPI(http.NewServeMux(), nil, d, nil, nil, true, slog.Default())
 }
 
 // mountAPI builds the Huma API on the given ServeMux, installs the request
@@ -77,7 +90,7 @@ func newHumaAPI() huma.API {
 func mountAPI(
 	mux *http.ServeMux,
 	sm *session.Manager,
-	deps auth.Deps,
+	d domains,
 	users middleware.UserByIDStore,
 	readiness health.Pinger,
 	docsEnabled bool,
@@ -87,10 +100,10 @@ func mountAPI(
 	// ClientIP stashes the connecting RemoteAddr (rate-limit fallback when XFF is
 	// absent); RequireSession enforces Operation.Security.
 	api.UseMiddleware(
-		middleware.ClientIP(deps.Cfg.TrustedProxyDepth),
+		middleware.ClientIP(d.auth.Cfg.TrustedProxyDepth),
 		middleware.RequireSession(api, sm, users, logger),
 	)
-	registerRoutes(api, deps, readiness)
+	registerRoutes(api, d, readiness)
 	return api
 }
 
@@ -126,8 +139,11 @@ func humaConfig(docsEnabled bool) huma.Config {
 
 // registerRoutes attaches every domain's operations to the API. Each domain owns its
 // Register func; health carries the liveness/readiness probes (readiness pings the DB),
-// auth carries the Phase 1 session surface.
-func registerRoutes(api huma.API, deps auth.Deps, readiness health.Pinger) {
+// auth the Phase 1 session surface, and items/collections/search the Phase 2 CRUD surface.
+func registerRoutes(api huma.API, d domains, readiness health.Pinger) {
 	health.Register(api, readiness)
-	auth.Register(api, deps)
+	auth.Register(api, d.auth)
+	items.Register(api, d.items)
+	collections.Register(api, d.collections)
+	search.Register(api, d.search)
 }

@@ -135,6 +135,32 @@ linters:
       - path: internal/auth/tokens\.go
         linters:
           - interfacebloat
+      # ItemStore is the items data-access interface (the 15 sqlc query methods the item
+      # operations perform), not a behavioral one — same rationale as auth's UserStore.
+      - path: internal/items/items\.go
+        linters:
+          - interfacebloat
+      # constants.go: the item-type membership sets (textItemTypeNames, proItemTypeNames, …)
+      # are immutable declarative config ported from constants.ts — gochecknoglobals is
+      # structurally wrong for a lookup table, the same rationale as ratelimit.go.
+      - path: internal/items/constants\.go
+        linters:
+          - gochecknoglobals
+          - goconst
+      # items/collections operation files: the Huma operation Path strings ("/items/{id}",
+      # "/collections/{id}") recur across the vertical-slice files (get/update/delete). They
+      # are HTTP-shape literals, not reusable constants — the same rationale as the auth
+      # request handlers' goconst exclusion.
+      - path: internal/(items|collections)/(get|update|delete|list)\.go
+        linters:
+          - goconst
+      # Vertical slices are intentionally parallel: favorite.go/pinned.go are one-file-per-
+      # operation (the Phase-2 mandate), and list.go's four keyset variants map structurally
+      # identical (but distinctly-typed) sqlc rows. dupl targets accidental duplication, not
+      # a deliberate structural shape.
+      - path: internal/items/(favorite|pinned|list)\.go
+        linters:
+          - dupl
       # contextcheck can't model Huma's middleware API (it hands the closure a
       # huma.Context, not a context.Context); RequireSession correctly threads
       # ctx.Context() into every downstream call.

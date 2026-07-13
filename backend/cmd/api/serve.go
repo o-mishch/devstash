@@ -13,12 +13,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/o-mishch/devstash/backend/internal/auth"
+	"github.com/o-mishch/devstash/backend/internal/collections"
 	"github.com/o-mishch/devstash/backend/internal/config"
 	sqlcdb "github.com/o-mishch/devstash/backend/internal/db"
 	"github.com/o-mishch/devstash/backend/internal/email"
+	"github.com/o-mishch/devstash/backend/internal/items"
 	"github.com/o-mishch/devstash/backend/internal/postgres"
 	"github.com/o-mishch/devstash/backend/internal/ratelimit"
 	"github.com/o-mishch/devstash/backend/internal/redisconn"
+	"github.com/o-mishch/devstash/backend/internal/search"
 	"github.com/o-mishch/devstash/backend/internal/session"
 )
 
@@ -117,20 +120,42 @@ func runServe(ctx context.Context, cfg *config.Config, logger *slog.Logger) erro
 		CookieDomain: cfg.CookieDomain,
 		Secure:       cfg.IsProduction(),
 	})
-	deps := auth.Deps{
-		Users:     queries,
-		Sessions:  sessions,
-		Limiter:   ratelimit.New(rdb),
-		Tokens:    auth.NewTokens(rdb),
-		Email:     buildEmailer(cfg),
-		Providers: buildOAuthProviders(cfg),
-		IDs:       newID,
-		Logger:    logger,
-		Cfg: auth.Config{
-			AppURL:               cfg.AppURL,
-			OutboundEmailEnabled: cfg.OutboundEmailEnabled(),
-			FailClosed:           !cfg.RateLimitFailOpen,
-			TrustedProxyDepth:    cfg.TrustedProxyDepth,
+	limiter := ratelimit.New(rdb)
+	// All domains share the one pgx pool (via the sqlc *Queries), the Redis limiter, the
+	// UUIDv7 id generator, and the logger. Each domain's narrow store interface is satisfied
+	// by that same *Queries.
+	d := domains{
+		auth: auth.Deps{
+			Users:     queries,
+			Sessions:  sessions,
+			Limiter:   limiter,
+			Tokens:    auth.NewTokens(rdb),
+			Email:     buildEmailer(cfg),
+			Providers: buildOAuthProviders(cfg),
+			IDs:       newID,
+			Logger:    logger,
+			Cfg: auth.Config{
+				AppURL:               cfg.AppURL,
+				OutboundEmailEnabled: cfg.OutboundEmailEnabled(),
+				FailClosed:           !cfg.RateLimitFailOpen,
+				TrustedProxyDepth:    cfg.TrustedProxyDepth,
+			},
+		},
+		items: items.Deps{
+			Store:   queries,
+			Limiter: limiter,
+			IDs:     newID,
+			Logger:  logger,
+			Cfg:     items.Config{FailClosed: !cfg.RateLimitFailOpen},
+		},
+		collections: collections.Deps{
+			Store:  queries,
+			IDs:    newID,
+			Logger: logger,
+		},
+		search: search.Deps{
+			Store:  queries,
+			Logger: logger,
 		},
 	}
 
@@ -140,7 +165,7 @@ func runServe(ctx context.Context, cfg *config.Config, logger *slog.Logger) erro
 		// attack surface); `openapi emit` still produces the spec for codegen.
 		Handler: newRouter(
 			sessions,
-			deps,
+			d,
 			queries,
 			pool,
 			cfg.AllowedOrigins,

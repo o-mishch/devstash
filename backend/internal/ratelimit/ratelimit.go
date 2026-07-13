@@ -29,6 +29,7 @@ const (
 	BucketLinkAccount          = "linkAccount"          // 5 / 15m  (ip)
 	BucketConfirmLoginEmail    = "confirmLoginEmail"    // 5 / 15m  (ip)
 	BucketCredentialEmail      = "credentialEmail"      // #nosec G101 // 5 / 15m (userId)
+	BucketItemMutation         = "itemMutation"         // 120 / 1h (userId) — item create/update/delete/favorite/pinned
 )
 
 // limits maps each bucket to its GCRA limit. Rate+Burst equal to the window count
@@ -46,6 +47,7 @@ var limits = map[string]redis_rate.Limit{
 	BucketLinkAccount:          {Rate: 5, Burst: 5, Period: 15 * time.Minute},
 	BucketConfirmLoginEmail:    {Rate: 5, Burst: 5, Period: 15 * time.Minute},
 	BucketCredentialEmail:      {Rate: 5, Burst: 5, Period: 15 * time.Minute},
+	BucketItemMutation:         {Rate: 120, Burst: 120, Period: time.Hour},
 }
 
 // Decision is the outcome of a rate-limit check. RetryAfter is the wait until the
