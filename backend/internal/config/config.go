@@ -35,13 +35,21 @@ type Config struct {
 	AuthSecret string `env:"AUTH_SECRET"`
 
 	// OAuth — GitHub / Google (NextAuth v5 auto-inferred names; shared with the app).
-	// NOT `required`: OAuth start/callback isn't implemented yet, so requiring these
-	// would refuse to boot for secrets no code reads. Flip to `,required` when oauth.go
-	// lands and the flows actually consume them.
+	// NOT `required`: a provider is wired only when BOTH its id and secret are set (see
+	// serve.go's buildOAuthProviders), so a deploy without OAuth secrets boots fine with
+	// OAuth simply disabled — keeping the hardened "only DATABASE_URL + REDIS_URL are
+	// truly required" invariant rather than refusing to boot on unread secrets.
 	GitHubClientID     string `env:"AUTH_GITHUB_ID"`
 	GitHubClientSecret string `env:"AUTH_GITHUB_SECRET"`
 	GoogleClientID     string `env:"AUTH_GOOGLE_ID"`
 	GoogleClientSecret string `env:"AUTH_GOOGLE_SECRET"`
+
+	// APIBaseURL is this service's own public origin, used to build the OAuth
+	// redirect_uri (APIBaseURL + /auth/oauth/{provider}/callback) — the value that must
+	// be registered in the GitHub/Google OAuth app allowlists. Distinct from AppURL (the
+	// SPA origin the callback 302s back to). Defaults to the local dev server; production
+	// sets it to https://api.devstash.one.
+	APIBaseURL string `env:"API_BASE_URL" envDefault:"http://localhost:8080"`
 
 	// Redis — go-redis TCP/TLS URL (NOT the Next app's UPSTASH_REDIS_REST_URL, which
 	// is the HTTP REST endpoint go-redis can't speak). "rediss://…" (Upstash, prod)

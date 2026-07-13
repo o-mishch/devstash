@@ -57,8 +57,18 @@ func newRouter(
 // generation. Handlers never run, so zero-value deps are safe — only operation
 // shapes and the security scheme matter for the spec. docsEnabled is irrelevant here
 // (the emitted document is identical either way) so it's left on.
+//
+// Providers is populated with both OAuth providers (empty credentials — only their
+// operation shapes matter, Exchange never runs during emit) so the OAuth start/callback
+// and /auth/link operations appear in the emitted spec regardless of which secrets a
+// given deploy configures. Serving still registers OAuth per-configured-provider (see
+// buildOAuthProviders); this fixed set is the spec-generation input only.
 func newHumaAPI() huma.API {
-	return mountAPI(http.NewServeMux(), nil, auth.Deps{}, nil, nil, true, slog.Default())
+	deps := auth.Deps{Providers: map[string]auth.OAuthProvider{
+		"github": auth.NewGitHubProvider("", "", ""),
+		"google": auth.NewGoogleProvider("", "", ""),
+	}}
+	return mountAPI(http.NewServeMux(), nil, deps, nil, nil, true, slog.Default())
 }
 
 // mountAPI builds the Huma API on the given ServeMux, installs the request

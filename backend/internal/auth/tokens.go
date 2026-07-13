@@ -21,14 +21,44 @@ const (
 	nsPasswordReset   = "auth:password-reset"
 	nsCredentialEmail = "auth:credential-email"     // #nosec G101
 	nsCredentialGen   = "auth:credential-email-gen" // #nosec G101
+	nsOAuthState      = "auth:oauth-state"
+	nsPendingLink     = "auth:pending-link" // #nosec G101
 
 	ttlVerifyEmail     = 24 * time.Hour
 	ttlVerifySent      = 55 * time.Minute
 	ttlPasswordReset   = time.Hour
 	ttlCredentialEmail = time.Hour
+	// ttlOAuthState bounds the round-trip to the provider and back; short so a leaked
+	// state param has a small replay window (it is single-use besides — see ConsumeOAuthState).
+	ttlOAuthState = 10 * time.Minute
+	// ttlPendingLink matches the Next app's 15-minute pending-link window: the time a user
+	// has to enter their password on /link-account after an OAuth conflict is detected.
+	ttlPendingLink = 15 * time.Minute
 
 	tokenBytes = 32 // 256-bit raw token, hex-encoded to 64 chars
 )
+
+// PendingLink is the value stored for a pending account-link token (parity:
+// PendingLinkData). It carries everything needed to write the accounts row once the
+// user proves ownership of Email with their password on /link-account. Email is the
+// DevStash user's primary email (the confirm step re-resolves the user from it and
+// checks the password); ProviderEmail is the OAuth identity's email, stored on
+// accounts.email. The raw provider tokens are persisted verbatim so the linked row
+// matches what a first-party OAuth sign-up would have written.
+type PendingLink struct {
+	Email             string  `json:"email"`
+	ProviderEmail     *string `json:"providerEmail"`
+	Provider          string  `json:"provider"`
+	ProviderAccountID string  `json:"providerAccountId"`
+	Type              string  `json:"type"`
+	AccessToken       *string `json:"accessToken"`
+	RefreshToken      *string `json:"refreshToken"`
+	ExpiresAt         *int32  `json:"expiresAt"`
+	TokenType         *string `json:"tokenType"`
+	Scope             *string `json:"scope"`
+	IDToken           *string `json:"idToken"`
+	SessionState      *string `json:"sessionState"`
+}
 
 // CredentialEmailPayload is the value stored for a credential-email token. gen ties
 // the token to the latest-issued link so an older link (lower gen) can't be consumed.
@@ -63,6 +93,16 @@ type Tokens interface {
 	CreateCredentialEmail(ctx context.Context, userID, email string) (string, error)
 	PeekCredentialEmail(ctx context.Context, raw string) (CredentialEmailPayload, bool, error)
 	ConsumeCredentialEmail(ctx context.Context, raw string, payload CredentialEmailPayload) (bool, error)
+	// OAuth CSRF state: single-use (ConsumeOAuthState is an atomic GETDEL), so a state
+	// param can be redeemed exactly once even if replayed.
+	CreateOAuthState(ctx context.Context, provider string) (string, error)
+	ConsumeOAuthState(ctx context.Context, raw string) (string, bool, error)
+	// Account-link handoff (peek-then-consume, like the other links): the callback
+	// mints it on a detected conflict; /auth/link peeks it to resolve the target, then
+	// consumes it only after the account is linked, so a wrong password leaves it armed.
+	CreatePendingLink(ctx context.Context, link PendingLink) (string, error)
+	PeekPendingLink(ctx context.Context, raw string) (PendingLink, bool, error)
+	ConsumePendingLink(ctx context.Context, raw string) error
 }
 
 // consumeCredentialEmailSrc atomically consumes a credential-email token only if its
@@ -276,4 +316,80 @@ func (s *RedisTokens) ConsumeCredentialEmail(
 		return false, fmt.Errorf("tokens: consume credential-email: %w", err)
 	}
 	return res != nil, nil
+}
+
+// CreateOAuthState mints a single-use OAuth state token bound to provider. The raw
+// token travels in the authorize-URL `state` param and is echoed back by the
+// provider on the callback; the stored provider guards against a state minted for one
+// provider being replayed on another's callback.
+func (s *RedisTokens) CreateOAuthState(ctx context.Context, provider string) (string, error) {
+	raw, err := newRawToken()
+	if err != nil {
+		return "", err
+	}
+	if err = s.rdb.Set(ctx, key(nsOAuthState, raw), provider, ttlOAuthState).Err(); err != nil {
+		return "", fmt.Errorf("tokens: store oauth state: %w", err)
+	}
+	return raw, nil
+}
+
+// ConsumeOAuthState atomically reads and deletes an OAuth state token (GETDEL), so a
+// valid state is accepted exactly once. A missing/expired token maps to ok=false (the
+// "invalid state" outcome), not an error; a present one returns the bound provider.
+func (s *RedisTokens) ConsumeOAuthState(ctx context.Context, raw string) (string, bool, error) {
+	provider, err := s.rdb.GetDel(ctx, key(nsOAuthState, raw)).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("tokens: consume oauth state: %w", err)
+	}
+	return provider, true, nil
+}
+
+// CreatePendingLink mints a pending-link token carrying the JSON-encoded link.
+func (s *RedisTokens) CreatePendingLink(ctx context.Context, link PendingLink) (string, error) {
+	raw, err := newRawToken()
+	if err != nil {
+		return "", err
+	}
+	// The payload deliberately carries the provider's OAuth tokens (access/refresh/id) so
+	// the eventual accounts row matches a first-party link; it lives only in short-TTL
+	// Redis, keyed by the SHA-256 of an unguessable raw token, never returned to a client.
+	blob, err := json.Marshal(link) // #nosec G117 -- provider tokens are stored intentionally, hashed-key Redis only
+	if err != nil {
+		return "", fmt.Errorf("tokens: marshal pending link: %w", err)
+	}
+	if err = s.rdb.Set(ctx, key(nsPendingLink, raw), blob, ttlPendingLink).Err(); err != nil {
+		return "", fmt.Errorf("tokens: store pending link: %w", err)
+	}
+	return raw, nil
+}
+
+// PeekPendingLink reads a pending-link token's payload without consuming it. A
+// missing/expired token maps to ok=false. The token is burned separately via
+// ConsumePendingLink once the account is linked, so a wrong-password attempt leaves
+// the link usable for a retry (no compensating restore).
+func (s *RedisTokens) PeekPendingLink(ctx context.Context, raw string) (PendingLink, bool, error) {
+	blob, err := s.rdb.Get(ctx, key(nsPendingLink, raw)).Result()
+	if errors.Is(err, redis.Nil) {
+		return PendingLink{}, false, nil
+	}
+	if err != nil {
+		return PendingLink{}, false, fmt.Errorf("tokens: get pending link: %w", err)
+	}
+	var link PendingLink
+	if err = json.Unmarshal([]byte(blob), &link); err != nil {
+		return PendingLink{}, false, fmt.Errorf("tokens: unmarshal pending link: %w", err)
+	}
+	return link, true, nil
+}
+
+// ConsumePendingLink burns a pending-link token (single-use). Idempotent: deleting an
+// already-consumed or expired key is not an error.
+func (s *RedisTokens) ConsumePendingLink(ctx context.Context, raw string) error {
+	if err := s.rdb.Del(ctx, key(nsPendingLink, raw)).Err(); err != nil {
+		return fmt.Errorf("tokens: consume pending link: %w", err)
+	}
+	return nil
 }

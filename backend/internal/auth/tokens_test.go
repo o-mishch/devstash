@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/go-cmp/cmp"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -245,6 +246,83 @@ func TestCredentialEmailCorruptBlobIsError(t *testing.T) {
 	}
 }
 
+func TestOAuthStateSingleUse(t *testing.T) {
+	t.Parallel()
+	s := newTestTokens(t)
+	ctx := t.Context()
+
+	raw, err := s.CreateOAuthState(ctx, "github")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	provider, ok, err := s.ConsumeOAuthState(ctx, raw)
+	if err != nil || !ok || provider != "github" {
+		t.Fatalf("consume = %q, %v, %v; want github, true, nil", provider, ok, err)
+	}
+	// Single-use: a second consume misses (the GETDEL already burned it).
+	if _, ok, _ := s.ConsumeOAuthState(ctx, raw); ok {
+		t.Error("state consumable twice, want single-use")
+	}
+	// An unknown state is a clean miss, not an error.
+	if _, ok, err := s.ConsumeOAuthState(ctx, "nope"); ok || err != nil {
+		t.Errorf("unknown state = ok %v, err %v; want false, nil", ok, err)
+	}
+}
+
+func TestPendingLinkPeekThenConsume(t *testing.T) {
+	t.Parallel()
+	s := newTestTokens(t)
+	ctx := t.Context()
+
+	want := PendingLink{
+		Email:             "owner@example.com",
+		ProviderEmail:     new("gh@example.com"),
+		Provider:          "github",
+		ProviderAccountID: "gh-1",
+		Type:              "oauth",
+		AccessToken:       new("access"),
+	}
+	raw, err := s.CreatePendingLink(ctx, want)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Peek is non-destructive and round-trips the payload.
+	got, ok, err := s.PeekPendingLink(ctx, raw)
+	if err != nil || !ok {
+		t.Fatalf("peek = %v, %v; want true, nil", ok, err)
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("pending link mismatch (-want +got):\n%s", diff)
+	}
+	if _, ok, _ := s.PeekPendingLink(ctx, raw); !ok {
+		t.Error("second peek missed, want non-destructive")
+	}
+
+	// Consume burns it.
+	if err := s.ConsumePendingLink(ctx, raw); err != nil {
+		t.Fatalf("consume: %v", err)
+	}
+	if _, ok, _ := s.PeekPendingLink(ctx, raw); ok {
+		t.Error("token still present after consume, want burned")
+	}
+}
+
+func TestPendingLinkCorruptBlobIsError(t *testing.T) {
+	t.Parallel()
+	s := newTestTokens(t)
+	ctx := t.Context()
+
+	raw := "corrupt-link"
+	if err := s.rdb.Set(ctx, key(nsPendingLink, raw), "{not-json", ttlPendingLink).Err(); err != nil {
+		t.Fatalf("seed corrupt blob: %v", err)
+	}
+	if _, ok, err := s.PeekPendingLink(ctx, raw); err == nil || ok {
+		t.Fatalf("peek corrupt = ok %v, err %v; want false + an unmarshal error", ok, err)
+	}
+}
+
 func TestTokensStoreErrorPaths(t *testing.T) {
 	t.Parallel()
 	mr := miniredis.RunT(t)
@@ -286,5 +364,20 @@ func TestTokensStoreErrorPaths(t *testing.T) {
 	}
 	if _, err := s.ConsumeCredentialEmail(ctx, "x", CredentialEmailPayload{}); err == nil {
 		t.Error("ConsumeCredentialEmail error = nil, want a redis error")
+	}
+	if _, err := s.CreateOAuthState(ctx, "github"); err == nil {
+		t.Error("CreateOAuthState error = nil, want a redis error")
+	}
+	if _, _, err := s.ConsumeOAuthState(ctx, "x"); err == nil {
+		t.Error("ConsumeOAuthState error = nil, want a redis error")
+	}
+	if _, err := s.CreatePendingLink(ctx, PendingLink{}); err == nil {
+		t.Error("CreatePendingLink error = nil, want a redis error")
+	}
+	if _, _, err := s.PeekPendingLink(ctx, "x"); err == nil {
+		t.Error("PeekPendingLink error = nil, want a redis error")
+	}
+	if err := s.ConsumePendingLink(ctx, "x"); err == nil {
+		t.Error("ConsumePendingLink error = nil, want a redis error")
 	}
 }

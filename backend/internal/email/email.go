@@ -89,8 +89,8 @@ func (c *Client) send(ctx context.Context, to, subject, htmlBody string) error {
 
 // securityCopy returns the subject, heading, and message for a security-
 // notification event. Mirrors the Next app's security-notification.ts EVENT_COPY
-// map exactly, restricted to the three events the Go backend currently emits
-// (OAuth linking/unlinking events land with OAuth support).
+// map exactly, restricted to the events the Go backend currently emits (method-linked
+// lands with OAuth; the profile-side method-unlinked event lands with the profile flow).
 func securityCopy(event auth.SecurityEvent) (string, string, string) {
 	switch event {
 	case auth.SecurityPasswordReset:
@@ -107,6 +107,10 @@ func securityCopy(event auth.SecurityEvent) (string, string, string) {
 			"Sign-in email changed",
 			"The email you use for email-and-password sign-in on your DevStash account was just changed. " +
 				"Your password and your other sign-in methods are unchanged."
+	case auth.SecurityMethodLinked:
+		return "A new sign-in method was linked to your DevStash account",
+			"Sign-in method linked",
+			"A new sign-in method was just linked to your DevStash account."
 	default:
 		return "DevStash security notice", "Security notice", "There was a security-relevant change to your DevStash account."
 	}

@@ -24,6 +24,14 @@ var publicOperations = map[string]bool{
 	"auth-forgot-password":     true, // pre-auth, enumeration-safe
 	"auth-reset-password":      true, // consumes an emailed token
 	"auth-confirm-login-email": true, // consumes an emailed token
+	// OAuth: start/callback are the pre-auth sign-in round-trip (no session yet);
+	// callback validates a single-use state token, not a cookie. /auth/link is
+	// authorized by the pending-link token + a password re-check, not a session.
+	"auth-oauth-github-start":    true, // pre-auth OAuth initiation
+	"auth-oauth-github-callback": true, // provider redirect; state-token guarded
+	"auth-oauth-google-start":    true, // pre-auth OAuth initiation
+	"auth-oauth-google-callback": true, // provider redirect; state-token guarded
+	"auth-oauth-link":            true, // pending-link token + password, not a session
 }
 
 // TestEveryOperationIsSecuredOrAllowlisted is the default-deny guard for the API's

@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"maps"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -150,12 +152,144 @@ func (f *fakeUserStore) SetCredentialEmailLogin(_ context.Context, arg sqlcdb.Se
 	return nil
 }
 
+// --- fakeUserStore OAuth methods ---
+
+// accountKey is the (provider, providerAccountId) composite the fake indexes accounts by.
+func accountKey(provider, providerAccountID string) string {
+	return provider + "|" + providerAccountID
+}
+
+// addAccount seeds a linked OAuth account (and its owning user's account-email index).
+func (f *fakeUserStore) addAccount(a sqlcdb.Account) {
+	f.accounts[accountKey(a.Provider, a.ProviderAccountId)] = a
+	if a.Email != nil {
+		if u, ok := f.byID[a.UserId]; ok {
+			f.byAccountEmail[*a.Email] = u
+		}
+	}
+}
+
+func (f *fakeUserStore) GetProviderAccount(
+	_ context.Context,
+	arg sqlcdb.GetProviderAccountParams,
+) (sqlcdb.Account, error) {
+	if f.accountErr != nil {
+		return sqlcdb.Account{}, f.accountErr
+	}
+	if a, ok := f.accounts[accountKey(arg.Provider, arg.ProviderAccountId)]; ok {
+		return a, nil
+	}
+	return sqlcdb.Account{}, pgx.ErrNoRows
+}
+
+// GetUserWithOAuthConflict mirrors the query: a user reachable by email (primary,
+// verified credential, or linked account email) who has NOT linked arg.Provider.
+func (f *fakeUserStore) GetUserWithOAuthConflict(
+	_ context.Context,
+	arg sqlcdb.GetUserWithOAuthConflictParams,
+) (sqlcdb.GetUserWithOAuthConflictRow, error) {
+	if f.conflictErr != nil {
+		return sqlcdb.GetUserWithOAuthConflictRow{}, f.conflictErr
+	}
+	for u := range maps.Values(f.byID) {
+		reachable := u.Email == arg.Email ||
+			(u.CredentialEmail != nil && *u.CredentialEmail == arg.Email && u.CredentialEmailVerified != nil) ||
+			f.userHasAccountEmail(u.ID, arg.Email)
+		if reachable && !f.userHasProvider(u.ID, arg.Provider) {
+			return sqlcdb.GetUserWithOAuthConflictRow{ID: u.ID, Email: u.Email, Password: u.Password}, nil
+		}
+	}
+	return sqlcdb.GetUserWithOAuthConflictRow{}, pgx.ErrNoRows
+}
+
+func (f *fakeUserStore) userHasProvider(userID, provider string) bool {
+	for a := range maps.Values(f.accounts) {
+		if a.UserId == userID && a.Provider == provider {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *fakeUserStore) userHasAccountEmail(userID, email string) bool {
+	for a := range maps.Values(f.accounts) {
+		if a.UserId == userID && a.Email != nil && *a.Email == email {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *fakeUserStore) CreateOAuthUser(
+	_ context.Context,
+	arg sqlcdb.CreateOAuthUserParams,
+) (sqlcdb.User, error) {
+	if f.oauthUserErr != nil {
+		return sqlcdb.User{}, f.oauthUserErr
+	}
+	if _, taken := f.byEmail[arg.Email]; taken {
+		return sqlcdb.User{}, pgUnique()
+	}
+	u := sqlcdb.User{
+		ID:            arg.ID,
+		Email:         arg.Email,
+		Name:          arg.Name,
+		Image:         arg.Image,
+		EmailVerified: arg.EmailVerified,
+	}
+	f.add(u)
+	return u, nil
+}
+
+func (f *fakeUserStore) CreateAccount(_ context.Context, arg sqlcdb.CreateAccountParams) error {
+	if f.forceAcctUnique {
+		return pgUnique()
+	}
+	if f.accountWriteErr != nil {
+		return f.accountWriteErr
+	}
+	if _, exists := f.accounts[accountKey(arg.Provider, arg.ProviderAccountId)]; exists {
+		return pgUnique()
+	}
+	f.addAccount(sqlcdb.Account{
+		ID:                arg.ID,
+		UserId:            arg.UserId,
+		Type:              arg.Type,
+		Provider:          arg.Provider,
+		ProviderAccountId: arg.ProviderAccountId,
+		AccessToken:       arg.AccessToken,
+		RefreshToken:      arg.RefreshToken,
+		ExpiresAt:         arg.ExpiresAt,
+		TokenType:         arg.TokenType,
+		Scope:             arg.Scope,
+		IDToken:           arg.IDToken,
+		SessionState:      arg.SessionState,
+		Email:             arg.Email,
+	})
+	return nil
+}
+
+func (f *fakeUserStore) BackfillOAuthAccountEmail(
+	_ context.Context,
+	arg sqlcdb.BackfillOAuthAccountEmailParams,
+) error {
+	if f.backfillErr != nil {
+		return f.backfillErr
+	}
+	if arg.Email != nil {
+		f.backfilled[accountKey(arg.Provider, arg.ProviderAccountId)] = *arg.Email
+	}
+	return nil
+}
+
 // --- fakeTokens: behavioral one-time-token store ---
 
 type fakeTokens struct {
 	verify        map[string]string
 	reset         map[string]string
 	cred          map[string]CredentialEmailPayload
+	states        map[string]string      // oauth state -> provider
+	pending       map[string]PendingLink // pending-link token -> payload
 	recentlySent  bool
 	createErr     error
 	consumeErr    error // ConsumeCredentialEmail (atomic burn) failure
@@ -165,14 +299,61 @@ type fakeTokens struct {
 	resetBurnErr  error // ConsumePasswordReset (burn) failure
 	credPeekErr   error // PeekCredentialEmail failure
 	recentSentErr error // VerificationRecentlySent failure
+	stateErr      error // ConsumeOAuthState failure
+	pendingErr    error // PeekPendingLink failure
+	nextToken     int   // monotonic counter for unique raw tokens
 }
 
 func newFakeTokens() *fakeTokens {
 	return &fakeTokens{
-		verify: map[string]string{},
-		reset:  map[string]string{},
-		cred:   map[string]CredentialEmailPayload{},
+		verify:  map[string]string{},
+		reset:   map[string]string{},
+		cred:    map[string]CredentialEmailPayload{},
+		states:  map[string]string{},
+		pending: map[string]PendingLink{},
 	}
+}
+
+func (f *fakeTokens) CreateOAuthState(_ context.Context, provider string) (string, error) {
+	if f.createErr != nil {
+		return "", f.createErr
+	}
+	f.nextToken++
+	raw := "state-" + strconv.Itoa(f.nextToken)
+	f.states[raw] = provider
+	return raw, nil
+}
+
+func (f *fakeTokens) ConsumeOAuthState(_ context.Context, raw string) (string, bool, error) {
+	if f.stateErr != nil {
+		return "", false, f.stateErr
+	}
+	provider, ok := f.states[raw]
+	delete(f.states, raw) // single-use
+	return provider, ok, nil
+}
+
+func (f *fakeTokens) CreatePendingLink(_ context.Context, link PendingLink) (string, error) {
+	if f.createErr != nil {
+		return "", f.createErr
+	}
+	f.nextToken++
+	raw := "plink-" + strconv.Itoa(f.nextToken)
+	f.pending[raw] = link
+	return raw, nil
+}
+
+func (f *fakeTokens) PeekPendingLink(_ context.Context, raw string) (PendingLink, bool, error) {
+	if f.pendingErr != nil {
+		return PendingLink{}, false, f.pendingErr
+	}
+	link, ok := f.pending[raw]
+	return link, ok, nil // non-destructive
+}
+
+func (f *fakeTokens) ConsumePendingLink(_ context.Context, raw string) error {
+	delete(f.pending, raw)
+	return nil
 }
 
 func (f *fakeTokens) CreateVerification(_ context.Context, email string) (string, error) {

@@ -38,6 +38,51 @@ LIMIT 1;
 SELECT * FROM accounts
 WHERE provider = $1 AND "providerAccountId" = $2;
 
+-- name: GetUserWithOAuthConflict :one
+-- OAuth sign-in conflict detection (parity: getUserWithOAuthConflict). Finds an
+-- existing account reachable by this OAuth email — via its primary email, a linked
+-- account email, or a *verified* credential email — that has NOT yet linked this
+-- provider. A hit means "an account owns this address but hasn't connected this
+-- provider", so the callback routes to the password-confirm link flow instead of
+-- silently creating a duplicate user. ORDER BY makes the pick deterministic when the
+-- address matches more than one row (the cross-column email/credentialEmail case).
+SELECT users.id, users.email, users.password FROM users
+WHERE (
+        users.email = $1
+        OR (users."credentialEmail" = $1 AND users."credentialEmailVerified" IS NOT NULL)
+        OR EXISTS (SELECT 1 FROM accounts a WHERE a."userId" = users.id AND a.email = $1)
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM accounts ap WHERE ap."userId" = users.id AND ap.provider = $2
+    )
+ORDER BY users."createdAt" ASC, users.id ASC
+LIMIT 1;
+
+-- name: CreateOAuthUser :one
+-- New OAuth sign-up: create the user row for a first-time OAuth identity with no
+-- existing account. emailVerified is set (now) only when the provider asserts the
+-- email is verified, NULL otherwise, so an unverified OAuth email never counts as a
+-- verified primary. A unique violation on email surfaces as 23505.
+INSERT INTO users (id, email, name, image, "emailVerified", "updatedAt")
+VALUES ($1, $2, $3, $4, $5, now())
+RETURNING *;
+
+-- name: CreateAccount :exec
+-- Link an OAuth account to a user (new sign-up or password-confirmed link). The
+-- (provider, providerAccountId) unique index makes a concurrent double-link surface
+-- as 23505, which the caller treats as an idempotent success.
+INSERT INTO accounts (
+    id, "userId", type, provider, "providerAccountId",
+    access_token, refresh_token, expires_at, token_type, scope, id_token, session_state, email
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
+
+-- name: BackfillOAuthAccountEmail :exec
+-- Fill in a linked account's provider email on a later sign-in when it was created
+-- without one (parity: backfillOAuthAccountEmail). Only touches rows whose email is
+-- still NULL, so it never overwrites a stored value.
+UPDATE accounts SET email = $3
+WHERE provider = $1 AND "providerAccountId" = $2 AND email IS NULL;
+
 -- name: InsertCredentialUser :one
 -- Register a new credentials account. emailVerified/credentialEmailVerified are
 -- set (now) when verification is disabled, NULL otherwise. A unique violation on

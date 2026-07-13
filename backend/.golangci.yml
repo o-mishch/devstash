@@ -117,8 +117,10 @@ linters:
           - mnd
       # auth request handlers: json/format/query keys ("email", "token", "sent", …)
       # recur as inline literals in struct tags and url.Values. Struct tags cannot be
-      # constants, so goconst is structurally wrong for these HTTP-shape files.
-      - path: internal/auth/(register|password|login)\.go
+      # constants, so goconst is structurally wrong for these HTTP-shape files. oauth.go
+      # (query keys) and oauth_providers.go (OAuth scope strings like "email") are the
+      # same shape.
+      - path: internal/auth/(register|password|login|oauth|oauth_providers)\.go
         linters:
           - goconst
       # UserStore is the auth data-access interface (a dozen sqlc query methods), not

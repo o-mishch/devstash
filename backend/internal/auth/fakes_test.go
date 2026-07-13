@@ -20,16 +20,24 @@ func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 type fakeUserStore struct {
 	byID            map[string]sqlcdb.User
 	byEmail         map[string]sqlcdb.User
-	byCredEmail     map[string]sqlcdb.User // verified credential emails only
-	byAccountEmail  map[string]sqlcdb.User // linked OAuth account emails
-	emailErr        error                  // returned by the email lookups when set
-	idErr           error                  // returned by GetUserByID when set
-	forceUnique     bool                   // makes credential writes return a 23505
-	credWriteErr    error                  // makes credential writes return a non-unique DB error
-	insertRace      sqlcdb.User            // if set, InsertCredentialUser 23505s once, then this row appears
-	insertErr       error                  // returned by InsertCredentialUser when set (a non-unique DB failure)
-	pwWriteErr      error                  // returned by the password writes (Update/SetPasswordAndVerify/Bootstrap) when set
-	markVerifiedErr error                  // returned by MarkEmailVerifiedByEmail when set
+	byCredEmail     map[string]sqlcdb.User    // verified credential emails only
+	byAccountEmail  map[string]sqlcdb.User    // linked OAuth account emails
+	accounts        map[string]sqlcdb.Account // linked OAuth accounts, keyed provider|providerAccountId
+	emailErr        error                     // returned by the email lookups when set
+	idErr           error                     // returned by GetUserByID when set
+	forceUnique     bool                      // makes credential writes return a 23505
+	credWriteErr    error                     // makes credential writes return a non-unique DB error
+	insertRace      sqlcdb.User               // if set, InsertCredentialUser 23505s once, then this row appears
+	insertErr       error                     // returned by InsertCredentialUser when set (a non-unique DB failure)
+	pwWriteErr      error                     // returned by the password writes (Update/SetPasswordAndVerify/Bootstrap) when set
+	markVerifiedErr error                     // returned by MarkEmailVerifiedByEmail when set
+	accountErr      error                     // returned by GetProviderAccount when set (a real DB failure)
+	conflictErr     error                     // returned by GetUserWithOAuthConflict when set
+	oauthUserErr    error                     // returned by CreateOAuthUser when set
+	accountWriteErr error                     // returned by CreateAccount when set (a non-unique DB failure)
+	forceAcctUnique bool                      // makes CreateAccount return a 23505
+	backfillErr     error                     // returned by BackfillOAuthAccountEmail when set
+	backfilled      map[string]string         // provider|providerAccountId -> email backfilled
 }
 
 func newFakeUserStore() *fakeUserStore {
@@ -38,6 +46,8 @@ func newFakeUserStore() *fakeUserStore {
 		byEmail:        map[string]sqlcdb.User{},
 		byCredEmail:    map[string]sqlcdb.User{},
 		byAccountEmail: map[string]sqlcdb.User{},
+		accounts:       map[string]sqlcdb.Account{},
+		backfilled:     map[string]string{},
 	}
 }
 

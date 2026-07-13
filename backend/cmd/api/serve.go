@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,6 +41,30 @@ func buildEmailer(cfg *config.Config) auth.Emailer {
 		return email.Noop{}
 	}
 	return email.New(cfg.ResendAPIKey, cfg.EmailFrom, cfg.AppURL)
+}
+
+// buildOAuthProviders wires the OAuth providers whose credentials are configured. A
+// provider with an empty id or secret is skipped, so a deploy without OAuth secrets
+// (dev/CI) simply registers no OAuth routes rather than failing to boot. The
+// redirect_uri is APIBaseURL + /auth/oauth/{provider}/callback — the value that must be
+// registered in each provider's OAuth app allowlist. Returns nil when none are set.
+func buildOAuthProviders(cfg *config.Config) map[string]auth.OAuthProvider {
+	base := strings.TrimRight(cfg.APIBaseURL, "/")
+	providers := map[string]auth.OAuthProvider{}
+	if cfg.GitHubClientID != "" && cfg.GitHubClientSecret != "" {
+		providers["github"] = auth.NewGitHubProvider(
+			cfg.GitHubClientID, cfg.GitHubClientSecret, base+"/auth/oauth/github/callback",
+		)
+	}
+	if cfg.GoogleClientID != "" && cfg.GoogleClientSecret != "" {
+		providers["google"] = auth.NewGoogleProvider(
+			cfg.GoogleClientID, cfg.GoogleClientSecret, base+"/auth/oauth/google/callback",
+		)
+	}
+	if len(providers) == 0 {
+		return nil
+	}
+	return providers
 }
 
 func serveCmd(app *appState) *cobra.Command {
@@ -93,13 +118,14 @@ func runServe(ctx context.Context, cfg *config.Config, logger *slog.Logger) erro
 		Secure:       cfg.IsProduction(),
 	})
 	deps := auth.Deps{
-		Users:    queries,
-		Sessions: sessions,
-		Limiter:  ratelimit.New(rdb),
-		Tokens:   auth.NewTokens(rdb),
-		Email:    buildEmailer(cfg),
-		IDs:      newID,
-		Logger:   logger,
+		Users:     queries,
+		Sessions:  sessions,
+		Limiter:   ratelimit.New(rdb),
+		Tokens:    auth.NewTokens(rdb),
+		Email:     buildEmailer(cfg),
+		Providers: buildOAuthProviders(cfg),
+		IDs:       newID,
+		Logger:    logger,
 		Cfg: auth.Config{
 			AppURL:               cfg.AppURL,
 			OutboundEmailEnabled: cfg.OutboundEmailEnabled(),

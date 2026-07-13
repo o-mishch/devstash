@@ -10,6 +10,25 @@ import (
 	"time"
 )
 
+const backfillOAuthAccountEmail = `-- name: BackfillOAuthAccountEmail :exec
+UPDATE accounts SET email = $3
+WHERE provider = $1 AND "providerAccountId" = $2 AND email IS NULL
+`
+
+type BackfillOAuthAccountEmailParams struct {
+	Provider          string  `json:"provider"`
+	ProviderAccountId string  `json:"providerAccountId"`
+	Email             *string `json:"email"`
+}
+
+// Fill in a linked account's provider email on a later sign-in when it was created
+// without one (parity: backfillOAuthAccountEmail). Only touches rows whose email is
+// still NULL, so it never overwrites a stored value.
+func (q *Queries) BackfillOAuthAccountEmail(ctx context.Context, arg BackfillOAuthAccountEmailParams) error {
+	_, err := q.db.Exec(ctx, backfillOAuthAccountEmail, arg.Provider, arg.ProviderAccountId, arg.Email)
+	return err
+}
+
 const bootstrapCredentialLogin = `-- name: BootstrapCredentialLogin :exec
 UPDATE users
 SET password = $2,
@@ -53,6 +72,104 @@ type ChangeCredentialEmailParams struct {
 func (q *Queries) ChangeCredentialEmail(ctx context.Context, arg ChangeCredentialEmailParams) error {
 	_, err := q.db.Exec(ctx, changeCredentialEmail, arg.ID, arg.CredentialEmail)
 	return err
+}
+
+const createAccount = `-- name: CreateAccount :exec
+INSERT INTO accounts (
+    id, "userId", type, provider, "providerAccountId",
+    access_token, refresh_token, expires_at, token_type, scope, id_token, session_state, email
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+`
+
+type CreateAccountParams struct {
+	ID                string  `json:"id"`
+	UserId            string  `json:"userId"`
+	Type              string  `json:"type"`
+	Provider          string  `json:"provider"`
+	ProviderAccountId string  `json:"providerAccountId"`
+	AccessToken       *string `json:"access_token"`
+	RefreshToken      *string `json:"refresh_token"`
+	ExpiresAt         *int32  `json:"expires_at"`
+	TokenType         *string `json:"token_type"`
+	Scope             *string `json:"scope"`
+	IDToken           *string `json:"id_token"`
+	SessionState      *string `json:"session_state"`
+	Email             *string `json:"email"`
+}
+
+// Link an OAuth account to a user (new sign-up or password-confirmed link). The
+// (provider, providerAccountId) unique index makes a concurrent double-link surface
+// as 23505, which the caller treats as an idempotent success.
+func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) error {
+	_, err := q.db.Exec(ctx, createAccount,
+		arg.ID,
+		arg.UserId,
+		arg.Type,
+		arg.Provider,
+		arg.ProviderAccountId,
+		arg.AccessToken,
+		arg.RefreshToken,
+		arg.ExpiresAt,
+		arg.TokenType,
+		arg.Scope,
+		arg.IDToken,
+		arg.SessionState,
+		arg.Email,
+	)
+	return err
+}
+
+const createOAuthUser = `-- name: CreateOAuthUser :one
+INSERT INTO users (id, email, name, image, "emailVerified", "updatedAt")
+VALUES ($1, $2, $3, $4, $5, now())
+RETURNING id, email, "emailVerified", name, image, password, "isPro", "stripeCustomerId", "stripeSubscriptionId", "createdAt", "updatedAt", "editorPreferences", "stripeSubscriptionStart", "stripeCurrentPeriodEnd", "proExpiredAt", "stripeCancelAtPeriodEnd", "stripeSubscriptionInterval", "stripeLastSyncAt", "stripeSubscriptionStatus", "credentialEmail", "credentialEmailVerified"
+`
+
+type CreateOAuthUserParams struct {
+	ID            string     `json:"id"`
+	Email         string     `json:"email"`
+	Name          *string    `json:"name"`
+	Image         *string    `json:"image"`
+	EmailVerified *time.Time `json:"emailVerified"`
+}
+
+// New OAuth sign-up: create the user row for a first-time OAuth identity with no
+// existing account. emailVerified is set (now) only when the provider asserts the
+// email is verified, NULL otherwise, so an unverified OAuth email never counts as a
+// verified primary. A unique violation on email surfaces as 23505.
+func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createOAuthUser,
+		arg.ID,
+		arg.Email,
+		arg.Name,
+		arg.Image,
+		arg.EmailVerified,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.EmailVerified,
+		&i.Name,
+		&i.Image,
+		&i.Password,
+		&i.IsPro,
+		&i.StripeCustomerId,
+		&i.StripeSubscriptionId,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.EditorPreferences,
+		&i.StripeSubscriptionStart,
+		&i.StripeCurrentPeriodEnd,
+		&i.ProExpiredAt,
+		&i.StripeCancelAtPeriodEnd,
+		&i.StripeSubscriptionInterval,
+		&i.StripeLastSyncAt,
+		&i.StripeSubscriptionStatus,
+		&i.CredentialEmail,
+		&i.CredentialEmailVerified,
+	)
+	return i, err
 }
 
 const getProviderAccount = `-- name: GetProviderAccount :one
@@ -252,6 +369,45 @@ func (q *Queries) GetUserByVerifiedCredentialEmail(ctx context.Context, credenti
 		&i.CredentialEmail,
 		&i.CredentialEmailVerified,
 	)
+	return i, err
+}
+
+const getUserWithOAuthConflict = `-- name: GetUserWithOAuthConflict :one
+SELECT users.id, users.email, users.password FROM users
+WHERE (
+        users.email = $1
+        OR (users."credentialEmail" = $1 AND users."credentialEmailVerified" IS NOT NULL)
+        OR EXISTS (SELECT 1 FROM accounts a WHERE a."userId" = users.id AND a.email = $1)
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM accounts ap WHERE ap."userId" = users.id AND ap.provider = $2
+    )
+ORDER BY users."createdAt" ASC, users.id ASC
+LIMIT 1
+`
+
+type GetUserWithOAuthConflictParams struct {
+	Email    string `json:"email"`
+	Provider string `json:"provider"`
+}
+
+type GetUserWithOAuthConflictRow struct {
+	ID       string  `json:"id"`
+	Email    string  `json:"email"`
+	Password *string `json:"password"`
+}
+
+// OAuth sign-in conflict detection (parity: getUserWithOAuthConflict). Finds an
+// existing account reachable by this OAuth email — via its primary email, a linked
+// account email, or a *verified* credential email — that has NOT yet linked this
+// provider. A hit means "an account owns this address but hasn't connected this
+// provider", so the callback routes to the password-confirm link flow instead of
+// silently creating a duplicate user. ORDER BY makes the pick deterministic when the
+// address matches more than one row (the cross-column email/credentialEmail case).
+func (q *Queries) GetUserWithOAuthConflict(ctx context.Context, arg GetUserWithOAuthConflictParams) (GetUserWithOAuthConflictRow, error) {
+	row := q.db.QueryRow(ctx, getUserWithOAuthConflict, arg.Email, arg.Provider)
+	var i GetUserWithOAuthConflictRow
+	err := row.Scan(&i.ID, &i.Email, &i.Password)
 	return i, err
 }
 

@@ -90,10 +90,14 @@ variable "app_env_vars" {
   default = [
     # Non-secret (plain). ALLOWED_ORIGINS/NEXT_PUBLIC_APP_URL = the transition SPA origin
     # (beta.devstash.one); the Vercel apex is NOT trusted here. EMAIL_FROM must be a
-    # Resend-verified sender.
+    # Resend-verified sender. API_BASE_URL = this service's own public origin, used to build
+    # the OAuth redirect_uri (API_BASE_URL + /auth/oauth/{github,google}/callback) — the exact
+    # value registered in the GitHub/Google OAuth app allowlists; distinct from
+    # NEXT_PUBLIC_APP_URL (the SPA the callback 302s back to).
     { name = "ENV", value = "production" },
     { name = "ALLOWED_ORIGINS", value = "https://beta.devstash.one" },
     { name = "NEXT_PUBLIC_APP_URL", value = "https://beta.devstash.one" },
+    { name = "API_BASE_URL", value = "https://api.devstash.one" },
     { name = "EMAIL_FROM", value = "DevStash <noreply@devstash.one>" },
     # Every sensitive var, as one JSON blob (config.go hydrateFromAppConfig splits it).
     { name = "APP_CONFIG", secret_name = "devstash-prod-config" },

@@ -12,6 +12,7 @@ const (
 	SecurityPasswordReset          SecurityEvent = "password-reset"
 	SecurityCredentialEmailAdded   SecurityEvent = "credential-email-added"
 	SecurityCredentialEmailChanged SecurityEvent = "credential-email-changed"
+	SecurityMethodLinked           SecurityEvent = "method-linked"
 )
 
 // Emailer sends the transactional auth emails. It is a consumer-defined interface

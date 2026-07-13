@@ -42,6 +42,17 @@ type UserStore interface {
 	MarkEmailVerifiedByEmail(ctx context.Context, email string) error
 	ChangeCredentialEmail(ctx context.Context, arg sqlcdb.ChangeCredentialEmailParams) error
 	SetCredentialEmailLogin(ctx context.Context, arg sqlcdb.SetCredentialEmailLoginParams) error
+	// OAuth: the (provider, providerAccountId) → account lookup, the conflict probe, and
+	// the new-user / account writes. Reads are keyed by provider-supplied identifiers;
+	// writes attach to a server-resolved userId, never raw user input (IDOR-safe).
+	GetProviderAccount(ctx context.Context, arg sqlcdb.GetProviderAccountParams) (sqlcdb.Account, error)
+	GetUserWithOAuthConflict(
+		ctx context.Context,
+		arg sqlcdb.GetUserWithOAuthConflictParams,
+	) (sqlcdb.GetUserWithOAuthConflictRow, error)
+	CreateOAuthUser(ctx context.Context, arg sqlcdb.CreateOAuthUserParams) (sqlcdb.User, error)
+	CreateAccount(ctx context.Context, arg sqlcdb.CreateAccountParams) error
+	BackfillOAuthAccountEmail(ctx context.Context, arg sqlcdb.BackfillOAuthAccountEmailParams) error
 }
 
 // Sessions is the narrow session interface the handlers consume (the middleware
@@ -81,9 +92,13 @@ type Deps struct {
 	Limiter  ratelimit.Limiter
 	Tokens   Tokens
 	Email    Emailer
-	IDs      func() string // new-row id generator (UUIDv7 in production)
-	Logger   *slog.Logger
-	Cfg      Config
+	// Providers holds the configured OAuth providers keyed by name ("github", "google").
+	// A provider is present only when its credentials are set, so OAuth start/callback are
+	// registered per-provider (an empty map disables OAuth entirely — dev/CI without secrets).
+	Providers map[string]OAuthProvider
+	IDs       func() string // new-row id generator (UUIDv7 in production)
+	Logger    *slog.Logger
+	Cfg       Config
 }
 
 // Service owns every auth operation's behaviour over its injected collaborators. It
@@ -120,6 +135,7 @@ func Register(api huma.API, d Deps) {
 	registerForgotPassword(api, s)
 	registerResetPassword(api, s)
 	registerConfirmLoginEmail(api, s)
+	registerOAuth(api, s)
 }
 
 const (
