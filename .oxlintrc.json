@@ -29,7 +29,8 @@
     "**/.obsidian/**",
     "prisma.config.ts",
     "**/venv/**",
-    "**/.venv/**"
+    "**/.venv/**",
+    "web/**"
   ],
   "rules": {
     "no-array-constructor": "error",

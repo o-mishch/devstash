@@ -26,6 +26,11 @@ resource "google_cloudbuild_trigger" "devstash" {
     }
   }
 
+  # Top-level (not nested in github.push) — scopes the trigger to a subtree. null (not []) when
+  # unset so the provider omits it and the trigger fires on any changed file, preserving the
+  # original behaviour.
+  included_files = length(var.included_files) > 0 ? var.included_files : null
+
   service_account = "projects/${var.project_id}/serviceAccounts/${var.deployer_service_account}"
   substitutions   = var.substitutions
 
@@ -36,6 +41,7 @@ resource "google_cloudbuild_trigger" "devstash" {
         id         = step.value.id
         name       = step.value.name
         entrypoint = try(step.value.entrypoint, null)
+        dir        = try(step.value.dir, null)
         args       = step.value.args
       }
     }

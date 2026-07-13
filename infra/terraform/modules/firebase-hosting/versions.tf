@@ -3,11 +3,8 @@
 # explicit google-beta provider alias/config, same convention as the root envs/*/versions.tf.
 terraform {
   required_providers {
-    # google-beta for google_firebase_* resources; google for the deployer SA + IAM bindings.
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 7.0"
-    }
+    # google-beta only — every resource here is a google_firebase_* (beta-only). The deployer SA
+    # + its IAM moved to the shared cloudbuild-deployer-sa module (envs/prod/deployers.tf).
     google-beta = {
       source  = "hashicorp/google-beta"
       version = "~> 7.0"

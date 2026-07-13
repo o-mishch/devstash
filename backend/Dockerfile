@@ -1,4 +1,12 @@
 # syntax=docker/dockerfile:1
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# SUPERSEDED (2026-07-13) by ko — the prod Cloud Build trigger now builds via `ko build`
+# (backend/.ko.yaml), which produces the same distroless/static:nonroot image with no Dockerfile
+# and no Docker daemon. This file is retained ONLY as a fallback until ko's first green prod
+# deploy is confirmed; no pipeline references it. Delete it once ko is proven (see
+# context/current-feature.md Phase 0 note). Kept in sync intentionally: any build-flag change
+# here must also change .ko.yaml until this is removed.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
 # Floating minor tag (not a digest) so patch/alpine rebuilds are picked up automatically.
 FROM golang:1.26-alpine AS builder
 

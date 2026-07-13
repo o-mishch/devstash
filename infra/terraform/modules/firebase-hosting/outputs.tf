@@ -16,13 +16,3 @@ output "custom_domain_status" {
 output "required_dns_updates" {
   value = google_firebase_hosting_custom_domain.default.required_dns_updates
 }
-
-output "deployer_service_account_email" {
-  value = google_service_account.firebase_deployer.email
-}
-
-# Full resource name of the (dev-owned) WIF provider prod's deploy workflow authenticates
-# through — feeds the WORKLOAD_IDENTITY_PROVIDER GitHub secret.
-output "wif_provider" {
-  value = local.wif_provider_name
-}

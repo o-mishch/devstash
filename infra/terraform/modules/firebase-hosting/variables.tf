@@ -20,21 +20,3 @@ variable "wait_dns_verification" {
   type    = bool
   default = false
 }
-
-variable "github_repository" { type = string }
-
-# Numeric project number — used to construct the existing WIF pool's resource name (principalSet
-# members reference the pool by project NUMBER, not id).
-variable "project_number" { type = string }
-
-# The already-existing (dev-managed) WIF pool + provider ids this module binds prod's deployer
-# SA to, rather than creating its own. Defaults match dev's iam module.
-variable "wif_pool_id" {
-  type    = string
-  default = "github-actions"
-}
-
-variable "wif_provider_id" {
-  type    = string
-  default = "github"
-}

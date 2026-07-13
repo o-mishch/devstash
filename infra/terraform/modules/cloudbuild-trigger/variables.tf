@@ -36,6 +36,14 @@ variable "branch_filter_regex" {
   default = "^main$"
 }
 
+# Glob(s) that scope the trigger to a subtree, so a push touching only the *other* track's
+# files doesn't fire this build (e.g. web-only commit must not rebuild the backend, and vice
+# versa). Empty (default) preserves the original "fire on any file" behaviour.
+variable "included_files" {
+  type    = list(string)
+  default = []
+}
+
 # Service account that runs the build (bare email — main.tf builds the
 # projects/{project}/serviceAccounts/{email} resource-path form from it).
 variable "deployer_service_account" { type = string }
@@ -46,12 +54,15 @@ variable "substitutions" {
 }
 
 # One entry per Cloud Build step. `entrypoint` is optional (defaults to the image's own
-# entrypoint, e.g. the docker builder), `args` is required.
+# entrypoint, e.g. the docker builder or the firebase image's `firebase`); `dir` is optional
+# (working directory under /workspace — set to "web" so npm/firebase steps run where
+# package.json + firebase.json live); `args` is required.
 variable "build_steps" {
   type = list(object({
     id         = string
     name       = string
     entrypoint = optional(string)
+    dir        = optional(string)
     args       = list(string)
   }))
 }

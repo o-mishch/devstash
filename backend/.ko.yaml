@@ -1,0 +1,18 @@
+# ko build config — reproduces exactly what backend/Dockerfile produced, so the Cloud Build
+# switch from `docker build` to `ko build` is a like-for-like image, not a behavior change:
+#   - same runtime base (distroless static-debian12:nonroot — CA certs, tzdata, nonroot user)
+#   - same build flags (static CGO-off binary, -trimpath, stripped -s -w, -mod=readonly)
+# ko sets GOOS/GOARCH for the target platform itself; ko's default base is already
+# distroless/static, but we pin it explicitly so a ko default change can't silently alter it.
+defaultBaseImage: gcr.io/distroless/static-debian12:nonroot
+
+builds:
+  - id: api
+    main: ./cmd/api
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -mod=readonly
+    ldflags:
+      - -s -w
