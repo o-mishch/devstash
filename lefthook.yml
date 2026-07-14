@@ -20,8 +20,18 @@ pre-commit:
     frontend-oxlint:
       # Runs the same `oxlint .` as CI/`npm run lint` (not staged-file-scoped): the
       # type-aware rules (tsgolint) need whole-project context to resolve types.
+      # web/ is excluded — it's a standalone package with its own oxlint gate below.
       glob: "*.{ts,tsx,js,jsx,mts,cts}"
+      exclude:
+        - "web/**"
       run: npm run lint
+    web-oxlint:
+      # web/ is a standalone Vite SPA with its own self-contained oxlint config
+      # (own plugins + tsgolint type-aware, no Next). Like frontend-oxlint, runs the
+      # whole-project `oxlint .` (not staged-file-scoped) since type-aware rules need
+      # full type context.
+      glob: "web/**/*.{ts,tsx,js,jsx,mjs,mts,cts}"
+      run: cd web && npm run lint
     infra-ruff-format:
       glob: "infra/cli/**/*.py"
       run: uv run --project infra/cli ruff format --check

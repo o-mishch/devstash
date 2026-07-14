@@ -57,6 +57,8 @@ tmp
 .cursor/mcp.json
 
 *.png
+# ...except committed static assets the web build/deploy needs (e.g. the social OG card).
+!web/public/*.png
 .idea
 
 .projects/cache
@@ -88,3 +90,6 @@ infra/terraform/envs/local/devstash-config
 # go.work when it sees the nested tool modules; never commit it (it breaks tooling).
 go.work
 go.work.sum
+.ruff_cache
+.pytest_cache
+.mypy_cache

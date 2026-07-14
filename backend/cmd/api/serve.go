@@ -15,6 +15,7 @@ import (
 	"github.com/o-mishch/devstash/backend/internal/auth"
 	"github.com/o-mishch/devstash/backend/internal/collections"
 	"github.com/o-mishch/devstash/backend/internal/config"
+	"github.com/o-mishch/devstash/backend/internal/cspreport"
 	sqlcdb "github.com/o-mishch/devstash/backend/internal/db"
 	"github.com/o-mishch/devstash/backend/internal/email"
 	"github.com/o-mishch/devstash/backend/internal/items"
@@ -156,6 +157,11 @@ func runServe(ctx context.Context, cfg *config.Config, logger *slog.Logger) erro
 		search: search.Deps{
 			Store:  queries,
 			Logger: logger,
+		},
+		cspreport: cspreport.Deps{
+			Limiter: limiter,
+			Logger:  logger,
+			Cfg:     cspreport.Config{FailClosed: !cfg.RateLimitFailOpen},
 		},
 	}
 

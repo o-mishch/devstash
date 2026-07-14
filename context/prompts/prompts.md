@@ -3,7 +3,8 @@ Continue asking me until you have everything clear. During implementation, if yo
 
 Ask questions until you would have full context.
 
-
+      "Edit",
+      "Write",
 
 Critically and very precisely review everything in the directory `backend`.
 Make sure the project structure, design, patterns, and idioms strictly follow native Golang modern best practices.

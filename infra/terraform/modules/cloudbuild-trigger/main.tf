@@ -43,6 +43,7 @@ resource "google_cloudbuild_trigger" "devstash" {
         entrypoint = try(step.value.entrypoint, null)
         dir        = try(step.value.dir, null)
         args       = step.value.args
+        env        = try(step.value.env, null)
       }
     }
 

@@ -202,6 +202,10 @@ module "web_cloudbuild_trigger" {
       entrypoint = "npm"
       dir        = "web"
       args       = ["run", "build"]
+      # The SPA bakes absolute, crawler-facing URLs (canonical, og:url, sitemap, JSON-LD)
+      # at build time via VITE_SITE_URL — sourced from firebase_custom_domain, the single
+      # source of truth for where the site is served, so it auto-flips at the apex cutover.
+      env = ["VITE_SITE_URL=https://${var.firebase_custom_domain}"]
     },
     {
       # Official Firebase CLI builder image; its entrypoint is `firebase`, so no entrypoint

@@ -17,6 +17,7 @@ import (
 var publicOperations = map[string]bool{
 	"get-health":               true, // liveness probe
 	"get-readiness":            true, // readiness probe
+	"csp-report":               true, // browser CSP-violation telemetry (unauthenticated, out-of-band)
 	"auth-login":               true, // establishes the session
 	"auth-register":            true, // no session yet
 	"auth-verify-email":        true, // consumes an emailed token

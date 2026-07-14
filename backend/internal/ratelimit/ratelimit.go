@@ -30,6 +30,7 @@ const (
 	BucketConfirmLoginEmail    = "confirmLoginEmail"    // 5 / 15m  (ip)
 	BucketCredentialEmail      = "credentialEmail"      // #nosec G101 // 5 / 15m (userId)
 	BucketItemMutation         = "itemMutation"         // 120 / 1h (userId) — item create/update/delete/favorite/pinned
+	BucketCSPReport            = "cspReport"            // 30 / 1m  (ip) — public CSP-violation telemetry, flood guard
 )
 
 // limits maps each bucket to its GCRA limit. Rate+Burst equal to the window count
@@ -48,6 +49,7 @@ var limits = map[string]redis_rate.Limit{
 	BucketConfirmLoginEmail:    {Rate: 5, Burst: 5, Period: 15 * time.Minute},
 	BucketCredentialEmail:      {Rate: 5, Burst: 5, Period: 15 * time.Minute},
 	BucketItemMutation:         {Rate: 120, Burst: 120, Period: time.Hour},
+	BucketCSPReport:            {Rate: 30, Burst: 30, Period: time.Minute},
 }
 
 // Decision is the outcome of a rate-limit check. RetryAfter is the wait until the

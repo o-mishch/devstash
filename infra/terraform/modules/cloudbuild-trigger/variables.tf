@@ -56,7 +56,8 @@ variable "substitutions" {
 # One entry per Cloud Build step. `entrypoint` is optional (defaults to the image's own
 # entrypoint, e.g. the docker builder or the firebase image's `firebase`); `dir` is optional
 # (working directory under /workspace — set to "web" so npm/firebase steps run where
-# package.json + firebase.json live); `args` is required.
+# package.json + firebase.json live); `args` is required. `env` is optional — a list of
+# "KEY=value" strings injected into that step's environment (e.g. build-time VITE_* vars).
 variable "build_steps" {
   type = list(object({
     id         = string
@@ -64,6 +65,7 @@ variable "build_steps" {
     entrypoint = optional(string)
     dir        = optional(string)
     args       = list(string)
+    env        = optional(list(string))
   }))
 }
 

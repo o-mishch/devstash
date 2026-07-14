@@ -9,6 +9,7 @@ import (
 
 	"github.com/o-mishch/devstash/backend/internal/auth"
 	"github.com/o-mishch/devstash/backend/internal/collections"
+	"github.com/o-mishch/devstash/backend/internal/cspreport"
 	"github.com/o-mishch/devstash/backend/internal/health"
 	"github.com/o-mishch/devstash/backend/internal/items"
 	"github.com/o-mishch/devstash/backend/internal/middleware"
@@ -24,6 +25,7 @@ type domains struct {
 	items       items.Deps
 	collections collections.Deps
 	search      search.Deps
+	cspreport   cspreport.Deps
 }
 
 // newRouter builds the HTTP handler: the Huma API on the stdlib net/http.ServeMux
@@ -138,11 +140,13 @@ func humaConfig(docsEnabled bool) huma.Config {
 
 // registerRoutes attaches every domain's operations to the API. Each domain owns its
 // Register func; health carries the liveness/readiness probes (readiness pings the DB),
-// auth the Phase 1 session surface, and items/collections/search the Phase 2 CRUD surface.
+// auth the Phase 1 session surface, items/collections/search the Phase 2 CRUD surface,
+// and cspreport the public CSP-violation telemetry sink.
 func registerRoutes(api huma.API, d domains, readiness health.Pinger) {
 	health.Register(api, readiness)
 	auth.Register(api, d.auth)
 	items.Register(api, d.items)
 	collections.Register(api, d.collections)
 	search.Register(api, d.search)
+	cspreport.Register(api, d.cspreport)
 }
