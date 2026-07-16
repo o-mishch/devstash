@@ -371,6 +371,12 @@ func (q *Queries) GetItemTypeByName(ctx context.Context, arg GetItemTypeByNamePa
 }
 
 const listFavoriteItems = `-- name: ListFavoriteItems :many
+WITH total AS (
+    SELECT COUNT(*)::bigint AS total
+    FROM items i
+    WHERE i."userId" = $1
+        AND i."isFavorite" = true
+)
 SELECT
     i.id,
     i.title,
@@ -383,11 +389,13 @@ SELECT
     it.name AS "itemTypeName",
     COALESCE(LEFT(i.description, 150), '')::text AS "descriptionPreview",
     COALESCE(LEFT(i.content, 150), '')::text AS "contentPreview",
-    COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'::text[])::text[] AS tags
+    COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'::text[])::text[] AS tags,
+    tc.total
 FROM items i
 JOIN item_types it ON it.id = i."itemTypeId"
 LEFT JOIN "_ItemTags" itag ON itag."A" = i.id
 LEFT JOIN tags t ON t.id = itag."B"
+CROSS JOIN total tc
 WHERE i."userId" = $1
     AND i."isFavorite" = true
     AND (
@@ -398,7 +406,7 @@ WHERE i."userId" = $1
                 AND (i."updatedAt", i.id) < (c."updatedAt", c.id)
         )
     )
-GROUP BY i.id, it.name
+GROUP BY i.id, it.name, tc.total
 ORDER BY i."updatedAt" DESC, i.id DESC
 LIMIT $3
 `
@@ -422,10 +430,13 @@ type ListFavoriteItemsRow struct {
 	DescriptionPreview string    `json:"descriptionPreview"`
 	ContentPreview     string    `json:"contentPreview"`
 	Tags               []string  `json:"tags"`
+	Total              int64     `json:"total"`
 }
 
 // GET /items?type=favorites — favorites use a distinct order (updatedAt desc, id desc),
 // so the keyset compares the (updatedAt, id) tuple instead of (isPinned, createdAt, id).
+// "total" counts the same owner+favorite filter minus the cursor predicate — see
+// ListRecentItems for why this is a CTE and not COUNT(*) OVER ().
 func (q *Queries) ListFavoriteItems(ctx context.Context, arg ListFavoriteItemsParams) ([]ListFavoriteItemsRow, error) {
 	rows, err := q.db.Query(ctx, listFavoriteItems, arg.Owner, arg.Cursor, arg.PageLimit)
 	if err != nil {
@@ -448,6 +459,7 @@ func (q *Queries) ListFavoriteItems(ctx context.Context, arg ListFavoriteItemsPa
 			&i.DescriptionPreview,
 			&i.ContentPreview,
 			&i.Tags,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
@@ -460,6 +472,15 @@ func (q *Queries) ListFavoriteItems(ctx context.Context, arg ListFavoriteItemsPa
 }
 
 const listItemsByCollection = `-- name: ListItemsByCollection :many
+WITH total AS (
+    SELECT COUNT(*)::bigint AS total
+    FROM items i
+    WHERE i."userId" = $1
+        AND EXISTS (
+            SELECT 1 FROM item_collections ic
+            WHERE ic."itemId" = i.id AND ic."collectionId" = $2
+        )
+)
 SELECT
     i.id,
     i.title,
@@ -472,11 +493,13 @@ SELECT
     it.name AS "itemTypeName",
     COALESCE(LEFT(i.description, 150), '')::text AS "descriptionPreview",
     COALESCE(LEFT(i.content, 150), '')::text AS "contentPreview",
-    COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'::text[])::text[] AS tags
+    COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'::text[])::text[] AS tags,
+    tc.total
 FROM items i
 JOIN item_types it ON it.id = i."itemTypeId"
 LEFT JOIN "_ItemTags" itag ON itag."A" = i.id
 LEFT JOIN tags t ON t.id = itag."B"
+CROSS JOIN total tc
 WHERE i."userId" = $1
     AND EXISTS (
         SELECT 1 FROM item_collections ic
@@ -490,7 +513,7 @@ WHERE i."userId" = $1
                 AND (i."isPinned", i."createdAt", i.id) < (c."isPinned", c."createdAt", c.id)
         )
     )
-GROUP BY i.id, it.name
+GROUP BY i.id, it.name, tc.total
 ORDER BY i."isPinned" DESC, i."createdAt" DESC, i.id DESC
 LIMIT $4
 `
@@ -515,9 +538,12 @@ type ListItemsByCollectionRow struct {
 	DescriptionPreview string    `json:"descriptionPreview"`
 	ContentPreview     string    `json:"contentPreview"`
 	Tags               []string  `json:"tags"`
+	Total              int64     `json:"total"`
 }
 
 // GET /items?type=collection&collectionId=... — same keyset order, membership-filtered.
+// "total" counts the same owner+membership filter minus the cursor predicate — see
+// ListRecentItems for why this is a CTE and not COUNT(*) OVER ().
 func (q *Queries) ListItemsByCollection(ctx context.Context, arg ListItemsByCollectionParams) ([]ListItemsByCollectionRow, error) {
 	rows, err := q.db.Query(ctx, listItemsByCollection,
 		arg.Owner,
@@ -545,6 +571,7 @@ func (q *Queries) ListItemsByCollection(ctx context.Context, arg ListItemsByColl
 			&i.DescriptionPreview,
 			&i.ContentPreview,
 			&i.Tags,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
@@ -557,6 +584,13 @@ func (q *Queries) ListItemsByCollection(ctx context.Context, arg ListItemsByColl
 }
 
 const listItemsByType = `-- name: ListItemsByType :many
+WITH total AS (
+    SELECT COUNT(*)::bigint AS total
+    FROM items i
+    JOIN item_types it ON it.id = i."itemTypeId"
+    WHERE i."userId" = $1
+        AND it.name = $2
+)
 SELECT
     i.id,
     i.title,
@@ -569,11 +603,13 @@ SELECT
     it.name AS "itemTypeName",
     COALESCE(LEFT(i.description, 150), '')::text AS "descriptionPreview",
     COALESCE(LEFT(i.content, 150), '')::text AS "contentPreview",
-    COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'::text[])::text[] AS tags
+    COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'::text[])::text[] AS tags,
+    tc.total
 FROM items i
 JOIN item_types it ON it.id = i."itemTypeId"
 LEFT JOIN "_ItemTags" itag ON itag."A" = i.id
 LEFT JOIN tags t ON t.id = itag."B"
+CROSS JOIN total tc
 WHERE i."userId" = $1
     AND it.name = $2
     AND (
@@ -584,7 +620,7 @@ WHERE i."userId" = $1
                 AND (i."isPinned", i."createdAt", i.id) < (c."isPinned", c."createdAt", c.id)
         )
     )
-GROUP BY i.id, it.name
+GROUP BY i.id, it.name, tc.total
 ORDER BY i."isPinned" DESC, i."createdAt" DESC, i.id DESC
 LIMIT $4
 `
@@ -609,9 +645,12 @@ type ListItemsByTypeRow struct {
 	DescriptionPreview string    `json:"descriptionPreview"`
 	ContentPreview     string    `json:"contentPreview"`
 	Tags               []string  `json:"tags"`
+	Total              int64     `json:"total"`
 }
 
 // GET /items?type=type&typeName=... — same keyset order, filtered to one item type name.
+// "total" counts the same owner+type filter minus the cursor predicate — see ListRecentItems
+// for why this is a CTE and not COUNT(*) OVER ().
 func (q *Queries) ListItemsByType(ctx context.Context, arg ListItemsByTypeParams) ([]ListItemsByTypeRow, error) {
 	rows, err := q.db.Query(ctx, listItemsByType,
 		arg.Owner,
@@ -639,6 +678,7 @@ func (q *Queries) ListItemsByType(ctx context.Context, arg ListItemsByTypeParams
 			&i.DescriptionPreview,
 			&i.ContentPreview,
 			&i.Tags,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
@@ -652,6 +692,11 @@ func (q *Queries) ListItemsByType(ctx context.Context, arg ListItemsByTypeParams
 
 const listRecentItems = `-- name: ListRecentItems :many
 
+WITH total AS (
+    SELECT COUNT(*)::bigint AS total
+    FROM items i
+    WHERE i."userId" = $1
+)
 SELECT
     i.id,
     i.title,
@@ -664,11 +709,13 @@ SELECT
     it.name AS "itemTypeName",
     COALESCE(LEFT(i.description, 150), '')::text AS "descriptionPreview",
     COALESCE(LEFT(i.content, 150), '')::text AS "contentPreview",
-    COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'::text[])::text[] AS tags
+    COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}'::text[])::text[] AS tags,
+    tc.total
 FROM items i
 JOIN item_types it ON it.id = i."itemTypeId"
 LEFT JOIN "_ItemTags" itag ON itag."A" = i.id
 LEFT JOIN tags t ON t.id = itag."B"
+CROSS JOIN total tc
 WHERE i."userId" = $1
     AND (
         $2::text IS NULL
@@ -678,7 +725,7 @@ WHERE i."userId" = $1
                 AND (i."isPinned", i."createdAt", i.id) < (c."isPinned", c."createdAt", c.id)
         )
     )
-GROUP BY i.id, it.name
+GROUP BY i.id, it.name, tc.total
 ORDER BY i."isPinned" DESC, i."createdAt" DESC, i.id DESC
 LIMIT $3
 `
@@ -702,6 +749,7 @@ type ListRecentItemsRow struct {
 	DescriptionPreview string    `json:"descriptionPreview"`
 	ContentPreview     string    `json:"contentPreview"`
 	Tags               []string  `json:"tags"`
+	Total              int64     `json:"total"`
 }
 
 // Items domain queries (Phase 2). Every read and write is scoped by the session
@@ -716,7 +764,25 @@ type ListRecentItemsRow struct {
 // every type — a file/image row now carries its tags/url instead of the lossy []/null the
 // TS optimization dropped. The wire shape is a superset, never missing a field.
 // GET /items?type=recent. Keyset pagination on (isPinned desc, createdAt desc, id desc);
-// LIMIT is PAGE_SIZE+1 so the handler detects hasMore. A null cursor is the first page.
+// LIMIT is the caller's clamped page size + 1 so the handler detects hasMore. A null cursor
+// is the first page.
+//
+// "total" is the size of the WHOLE owner-scoped set and is deliberately a CTE, NOT a
+// COUNT(*) OVER () window function: a window is evaluated AFTER the WHERE clause, so it would
+// only count the rows at-or-after the cursor and report a total that shrinks as the user
+// pages — worse than no total at all. The CTE repeats the owner filter but NOT the cursor
+// predicate, so every page reports the same number. It stays in this statement (CROSS JOIN of
+// a guaranteed single row, folded into GROUP BY) rather than becoming a second query: that is
+// one round-trip instead of two on a connection-limited Neon, and the count is evaluated in
+// the SAME snapshot as the page, so total can never disagree with the rows shipped beside it.
+//
+// The CTE is NOT gated on a null cursor, even though only the first page's total is ever read
+// (see totalOf in list.go). Gating it — `AND sqlc.narg('cursor')::text IS NULL` in the CTE's
+// WHERE — does work: Postgres collapses it to a One-Time Filter and skips the scan on cursored
+// pages. It is just not worth the branch. Measured on 5k owner rows (EXPLAIN ANALYZE, cursored
+// page): the count costs 0.6ms of an 11.5ms query, and gating it returned 10.9ms vs 11.5ms.
+// The page's own scan dominates by ~20x, so the gate buys ~5% for a conditional in four
+// queries. Re-measure before reopening this; don't reason about it from the shape of the SQL.
 func (q *Queries) ListRecentItems(ctx context.Context, arg ListRecentItemsParams) ([]ListRecentItemsRow, error) {
 	rows, err := q.db.Query(ctx, listRecentItems, arg.Owner, arg.Cursor, arg.PageLimit)
 	if err != nil {
@@ -739,6 +805,7 @@ func (q *Queries) ListRecentItems(ctx context.Context, arg ListRecentItemsParams
 			&i.DescriptionPreview,
 			&i.ContentPreview,
 			&i.Tags,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}

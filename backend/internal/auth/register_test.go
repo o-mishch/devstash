@@ -27,7 +27,7 @@ func newFlowService(
 		Limiter: lim,
 		IDs:     func() string { return "generated-id" },
 		Logger:  discardLogger(),
-		Cfg:     Config{OutboundEmailEnabled: outbound, AppURL: "https://app.test"},
+		Cfg:     Config{OutboundEmailEnabled: outbound, SPAOrigin: "https://app.test"},
 	})
 }
 

@@ -54,12 +54,16 @@ type fakeItemStore struct {
 	lastCreate sqlcdb.CreateItemParams
 	lastUpdate sqlcdb.UpdateItemParams
 	lastOwner  string
+	// lastPageLimit records the LIMIT the handler asked the store for, so a test can assert
+	// the caller-supplied `limit` was clamped before it ever reached the query.
+	lastPageLimit int32
 }
 
 func (f *fakeItemStore) ListRecentItems(
 	_ context.Context, arg sqlcdb.ListRecentItemsParams,
 ) ([]sqlcdb.ListRecentItemsRow, error) {
 	f.lastOwner = arg.Owner
+	f.lastPageLimit = arg.PageLimit
 	return f.recent, f.listErr
 }
 
@@ -67,6 +71,7 @@ func (f *fakeItemStore) ListItemsByType(
 	_ context.Context, arg sqlcdb.ListItemsByTypeParams,
 ) ([]sqlcdb.ListItemsByTypeRow, error) {
 	f.lastOwner = arg.Owner
+	f.lastPageLimit = arg.PageLimit
 	return f.byType, f.listErr
 }
 
@@ -74,6 +79,7 @@ func (f *fakeItemStore) ListItemsByCollection(
 	_ context.Context, arg sqlcdb.ListItemsByCollectionParams,
 ) ([]sqlcdb.ListItemsByCollectionRow, error) {
 	f.lastOwner = arg.Owner
+	f.lastPageLimit = arg.PageLimit
 	return f.byColl, f.listErr
 }
 
@@ -81,6 +87,7 @@ func (f *fakeItemStore) ListFavoriteItems(
 	_ context.Context, arg sqlcdb.ListFavoriteItemsParams,
 ) ([]sqlcdb.ListFavoriteItemsRow, error) {
 	f.lastOwner = arg.Owner
+	f.lastPageLimit = arg.PageLimit
 	return f.favorites, f.listErr
 }
 

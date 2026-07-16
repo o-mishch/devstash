@@ -6,6 +6,34 @@
 # environment stays up permanently; Cloud Run's own min-instances=0 already gives scale-to-
 # zero cost efficiency.
 
+locals {
+  # The two origins, each written down exactly once. Everything that needs "where the SPA
+  # lives" or "where the API lives" derives from these — see origin_env below and the web
+  # trigger's VITE_* env.
+  spa_origin = "https://${var.firebase_custom_domain}"
+  api_origin = "https://${var.app_domain}"
+
+  # Non-secret env vars whose value is a derived origin, mapped NAME -> origin. Kept here rather
+  # than in var.app_env_vars' default because Terraform forbids variable/local refs in a default;
+  # deriving them (not hardcoding) makes the apex cutover a one-variable change instead of
+  # silently leaving the backend trusting only `beta.`, which would make CrossOriginProtection
+  # 403 every state-changing request from the new origin (a total API outage that fails closed,
+  # but fails). Each is load-bearing:
+  #   - ALLOWED_ORIGINS  backend CORS allowlist AND CSRF trusted-origin allowlist (config.go)
+  #   - SPA_ORIGIN       where the OAuth callback 302s back to
+  #   - API_BASE_URL     this service's own origin, used to build the registered OAuth redirect_uri
+  origin_env = {
+    ALLOWED_ORIGINS = local.spa_origin
+    SPA_ORIGIN      = local.spa_origin
+    API_BASE_URL    = local.api_origin
+  }
+
+  app_env_vars = concat(
+    [for name, value in local.origin_env : { name = name, value = value, secret_name = null, secret_version = "latest" }],
+    var.app_env_vars,
+  )
+}
+
 resource "google_project_service" "apis" {
   for_each = toset([
     "run.googleapis.com",
@@ -45,7 +73,7 @@ module "cloud_run" {
   image               = var.cloud_run_initial_image
   min_instance_count  = var.cloud_run_min_instances
   max_instance_count  = var.cloud_run_max_instances
-  env                 = var.app_env_vars
+  env                 = local.app_env_vars
   domain              = var.app_domain
   deletion_protection = true
   # ON since the 2026-07-13 cutover (var.enable_domain_mapping default flipped to true): maps
@@ -202,10 +230,22 @@ module "web_cloudbuild_trigger" {
       entrypoint = "npm"
       dir        = "web"
       args       = ["run", "build"]
-      # The SPA bakes absolute, crawler-facing URLs (canonical, og:url, sitemap, JSON-LD)
-      # at build time via VITE_SITE_URL — sourced from firebase_custom_domain, the single
-      # source of truth for where the site is served, so it auto-flips at the apex cutover.
-      env = ["VITE_SITE_URL=https://${var.firebase_custom_domain}"]
+      # The SPA bakes two absolute origins at build time:
+      #   VITE_SITE_URL     — crawler-facing self URLs (canonical, og:url, sitemap, JSON-LD),
+      #                       sourced from firebase_custom_domain (where the site is served),
+      #                       so it auto-flips at the apex cutover.
+      #   VITE_API_BASE_URL — the Cloud Run backend origin the client calls (cross-origin),
+      #                       sourced from app_domain, the single source of truth for the API.
+      # Both mirror the web code's fallbacks (site-config.ts / lib/api/config.ts); wiring them
+      # here keeps the deployed origins driven by the same Terraform vars as the infrastructure.
+      # Both reuse the SAME locals as the backend env — VITE_SITE_URL shares local.spa_origin
+      # with ALLOWED_ORIGINS/SPA_ORIGIN, and VITE_API_BASE_URL shares local.api_origin with
+      # API_BASE_URL — so the SPA's self-URL, the API's own origin, and the API's trust of the
+      # SPA cannot drift apart.
+      env = [
+        "VITE_SITE_URL=${local.spa_origin}",
+        "VITE_API_BASE_URL=${local.api_origin}",
+      ]
     },
     {
       # Official Firebase CLI builder image; its entrypoint is `firebase`, so no entrypoint

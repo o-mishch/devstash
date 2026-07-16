@@ -251,14 +251,14 @@ func TestOAuthStateSingleUse(t *testing.T) {
 	s := newTestTokens(t)
 	ctx := t.Context()
 
-	raw, err := s.CreateOAuthState(ctx, "github")
+	raw, err := s.CreateOAuthState(ctx, OAuthState{Provider: "github", Redirect: "/items/note"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 
-	provider, ok, err := s.ConsumeOAuthState(ctx, raw)
-	if err != nil || !ok || provider != "github" {
-		t.Fatalf("consume = %q, %v, %v; want github, true, nil", provider, ok, err)
+	state, ok, err := s.ConsumeOAuthState(ctx, raw)
+	if err != nil || !ok || state.Provider != "github" || state.Redirect != "/items/note" {
+		t.Fatalf("consume = %+v, %v, %v; want {github /items/note}, true, nil", state, ok, err)
 	}
 	// Single-use: a second consume misses (the GETDEL already burned it).
 	if _, ok, _ := s.ConsumeOAuthState(ctx, raw); ok {
@@ -365,7 +365,7 @@ func TestTokensStoreErrorPaths(t *testing.T) {
 	if _, err := s.ConsumeCredentialEmail(ctx, "x", CredentialEmailPayload{}); err == nil {
 		t.Error("ConsumeCredentialEmail error = nil, want a redis error")
 	}
-	if _, err := s.CreateOAuthState(ctx, "github"); err == nil {
+	if _, err := s.CreateOAuthState(ctx, OAuthState{Provider: "github"}); err == nil {
 		t.Error("CreateOAuthState error = nil, want a redis error")
 	}
 	if _, _, err := s.ConsumeOAuthState(ctx, "x"); err == nil {

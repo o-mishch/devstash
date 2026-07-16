@@ -113,15 +113,15 @@ func TestLoadParsesRequiredEnvAndDefaults(t *testing.T) {
 	if cfg.DatabaseURL != "postgres://user:pass@localhost:5432/db" {
 		t.Errorf("DatabaseURL = %q, want the value from env", cfg.DatabaseURL)
 	}
-	// Env is set explicitly above; Port and AppURL fall back to envDefault.
+	// Env is set explicitly above; Port and SPAOrigin fall back to envDefault.
 	if cfg.Port != "8080" {
 		t.Errorf("Port = %q, want default 8080", cfg.Port)
 	}
 	if cfg.S3Region != "auto" {
 		t.Errorf("S3Region = %q, want default auto", cfg.S3Region)
 	}
-	if cfg.AppURL != "http://localhost:3000" {
-		t.Errorf("AppURL = %q, want default localhost:3000", cfg.AppURL)
+	if cfg.SPAOrigin != "http://localhost:3000" {
+		t.Errorf("SPAOrigin = %q, want default localhost:3000", cfg.SPAOrigin)
 	}
 	// TrustedProxyDepth defaults to 0 (Cloud Run direct: real client IP is rightmost).
 	if cfg.TrustedProxyDepth != 0 {

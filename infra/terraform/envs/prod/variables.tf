@@ -39,7 +39,7 @@ variable "app_domain" {
 
 variable "firebase_custom_domain" {
   type        = string
-  description = "Transition subdomain served by Firebase Hosting (apex stays on Vercel until final cutover)."
+  description = "Transition subdomain served by Firebase Hosting (apex stays on the legacy host until final cutover)."
   default     = "beta.devstash.one"
 }
 
@@ -88,16 +88,17 @@ variable "app_env_vars" {
     secret_version = optional(string, "latest")
   }))
   default = [
-    # Non-secret (plain). ALLOWED_ORIGINS/NEXT_PUBLIC_APP_URL = the transition SPA origin
-    # (beta.devstash.one); the Vercel apex is NOT trusted here. EMAIL_FROM must be a
-    # Resend-verified sender. API_BASE_URL = this service's own public origin, used to build
-    # the OAuth redirect_uri (API_BASE_URL + /auth/oauth/{github,google}/callback) — the exact
-    # value registered in the GitHub/Google OAuth app allowlists; distinct from
-    # NEXT_PUBLIC_APP_URL (the SPA the callback 302s back to).
+    # Non-secret (plain). EMAIL_FROM must be a Resend-verified sender.
+    #
+    # ALLOWED_ORIGINS, SPA_ORIGIN and API_BASE_URL are deliberately NOT here: all three are
+    # derived from firebase_custom_domain / app_domain in main.tf's `locals` (local.spa_origin
+    # and local.api_origin) so they follow the SPA and API at the apex cutover. A variable's
+    # `default` cannot reference another variable, which is the only reason they live in a
+    # different file from their siblings. API_BASE_URL is this service's own public origin,
+    # used to build the OAuth redirect_uri (API_BASE_URL + /auth/oauth/{github,google}/callback)
+    # — the exact value registered in the GitHub/Google OAuth app allowlists; distinct from
+    # SPA_ORIGIN (the SPA the callback 302s back to).
     { name = "ENV", value = "production" },
-    { name = "ALLOWED_ORIGINS", value = "https://beta.devstash.one" },
-    { name = "NEXT_PUBLIC_APP_URL", value = "https://beta.devstash.one" },
-    { name = "API_BASE_URL", value = "https://api.devstash.one" },
     { name = "EMAIL_FROM", value = "DevStash <noreply@devstash.one>" },
     # Every sensitive var, as one JSON blob (config.go hydrateFromAppConfig splits it).
     { name = "APP_CONFIG", secret_name = "devstash-prod-config" },
@@ -114,7 +115,7 @@ variable "app_config" {
 }
 
 # Matches the live trigger's filter EXACTLY. The Go-backend rewrite ships on the feature branch
-# for the whole strangler period (main still serves the Vercel Next.js app), so the trigger keeps
+# for the whole strangler period (main still serves the legacy Next.js app), so the trigger keeps
 # building this branch — deliberately NOT switched to ^main$. Kept identical to live so the import
 # is zero-diff on the branch filter; only the build substitutions (region/repo) change.
 variable "cloudbuild_branch_filter" {

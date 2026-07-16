@@ -25,7 +25,7 @@ firebase_custom_domain = "beta.devstash.one"
 
 # cloudbuild_branch_filter defaults to the live trigger's real filter
 # (^feature/go-backend-vite-spa$) — the rewrite ships on the feature branch for the whole
-# strangler period (main stays on Vercel). Deliberately NOT switched to ^main$. Override only
+# strangler period (main stays on the legacy host). Deliberately NOT switched to ^main$. Override only
 # if that integration branch is ever renamed.
 # cloudbuild_branch_filter = "^feature/go-backend-vite-spa$"
 
@@ -33,7 +33,7 @@ firebase_custom_domain = "beta.devstash.one"
 # ALL sensitive backend env vars, JSON-encoded into ONE secret (devstash-prod-config) so the app
 # needs a single Secret Manager version ($0). Keys are env-var NAMES; config.go splits them back
 # into env vars at boot. Write-only (secret_data_wo) — never stored in Terraform state, but they
-# DO live here in plaintext (gitignored). Non-secret vars (ENV/ALLOWED_ORIGINS/NEXT_PUBLIC_APP_URL/
+# DO live here in plaintext (gitignored). Non-secret vars (ENV/ALLOWED_ORIGINS/SPA_ORIGIN/
 # EMAIL_FROM) are plain defaults in variables.tf, not here.
 app_config = {
   DATABASE_URL       = "postgres://…" # Neon prod

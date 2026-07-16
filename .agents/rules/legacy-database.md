@@ -11,7 +11,7 @@ description: Database standards for DevStash — Prisma-only data access confine
 
 # Database
 
-> Standing rules for data access. When `context/current-feature.md` describes an in-flight migration that supersedes a rule here, the feature doc wins **for files in that feature's scope only** — update this doc once the migration lands. Architecture/boundary rules live in `nextjs-architecture.md`.
+> Standing rules for data access. When `context/current-feature.md` describes an in-flight migration that supersedes a rule here, the feature doc wins **for files in that feature's scope only** — update this doc once the migration lands. Architecture/boundary rules live in `legacy-nextjs-architecture.md`.
 
 - Use Prisma ORM for all database operations
 - All Prisma operations (`prisma.*`) must live in `src/lib/db/` so Server Actions, services, API routes, and server components import data access from one layer rather than calling Prisma directly.
@@ -38,6 +38,5 @@ export async function getItemsByType(userId: string, type: string) {
   reads/writes must reflect the latest committed state. Keep them in `src/lib/db/`, keep the Prisma
   access centralized, and add a short comment explaining why the helper is intentionally uncached when
   the freshness requirement is not obvious.
-- Always use `prisma migrate dev` for schema changes (not `db push`)
-- Run `prisma migrate status` before committing to verify migrations are in sync
-- Production deployments must run `prisma migrate deploy` before the app starts
+- **The Prisma schema is frozen** — goose (`backend/db/migrations/`) owns all new schema changes, for both stacks' data. See `boundary.md`. `prisma migrate dev` may run **only** if something is still Prisma-side and genuinely needs a schema fix; **never** `prisma db push`.
+- If a Prisma-side migration is genuinely warranted: run `prisma migrate status` before committing to verify migrations are in sync. Production deployments run `prisma migrate deploy` before the app starts.

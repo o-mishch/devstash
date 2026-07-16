@@ -1,143 +1,74 @@
 ---
 trigger: glob
 globs: ["backend/**/*.go"]
+paths:
+  - "backend/**/*.go"
+description: Standards for the Go backend (Huma v2 + sqlc + goose on Cloud Run) — vertical-slice architecture, validation/errors, logging, IDOR scoping, data access, and testing. Loads when editing any Go file under backend/. Loop/iteration style lives in go-iteration.md (same glob). Does not apply to backend/exercise/, which is an unrelated learning course.
 ---
 
 # Go Coding Standards
 
-## Iteration style
+`backend/` is a 100% Go module — no `package.json`, npm, or Node tooling anywhere inside it.
 
-**Choose the iteration form by this priority ladder.** Reach for the lowest-numbered option that fits the task; only drop to the next tier when the current one genuinely doesn't apply. Go 1.23+ has first-class iterator support via `iter.Seq` / `iter.Seq2`, the `slices`/`maps` algorithm helpers, and the `slices.Values` / `maps.Keys` / `maps.Values` range-over-func adapters — this ladder is built on them.
+**Not in scope:** `backend/exercise/` is an independent Go learning course, not DevStash. Never review, edit, or flag it; its build errors are expected. Scope any verification with `go list ./... | grep -v /exercise`.
 
-1. **`slices` / `maps` algorithm helper — first choice.** If the operation is filter, sort, search, contains, min/max, dedup, reverse, equal, clone, etc., use the stdlib helper. This is the most idiomatic form: no explicit loop at all, intent stated declaratively.
-2. **Modern Go 1.23+ value-only range — when no helper fits.** For arbitrary per-element work (side effects, calling `yield`, accumulation) there is no stdlib helper, so walk the collection with a **single-variable value range**: `for x := range slices.Values(s)`, `maps.Values(m)`, `maps.Keys(m)`, `maps.All(m)`, or a custom `iter.Seq`. No index counters, no `_`-discarded keys, no `k, v` two-variable range over a plain slice/map.
-3. **Classic `for` — last resort only.** Allowed **only** when neither tier 1 nor tier 2 applies *and* the classic form genuinely reads clearer than an iterator. See [When a classic loop is allowed](#when-a-classic-loop-is-allowed) for the concrete cases; each such loop must carry a one-line comment saying why.
+Loop and iteration style — the `slices`/`maps`-helper → value-only-range → classic-`for` ladder — lives in `go-iteration.md`, which loads on the same glob.
 
-### ❌ Do NOT reach for a classic loop when tier 1 or 2 fits
+## Architecture — vertical slices
 
-These are the common mistakes — a helper or a value range exists, so the classic form is wrong here:
+One package per domain under `internal/`, **one file per operation**. `internal/items` and `internal/collections` are the reference implementations; copy their shape.
 
-```go
-// ❌ index counter where a value range (or slices helper) fits
-for i := 0; i < len(items); i++ {
-    process(items[i])
-}
+- `<domain>.go` holds `Deps`, `Service`, `New(Deps) *Service`, `Register(api huma.API, d Deps)`, the store interface, and `enforceLimit`. Operations live in `create.go`, `get.go`, `list.go`, `update.go`, `delete.go`, and so on. Supporting files (`validate.go`, `constants.go`) are fine — the rule is that no file holds two operations.
+- `Deps` is the exported constructor input and is **embedded verbatim** in `Service`. Methods take pointer receivers; handlers are stateless closures over the one `Service` built in `Register`.
+- **Store interfaces are consumer-defined and declared in-package** — narrow, covering only what that domain calls, satisfied by the sqlc `*Queries`. Never a shared global `Querier`.
+- Cross-domain wire DTOs go in `internal/apitypes`. Huma keys OpenAPI schema components by Go base-name, so a type defined twice under the same name emits a duplicate component — extract it instead.
+- New row IDs come from the injected `IDs func() string` (UUIDv7 in production), never generated inline — that seam is what makes writes testable.
 
-// ❌ keyed range over a slice when you only use the value — use slices.Values
-for _, item := range items {
-    process(item)
-}
+**Every route is a Huma operation.** Uniform OpenAPI, `Operation.Security`-driven middleware. No `authedRoute`/`publicRoute` wrappers.
 
-// ❌ two-variable range over a map when a value/key range fits — use maps.Values / maps.Keys
-for k, v := range myMap {
-    use(k, v)
-}
-```
+## Validation and errors
 
-### ✅ Tier 1 & 2 — helpers, then value-only range (Go 1.23+)
+- Presence, format, length, and enum go in **Huma struct tags**. Anything tags can't express goes in a `huma.Resolver` — `func (in *xInput) Resolve(_ huma.Context) []error`. No `go-playground/validator`, no hand-rolled `parseOr422`.
+- Errors are **Huma-native RFC 9457**. No hand-rolled `problem()`/`json()` helpers.
+- A 500 returns the opaque `genericErrorMessage`; the real error is logged, never leaked to the client.
 
-Reach for a `slices`/`maps` helper first; drop to a value range only when you need per-element work no helper expresses.
+## Logging
 
-```go
-import (
-    "iter"
-    "maps"
-    "slices"
-)
+`internal/logging.New` builds one `*slog.Logger`, injected explicitly into the components that need it. There is no `slog.SetDefault` and no package-level logger — take the logger as a dependency. (`slog.Default()` in `newHumaAPI` is the spec-generation path only: no server, no requests.)
 
-// Prefer an algorithm helper — no explicit loop at all
-filtered := slices.DeleteFunc(items, func(item Item) bool {
-    return item.Archived
-})
+- **Always the `*Context` variant** — `ErrorContext(ctx, …)`, `InfoContext`, `WarnContext` — on any path that has a `ctx`. `logging.ctxHandler` folds the request id onto the record from the context, so a plain `logger.Error` compiles and logs but silently drops request correlation. Plain calls are correct **only** where no ctx exists (startup, config load, CLI subcommands).
+- **Message first, then loose key-value pairs**: `logger.ErrorContext(ctx, "register failed", "err", err)`. This is the reverse of the Pino convention in `legacy-coding-standards.md § Logging`, which governs `src/` only — do not carry that order across stacks. No typed `slog.Attr` in call sites; the codebase uses bare kv pairs throughout.
+- **Errors go under `"err"`.** Reserve `"error"` for a field that is itself named `error` in an external contract (e.g. the OAuth callback's `error` query param).
+- **Messages are lowercase and scoped** — `"auth: session user lookup failed"`, `"verify-email: consume token failed"`. Scope-prefix when the package has several flows.
+- **Levels:** `Error` for a failed operation, `Warn` for degraded-but-handled, `Info` for key state changes. Prod runs at Info — `Debug` is dev-only.
 
-// Value-only range over a slice — the default for walking a slice
-for item := range slices.Values(items) {
-    process(item)
-}
+What a 500 may reveal to the client is covered in § Validation and errors; it is not repeated here.
 
-// Value-only range over a custom iterator (range-over-func, Go 1.23)
-for item := range someIterator() {
-    process(item)
-}
+## IDOR and access
 
-// Map VALUES only
-for v := range maps.Values(myMap) {
-    use(v)
-}
+See `security-principles.md` for the stack-agnostic IDOR/token/validation principles this section implements.
 
-// Map KEYS only
-for k := range maps.Keys(myMap) {
-    use(k)
-}
+- **Every sqlc query is scoped by the session user**, taken from `middleware.CurrentUserID(ctx)` — never from a path, body, or query value. This is the rule with no exceptions.
+- `cmd/api/security_guard_test.go` is a default-deny gate: an operation is either secured or on the reviewed `publicOperations` allowlist. It must stay green. Adding a secured op to the allowlist to make a test pass is never the fix.
+- Rate-limit buckets live in `internal/ratelimit` as `Bucket*` constants. Add one only where parity or a real abuse surface justifies it.
 
-// Both key and value — go through maps.All, never a bare `range myMap`
-for k, v := range maps.All(myMap) {
-    use(k, v)
-}
+## Data access
 
-// Integer counts — value-only range over an int (Go 1.22+), never `for i := 0; ...`
-for i := range n {
-    use(i)
-}
+- **Writes are single multi-CTE statements** (insert/update, connect-or-create tags, relink collections, `RETURNING`) — one interface method, fakeable, no transaction plumbing.
+- **Reads use keyset (row-value) pagination**, fetching N+1 to derive `hasMore`.
+- sqlc owns `internal/db` (generated from `backend/db/queries/**` via `backend/sqlc.yaml`) — never hand-edit it; regenerate.
+- goose owns all schema changes, migrations in `backend/db/migrations/` (a real directory, never a symlink into `prisma/`), embedded via `backend/db/embed.go`.
 
-// Sorted map keys
-for k := range slices.Sorted(maps.Keys(myMap)) {
-    use(k)
-}
-```
+## Testing
 
-Define iterators with `iter.Seq[V]` or `iter.Seq2[K, V]`:
+Stdlib `testing`, table-driven — `t.Run` per case, `t.Parallel()`, `t.Cleanup()`.
 
-```go
-// ✅ Define a domain iterator (the value range inside stays value-only)
-func ActiveItems(items []Item) iter.Seq[Item] {
-    return func(yield func(Item) bool) {
-        for item := range slices.Values(items) {
-            if !item.Archived && !yield(item) {
-                return
-            }
-        }
-    }
-}
+- **Assertions:** stdlib plus `google/go-cmp` (`cmpopts.IgnoreFields` for generated columns, `EquateApproxTime` for timestamps). **Do not import `testify` or Ginkgo.** `testify` appears in `go.mod` as an *indirect* dependency because `humatest` itself uses it — that is not a precedent for importing it directly.
+- **In-memory fakes are the default** — hand-written, map-backed, in-package (see `fakes_test.go` in `internal/items` / `internal/collections`).
+- **When you need to assert call sequence or arity at an external boundary** (OAuth exchange, Resend, S3, Stripe), use gomock there and only there. Everything else stays a fake. *(No gomock instance exists yet as of Phase 2 — Phase 3 will be the first.)*
+- **Handler tests** run in-process via Huma's `humatest`.
+- **Time and concurrency** use `testing/synctest` — see `internal/session`, `internal/ratelimit`.
+- **Real-SQL integration** uses `testcontainers-go` Postgres (`postgres:17-alpine`, `WithSnapshot`/`Restore`, pgx). **Never** point a test at the shared Neon `dev` branch.
+- **When you add a benchmark**, drive it with `testing.B.Loop`, not a hand-rolled `b.N` loop. *(No benchmarks exist yet.)*
 
-// ✅ Consume it
-for item := range ActiveItems(all) {
-    process(item)
-}
-```
-
-### ✅ Channels — concurrent streams
-
-Use channels for fan-out, pipelines, or work queues where goroutines produce values asynchronously:
-
-```go
-// Producer goroutine writes to a channel; consumer ranges over it.
-func streamResults(ctx context.Context) <-chan Result {
-    ch := make(chan Result)
-    go func() {
-        defer close(ch)
-        for r := range slices.Values(source) {
-            select {
-            case ch <- r:
-            case <-ctx.Done():
-                return
-            }
-        }
-    }()
-    return ch
-}
-
-// Consumer
-for result := range streamResults(ctx) {
-    handle(result)
-}
-```
-
-### When a classic loop is allowed
-
-Tier 3 — drop to a classic `for` only after tiers 1 and 2 have been ruled out, and only when it truly makes the code clearer. In practice that means one of these, and each such loop **must** carry a one-line comment stating which case applies and why:
-
-1. **Ranging a channel** — `for v := range ch` (the blocking, `await`-equivalent primitive; no iterator to prefer).
-2. **Parallel index + element arithmetic** — you need the index for something *other than* element access (offset math, writing back into a second slice at the same index). Even here prefer `for i := range s` (value-only int range) over a `for i := 0; ...` counter, and index `s[i]` inside.
-3. **Building an iterator's own body** where the `slices.Values`/`maps.*` adapters can't express the walk (e.g. two slices advanced in lockstep, or a `for {}` with a mid-loop break condition).
-4. **A genuinely clearer classic form** — a short, self-evident walk where wrapping it in `slices.Values` would add noise without adding clarity. This is a judgement call, not a blanket licence: if a tier-1 helper or a plain value range says it as clearly, use that instead.
+**Coverage is gated in CI** by `backend/.testcoverage.yml` — read it rather than restating its numbers. Two things worth knowing before you chase a number: the `internal/auth` override is anchored (`^internal/auth$`), so it is a **package aggregate**, not a per-file bar — per-file was deliberately abandoned because the drift forced repeated coverage-only follow-up passes. Generated code (`internal/db`, `*.sql.go`, `*_mock.go`) is excluded.

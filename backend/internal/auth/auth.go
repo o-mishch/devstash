@@ -65,9 +65,9 @@ type Sessions interface {
 
 // Config carries the non-secret auth settings the handlers need.
 type Config struct {
-	// AppURL is the SPA origin, used to build the redirectTo targets returned by
+	// SPAOrigin is the SPA origin, used to build the redirectTo targets returned by
 	// register/forgot-password (parity with the Next routes' redirect JSON).
-	AppURL string
+	SPAOrigin string
 	// OutboundEmailEnabled mirrors the Next app's outboundEmailEnabled kill-switch:
 	// when false, email verification is bypassed (auto-verify, no unverified gate).
 	OutboundEmailEnabled bool

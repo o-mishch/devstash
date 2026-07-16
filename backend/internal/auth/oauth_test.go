@@ -16,7 +16,7 @@ import (
 	"github.com/o-mishch/devstash/backend/internal/ratelimit"
 )
 
-const testAppURL = "https://beta.devstash.one"
+const testSPAOrigin = "https://beta.devstash.one"
 
 // fakeOAuthProvider is an in-memory OAuthProvider — the external token-exchange seam,
 // hand-faked (like fakeEmailer) so the callback branching is tested without real HTTP.
@@ -97,7 +97,7 @@ func newOAuthFixture(t *testing.T) *oauthFixture {
 		Providers: map[string]OAuthProvider{providerGitHub: gh},
 		IDs:       idSeq(),
 		Logger:    discardLogger(),
-		Cfg:       Config{AppURL: testAppURL},
+		Cfg:       Config{SPAOrigin: testSPAOrigin},
 	})
 	_, api := humatest.New(t)
 	registerOAuth(api, svc)
@@ -108,7 +108,13 @@ func newOAuthFixture(t *testing.T) *oauthFixture {
 // seedState mints a valid github state token and returns the raw value.
 func (f *oauthFixture) seedState(t *testing.T, provider string) string {
 	t.Helper()
-	raw, err := f.tokens.CreateOAuthState(t.Context(), provider)
+	return f.seedStateRedirect(t, provider, "")
+}
+
+// seedStateRedirect mints a state token carrying a post-auth redirect and returns the raw value.
+func (f *oauthFixture) seedStateRedirect(t *testing.T, provider, redirect string) string {
+	t.Helper()
+	raw, err := f.tokens.CreateOAuthState(t.Context(), OAuthState{Provider: provider, Redirect: redirect})
 	if err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -124,7 +130,7 @@ func (f *oauthFixture) callback(query string) *httptest.ResponseRecorder {
 // errors when explicitly primed, which these callers don't do). Used from table
 // closures that have no *testing.T in scope.
 func mintState(f *oauthFixture, provider string) string {
-	raw, _ := f.tokens.CreateOAuthState(context.Background(), provider)
+	raw, _ := f.tokens.CreateOAuthState(context.Background(), OAuthState{Provider: provider})
 	return raw
 }
 
@@ -164,6 +170,99 @@ func TestOAuthStartStateError(t *testing.T) {
 	}
 }
 
+func TestOAuthStartCarriesRedirect(t *testing.T) {
+	t.Parallel()
+	f := newOAuthFixture(t)
+
+	resp := f.api.Get("/auth/oauth/github/start?redirect=/items/note")
+	if resp.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body = %s", resp.Code, resp.Body.String())
+	}
+	// The redirect is stored on the state (not on the authorize URL) for the round-trip.
+	if got := f.tokens.states[f.gh.lastState]; got.Redirect != "/items/note" {
+		t.Errorf("stored redirect = %q, want /items/note", got.Redirect)
+	}
+}
+
+func TestOAuthStartDropsUnsafeRedirect(t *testing.T) {
+	t.Parallel()
+	f := newOAuthFixture(t)
+
+	// A protocol-relative target is an open-redirect attempt; the server drops it to "".
+	resp := f.api.Get("/auth/oauth/github/start?redirect=//evil.com")
+	if resp.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body = %s", resp.Code, resp.Body.String())
+	}
+	if got := f.tokens.states[f.gh.lastState].Redirect; got != "" {
+		t.Errorf("stored redirect = %q, want empty (unsafe target dropped)", got)
+	}
+}
+
+func TestOAuthCallbackHonorsRedirect(t *testing.T) {
+	t.Parallel()
+	f := newOAuthFixture(t)
+	state := f.seedStateRedirect(t, providerGitHub, "/items/note")
+
+	resp := f.callback("state=" + state + "&code=abc")
+
+	// New-user sign-in lands on the caller's deep link, not the default dashboard.
+	assertRedirect(t, resp, testSPAOrigin+"/items/note")
+}
+
+func TestOAuthCallbackConflictCarriesRedirect(t *testing.T) {
+	t.Parallel()
+	f := newOAuthFixture(t)
+	f.store.add(sqlcdb.User{ID: "user-1", Email: "new@example.com", Password: new(hashPassword(t, testPassword))})
+	state := f.seedStateRedirect(t, providerGitHub, "/items/note")
+
+	resp := f.callback("state=" + state + "&code=abc")
+
+	if resp.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302; body = %s", resp.Code, resp.Body.String())
+	}
+	// The redirect rides along to the link page so the flow still lands right after confirm.
+	loc := resp.Header().Get("Location")
+	if !strings.HasPrefix(loc, testSPAOrigin+"/link-account?") {
+		t.Fatalf("Location = %q, want link-account redirect", loc)
+	}
+	if !strings.Contains(loc, "redirect=%2Fitems%2Fnote") {
+		t.Errorf("Location = %q, want it to carry redirect=/items/note", loc)
+	}
+}
+
+func TestSanitizeOAuthRedirect(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"simple path", "/items/note", "/items/note"},
+		{"path with query and hash", "/collections/abc?tab=items#top", "/collections/abc?tab=items#top"},
+		{"not absolute-path", "items/note", ""},
+		{"userinfo injection", "@evil.com", ""},
+		{"absolute url", "https://evil.com", ""},
+		{"protocol relative", "//evil.com", ""},
+		{"backslash escape", "/\\evil.com", ""},
+		{"backslash midway", "/foo\\bar", ""},
+		{"encoded double slash", "/%2f%2fevil.com", ""},
+		{"encoded backslash", "/%5cevil.com", ""},
+		{"control char (CRLF)", "/foo\r\nSet-Cookie: x=1", ""},
+		{"auth loop sign-in", "/sign-in", ""},
+		{"auth loop trailing slash", "/link-account/", ""},
+		{"over length", "/" + strings.Repeat("a", maxRedirectLen), ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := sanitizeOAuthRedirect(tc.in); got != tc.want {
+				t.Errorf("sanitizeOAuthRedirect(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestOAuthCallbackNewUser(t *testing.T) {
 	t.Parallel()
 	f := newOAuthFixture(t)
@@ -171,7 +270,7 @@ func TestOAuthCallbackNewUser(t *testing.T) {
 
 	resp := f.callback("state=" + state + "&code=abc")
 
-	assertRedirect(t, resp, testAppURL+"/dashboard")
+	assertRedirect(t, resp, testSPAOrigin+"/dashboard")
 	// User + account created; session established.
 	if len(f.store.byEmail) != 1 {
 		t.Errorf("users created = %d, want 1", len(f.store.byEmail))
@@ -201,7 +300,7 @@ func TestOAuthCallbackNewUserUnverifiedEmail(t *testing.T) {
 	state := f.seedState(t, providerGitHub)
 
 	resp := f.callback("state=" + state + "&code=abc")
-	assertRedirect(t, resp, testAppURL+"/dashboard")
+	assertRedirect(t, resp, testSPAOrigin+"/dashboard")
 
 	// emailVerified stays NULL when the provider didn't assert verification.
 	u := f.store.byEmail["new@example.com"]
@@ -221,7 +320,7 @@ func TestOAuthCallbackReturningUser(t *testing.T) {
 
 	resp := f.callback("state=" + state + "&code=abc")
 
-	assertRedirect(t, resp, testAppURL+"/dashboard")
+	assertRedirect(t, resp, testSPAOrigin+"/dashboard")
 	if f.sess.authedUserID != "user-1" {
 		t.Errorf("session userID = %q, want user-1", f.sess.authedUserID)
 	}
@@ -248,7 +347,7 @@ func TestOAuthCallbackConflict(t *testing.T) {
 		t.Fatalf("status = %d, want 302; body = %s", resp.Code, resp.Body.String())
 	}
 	loc := resp.Header().Get("Location")
-	if !strings.HasPrefix(loc, testAppURL+"/link-account?token=") {
+	if !strings.HasPrefix(loc, testSPAOrigin+"/link-account?token=") {
 		t.Fatalf("Location = %q, want link-account redirect", loc)
 	}
 	// A pending link was minted carrying the primary email + identity.
@@ -267,7 +366,7 @@ func TestOAuthCallbackDenied(t *testing.T) {
 
 	resp := f.callback("error=access_denied")
 
-	assertRedirect(t, resp, testAppURL+"/sign-in?error="+oauthErrDenied)
+	assertRedirect(t, resp, testSPAOrigin+"/sign-in?error="+oauthErrDenied)
 	if f.gh.exchanges != 0 {
 		t.Error("provider exchange called on a denied callback")
 	}
@@ -312,7 +411,7 @@ func TestOAuthCallbackStateFailures(t *testing.T) {
 				tc.setup(f)
 			}
 			resp := f.callback(tc.query(f))
-			assertRedirect(t, resp, testAppURL+"/sign-in?error="+tc.want)
+			assertRedirect(t, resp, testSPAOrigin+"/sign-in?error="+tc.want)
 		})
 	}
 }
@@ -372,7 +471,7 @@ func TestOAuthCallbackExchangeFailures(t *testing.T) {
 			state := f.seedState(t, providerGitHub)
 			tc.setup(f)
 			resp := f.callback("state=" + state + "&code=abc")
-			assertRedirect(t, resp, testAppURL+"/sign-in?error="+tc.want)
+			assertRedirect(t, resp, testSPAOrigin+"/sign-in?error="+tc.want)
 		})
 	}
 }
@@ -390,7 +489,7 @@ func TestOAuthCallbackNewUserAccountRace(t *testing.T) {
 	state := f.seedState(t, providerGitHub)
 
 	resp := f.callback("state=" + state + "&code=abc")
-	assertRedirect(t, resp, testAppURL+"/dashboard")
+	assertRedirect(t, resp, testSPAOrigin+"/dashboard")
 	if f.sess.authedUserID == "" {
 		t.Error("session not established despite idempotent account race")
 	}

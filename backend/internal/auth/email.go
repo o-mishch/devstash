@@ -17,7 +17,7 @@ const (
 
 // Emailer sends the transactional auth emails. It is a consumer-defined interface
 // (implemented by internal/email over the Resend SDK) so handlers test against a
-// fake. Handlers build the action URLs (they own AppURL) and pass them in.
+// fake. Handlers build the action URLs (they own SPAOrigin) and pass them in.
 type Emailer interface {
 	SendVerification(ctx context.Context, to, verifyURL string) error
 	SendPasswordReset(ctx context.Context, to, resetURL string) error
