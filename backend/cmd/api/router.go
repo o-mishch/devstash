@@ -12,6 +12,7 @@ import (
 	"github.com/o-mishch/devstash/backend/internal/cspreport"
 	"github.com/o-mishch/devstash/backend/internal/health"
 	"github.com/o-mishch/devstash/backend/internal/items"
+	"github.com/o-mishch/devstash/backend/internal/me"
 	"github.com/o-mishch/devstash/backend/internal/middleware"
 	"github.com/o-mishch/devstash/backend/internal/search"
 	"github.com/o-mishch/devstash/backend/internal/session"
@@ -25,6 +26,7 @@ type domains struct {
 	items       items.Deps
 	collections collections.Deps
 	search      search.Deps
+	me          me.Deps
 	cspreport   cspreport.Deps
 }
 
@@ -148,5 +150,6 @@ func registerRoutes(api huma.API, d domains, readiness health.Pinger) {
 	items.Register(api, d.items)
 	collections.Register(api, d.collections)
 	search.Register(api, d.search)
+	me.Register(api, d.me)
 	cspreport.Register(api, d.cspreport)
 }

@@ -46,7 +46,7 @@ type Config struct {
 
 	// APIBaseURL is this service's own public origin, used to build the OAuth
 	// redirect_uri (APIBaseURL + /auth/oauth/{provider}/callback) — the value that must
-	// be registered in the GitHub/Google OAuth app allowlists. Distinct from AppURL (the
+	// be registered in the GitHub/Google OAuth app allowlists. Distinct from SPAOrigin (the
 	// SPA origin the callback 302s back to). Defaults to the local dev server; production
 	// sets it to https://api.devstash.one.
 	APIBaseURL string `env:"API_BASE_URL" envDefault:"http://localhost:8080"`
@@ -75,8 +75,9 @@ type Config struct {
 	// OpenAI
 	OpenAIAPIKey string `env:"OPENAI_API_KEY"`
 
-	// App
-	AppURL string `env:"NEXT_PUBLIC_APP_URL" envDefault:"http://localhost:3000"`
+	// App — the SPA origin the OAuth callback / email-action links 302 back to. Server-side
+	// only (never inlined into any client bundle), so it carries no framework-prefixed name.
+	SPAOrigin string `env:"SPA_ORIGIN" envDefault:"http://localhost:3000"`
 
 	// TrustedProxyDepth is how many trusted reverse-proxy hops sit in front of the
 	// service, counted from the RIGHT of X-Forwarded-For. The real client IP is the
@@ -98,7 +99,7 @@ type Config struct {
 	// AllowedOrigins is the explicit allowlist of browser origins permitted to make
 	// credentialed (cookie) requests — the SPA origin(s). It is BOTH the CORS
 	// response-header allowlist and the CSRF trusted-origin allowlist. During the
-	// migration the SPA is served from https://beta.devstash.one (the Vercel prod app at
+	// migration the SPA is served from https://beta.devstash.one (the legacy prod app at
 	// devstash.one / www is NOT here — it calls its own same-origin API, never this Go
 	// one). Empty in local dev (the Vite proxy makes the SPA same-origin, so CORS is off
 	// and CSRF still passes same-origin); it MUST be set in production.
@@ -111,7 +112,7 @@ type Config struct {
 	// the cookie is httpOnly so the SPA never reads it — so host-only is both sufficient
 	// and the tightest scope. Set a parent domain like ".devstash.one" ONLY if a cookie
 	// must be shared across multiple distinct subdomains (e.g. a separate SSE host); that
-	// widens exposure to every subdomain (incl. the Vercel app), so prefer empty.
+	// widens exposure to every subdomain (incl. the legacy app), so prefer empty.
 	CookieDomain string `env:"COOKIE_DOMAIN"`
 
 	// Email verification kill-switch (shared with the Next app). When "true", email

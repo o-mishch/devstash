@@ -1,8 +1,11 @@
 package items
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -118,6 +121,201 @@ func TestListTypeAndCollectionScope(t *testing.T) {
 	api2 := newTestAPI(t, baseDeps(store2), freeUser())
 	if resp := api2.Get("/items?type=collection&collectionId=c1"); resp.Code != http.StatusOK {
 		t.Fatalf("collection list status = %d; body = %s", resp.Code, resp.Body.String())
+	}
+}
+
+// decodePage unmarshals a GET /items response into the wire shape, so assertions read the
+// real decoded fields rather than substring-matching the JSON.
+func decodePage(t *testing.T, resp *httptest.ResponseRecorder) itemsPage {
+	t.Helper()
+	var got itemsPage
+	if err := json.Unmarshal(resp.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode items page: %v; body = %s", err, resp.Body.String())
+	}
+	return got
+}
+
+// recentRows builds n LightItem-shaped recent rows each carrying the given filtered-set total
+// (the real query CROSS JOINs the same count onto every row).
+func recentRows(n int, total int64) []sqlcdb.ListRecentItemsRow {
+	rows := make([]sqlcdb.ListRecentItemsRow, n)
+	// classic index range: i is both the write-back position and the row's id suffix.
+	for i := range rows {
+		rows[i] = sqlcdb.ListRecentItemsRow{
+			ID: "id-" + strconv.Itoa(i), Title: "t", ItemTypeName: "snippet", Tags: []string{}, Total: total,
+		}
+	}
+	return rows
+}
+
+func TestListLimitIsClampedToPageSize(t *testing.T) {
+	t.Parallel()
+
+	// A caller may narrow the page (the dashboard renders 6 of the 20 it used to be forced to
+	// fetch) but must never widen it: the store is only ever asked for the clamped size + 1.
+	tests := []struct {
+		name      string
+		query     string
+		wantFetch int32
+		wantLen   int
+	}{
+		{name: "absent falls back to the page size", query: "", wantFetch: itemsPageSize + 1, wantLen: itemsPageSize},
+		{name: "below the page size is honoured", query: "&limit=6", wantFetch: 7, wantLen: 6},
+		{name: "one is honoured", query: "&limit=1", wantFetch: 2, wantLen: 1},
+		{
+			name:      "exactly the page size is honoured",
+			query:     "&limit=20",
+			wantFetch: itemsPageSize + 1,
+			wantLen:   itemsPageSize,
+		},
+		{
+			name:      "above the page size clamps down",
+			query:     "&limit=500",
+			wantFetch: itemsPageSize + 1,
+			wantLen:   itemsPageSize,
+		},
+		{
+			name:      "zero falls back to the page size",
+			query:     "&limit=0",
+			wantFetch: itemsPageSize + 1,
+			wantLen:   itemsPageSize,
+		},
+		{
+			name:      "negative falls back to the page size",
+			query:     "&limit=-5",
+			wantFetch: itemsPageSize + 1,
+			wantLen:   itemsPageSize,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// 21 canned rows: more than any clamped page, so the handler always has to slice.
+			store := &fakeItemStore{recent: recentRows(itemsPageSize+1, 21)}
+			api := newTestAPI(t, baseDeps(store), freeUser())
+
+			resp := api.Get("/items?type=recent" + tc.query)
+			if resp.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body = %s", resp.Code, resp.Body.String())
+			}
+			if store.lastPageLimit != tc.wantFetch {
+				t.Errorf("store PageLimit = %d, want %d (clamped size + 1)", store.lastPageLimit, tc.wantFetch)
+			}
+			if got := decodePage(t, resp); len(got.Items) != tc.wantLen {
+				t.Errorf("returned %d items, want %d", len(got.Items), tc.wantLen)
+			}
+		})
+	}
+}
+
+func TestListTotalIsTheFilteredSetNotTheLoadedCount(t *testing.T) {
+	t.Parallel()
+
+	// total must describe the whole filtered set, so a count badge never claims a user with 57
+	// favorites has only the 20 that happen to be loaded. It rides on every row and is
+	// identical on every page — including the last one, where it must NOT collapse to len(items).
+	tests := []struct {
+		name        string
+		query       string
+		store       *fakeItemStore
+		wantTotal   int64
+		wantLen     int
+		wantHasMore bool
+	}{
+		{
+			name:      "empty set totals zero",
+			query:     "/items?type=recent",
+			store:     &fakeItemStore{},
+			wantTotal: 0,
+			wantLen:   0,
+		},
+		{
+			name:      "single page totals the whole set",
+			query:     "/items?type=recent",
+			store:     &fakeItemStore{recent: recentRows(3, 3)},
+			wantTotal: 3,
+			wantLen:   3,
+		},
+		{
+			name:        "multi-page total exceeds the loaded page",
+			query:       "/items?type=recent",
+			store:       &fakeItemStore{recent: recentRows(itemsPageSize+1, 57)},
+			wantTotal:   57,
+			wantLen:     itemsPageSize,
+			wantHasMore: true,
+		},
+		{
+			name:      "last page keeps the full total",
+			query:     "/items?type=recent&cursor=id-40",
+			store:     &fakeItemStore{recent: recentRows(5, 57)},
+			wantTotal: 57,
+			wantLen:   5,
+		},
+		{
+			name:      "narrowed page keeps the full total",
+			query:     "/items?type=recent&limit=6",
+			store:     &fakeItemStore{recent: recentRows(itemsPageSize+1, 57)},
+			wantTotal: 57,
+			wantLen:   6,
+			// 21 canned rows > the 6-item page, so the extra row still signals hasMore.
+			wantHasMore: true,
+		},
+		{
+			name:  "total respects the type filter",
+			query: "/items?type=type&typeName=snippet",
+			store: &fakeItemStore{
+				byType: []sqlcdb.ListItemsByTypeRow{
+					{ID: "i", Title: "t", ItemTypeName: "snippet", Tags: []string{}, Total: 4},
+				},
+			},
+			wantTotal: 4,
+			wantLen:   1,
+		},
+		{
+			name:  "total respects the collection filter",
+			query: "/items?type=collection&collectionId=c1",
+			store: &fakeItemStore{
+				byColl: []sqlcdb.ListItemsByCollectionRow{
+					{ID: "i", Title: "t", ItemTypeName: "link", Tags: []string{}, Total: 9},
+				},
+			},
+			wantTotal: 9,
+			wantLen:   1,
+		},
+		{
+			name:  "favorites total is the whole favorite set",
+			query: "/items?type=favorites",
+			store: &fakeItemStore{
+				favorites: []sqlcdb.ListFavoriteItemsRow{
+					{ID: "f1", Title: "t", ItemTypeName: "note", Tags: []string{}, Total: 57},
+				},
+			},
+			wantTotal: 57,
+			wantLen:   1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			api := newTestAPI(t, baseDeps(tc.store), freeUser())
+
+			resp := api.Get(tc.query)
+			if resp.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body = %s", resp.Code, resp.Body.String())
+			}
+			got := decodePage(t, resp)
+			if got.Total != tc.wantTotal {
+				t.Errorf("total = %d, want %d", got.Total, tc.wantTotal)
+			}
+			if len(got.Items) != tc.wantLen {
+				t.Errorf("returned %d items, want %d", len(got.Items), tc.wantLen)
+			}
+			if got.HasMore != tc.wantHasMore {
+				t.Errorf("hasMore = %v, want %v", got.HasMore, tc.wantHasMore)
+			}
+		})
 	}
 }
 

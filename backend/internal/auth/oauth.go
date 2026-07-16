@@ -99,8 +99,13 @@ func registerOAuth(api huma.API, s *Service) {
 	}
 }
 
-// oauthStartInput carries no parameters; the provider is fixed by the route.
-type oauthStartInput struct{}
+// oauthStartInput carries an optional post-auth redirect target; the provider is fixed by
+// the route. Redirect is untrusted (this endpoint is directly reachable, not only via the
+// SPA), so it is sanitized server-side in the handler — an unsafe value is dropped in favor
+// of the default landing, never rejected, so a crafted URL can't break the sign-in entry.
+type oauthStartInput struct {
+	Redirect string `doc:"Relative path to return to after a successful sign-in" query:"redirect"`
+}
 
 // registerOAuthStart wires GET /auth/oauth/{provider}/start — mint a single-use state
 // token and 302 to the provider's authorize URL. This replaces the Next app's
@@ -114,8 +119,11 @@ func registerOAuthStart(api huma.API, s *Service, provider OAuthProvider) {
 		Summary:       "Begin " + name + " OAuth sign-in",
 		Tags:          []string{tagAuth},
 		DefaultStatus: http.StatusFound,
-	}, func(ctx context.Context, _ *oauthStartInput) (*oauthRedirect, error) {
-		state, err := s.Tokens.CreateOAuthState(ctx, name)
+	}, func(ctx context.Context, in *oauthStartInput) (*oauthRedirect, error) {
+		state, err := s.Tokens.CreateOAuthState(ctx, OAuthState{
+			Provider: name,
+			Redirect: sanitizeOAuthRedirect(in.Redirect),
+		})
 		if err != nil {
 			s.Logger.ErrorContext(ctx, "oauth: create state failed", "provider", name, "err", err)
 			return nil, huma.Error500InternalServerError(genericErrorMessage)
@@ -166,12 +174,12 @@ func (s *Service) handleOAuthCallback(
 
 	// Validate + burn the state (single-use). A missing/expired/mismatched state is the
 	// CSRF guard firing — reject without touching the provider.
-	stateProvider, ok, err := s.Tokens.ConsumeOAuthState(ctx, in.State)
+	state, ok, err := s.Tokens.ConsumeOAuthState(ctx, in.State)
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "oauth: consume state failed", "provider", name, "err", err)
 		return s.oauthErrorRedirect(oauthErrServer)
 	}
-	if !ok || stateProvider != name || in.Code == "" {
+	if !ok || state.Provider != name || in.Code == "" {
 		s.Logger.WarnContext(ctx, "oauth: invalid state or missing code", "provider", name, "stateOK", ok)
 		return s.oauthErrorRedirect(oauthErrState)
 	}
@@ -187,7 +195,7 @@ func (s *Service) handleOAuthCallback(
 	}
 	identity.Email = normalizeEmail(identity.Email)
 
-	return s.resolveOAuthIdentity(ctx, identity)
+	return s.resolveOAuthIdentity(ctx, identity, state.Redirect)
 }
 
 // resolveOAuthIdentity routes a resolved identity to one of three outcomes: a returning
@@ -200,14 +208,14 @@ func (s *Service) handleOAuthCallback(
 // minting the intent and its cookie — is profile/F-track surface with no SPA yet, so it
 // is deliberately not wired in this slice; the callback only handles the two anonymous
 // outcomes plus new-user creation.
-func (s *Service) resolveOAuthIdentity(ctx context.Context, identity OAuthIdentity) *oauthRedirect {
+func (s *Service) resolveOAuthIdentity(ctx context.Context, identity OAuthIdentity, redirect string) *oauthRedirect {
 	acct, err := s.Users.GetProviderAccount(ctx, sqlcdb.GetProviderAccountParams{
 		Provider:          identity.Provider,
 		ProviderAccountId: identity.ProviderAccountID,
 	})
 	switch {
 	case err == nil:
-		return s.oauthReturningUser(ctx, acct, identity)
+		return s.oauthReturningUser(ctx, acct, identity, redirect)
 	case errors.Is(err, pgx.ErrNoRows):
 		// fall through to conflict / new-user resolution
 	default:
@@ -221,9 +229,9 @@ func (s *Service) resolveOAuthIdentity(ctx context.Context, identity OAuthIdenti
 	})
 	switch {
 	case err == nil:
-		return s.oauthConflict(ctx, conflict, identity)
+		return s.oauthConflict(ctx, conflict, identity, redirect)
 	case errors.Is(err, pgx.ErrNoRows):
-		return s.oauthNewUser(ctx, identity)
+		return s.oauthNewUser(ctx, identity, redirect)
 	default:
 		s.Logger.ErrorContext(ctx, "oauth: conflict lookup failed", "provider", identity.Provider, "err", err)
 		return s.oauthErrorRedirect(oauthErrServer)
@@ -232,7 +240,12 @@ func (s *Service) resolveOAuthIdentity(ctx context.Context, identity OAuthIdenti
 
 // oauthReturningUser signs in the owner of an already-linked provider account and
 // best-effort backfills the stored provider email if it was missing.
-func (s *Service) oauthReturningUser(ctx context.Context, acct sqlcdb.Account, identity OAuthIdentity) *oauthRedirect {
+func (s *Service) oauthReturningUser(
+	ctx context.Context,
+	acct sqlcdb.Account,
+	identity OAuthIdentity,
+	redirect string,
+) *oauthRedirect {
 	if acct.Email == nil && identity.EmailVerified {
 		if err := s.Users.BackfillOAuthAccountEmail(ctx, sqlcdb.BackfillOAuthAccountEmailParams{
 			Provider:          identity.Provider,
@@ -248,7 +261,7 @@ func (s *Service) oauthReturningUser(ctx context.Context, acct sqlcdb.Account, i
 		return s.oauthErrorRedirect(oauthErrServer)
 	}
 	s.Logger.InfoContext(ctx, "oauth sign-in (returning)", "provider", identity.Provider, "userID", acct.UserId)
-	return s.appRedirect(oauthSuccessPath, nil)
+	return s.appRedirect(landingPath(redirect), nil)
 }
 
 // oauthConflict stashes the identity in a pending-link token and sends the browser to
@@ -257,21 +270,28 @@ func (s *Service) oauthConflict(
 	ctx context.Context,
 	conflict sqlcdb.GetUserWithOAuthConflictRow,
 	identity OAuthIdentity,
+	redirect string,
 ) *oauthRedirect {
 	token, err := s.Tokens.CreatePendingLink(ctx, pendingLinkFromIdentity(conflict.Email, identity))
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "oauth: create pending link failed", "provider", identity.Provider, "err", err)
 		return s.oauthErrorRedirect(oauthErrServer)
 	}
+	// Carry the redirect through the link page too, so a deep-linked sign-in that hits an
+	// account conflict still lands where it started once the user confirms their password.
+	query := url.Values{"token": {token}}
+	if redirect != "" {
+		query.Set("redirect", redirect)
+	}
 	s.Logger.InfoContext(ctx, "oauth conflict — routing to link", "provider", identity.Provider, "userID", conflict.ID)
-	return s.appRedirect(oauthLinkPath, url.Values{"token": {token}})
+	return s.appRedirect(oauthLinkPath, query)
 }
 
 // oauthNewUser creates the user and its linked account for a first-time identity, then
 // signs in. User and account are two writes (parity with the Next adapter's
 // createUser-then-linkAccount): a failure between them leaves a userless-account-free
 // row that a later sign-in reconciles via the conflict path, never a partial account.
-func (s *Service) oauthNewUser(ctx context.Context, identity OAuthIdentity) *oauthRedirect {
+func (s *Service) oauthNewUser(ctx context.Context, identity OAuthIdentity, redirect string) *oauthRedirect {
 	user, err := s.Users.CreateOAuthUser(ctx, sqlcdb.CreateOAuthUserParams{
 		ID:            s.IDs(),
 		Email:         identity.Email,
@@ -304,7 +324,7 @@ func (s *Service) oauthNewUser(ctx context.Context, identity OAuthIdentity) *oau
 		return s.oauthErrorRedirect(oauthErrServer)
 	}
 	s.Logger.InfoContext(ctx, "oauth sign-in (new user)", "provider", identity.Provider, "userID", user.ID)
-	return s.appRedirect(oauthSuccessPath, nil)
+	return s.appRedirect(landingPath(redirect), nil)
 }
 
 // oauthLinkInput is the password-confirm body for POST /auth/link.
@@ -469,9 +489,72 @@ func pendingLinkFromIdentity(primaryEmail string, identity OAuthIdentity) Pendin
 	}
 }
 
+// maxRedirectLen bounds a stored redirect target so a crafted URL can't bloat the state blob.
+const maxRedirectLen = 2048
+
+// isOAuthAuthLoopPath reports whether path (normalized) is an SPA auth route that must never
+// be a post-auth landing target — a signed-in user bounced back onto one just re-triggers its
+// "already signed in" guard. Mirror of the SPA sanitizeRelative auth-loop set
+// (web/src/auth/redirect.ts).
+func isOAuthAuthLoopPath(path string) bool {
+	switch strings.ToLower(strings.TrimRight(path, "/")) {
+	case "/sign-in", "/register", "/forgot-password", "/reset-password", "/verify-email", "/link-account":
+		return true
+	default:
+		return false
+	}
+}
+
+// landingPath is the SPA path a successful OAuth sign-in lands on: the caller's sanitized
+// redirect target when one survived the round-trip, else the default dashboard.
+func landingPath(redirect string) string {
+	if redirect != "" {
+		return redirect
+	}
+	return oauthSuccessPath
+}
+
+// sanitizeOAuthRedirect validates a caller-supplied post-auth redirect and returns a safe
+// same-origin relative path, or "" to mean "use the default landing". The /start endpoint is
+// directly reachable, so the param is untrusted — this is the open-redirect guard required by
+// security-principles.md, mirroring the SPA's sanitizeRelative (web/src/auth/redirect.ts). The
+// callback only ever builds `SPAOrigin + path`, so the sole authority-injection risk is a value
+// that doesn't begin with a single "/"; the remaining checks reject header-injection (control
+// chars), backslash/encoded-slash tricks, over-long input, and auth-loop targets.
+func sanitizeOAuthRedirect(raw string) string {
+	if raw == "" || len(raw) > maxRedirectLen {
+		return ""
+	}
+	// Must be a plain absolute-path reference, not protocol-relative or a backslash escape.
+	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") || strings.HasPrefix(raw, "/\\") {
+		return ""
+	}
+	if strings.Contains(raw, "\\") {
+		return ""
+	}
+	// Control chars (incl. NUL/tab/newlines and DEL) would enable Location-header injection.
+	if strings.IndexFunc(raw, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return ""
+	}
+	lower := strings.ToLower(raw)
+	if strings.Contains(lower, "%2f%2f") || strings.Contains(lower, "%5c") {
+		return ""
+	}
+	// Re-assert via the parser: reject anything that carries a scheme or host (a protocol-
+	// relative value that slipped the string guards would surface here as a non-empty Host).
+	u, err := url.Parse(raw)
+	if err != nil || u.IsAbs() || u.Host != "" {
+		return ""
+	}
+	if isOAuthAuthLoopPath(u.Path) {
+		return ""
+	}
+	return raw
+}
+
 // appRedirect builds a 302 to a SPA path with optional query.
 func (s *Service) appRedirect(path string, query url.Values) *oauthRedirect {
-	target := strings.TrimRight(s.Cfg.AppURL, "/") + path
+	target := strings.TrimRight(s.Cfg.SPAOrigin, "/") + path
 	if len(query) > 0 {
 		target += "?" + query.Encode()
 	}

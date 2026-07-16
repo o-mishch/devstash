@@ -323,7 +323,7 @@ func registerRedirect(outboundEmail bool, email string) string {
 // actionURL builds an absolute link into the SPA for an emailed token.
 func (s *Service) actionURL(path, token string) string {
 	q := url.Values{"token": {token}}
-	return strings.TrimRight(s.Cfg.AppURL, "/") + path + "?" + q.Encode()
+	return strings.TrimRight(s.Cfg.SPAOrigin, "/") + path + "?" + q.Encode()
 }
 
 // isUniqueViolation reports whether err is a Postgres unique-constraint violation.

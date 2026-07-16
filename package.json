@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "oxlint .",
+    "lint": "oxlint . --disable-nested-config",
     "openapi:gen": "tsx scripts/generate-openapi.ts && openapi-typescript ./openapi.json -o ./src/types/openapi.ts",
     "themes:gen": "node scripts/generate-themes.js && npm run openapi:gen",
     "themes:fetch": "node scripts/fetch-theme.js && npm run themes:gen",

@@ -3,6 +3,7 @@ package items
 import (
 	"context"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -197,6 +198,200 @@ func TestItemStoreWritesAgainstPostgres(t *testing.T) {
 		}
 		if got := itemCollectionIDs(ctx, t, pool, "itm-clear"); len(got) != 0 {
 			t.Errorf("item_collections = %v, want empty", got)
+		}
+	})
+}
+
+// TestListTotalAgainstPostgres pins the `total` contract against the REAL keyset queries. The
+// handler tests prove total is passed through from the row, but only real SQL can prove the
+// NUMBER is right — specifically that it counts the whole filtered set and does not shrink as
+// the cursor advances. That is exactly the trap a COUNT(*) OVER () window function falls into
+// (a window is evaluated AFTER the WHERE clause, so it would count only the rows at-or-after
+// the cursor and report a total that decays page by page), which is why the four list queries
+// use a cursor-free CTE instead. If anyone "simplifies" them to a window function, or drops the
+// owner filter from the count, this test fails.
+func TestListTotalAgainstPostgres(t *testing.T) {
+	store, pool := realItemStore(t)
+	ctx := t.Context()
+
+	const (
+		noteTypeID = "itg-type-note"
+		noteTyp    = "note"
+		otherUser  = "itg-user-2"
+	)
+
+	// A second item type and a second user with his own items: the count must be filtered by
+	// type and scoped to the owner, so neither may leak into this user's totals.
+	seeds := []struct {
+		sql  string
+		args []any
+	}{
+		{
+			`INSERT INTO item_types (id, name, icon, color, "isSystem", "userId") VALUES ($1, $2, 'i', 'c', true, NULL)`,
+			[]any{noteTypeID, noteTyp},
+		},
+		{`INSERT INTO users (id, email, "updatedAt") VALUES ($1, $2, now())`, []any{otherUser, "itg2@example.com"}},
+	}
+	for seed := range slices.Values(seeds) {
+		if _, err := pool.Exec(ctx, seed.sql, seed.args...); err != nil {
+			t.Fatalf("seed %q: %v", seed.sql, err)
+		}
+	}
+
+	mk := func(t *testing.T, owner, id, typeName string, collections []string) {
+		t.Helper()
+		if _, err := store.CreateItem(ctx, sqlcdb.CreateItemParams{
+			ItemTypeName: typeName, Owner: &owner, ID: id, Title: "T",
+			ContentType: sqlcdb.ContentTypeTEXT,
+			TagIds:      []string{}, TagNames: []string{}, CollectionIds: collections,
+		}); err != nil {
+			t.Fatalf("CreateItem(%s): %v", id, err)
+		}
+	}
+
+	// 7 snippets (5 of them in the collection) + 3 notes = 10 items for itgUserID.
+	for i := range 7 {
+		var collections []string
+		if i < 5 {
+			collections = []string{itgCollID}
+		}
+		mk(t, itgUserID, "itm-s"+strconv.Itoa(i), snippetTyp, collections)
+	}
+	for i := range 3 {
+		mk(t, itgUserID, "itm-n"+strconv.Itoa(i), noteTyp, nil)
+	}
+	// 4 favorites out of the 10.
+	for i := range 4 {
+		if _, err := store.SetItemFavorite(ctx, sqlcdb.SetItemFavoriteParams{
+			Owner: itgUserID, ID: "itm-s" + strconv.Itoa(i), IsFavorite: true,
+		}); err != nil {
+			t.Fatalf("SetItemFavorite: %v", err)
+		}
+	}
+	// The other user's items must never be counted into itgUserID's totals.
+	mk(t, otherUser, "itm-other-1", snippetTyp, nil)
+	mk(t, otherUser, "itm-other-2", noteTyp, nil)
+
+	const wantOwned = 10
+
+	t.Run("total is constant across every keyset page and counts the full set", func(t *testing.T) {
+		const pageSize = 3
+		var (
+			cursor *string
+			totals []int64
+			seen   int
+			pages  int
+		)
+		// Classic for{}: a keyset walk advances by the previous page's last id and stops on a
+		// mid-loop condition (no extra row), which no slices/maps iterator expresses.
+		for {
+			rows, err := store.ListRecentItems(ctx, sqlcdb.ListRecentItemsParams{
+				Owner: itgUserID, Cursor: cursor, PageLimit: pageSize + 1,
+			})
+			if err != nil {
+				t.Fatalf("ListRecentItems: %v", err)
+			}
+			if len(rows) == 0 {
+				break
+			}
+			pages++
+			totals = append(totals, rows[0].Total)
+			hasMore := len(rows) > pageSize
+			keep := rows
+			if hasMore {
+				keep = rows[:pageSize]
+			}
+			seen += len(keep)
+			if !hasMore {
+				break
+			}
+			last := keep[len(keep)-1].ID
+			cursor = &last
+		}
+
+		if pages < 2 {
+			t.Fatalf("walked %d page(s); the fixture must span several pages to test cursor decay", pages)
+		}
+		if seen != wantOwned {
+			t.Errorf("walked %d items across %d pages, want %d", seen, pages, wantOwned)
+		}
+		// Every page must report the same full-set total — a window function would count down.
+		if want := slices.Repeat([]int64{wantOwned}, len(totals)); !slices.Equal(totals, want) {
+			t.Errorf("per-page totals = %v, want %v (total must not shrink as the cursor advances)", totals, want)
+		}
+	})
+
+	t.Run("total respects the type filter", func(t *testing.T) {
+		rows, err := store.ListItemsByType(ctx, sqlcdb.ListItemsByTypeParams{
+			Owner: itgUserID, TypeName: snippetTyp, PageLimit: 2,
+		})
+		if err != nil {
+			t.Fatalf("ListItemsByType: %v", err)
+		}
+		// 7 snippets, but only 2 rows fetched: total describes the filter, not the page.
+		if rows[0].Total != 7 {
+			t.Errorf("snippet total = %d, want 7 (owner's snippets only)", rows[0].Total)
+		}
+
+		notes, err := store.ListItemsByType(ctx, sqlcdb.ListItemsByTypeParams{
+			Owner: itgUserID, TypeName: noteTyp, PageLimit: 10,
+		})
+		if err != nil {
+			t.Fatalf("ListItemsByType(note): %v", err)
+		}
+		if notes[0].Total != 3 {
+			t.Errorf("note total = %d, want 3", notes[0].Total)
+		}
+	})
+
+	t.Run("total respects the collection filter", func(t *testing.T) {
+		rows, err := store.ListItemsByCollection(ctx, sqlcdb.ListItemsByCollectionParams{
+			Owner: itgUserID, CollectionID: itgCollID, PageLimit: 2,
+		})
+		if err != nil {
+			t.Fatalf("ListItemsByCollection: %v", err)
+		}
+		if rows[0].Total != 5 {
+			t.Errorf("collection total = %d, want 5", rows[0].Total)
+		}
+	})
+
+	t.Run("favorites total counts only favorites", func(t *testing.T) {
+		rows, err := store.ListFavoriteItems(ctx, sqlcdb.ListFavoriteItemsParams{
+			Owner: itgUserID, PageLimit: 2,
+		})
+		if err != nil {
+			t.Fatalf("ListFavoriteItems: %v", err)
+		}
+		if rows[0].Total != 4 {
+			t.Errorf("favorites total = %d, want 4", rows[0].Total)
+		}
+	})
+
+	t.Run("total is owner-scoped", func(t *testing.T) {
+		rows, err := store.ListRecentItems(ctx, sqlcdb.ListRecentItemsParams{
+			Owner: otherUser, PageLimit: 10,
+		})
+		if err != nil {
+			t.Fatalf("ListRecentItems(other): %v", err)
+		}
+		// The other user owns exactly 2 items; itgUserID's 10 must not bleed in (IDOR).
+		if rows[0].Total != 2 {
+			t.Errorf("other user's total = %d, want 2 (the count must be owner-scoped)", rows[0].Total)
+		}
+	})
+
+	t.Run("empty filtered set totals zero rows", func(t *testing.T) {
+		rows, err := store.ListItemsByCollection(ctx, sqlcdb.ListItemsByCollectionParams{
+			Owner: itgUserID, CollectionID: "no-such-collection", PageLimit: 10,
+		})
+		if err != nil {
+			t.Fatalf("ListItemsByCollection(empty): %v", err)
+		}
+		// No rows means no row to carry a total; the handler reports 0, which is the honest
+		// answer because the CTE would have counted 0 for this filter anyway.
+		if len(rows) != 0 {
+			t.Errorf("got %d rows for an unknown collection, want 0", len(rows))
 		}
 	})
 }

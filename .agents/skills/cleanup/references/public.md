@@ -1,0 +1,18 @@
+# Public Playbook
+
+Goal: find anything in this **public** GitHub repository — tracked files, untracked files, and full git history — that should never have been visible, and report it. Never fix automatically; every remediation needs the user's explicit go-ahead on that specific finding.
+
+**Reviewer stance:** Same adversarial default as the improve playbook, redirected at exposure instead of code quality — assume a real secret is present until you've traced every hit to a fixture/placeholder/pattern-description. A finding that "looks like a local dummy value" still gets listed; only its severity drops, per `public-checklist.md`.
+
+1. Read `public-checklist.md`, `public-report.md`, `.env.example`, and `src/types/env.d.ts`. `resolve-context.sh public` lists any further rule files this changeset requires; `legacy-security.md` is the one that most often applies. Do not re-read the always-on rules it lists as already in context.
+2. Confirm scope: `git rev-list --all --count` for the commit total; note whether this is a first-time pre-publish audit or a periodic re-audit (ask if unclear — it changes whether history-only findings are "new" or already known).
+3. Ensure the tooling is available: `test -f node_modules/.bin/secretlint || npm install` (secretlint is already a devDependency — see `package.json`). Check `command -v gitleaks` to decide the history-scan path.
+4. **Working tree + untracked files:** `npx secretlint "**/*" --format json`. Parse results against `public-checklist.md`'s tier list — do not accept the tool's flag at face value; verify each hit is a real-looking value, not a `.env.example` placeholder, doc comment, or local dev dummy credential (e.g. `postgres://postgres:postgres@localhost`, `devstash:devstash@postgres` — these are expected in `infra/k8s/**`, `infra/run/**`, `prisma.config.ts` and are not findings).
+5. **Git history:**
+   - If gitleaks is available: `gitleaks git --log-opts="--all" -v` (add `--redact` so raw secret values never land in the transcript or the report).
+   - If not: run `.agents/skills/cleanup/scripts/scan-git-history.sh` — it walks every commit reachable from any ref and re-runs secretlint against each commit's changed files. This is slower; tell the user the commit count and expected rough duration before starting on a large repo.
+   - Either way, note in the report which path ran and how many commits were covered.
+6. For every hit (working tree or history), classify per `public-checklist.md`: Tier 1 credential / Tier 2 weak-signal / Tier 3 PII, and Critical/Major/Minor. Cross-check Tier 1 hits against `.env.example`'s documented variable names — a real value for one of those names is the highest-confidence finding class.
+7. Also scan for real PII the tools won't catch: `rg -i '@gmail\.com|@[a-z]+\.(com|io|dev)' --type-not lock` narrowed to non-fixture files (skip `prisma/seed.ts`, `src/test/**`, anything under `**/fixtures/**` or `**/mocks/**` unless a hit there looks like a real credential rather than fake seed data), and eyeball any committed screenshots/images for real account data.
+8. Render the audit using `public-report.md`. Never print a raw secret value in the report — describe it and cite file:line/commit instead.
+9. Ask which finding IDs to remediate. Accept IDs such as `S-1`, `all critical`, `all`, or `none`. For any accepted ID, propose the specific remediation steps (rotate credential, `.gitignore` addition, `git filter-repo`/BFG history rewrite with its force-push/re-clone impact) and wait for confirmation before running anything — do not rotate, delete, or rewrite history unattended, even for an approved ID; confirm the exact command before executing.

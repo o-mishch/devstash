@@ -19,6 +19,7 @@ import (
 	sqlcdb "github.com/o-mishch/devstash/backend/internal/db"
 	"github.com/o-mishch/devstash/backend/internal/email"
 	"github.com/o-mishch/devstash/backend/internal/items"
+	"github.com/o-mishch/devstash/backend/internal/me"
 	"github.com/o-mishch/devstash/backend/internal/postgres"
 	"github.com/o-mishch/devstash/backend/internal/ratelimit"
 	"github.com/o-mishch/devstash/backend/internal/redisconn"
@@ -44,7 +45,7 @@ func buildEmailer(cfg *config.Config) auth.Emailer {
 	if !cfg.OutboundEmailEnabled() {
 		return email.Noop{}
 	}
-	return email.New(cfg.ResendAPIKey, cfg.EmailFrom, cfg.AppURL)
+	return email.New(cfg.ResendAPIKey, cfg.EmailFrom, cfg.SPAOrigin)
 }
 
 // buildOAuthProviders wires the OAuth providers whose credentials are configured. A
@@ -136,7 +137,7 @@ func runServe(ctx context.Context, cfg *config.Config, logger *slog.Logger) erro
 			IDs:       newID,
 			Logger:    logger,
 			Cfg: auth.Config{
-				AppURL:               cfg.AppURL,
+				SPAOrigin:            cfg.SPAOrigin,
 				OutboundEmailEnabled: cfg.OutboundEmailEnabled(),
 				FailClosed:           !cfg.RateLimitFailOpen,
 				TrustedProxyDepth:    cfg.TrustedProxyDepth,
@@ -157,6 +158,11 @@ func runServe(ctx context.Context, cfg *config.Config, logger *slog.Logger) erro
 		search: search.Deps{
 			Store:  queries,
 			Logger: logger,
+		},
+		me: me.Deps{
+			Store:    queries,
+			Sessions: sessions,
+			Logger:   logger,
 		},
 		cspreport: cspreport.Deps{
 			Limiter: limiter,

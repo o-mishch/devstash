@@ -4,16 +4,24 @@ globs:
   - src/**/*.test.ts
   - src/test/**/*
   - vitest.config*
+  - src/lib/**/*.ts
+  - src/actions/**/*.ts
+  - src/app/api/**/route.ts
 paths:
   - "src/**/*.test.ts"
   - "src/test/**/*"
   - "vitest.config*"
-description: Vitest testing conventions for DevStash — what to test, mocking patterns, and test file structure. Loads when editing test files.
+  - "src/lib/**/*.ts"
+  - "src/actions/**/*.ts"
+  - "src/app/api/**/route.ts"
+description: Vitest testing conventions for DevStash — what to test, mocking patterns, and test file structure. Loads when editing test files or the src/ source files they cover.
 ---
 
 # Testing
 
-We use **Vitest** for unit tests. Tests target route handlers, server/lib services, and utilities — no component tests.
+We use **Vitest** for unit tests (in the Next.js `src/` workspace). Tests target route handlers, server/lib services, and utilities — no component tests.
+
+> **Scope:** these conventions cover the Next.js app (`src/**`) only. The **`web/` Vite SPA is deliberately not covered by tests** — no Vitest, no test runner, no config. Frontend logic is validated by `tsc --noEmit` + `oxlint` + a prod `build`; runtime behavior is verified in a browser. Do not add tests or a test runner under `web/`. (The Go backend has its own coverage-gated suite — see `go-coding-standards.md § Testing`.)
 
 - Test files: `src/**/*.test.ts` (no `.tsx`)
 - Run: `npm run test:run` (single run) or `npm test` (watch)
@@ -65,9 +73,9 @@ Other services (`next-auth`, `resend`, `stripe`, etc.) are mocked with `vi.mock(
 
 ## Lint: type-aware + Vitest rules apply to tests
 
-Test files are **not** exempt from linting. `.oxlintrc.json` applies the same type-aware `typescript/*` rules (error level) here too, plus oxlint's native `vitest/*` plugin (`valid-expect`, `no-focused-tests`, `no-disabled-tests`, correct hook usage, …).
+Test files are **not** exempt from linting. `.oxlintrc.json` applies the same type-aware `typescript/*` rules (error level) here too, plus a `vitest/*` batch in the `**/*.test.ts` override — `valid-expect`, `valid-expect-in-promise`, `valid-title`, `valid-describe-callback`, `no-identical-title`, `no-conditional-expect`, `no-standalone-expect`, `no-commented-out-tests`, `require-mock-type-parameters`, `prefer-called-exactly-once-with`, and others.
 
 - **Typed asymmetric matchers.** Vitest types `expect.objectContaining`, `arrayContaining`, `stringContaining`, `anything`, `expect.any` as `(expected: any) => any`, which trips `no-unsafe-*`. Use the typed wrappers in `src/test/matchers.ts` (`objectContaining`, `arrayContaining`, `stringContaining`, `anything`, `anyOf(Ctor)`, plus a typed `readJson<T>()`) inside `toEqual(...)` / `toHaveBeenCalledWith(...)` instead of `expect.*` directly.
 - **No `any` in specs.** Type mocked return values and parsed JSON explicitly (`readJson<T>()` for response bodies); don't let `any` flow from `vi.fn()` results or `res.json()` into assertions.
 - **No floating promises.** `await` every async assertion / mock call, or `void` it deliberately.
-- **No focused/disabled tests committed** — `it.only` / `describe.skip` are lint errors.
+- **Never commit a focused or disabled test** (`it.only`, `describe.skip`). This is **not** lint-enforced — `no-focused-tests`/`no-disabled-tests` are deliberately not enabled, so nothing will catch it for you. Check before you commit.

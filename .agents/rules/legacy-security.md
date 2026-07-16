@@ -18,14 +18,16 @@ paths:
   - "src/lib/infra/rate-limit.ts"
   - "src/lib/db/**/*"
   - "prisma/**/*"
-description: Security rules for DevStash — IDOR prevention, auth patterns, input validation, token handling. Loads when editing API routes, server actions, auth, or database files.
+description: Next.js-specific security mechanics for DevStash (legacy, maintenance-only) — auth patterns, Zod validation, token handling wired to this app's libraries. Loads when editing API routes, server actions, auth, or database files. Stack-agnostic security principles (IDOR, input validation, token security) live in security-principles.md — read that first.
 ---
 
-# Security Rules
+# Security Rules (Next.js, legacy)
+
+> `src/` is maintenance-only (see `boundary.md`). The stack-agnostic principles this file implements — IDOR scoping, validate-at-the-boundary, token security — are stated once in `security-principles.md`; this file covers only the Next.js-specific mechanics (which helper to call, which library, this app's file layout).
 
 ## IDOR Prevention (Critical)
 
-Every Prisma query that reads or modifies user data **must** scope by `userId` from the authenticated session — never from user-supplied input (request body, query params, route segments).
+Every Prisma query that reads or modifies user data **must** scope by `userId` from the authenticated session — never from user-supplied input (request body, query params, route segments). See `security-principles.md` for why this has no exceptions.
 
 ```ts
 // ✅ correct — userId from session

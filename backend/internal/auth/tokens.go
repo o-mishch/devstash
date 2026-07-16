@@ -60,6 +60,16 @@ type PendingLink struct {
 	SessionState      *string `json:"sessionState"`
 }
 
+// OAuthState is the value stored under a single-use OAuth state token. Provider binds the
+// state to the provider it was minted for (so a state minted for one provider can't be
+// replayed on another's callback); Redirect is the sanitized, same-origin relative path the
+// SPA should land on after a successful sign-in ("" means the default dashboard). Redirect is
+// sanitized at mint time (sanitizeOAuthRedirect) — the value here is already safe.
+type OAuthState struct {
+	Provider string `json:"provider"`
+	Redirect string `json:"redirect,omitempty"`
+}
+
 // CredentialEmailPayload is the value stored for a credential-email token. gen ties
 // the token to the latest-issued link so an older link (lower gen) can't be consumed.
 // The add-vs-change decision is derived from live account state at confirm time
@@ -94,9 +104,10 @@ type Tokens interface {
 	PeekCredentialEmail(ctx context.Context, raw string) (CredentialEmailPayload, bool, error)
 	ConsumeCredentialEmail(ctx context.Context, raw string, payload CredentialEmailPayload) (bool, error)
 	// OAuth CSRF state: single-use (ConsumeOAuthState is an atomic GETDEL), so a state
-	// param can be redeemed exactly once even if replayed.
-	CreateOAuthState(ctx context.Context, provider string) (string, error)
-	ConsumeOAuthState(ctx context.Context, raw string) (string, bool, error)
+	// param can be redeemed exactly once even if replayed. The stored OAuthState binds the
+	// state to its provider and carries the sanitized post-auth redirect target.
+	CreateOAuthState(ctx context.Context, state OAuthState) (string, error)
+	ConsumeOAuthState(ctx context.Context, raw string) (OAuthState, bool, error)
 	// Account-link handoff (peek-then-consume, like the other links): the callback
 	// mints it on a detected conflict; /auth/link peeks it to resolve the target, then
 	// consumes it only after the account is linked, so a wrong password leaves it armed.
@@ -318,16 +329,21 @@ func (s *RedisTokens) ConsumeCredentialEmail(
 	return res != nil, nil
 }
 
-// CreateOAuthState mints a single-use OAuth state token bound to provider. The raw
-// token travels in the authorize-URL `state` param and is echoed back by the
+// CreateOAuthState mints a single-use OAuth state token carrying the JSON-encoded state.
+// The raw token travels in the authorize-URL `state` param and is echoed back by the
 // provider on the callback; the stored provider guards against a state minted for one
-// provider being replayed on another's callback.
-func (s *RedisTokens) CreateOAuthState(ctx context.Context, provider string) (string, error) {
+// provider being replayed on another's callback, and the stored redirect survives the
+// round-trip so a deep-linked sign-in lands where it started.
+func (s *RedisTokens) CreateOAuthState(ctx context.Context, state OAuthState) (string, error) {
 	raw, err := newRawToken()
 	if err != nil {
 		return "", err
 	}
-	if err = s.rdb.Set(ctx, key(nsOAuthState, raw), provider, ttlOAuthState).Err(); err != nil {
+	blob, err := json.Marshal(state)
+	if err != nil {
+		return "", fmt.Errorf("tokens: marshal oauth state: %w", err)
+	}
+	if err = s.rdb.Set(ctx, key(nsOAuthState, raw), blob, ttlOAuthState).Err(); err != nil {
 		return "", fmt.Errorf("tokens: store oauth state: %w", err)
 	}
 	return raw, nil
@@ -335,16 +351,20 @@ func (s *RedisTokens) CreateOAuthState(ctx context.Context, provider string) (st
 
 // ConsumeOAuthState atomically reads and deletes an OAuth state token (GETDEL), so a
 // valid state is accepted exactly once. A missing/expired token maps to ok=false (the
-// "invalid state" outcome), not an error; a present one returns the bound provider.
-func (s *RedisTokens) ConsumeOAuthState(ctx context.Context, raw string) (string, bool, error) {
-	provider, err := s.rdb.GetDel(ctx, key(nsOAuthState, raw)).Result()
+// "invalid state" outcome), not an error; a present one returns the stored OAuthState.
+func (s *RedisTokens) ConsumeOAuthState(ctx context.Context, raw string) (OAuthState, bool, error) {
+	blob, err := s.rdb.GetDel(ctx, key(nsOAuthState, raw)).Result()
 	if errors.Is(err, redis.Nil) {
-		return "", false, nil
+		return OAuthState{}, false, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("tokens: consume oauth state: %w", err)
+		return OAuthState{}, false, fmt.Errorf("tokens: consume oauth state: %w", err)
 	}
-	return provider, true, nil
+	var state OAuthState
+	if err = json.Unmarshal([]byte(blob), &state); err != nil {
+		return OAuthState{}, false, fmt.Errorf("tokens: unmarshal oauth state: %w", err)
+	}
+	return state, true, nil
 }
 
 // CreatePendingLink mints a pending-link token carrying the JSON-encoded link.

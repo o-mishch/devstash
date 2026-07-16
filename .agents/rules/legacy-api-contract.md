@@ -1,5 +1,5 @@
 ---
-trigger:glob
+trigger: glob
 globs:
   - src/app/api/**/*
   - src/actions/**/*
@@ -11,6 +11,7 @@ paths:
   - "src/types/actions.ts"
   - "src/lib/api/**/*"
 description: Client↔server contract for DevStash — Next.js Route Handlers with Zod schemas as the source of truth, generated OpenAPI 3.1 doc and typed client (`api`/`$api`), the route wrappers, and the `ActionState` envelope used only for Server Actions. Loads when editing API routes, server actions, or `src/lib/api/`.
+---
 
 # API Contract
 
@@ -61,11 +62,11 @@ export const POST = authedRoute({}, async ({ userId, isPro, request }) => {
 
 - **Helpers:** `authedRoute(opts, handler)` for static paths; `authedRouteWithParams<P>(opts, handler)` for dynamic segments (`ctx.params` is the awaited `Promise<P>`); `publicRoute(handler)` for unauthenticated routes (auth domain — no session gate; rate-limit inline).
 - **Validation:** path params, query (`request.nextUrl.searchParams`), and body (`await request.json()`) parse from their **own** sources via `parseOr422` → 422 with `z.prettifyError` + `z.flattenError`.
-- **Errors:** *expected* non-200s are **returned** via `problem(status, message, data?, headers?)` — no thrown control flow (`coding-standards.md`: no custom Error subclasses, no `instanceof` routing). Only unexpected throws hit the single 500 catch in the wrapper.
+- **Errors:** *expected* non-200s are **returned** via `problem(status, message, data?, headers?)` — no thrown control flow (`legacy-coding-standards.md`: no custom Error subclasses, no `instanceof` routing). Only unexpected throws hit the single 500 catch in the wrapper.
 - **Output dates:** keep `z.date()` / `z.coerce.date<Date>()` in schemas; `spec.ts`'s `override` emits `date-time` in the output context so the generated client types the field as `string` (the honest JSON wire type). Per-field, flip the matching hand-written domain TS type to `string` only where the value is rendered from a client fetch.
 - **Reusable components:** add `.meta({ id })` to shared output schemas so they become `$ref` components instead of inlining across operations. (Do **not** set `reused: 'ref'` — in `zod-openapi` v6 it also hoists repeated primitives into anonymous `__schemaN` components.)
 - **Rate limiting:** `authedRoute({ rateLimit: '<key>' })` gates by `userId` (429 + `Retry-After`) before the handler. When Pro/validation must gate first (ai, upload) or the key is IP-based (auth), call `checkRateLimit` inline instead.
-- **AI routes:** every `POST /ai/*` needs a `LIMIT_CONFIG` rate-limit key (consumed via `runProAiGeneration`) **and** a client call routed through `runAiMutation`/`useAiMutation` (`src/hooks/use-ai-usage.ts`) — never `api.POST('/ai/…')` directly (a `no-restricted-syntax` lint rule enforces this) — so the dashboard AI Usage meter refetches after a token is spent.
+- **AI routes:** every budget-consuming `POST /ai/*` needs a `LIMIT_CONFIG` rate-limit key (consumed via `runProAiGeneration`) **and** a client call routed through `useAiMutation` (`src/hooks/ai/use-ai-usage.ts`), so the dashboard AI Usage meter refetches after a token is spent. This is enforced at **compile time, not by lint**: `src/lib/api/ai-mutation-paths.ts` declares the closed `AiMutationPath` union, `src/lib/api/client.ts` omits those paths from the public `api`/`$api` clients (so calling one directly is a type error), and `useAiMutation`'s narrowed `aiMutationClient` is the sole caller. `/ai/*` endpoints that don't spend budget (e.g. brain-dump commit routes) are deliberately excluded from the union and stay reachable through the public client.
 - **Typed errors** (only where the client branches on structured data): return `problem(status, message, data)` and declare a dedicated response schema with that `data` shape. Example: `auth/login` → 403 `{ message, data: { email } }`.
 - **Shared messages:** strings used on both transports or repeated across a domain's handlers live in `ErrorMessage` (`src/lib/api/error-messages.ts`, `[C]`) — e.g. `ErrorMessage.NOT_AUTHENTICATED`, `ErrorMessage.FILE_NOT_FOUND`, `ErrorMessage.ITEM_NOT_FOUND`. Bespoke single-site messages stay inline. (`deniedMessage()` in `rate-limit.ts` is the same idea for the 429 string.)
 
@@ -85,10 +86,10 @@ const list = $api.useQuery('get', '/collections')
 ```
 
 - Path/query params go under `params: { path: { id }, query: { … } }`; the body under `body`.
-- Components never call `useQueryClient()` directly — cache updaters live in the hook files (see `coding-standards.md`). `use-infinite-items` keeps its manual `useInfiniteQuery` + custom `['items']` keys.
+- Components never call `useQueryClient()` directly — cache updaters live in the hook files (see `legacy-coding-standards.md`). `use-infinite-items` keeps its manual `useInfiniteQuery` + custom `['items']` keys.
 - **Typed errors:** narrow on the structured member — e.g. `if ('data' in error && error.data)` for `auth/login`'s 403 — and/or read `response.status`.
-- Form-driven submits use `useApiFormAction(submit, { onSuccess })` (`src/hooks/use-api-form-action.ts`), where `submit` throws `new Error(error.message)` on failure.
-- Direct-to-S3 uploads (with progress) use `uploadToS3` (`src/lib/storage/s3-upload-client.ts`), **not** the api client — the request goes straight to S3.
+- Form-driven submits use `useApiFormAction(submit, { onSuccess })` (`src/hooks/ui/use-api-form-action.ts`), where `submit` throws `new Error(error.message)` on failure.
+- Direct-to-S3 uploads (with progress) use `uploadToS3` (`src/lib/storage-client/s3-upload-client.ts`), **not** the api client — the request goes straight to S3.
 
 ## Server Actions — `ActionState`
 
@@ -118,6 +119,6 @@ These don't fit the typed-JSON model and keep their explicit `src/app/api/*/rout
 
 - **Client-driven reads/mutations** go through `api` / `$api` (`@/lib/api/client`). Never `fetch()`/`axios`, never a Server Action for an ordinary mutation.
 - **A new endpoint is a new `route.ts` + a `paths.ts` declaration + schemas** — both importing the same Zod schema; then `npm run openapi:gen`. Do not hand-edit `openapi.json` or `src/types/openapi.ts`.
-- `userId` always comes from the session (`ctx.userId`), never from input — IDOR-safe.
+- `userId` always comes from the session (`ctx.userId`), never from input — see `security-principles.md § IDOR prevention` and `legacy-security.md` for the mechanics.
 - Schema modules (`schemas/**`) are `[C]` — never import `server-only` code into them; reuse the client-safe schemas in `src/lib/utils/validators.ts`.
 - Server Actions that only redirect (OAuth, sign-out) do not return action states and redirect directly.

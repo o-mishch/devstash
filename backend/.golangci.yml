@@ -147,6 +147,13 @@ linters:
         linters:
           - gochecknoglobals
           - goconst
+      # me/preferences.go: uiSkins is an immutable membership set (mirrors ui-skins.ts) and
+      # appThemeRe a compiled regexp — both package-level by design, the same rationale as
+      # items/constants.go and the standard cached-regexp global.
+      - path: internal/me/preferences\.go
+        linters:
+          - gochecknoglobals
+          - goconst
       # items/collections operation files: the Huma operation Path strings ("/items/{id}",
       # "/collections/{id}") recur across the vertical-slice files (get/update/delete). They
       # are HTTP-shape literals, not reusable constants — the same rationale as the auth

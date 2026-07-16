@@ -288,7 +288,7 @@ type fakeTokens struct {
 	verify        map[string]string
 	reset         map[string]string
 	cred          map[string]CredentialEmailPayload
-	states        map[string]string      // oauth state -> provider
+	states        map[string]OAuthState  // oauth state token -> stored state
 	pending       map[string]PendingLink // pending-link token -> payload
 	recentlySent  bool
 	createErr     error
@@ -309,28 +309,28 @@ func newFakeTokens() *fakeTokens {
 		verify:  map[string]string{},
 		reset:   map[string]string{},
 		cred:    map[string]CredentialEmailPayload{},
-		states:  map[string]string{},
+		states:  map[string]OAuthState{},
 		pending: map[string]PendingLink{},
 	}
 }
 
-func (f *fakeTokens) CreateOAuthState(_ context.Context, provider string) (string, error) {
+func (f *fakeTokens) CreateOAuthState(_ context.Context, state OAuthState) (string, error) {
 	if f.createErr != nil {
 		return "", f.createErr
 	}
 	f.nextToken++
 	raw := "state-" + strconv.Itoa(f.nextToken)
-	f.states[raw] = provider
+	f.states[raw] = state
 	return raw, nil
 }
 
-func (f *fakeTokens) ConsumeOAuthState(_ context.Context, raw string) (string, bool, error) {
+func (f *fakeTokens) ConsumeOAuthState(_ context.Context, raw string) (OAuthState, bool, error) {
 	if f.stateErr != nil {
-		return "", false, f.stateErr
+		return OAuthState{}, false, f.stateErr
 	}
-	provider, ok := f.states[raw]
+	state, ok := f.states[raw]
 	delete(f.states, raw) // single-use
-	return provider, ok, nil
+	return state, ok, nil
 }
 
 func (f *fakeTokens) CreatePendingLink(_ context.Context, link PendingLink) (string, error) {
