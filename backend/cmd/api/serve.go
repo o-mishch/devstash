@@ -19,6 +19,7 @@ import (
 	sqlcdb "github.com/o-mishch/devstash/backend/internal/db"
 	"github.com/o-mishch/devstash/backend/internal/email"
 	"github.com/o-mishch/devstash/backend/internal/items"
+	"github.com/o-mishch/devstash/backend/internal/me"
 	"github.com/o-mishch/devstash/backend/internal/postgres"
 	"github.com/o-mishch/devstash/backend/internal/ratelimit"
 	"github.com/o-mishch/devstash/backend/internal/redisconn"
@@ -157,6 +158,12 @@ func runServe(ctx context.Context, cfg *config.Config, logger *slog.Logger) erro
 		search: search.Deps{
 			Store:  queries,
 			Logger: logger,
+		},
+		me: me.Deps{
+			Store:    queries,
+			Sessions: sessions,
+			Logger:   logger,
+			Now:      time.Now,
 		},
 		cspreport: cspreport.Deps{
 			Limiter: limiter,

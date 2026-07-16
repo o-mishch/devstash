@@ -15,6 +15,7 @@ const (
 	// itemDescriptionMaxChars is ITEM_DESCRIPTION_MAX_CHARS — the description upper bound.
 	itemDescriptionMaxChars = 2000
 	// freeTierItemLimit is FREE_TIER_ITEM_LIMIT — the free-plan item cap.
+	// Mirrored in web/src/components/billing/pricing-feature-lists.tsx — keep in sync.
 	freeTierItemLimit = 50
 )
 

@@ -53,9 +53,10 @@ func New(d Deps) *Service {
 }
 
 const (
-	tagCollections          = "collections"
-	genericErrorMessage     = "Something went wrong. Please try again."
-	collectionNotFoundMsg   = "Collection not found."
+	tagCollections        = "collections"
+	genericErrorMessage   = "Something went wrong. Please try again."
+	collectionNotFoundMsg = "Collection not found."
+	// freeTierCollectionLimit is mirrored in web/src/components/billing/pricing-feature-lists.tsx — keep in sync.
 	freeTierCollectionLimit = 3
 	collectionNameMaxChars  = 100
 	collectionDescMaxChars  = 500
