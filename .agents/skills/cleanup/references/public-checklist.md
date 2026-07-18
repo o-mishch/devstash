@@ -51,7 +51,7 @@ Do not downgrade a finding because the value "looks like a placeholder." Verify:
 Run both, in this order, and merge results:
 
 1. **secretlint** (npm devDependency, working tree + untracked files). Config: `.secretlintrc.json` at repo root.
-2. **gitleaks**, only if already available on `PATH` (`command -v gitleaks`). If present, run its native git-history scan (`gitleaks git --log-opts="--all"`) for a second, higher-recall pass over every commit — it catches secrets that were committed and later removed, which secretlint's working-tree scan cannot see. If absent, fall back to the history-walk script (`scripts/scan-git-history.sh`), which reuses secretlint against each historical commit's snapshot. Note in the report which path ran.
+2. **gitleaks**, only if already available on `PATH` (`command -v gitleaks`). If present, run its native git-history scan (`gitleaks git --log-opts="--all"`) for a second, higher-recall pass over every commit — it catches secrets that were committed and later removed, which secretlint's working-tree scan cannot see. If absent, fall back to the history-walk script (`node scripts/scan-git-history.ts`), which reuses secretlint against each historical commit's snapshot. Note in the report which path ran.
 
 Do not install gitleaks automatically (no brew/go install/binary download without asking) — the user already chose the npm-first, degrade-gracefully approach.
 

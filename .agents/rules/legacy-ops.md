@@ -8,6 +8,8 @@ paths:
   - "package.json"
   - ".env*"
   - "prisma/**/*"
+generated:
+  - "package-lock.json"
 description: Next.js-specific operational mechanics for DevStash (legacy, maintenance-only) — verification defaults, production build preflight, env var sync, Prisma version policy, and Playwright MCP usage. Loads when editing package.json, .env files, or prisma/. Stack-agnostic workflow/commit rules live in ai-interaction.md.
 ---
 

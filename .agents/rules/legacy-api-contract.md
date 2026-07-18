@@ -5,6 +5,8 @@ globs:
   - src/actions/**/*
   - src/types/actions.ts
   - src/lib/api/**/*
+generated:
+  - "openapi.json"
 paths:
   - "src/app/api/**/*"
   - "src/actions/**/*"

@@ -170,6 +170,24 @@ curl -s -X POST "$BASE/auth/confirm-login-email" \
 | `api migrate up` / `down` / `status` | Apply / roll back / show goose migrations (needs `DATABASE_URL`)                                                                  |
 | `api openapi emit [file]`            | Write the OpenAPI spec to a file (default `openapi.json`). **Offline** — no DB or secrets needed, so CI can generate the contract |
 
+## OpenAPI spec (frontend contract)
+
+The spec is the source of the frontend's typed client. This backend is the single source of
+truth: `web/openapi.json` is a generated copy of what `openapi emit` produces, and
+`web/src/client/**` is generated from it (Hey API) — neither is hand-edited.
+
+Regenerate after any change to a route, its input/output structs, or validation tags:
+
+```bash
+# from backend/ — writes straight to web/openapi.json (offline; no DB or secrets)
+task openapi:emit
+# equivalently, without the task runner:
+go run ./cmd/api openapi emit ../web/openapi.json
+
+# then regenerate the frontend client from the new spec (from web/):
+cd ../web && npm run openapi:gen
+```
+
 ## Migrations
 
 goose owns all schema changes from `db/migrations/`; the `.sql` files are **embedded

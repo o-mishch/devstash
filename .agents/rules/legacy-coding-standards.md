@@ -6,6 +6,9 @@ globs:
 paths:
   - "src/**/*.ts"
   - "src/**/*.tsx"
+generated:
+  - "src/generated/**"
+  - "src/types/openapi.ts"
 description: Next.js-specific coding standards for DevStash (legacy, maintenance-only) — TanStack Query cache-updater ownership, oxlint type-aware rule specifics, and Pino logging. Loads for files under src/. Stack-agnostic TypeScript rules live in typescript-standards.md; React rules in react.md; Tailwind in tailwind.md; Zustand vs TanStack Query state ownership in legacy-state-management.md; the server/client bundle boundary in legacy-server-client-boundary.md.
 ---
 
@@ -50,7 +53,7 @@ queryClient.invalidateQueries(...)
   - `no-misused-promises` — no async function where a `void`-returning callback is expected (event handlers, `Array.forEach`, etc.).
   - `await-thenable` / `require-await` — only `await` real thenables; don't mark a function `async` with no `await`.
   - `no-unsafe-*` family (`no-unsafe-assignment`/`-call`/`-member-access`/`-argument`/`-return`) — no `any` flowing through the code. Type external/untyped values as `unknown` and narrow, or wrap them (see the typed test-matcher wrappers `objectContaining`/`arrayContaining`/`stringContaining`/`anything`/`anyOf`/`readJson` in `src/test/matchers.ts`, kept expressly to satisfy `no-unsafe-*` against Vitest's `any`-typed asymmetric matchers).
-- `scripts/**/*.{ts,js}` is outside `tsconfig.json`, so the type-aware rules are switched off there — via an `overrides` entry that disables them individually, not a single toggle. `src/generated/**`, `src/types/openapi.ts`, and `prisma.config.ts` are ignored — never hand-edit or auto-fix generated files.
+- `scripts/**/*.{ts,js}` is outside `tsconfig.json`, so the type-aware rules are switched off there — via an `overrides` entry that disables them individually, not a single toggle. `src/generated/**`, `src/types/openapi.ts`, and `prisma.config.ts` are ignored by lint — and of those three, `src/generated/**` and `src/types/openapi.ts` are generated, so never hand-edit or auto-fix them. `prisma.config.ts` is hand-written and merely lint-ignored; it is not generated, and only the two generated paths appear in the `generated:` frontmatter key above.
 
 ## Logging
 

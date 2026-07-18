@@ -1,0 +1,20 @@
+{
+  "skills": ["cleanup"],
+  "query": "/cleanup check",
+  "setup": "A changeset touching only web/ and backend/ files — no src/, no prisma/schema.prisma, no env file. context/history.md has one entry out of chronological order.",
+  "expected_behavior": [
+    "Reads references/housekeeping.md and reports all four checks, not only the failing one",
+    "Reports the history.md ordering problem as an Issue",
+    "Reports Prisma migration sync and Env drift as N/A rather than omitting them",
+    "States that the console/TODO/@ts-ignore greps and the lint and test steps cover src/ only, so this web/+backend/ changeset was not scanned by them",
+    "Points the user at improve for a changeset that no src/-scoped step covers",
+    "Makes no edit — check mode is read-only",
+    "Does not edit the ## Status table of context/current-feature.md under any circumstances"
+  ],
+  "anti_behavior": [
+    "Omits the passing housekeeping checks because they passed",
+    "Implies the web/ and backend/ files were scanned when only housekeeping looked at them",
+    "Reports a clean result without qualifying which stacks the src/-only steps actually covered",
+    "Runs npm run lint and reports its src/-scoped result as if it covered the whole changeset"
+  ]
+}

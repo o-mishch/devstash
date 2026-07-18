@@ -3,6 +3,10 @@ trigger: glob
 globs: ["backend/**/*.go"]
 paths:
   - "backend/**/*.go"
+generated:
+  - "backend/internal/db/**"
+  - "backend/**/*.sql.go"
+  - "backend/**/*_mock.go"
 description: Standards for the Go backend (Huma v2 + sqlc + goose on Cloud Run) — vertical-slice architecture, validation/errors, logging, IDOR scoping, data access, and testing. Loads when editing any Go file under backend/. Loop/iteration style lives in go-iteration.md (same glob). Does not apply to backend/exercise/, which is an unrelated learning course.
 ---
 

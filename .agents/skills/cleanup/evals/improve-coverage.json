@@ -1,0 +1,22 @@
+{
+  "skills": ["cleanup"],
+  "query": "/cleanup improve",
+  "setup": "A dirty worktree containing at least one fully-untracked directory (so git status --porcelain would collapse it), at least one rule-declared generated artifact, and at least one deleted tracked file.",
+  "expected_behavior": [
+    "Runs plan-improve.ts and reports the group count, LOC, and agent count from its output rather than estimating them",
+    "Counts every file inside the untracked directory individually — the changeset total must match `git diff --name-only HEAD` plus `git ls-files --others --exclude-standard`, never a directory entry",
+    "Excludes the rule-declared generated artifact from the lens audit and lists it under the generated bucket instead, without ever reporting a code-quality finding inside it",
+    "Invokes the Workflow tool with workflows/improve-audit.js, passing plan/structure/ledger paths rather than an inline file list",
+    "Reconciles the workflow's coverage against the plan BEFORE reading any finding, and renders the Coverage section even when nothing was skipped",
+    "Renders the Housekeeping table with all four checks including the passing ones, never omitting it",
+    "Reports the deleted file's impact on callers rather than silently ignoring it as unreadable",
+    "If any detector did not run, states which lens is degraded rather than reporting that lens as clean",
+    "Ends by asking which finding IDs to fix, and makes no edit before an answer"
+  ],
+  "anti_behavior": [
+    "Reports 'No issues found' while Coverage shows unread files",
+    "Reads the changed files directly instead of fanning out, on the grounds that the changeset is small",
+    "Reports a DRY finding for a src/ <-> web/ duplicate, which boundary.md explicitly sanctions",
+    "Reports missing tests under web/, which web-architecture.md rules out by decision"
+  ]
+}

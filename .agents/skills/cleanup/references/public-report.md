@@ -6,7 +6,7 @@ Use this template for `cleanup public`. Omit empty sections. Keep the report use
 # Public exposure audit
 
 [date] - repo scan: working tree + [N] commits ([full history | working tree only])
-Tools run: secretlint [version] [+ gitleaks version, if run] [+ scripts/scan-git-history.sh, if gitleaks unavailable]
+Tools run: secretlint [version] [+ gitleaks version, if run] [+ scripts/scan-git-history.ts, if gitleaks unavailable]
 
 ## At a glance
 
@@ -51,7 +51,7 @@ Rewriting git history is destructive to every existing clone and fork. Before pr
 | Area | What |
 | --- | --- |
 | Working tree | secretlint over tracked + untracked files |
-| Git history | [gitleaks --log-opts="--all", N commits | scripts/scan-git-history.sh walk, N commits | not run — state why] |
+| Git history | [gitleaks --log-opts="--all", N commits | scripts/scan-git-history.ts walk, N commits | not run — state why] |
 
 ## Summary
 

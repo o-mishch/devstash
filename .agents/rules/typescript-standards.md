@@ -5,17 +5,42 @@ globs:
   - src/**/*.tsx
   - web/**/*.ts
   - web/**/*.tsx
+  - .agents/skills/**/*.ts
 paths:
   - "src/**/*.ts"
   - "src/**/*.tsx"
   - "web/**/*.ts"
   - "web/**/*.tsx"
-description: Stack-agnostic TypeScript conventions shared by both frontends (src/ Next.js and web/ Vite SPA) — strict typing, no any/double-casts, named interfaces, KISS error handling, general code-quality/iteration style. Loads for any .ts/.tsx file in either workspace. Framework-specific rules (React, Tailwind, Next.js architecture) live in their own files.
+  - ".agents/skills/**/*.ts"
+description: Stack-agnostic TypeScript conventions shared by both frontends (src/ Next.js and web/ Vite SPA) and the agent skill scripts under .agents/skills/ — strict typing, no any/double-casts, named interfaces, KISS error handling, general code-quality/iteration style. Loads for any .ts/.tsx file in those trees. Framework-specific rules (React, Tailwind, Next.js architecture) live in their own files.
 ---
 
 # TypeScript Standards
 
-These are the stack-agnostic TypeScript rules — they apply the same way whether the file is under `src/` or `web/`. Framework-specific conventions live in `react.md`, `tailwind.md`, `legacy-nextjs-architecture.md`, or `web-architecture.md`.
+These are the stack-agnostic TypeScript rules — they apply the same way whether the file is under `src/`, `web/`, or `.agents/skills/`. Framework-specific conventions live in `react.md`, `tailwind.md`, `legacy-nextjs-architecture.md`, or `web-architecture.md`.
+
+**Skill scripts (`.agents/skills/**/*.ts`) run on bare `node`** — Node executes TypeScript natively, so there is no tsx, no bundler, and no build step. That imposes two constraints the app workspaces don't have:
+
+- **No dependencies.** No `package.json`, no `node_modules` under `.agents/skills/`. A skill must run on a fresh clone with nothing installed; a skill that can't start is a skill that silently does nothing. Use `node:` built-ins (`node:path`'s `matchesGlob` for globs, `JSON` for data) rather than reaching for a library. The one config file that is allowed is `.agents/skills/tsconfig.json` — it declares no dependencies; it exists only to point the type-aware gates at node's types (see below).
+- **Type annotations are stripped, not checked.** `node` erases types without verifying them, so types are documentation until something typechecks them. Erasable syntax only — no `enum`, no parameter properties, no namespaces.
+
+All three gates, run from the repo root:
+
+```bash
+node --test .agents/skills/cleanup/scripts/globcheck.ts   # behavior
+npx oxlint .agents/skills --disable-nested-config          # lint
+node_modules/.bin/tsc --ignoreConfig --noEmit --strict --erasableSyntaxOnly \
+  --noUnusedLocals --noUnusedParameters \
+  --module nodenext --moduleResolution nodenext --target es2023 \
+  --allowImportingTsExtensions --skipLibCheck --types node \
+  .agents/skills/**/scripts/*.ts .agents/skills/**/scripts/lib/*.ts
+```
+
+`--erasableSyntaxOnly` is the load-bearing flag: it fails on exactly the syntax `node` cannot strip, so a file that passes is a file that runs. `--ignoreConfig` is required because neither the Next.js root `tsconfig.json` nor the oxlint-scoped `.agents/skills/tsconfig.json` (see below) applies to this gate.
+
+`--noUnusedLocals` / `--noUnusedParameters` are the dead-code gate — `--strict` alone does not check unused locals, so without these two a stale import would survive `tsc` while `§ Code Quality` below forbids exactly that.
+
+These scripts **are** linted — by the **root** `.oxlintrc.json`, whose `**/*.ts` glob covers them (they are `.ts`, and are not in its `ignorePatterns`); the `frontend-oxlint` pre-commit hook enforces it. oxlint's type-aware rules need a TypeScript project to resolve `node:` built-ins against — without one, every `assert.equal` / `test()` / `fs.statSync()` resolves to the `error` type and floods `no-unsafe-*`. That is what `.agents/skills/tsconfig.json` is for: it mirrors the `tsc` gate's flags and pulls in `@types/node`, so oxlint type-checks the scripts as node code. Two rules that fight node idioms are relaxed in-code rather than repo-wide: `node:test`'s top-level `test(...)` calls are floated with `void` (that is the sanctioned form for `node --test`), and any bare `.sort()` on strings takes an explicit `localeCompare` comparator.
 
 ## Typing
 

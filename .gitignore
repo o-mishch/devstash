@@ -93,3 +93,13 @@ go.work.sum
 .ruff_cache
 .pytest_cache
 .mypy_cache
+# cleanup skill (improve mode) — local-only working state.
+# The findings ledger is a CACHE for classifying findings new/known/fixed across
+# runs; the codebase is always the source of truth and the audit re-derives every
+# finding from it. Never committed: a stale ledger must never look authoritative.
+context/cleanup-findings.md
+.cleanup-args.json
+.cleanup-plan.json
+.cleanup-structure.json
+.cleanup-changeset.txt
+.cleanup-groups/
