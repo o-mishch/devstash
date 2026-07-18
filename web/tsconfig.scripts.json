@@ -1,0 +1,13 @@
+{
+  // Type-checks the build-time files — the CSP builder (finalize-dist.ts) is a security
+  // control and must not run un-analyzed, and vite.config.ts configures the mechanisms it
+  // depends on (modulePreload.polyfill, spa.maskPath, the `/` prerender). The app tsconfig
+  // only `include`s src/, so these files would otherwise ship with zero static analysis.
+  // Runs in the build chain via `tsc -p tsconfig.scripts.json` before the scripts execute.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // These run in Node, not the browser: they need Node globals the app tsconfig withholds.
+    "types": ["vite/client", "node"]
+  },
+  "include": ["scripts", "vite.config.ts", "openapi-ts.config.ts"]
+}

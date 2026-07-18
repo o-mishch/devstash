@@ -13,6 +13,7 @@ generated:
   - "web/src/lib/theme-presets.generated.ts"
   - "web/src/lib/themes/presets-raw.json"
   - "web/src/components/ui/**"
+  - "web/public/og-image.png"
   - "web/package-lock.json"
 description: "Quality gates for the web/ Vite SPA — the deliberate no-tests policy, what to run instead, and which files are generated. Loads when editing anything under web/. Deliberately narrow, because web/ architecture idioms are still settling and are not yet rules. Shared TypeScript/React/Tailwind rules live in typescript-standards.md, react.md, tailwind.md (all also glob web/**/*)."
 ---
@@ -57,6 +58,7 @@ Regenerate these; a hand edit is a finding. This table is mirrored by the `gener
 | `web/firebase.json` | `scripts/finalize-dist.ts` at build time — edit `firebase.template.json` instead | no — build-time only |
 | `web/src/lib/themes/presets-raw.json` | `npm run themes:fetch` — a vendored tweakcn snapshot, the *input* to `themes:gen`, not its output | no — network fetch |
 | `web/src/components/ui/**` | the shadcn CLI (Base UI flavor; see `components.json`) — vendored from the registry | no — network fetch |
+| `web/public/og-image.png` | `scripts/gen-og-image.tsx` at build time (satori) — gitignored, like `firebase.json` | no — build-time only |
 | `web/package-lock.json` | `npm install` | no — network fetch |
 
 "Reproducible offline" is what an audit can actually prove: those rows are verified by regenerating into a temp dir and diffing. The rest are declared generated so they are not hand-audited, but a hand edit in them cannot be detected without the network or a build — an audit reports them `unverifiable` rather than clean.

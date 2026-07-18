@@ -9,7 +9,8 @@
   "categories": {
     "correctness": "error",
     "suspicious": "error",
-    "perf": "error"
+    "perf": "error",
+    "pedantic": "warn"
   },
   "options": {
     "typeAware": true
@@ -22,16 +23,37 @@
     ".tanstack/**",
     "coverage/**",
     "src/routeTree.gen.ts",
-    "src/client/**"
+    "src/client/**",
+    "src/lib/theme-presets.generated.ts",
+    "scripts/**",
+    "src/components/ui/dot-pattern.tsx",
+    "src/components/ui/retro-grid.tsx",
+    "src/components/ui/orbiting-circles.tsx",
+    "src/components/ui/border-beam.tsx",
+    "**/*.d.ts"
   ],
   "rules": {
     "default-case-last": "error",
-    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "eqeqeq": [
+      "error",
+      "always",
+      {
+        "null": "ignore"
+      }
+    ],
     "guard-for-in": "error",
     "no-alert": "error",
     "no-array-constructor": "error",
     "no-bitwise": "error",
-    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "no-console": [
+      "error",
+      {
+        "allow": [
+          "warn",
+          "error"
+        ]
+      }
+    ],
     "no-else-return": "error",
     "no-eval": "error",
     "no-implicit-coercion": "error",
@@ -81,7 +103,34 @@
     "unicorn/require-array-join-separator": "error",
     "unicorn/switch-case-braces": "error",
     "unicorn/throw-new-error": "error",
-    "unicorn/no-abusive-eslint-disable": "error"
+    "unicorn/no-abusive-eslint-disable": "error",
+    "unicorn/no-useless-promise-resolve-reject": "error",
+    "unicorn/no-typeof-undefined": "error",
+    "unicorn/prefer-at": "error",
+    "unicorn/prefer-string-trim-start-end": "error",
+    "unicorn/prefer-structured-clone": "error",
+    "unicorn/no-instanceof-array": "error",
+    "unicorn/prefer-dom-node-dataset": "error",
+    "unicorn/prefer-classlist-toggle": "error",
+    // Counts CODE, not prose. The rule's own rationale is that a large file "tends to do a lot
+    // of things" — a budget on what the file does, which explanatory comments do not add to.
+    // Left counting raw lines, it prices this codebase's why-comments against that budget and
+    // makes deleting a rationale the cheapest way back to green; `chaos-simulation.ts` sat at
+    // 297/300 with 62 lines of prose, so the next comment added to the file would have tripped
+    // it. Severity stays `warn` (the pedantic category default) — only the counting changed.
+    "max-lines": [
+      "warn",
+      {
+        "max": 300,
+        "skipComments": true,
+        "skipBlankLines": true
+      }
+    ],
+    "max-lines-per-function": "off",
+    "require-unicode-regexp": "off",
+    "import/max-dependencies": "off",
+    "unicorn/no-useless-undefined": "off",
+    "unicorn/prefer-code-point": "off"
   },
   "overrides": [
     {
@@ -116,7 +165,13 @@
         "react/no-unstable-nested-components": "error",
         "react/checked-requires-onchange-or-readonly": "error",
         "react/iframe-missing-sandbox": "error",
-        "react/jsx-curly-brace-presence": ["error", { "props": "never", "children": "never" }],
+        "react/jsx-curly-brace-presence": [
+          "error",
+          {
+            "props": "never",
+            "children": "never"
+          }
+        ],
         "react/jsx-pascal-case": "error",
         "import/no-anonymous-default-export": "error",
         "import/first": "error",
@@ -125,8 +180,12 @@
         "import/no-mutable-exports": "error",
         "import/no-namespace": "error",
         "import/no-self-import": "error",
-        "import/consistent-type-specifier-style": ["error", "prefer-top-level"],
+        "import/consistent-type-specifier-style": [
+          "error",
+          "prefer-top-level"
+        ],
         "import/newline-after-import": "error",
+        "import/max-dependencies": "off",
         "jsx-a11y/alt-text": "error",
         "jsx-a11y/anchor-is-valid": "error",
         "jsx-a11y/no-autofocus": "error",
@@ -136,7 +195,33 @@
         "jsx-a11y/aria-unsupported-elements": "error",
         "jsx-a11y/role-has-required-aria-props": "error",
         "jsx-a11y/role-supports-aria-props": "error",
-        "jsx-a11y/tabindex-no-positive": "error"
+        "jsx-a11y/tabindex-no-positive": "error",
+        "react/no-danger": "error",
+        "react/button-has-type": "error",
+        "react/no-clone-element": "error",
+        "react/no-object-type-as-default-prop": "error",
+        // No inline styles: static styling belongs in Tailwind classes. These forbid ONLY the
+        // `style` prop (never `className` — the whole Tailwind + cn() + shadcn kit rides on it).
+        // The rule is all-or-nothing per prop; genuinely-dynamic styles Tailwind can't express
+        // (CSS custom properties, computed geometry, drag transforms) carry a per-line
+        // `oxlint-disable-next-line` with a reason. Vendored src/components/ui/** is exempted
+        // in a later override.
+        "react/forbid-dom-props": [
+          "error",
+          {
+            "forbid": ["style"]
+          }
+        ],
+        "react/forbid-component-props": [
+          "error",
+          {
+            "forbid": ["style"]
+          }
+        ],
+        "jsx-a11y/iframe-has-title": "error",
+        "jsx-a11y/heading-has-content": "error",
+        "jsx-a11y/no-distracting-elements": "error",
+        "jsx-a11y/autocomplete-valid": "error"
       },
       "plugins": [
         "react",
@@ -193,18 +278,41 @@
         "typescript/adjacent-overload-signatures": "error",
         "typescript/array-type": "error",
         "typescript/consistent-generic-constructors": "error",
-        "typescript/consistent-indexed-object-style": ["error", "record"],
-        "typescript/consistent-type-definitions": ["error", "interface"],
+        "typescript/consistent-indexed-object-style": [
+          "error",
+          "record"
+        ],
+        "typescript/consistent-type-definitions": [
+          "error",
+          "interface"
+        ],
         "typescript/consistent-type-exports": "error",
         "typescript/consistent-type-imports": "error",
-        "typescript/dot-notation": "error",
+        "typescript/dot-notation": [
+          "error",
+          {
+            // tsconfig sets noPropertyAccessFromIndexSignature, which REQUIRES bracket
+            // notation for index-signature properties (e.g. Vite's loadEnv Record). Without
+            // this the two gates contradict each other: tsc demands `env['X']`, the rule
+            // demands `env.X`.
+            "allowIndexSignaturePropertyAccess": true
+          }
+        ],
         "typescript/explicit-function-return-type": "error",
         "typescript/explicit-module-boundary-types": "error",
-        "typescript/method-signature-style": ["error", "property"],
+        "typescript/method-signature-style": [
+          "error",
+          "property"
+        ],
         "typescript/no-array-delete": "error",
         "typescript/no-base-to-string": "error",
         "typescript/no-confusing-non-null-assertion": "error",
-        "typescript/no-confusing-void-expression": ["error", { "ignoreArrowShorthand": true }],
+        "typescript/no-confusing-void-expression": [
+          "error",
+          {
+            "ignoreArrowShorthand": true
+          }
+        ],
         "typescript/no-deprecated": "error",
         "typescript/no-duplicate-type-constituents": "error",
         "typescript/no-floating-promises": "error",
@@ -254,8 +362,16 @@
           "error",
           {
             "allow": [
-              { "from": "package", "name": "Redirect", "package": "@tanstack/router-core" },
-              { "from": "package", "name": "NotFoundError", "package": "@tanstack/router-core" }
+              {
+                "from": "package",
+                "name": "Redirect",
+                "package": "@tanstack/router-core"
+              },
+              {
+                "from": "package",
+                "name": "NotFoundError",
+                "package": "@tanstack/router-core"
+              }
             ]
           }
         ],
@@ -266,15 +382,15 @@
         "typescript/require-await": "error",
         "typescript/restrict-plus-operands": "error",
         "typescript/unbound-method": "error",
-        "typescript/no-dynamic-delete": "error"
-      }
-    },
-    {
-      "files": [
-        "scripts/**"
-      ],
-      "rules": {
-        "no-console": "off"
+        "typescript/no-dynamic-delete": "error",
+        "typescript/no-invalid-void-type": "error",
+        "typescript/no-non-null-asserted-nullish-coalescing": "error",
+        "typescript/no-mixed-enums": "error",
+        "typescript/prefer-enum-initializers": "error",
+        "typescript/no-unnecessary-qualifier": "error",
+        "typescript/no-useless-empty-export": "error",
+        "typescript/prefer-readonly": "error",
+        "typescript/prefer-readonly-parameter-types": "off"
       }
     },
     {
@@ -292,29 +408,19 @@
       }
     },
     {
+      // Vendored from the shadcn (Base UI) registry — regenerated, not hand-audited. The
+      // no-inline-style ban does not apply to upstream source; fighting it would mean editing
+      // code the CLI can overwrite. (Some ui/** files are also fully lint-ignored above.)
       "files": [
-        "**/*.test.ts"
+        "src/components/ui/**"
+      ],
+      "plugins": [
+        "react"
       ],
       "rules": {
-        "vitest/no-commented-out-tests": "error",
-        "vitest/no-conditional-expect": "error",
-        "vitest/no-identical-title": "error",
-        "vitest/no-import-node-test": "error",
-        "vitest/no-interpolation-in-snapshots": "error",
-        "vitest/no-mocks-import": "error",
-        "vitest/no-standalone-expect": "error",
-        "vitest/no-unneeded-async-expect-function": "error",
-        "vitest/prefer-called-exactly-once-with": "error",
-        "vitest/require-local-test-context-for-concurrent-snapshots": "error",
-        "vitest/require-mock-type-parameters": "error",
-        "vitest/valid-describe-callback": "error",
-        "vitest/valid-expect": "error",
-        "vitest/valid-expect-in-promise": "error",
-        "vitest/valid-title": "error"
-      },
-      "plugins": [
-        "vitest"
-      ]
+        "react/forbid-dom-props": "off",
+        "react/forbid-component-props": "off"
+      }
     }
   ]
 }

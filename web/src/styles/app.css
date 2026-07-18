@@ -1,0 +1,208 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+/* 50 tweakcn theme presets (`:root` light default + `.dark` + one `[data-theme]` block per
+ * preset). GENERATED — edit web/src/lib/themes/presets-raw.json + run `npm run themes:gen`,
+ * never edit the .css by hand. The runtime `--background`/`--primary`/… vars it defines are
+ * mapped to Tailwind utilities by the `@theme` block below. */
+@import './themes.generated.css';
+
+/* Effect-only CSS for the dashboard skins (glass hairlines, usage ring, HUD brackets, orbital
+ * core glow, editorial gradient numerals, holographic foil). Layout lives in the skin components;
+ * every effect resolves through the active theme tokens so each skin works in light and dark. */
+@import './dashboard-skins.css';
+
+/* ============================================================
+ *  DevStash SPA — design system
+ *  Theme is chosen per user (App Theme × color mode) and applied via a `data-theme`
+ *  attribute + `dark`/`light` class on <html> (see useTheme / no-flash script). The
+ *  product default is the "modern-minimal" dark theme, matching live devstash.one.
+ * ============================================================ */
+
+@theme {
+  --font-sans:
+    'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:
+    ui-monospace, 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, Consolas,
+    monospace;
+
+  /* Semantic tokens → the per-theme CSS vars defined in themes.generated.css. Every token a
+   * preset carries is mapped so `bg-sidebar`, `text-accent-foreground`, etc. all theme. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Dashboard-skin animations. `animate-orbit` drives the orbital skin's type constellation;
+   * `animate-grid` scrolls the retro-grid horizon (command-deck, neon-grid). Both are gated with
+   * `motion-safe:` at their component. Mirrors the legacy globals.css @theme keyframes. */
+  --animate-orbit: orbit calc(var(--duration) * 1s) linear infinite;
+  --animate-grid: grid 15s linear infinite;
+
+  @keyframes orbit {
+    0% {
+      transform: rotate(calc(var(--angle) * 1deg)) translateY(calc(var(--radius) * 1px))
+        rotate(calc(var(--angle) * -1deg));
+    }
+    100% {
+      transform: rotate(calc(var(--angle) * 1deg + 360deg)) translateY(calc(var(--radius) * 1px))
+        rotate(calc((var(--angle) * -1deg) - 360deg));
+    }
+  }
+
+  @keyframes grid {
+    0% {
+      transform: translateY(-50%);
+    }
+    100% {
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  /* color-scheme follows the color-mode class so native UI (form controls, scrollbars) matches
+   * the theme. Default (no class) is dark — the product default color mode. */
+  html {
+    color-scheme: dark;
+  }
+  html.light {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html {
+    /* scroll-padding-top keeps hash targets (Features/Pricing) clear of the fixed nav
+     * (h-16 = 4rem + breathing room). Honored by the router's hashScrollIntoView
+     * (scrollIntoView) as well as any native scroll. The smooth animation itself is
+     * owned by the TanStack Router config (scrollRestorationBehavior +
+     * defaultHashScrollIntoView), not CSS scroll-behavior. */
+    scroll-padding-top: 5rem;
+  }
+
+  /* Global rem scale — mirrors the live devstash.one root font-size scaling so
+   * the SPA renders at the same visual size. Every rem-based size grows/shrinks
+   * together. Desktop (fine pointer AND >=1024px) bumps to 125%; touch/narrow
+   * screens use 110%; ultra-small widths step back down so the UI stops
+   * overflowing (WCAG 1.4.10 Reflow — rem steps, not vw/zoom; user zoom still
+   * multiplies on top). Floored at 85% so tap targets stay above 24px. */
+  @media (pointer: coarse), (width < 64rem) {
+    :root {
+      font-size: 110%;
+    }
+  }
+  @media (width < 24rem) {
+    :root {
+      font-size: 100%;
+    }
+  }
+  @media (width < 21rem) {
+    :root {
+      font-size: 92%;
+    }
+  }
+  @media (width < 18rem) {
+    :root {
+      font-size: 85%;
+    }
+  }
+  @media (pointer: fine) and (width >= 64rem) {
+    :root {
+      font-size: 125%;
+    }
+  }
+
+  /* Keep iOS Safari from zooming in on input/textarea focus (needs >=16px). */
+  @media (pointer: coarse), (width < 64rem) {
+    input,
+    textarea {
+      font-size: 16px;
+    }
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Coding standard: every button/[role=button] is a pointer target. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklch, var(--primary) 30%, transparent);
+  }
+
+  /* Terminal-flavored thin scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+}
+
+/* Dialog "grow from origin" morph (desktop only). Opt-in via the `morph` prop on DialogContent,
+   which sets --ds-morph-x/y (the click point's offset from viewport centre, in px) on the popup's
+   inline style. Centering stays on the `translate` property (Tailwind's -translate-x/y-1/2), so the
+   morph is free to drive `transform`: the popup starts shrunk and offset onto the trigger, then
+   springs to full size at centre. Unlayered so its transition isn't overridden by utility classes.
+   Base UI toggles data-starting-style (open) and data-ending-style (close), and waits for this
+   transition to finish before unmounting — no JS animation library needed. */
+.dialog-morph {
+  transition:
+    transform 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.28s ease-out;
+}
+.dialog-morph[data-starting-style],
+.dialog-morph[data-ending-style] {
+  opacity: 0;
+  transform: translate(var(--ds-morph-x, 0px), var(--ds-morph-y, 0px))
+    scale(var(--ds-morph-scale, 0.35));
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog-morph {
+    transition: opacity 0.15s ease-out;
+  }
+  .dialog-morph[data-starting-style],
+  .dialog-morph[data-ending-style] {
+    transform: none;
+  }
+}

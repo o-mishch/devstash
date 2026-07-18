@@ -2,19 +2,50 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    // "Preserve" is the idiomatic pairing for a bundler-consumed app (TS docs /
+    // Total TypeScript): it preserves ESM import/export exactly as Vite/esbuild expect
+    // and implies moduleResolution:"bundler". Kept "bundler" explicit below for clarity.
+    "module": "Preserve",
+    // ES2023 for the immutable array methods (toSorted/toReversed/findLast) — supported in every
+    // evergreen browser since mid-2023 and the form oxlint's no-array-sort rule requires.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // Error on side-effect imports that don't resolve (e.g. a typo'd CSS/font path);
+    // our *.css imports resolve via vite/client ambient types. (TS 5.6)
+    "noUncheckedSideEffectImports": true,
+    // Ban non-erasable syntax (enum, instantiated namespace, ctor parameter-properties)
+    // that oxc/esbuild type-stripping can't emit — matches our const-enum ban. (TS 5.8)
+    "erasableSyntaxOnly": true,
+    // Enforce explicit `import type` / `export type` at the compiler level (modern
+    // Vite/TS default). App code already complies; the generated client splits value
+    // vs `export type` re-exports, so it's compatible.
+    "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
+    "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    // exactOptionalPropertyTypes is intentionally OFF: the generated
+    // @hey-api/openapi-ts client (src/client/**) isn't compatible with it. App code
+    // is — its optional props keep `| undefined` annotations — so it can be re-enabled
+    // if the generated client ever supports it.
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "allowUnreachableCode": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    // Browser bundle only — Node globals are deliberately absent so `process.env` /
+    // `Buffer` in src/ fail the typecheck instead of throwing ReferenceError at runtime.
+    // The build scripts get "node" via tsconfig.scripts.json, which extends this file.
     "types": ["vite/client"]
   },
   "include": ["src"]
