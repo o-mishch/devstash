@@ -27,9 +27,18 @@ interface SecretlintResult {
   messages: SecretlintMessage[]
 }
 
-function git(args: string[], opts: { binary: true }): Buffer
-function git(args: string[], opts?: { binary?: false }): string
-function git(args: string[], opts?: { binary?: boolean }): string | Buffer {
+interface GitBinaryOptions {
+  binary: true
+}
+interface GitTextOptions {
+  binary?: false
+}
+interface GitOptions {
+  binary?: boolean
+}
+function git(args: string[], opts: GitBinaryOptions): Buffer
+function git(args: string[], opts?: GitTextOptions): string
+function git(args: string[], opts?: GitOptions): string | Buffer {
   if (opts?.binary) {
     return execFileSync('git', args, {
       encoding: 'buffer',

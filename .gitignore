@@ -52,6 +52,9 @@ tmp
 
 .playwright-mcp
 
+# UI-snapshot / motion-capture harness (throwaway: screenshots, videos, session state)
+/capture/
+
 # local MCP config (may contain API keys)
 .mcp.json
 .cursor/mcp.json

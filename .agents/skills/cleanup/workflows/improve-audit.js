@@ -43,6 +43,26 @@ if (!Array.isArray(parsedArgs.changesetLenses)) throw new Error('args.changesetL
 
 const { groupDir, structurePath, ruleFiles, groups: groupRefs, changesetLenses, ledgerPath, quickTier } = parsedArgs
 
+// Defense-in-depth: every path/id below is interpolated into a finder prompt as a `Read <path>`
+// directive. The caller is the trusted cleanup skill (args come from plan-improve.ts), but validate
+// anyway so a malformed or hostile plan can never steer an agent outside the repo. Reject parent
+// traversal, absolute paths, and null bytes; group ids must be simple slugs (they form a filename).
+function assertSafePath(value, label) {
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`args.${label} must be a non-empty string`)
+  if (value.startsWith('/') || value.includes('\0') || /(^|\/)\.\.(\/|$)/.test(value)) {
+    throw new Error(`args.${label} must be a repo-relative path with no '..' segments`)
+  }
+}
+assertSafePath(groupDir, 'groupDir')
+assertSafePath(structurePath, 'structurePath')
+assertSafePath(ledgerPath, 'ledgerPath')
+ruleFiles.forEach((f, i) => assertSafePath(f, `ruleFiles[${i}]`))
+groupRefs.forEach((g, i) => {
+  if (!g || typeof g.id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(g.id)) {
+    throw new Error(`args.groups[${i}].id must be a simple slug ([A-Za-z0-9_-])`)
+  }
+})
+
 const LENS_DOC_BASE = '.agents/skills/cleanup/references/improve'
 const DOCTRINE = `${LENS_DOC_BASE}/common.md`
 const VERIFY_DOC = `${LENS_DOC_BASE}/verify.md`
