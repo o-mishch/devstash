@@ -76,7 +76,7 @@ jobs:
           persist-credentials: false
       # The infra shell was ported to the devstash-infra Python CLI; its own strict gate
       # (ruff/mypy/basedpyright/pytest) runs in infra-checks.yml, so no shellcheck here.
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           # Single source of truth: read the pinned Node version from .nvmrc (currently
           # Node 24 Active LTS) so CI, local dev (nvm), and the Docker base never drift.
