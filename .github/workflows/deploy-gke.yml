@@ -71,7 +71,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # The infra shell was ported to the devstash-infra Python CLI; its own strict gate
@@ -125,7 +125,7 @@ jobs:
     outputs:
       build: ${{ steps.decide-active.outputs.build || steps.decide.outputs.build }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # continue-on-error: a torn-down WIF pool (full `devstash-infra gcp down`) makes this fail with a
@@ -188,7 +188,7 @@ jobs:
     outputs:
       suspended: ${{ steps.env-state.outputs.suspended }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: auth
@@ -256,7 +256,7 @@ jobs:
       migrate_image:  ${{ steps.build-push.outputs.migrate_image_name }}
       migrate_digest: ${{ steps.build-push.outputs.migrate_digest }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -383,7 +383,7 @@ jobs:
       MIGRATE_DIGEST: ${{ needs.build-push.outputs.migrate_digest }}
       MIGRATE_IMAGE:  ${{ needs.build-push.outputs.migrate_image }}@${{ needs.build-push.outputs.migrate_digest }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -468,7 +468,7 @@ jobs:
       contents: read
       id-token: write # Workload Identity Federation: request OIDC token
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -630,7 +630,7 @@ jobs:
       contents: read
       id-token: write # Workload Identity Federation: request OIDC token
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
